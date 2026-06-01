@@ -4,10 +4,12 @@
  * Giống Course Editor nhưng cho Help Docs.
  */
 import { useState } from 'react';
+import { TenantFilter } from '@/components/shared/TenantFilter';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/utils/store';
 import { useHeaderInfo } from '@/utils/header-store';
-import { getHelpFolders, getHelpPages } from '@/api/help-docs';
+import { getHelpFolders, getHelpPages } from '@/api/custom-help-docs';
 import HelpDocsTree from '@/components/help-docs/HelpDocsTree';
 import HelpPageEditor from '@/components/help-docs/HelpPageEditor';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,17 +20,19 @@ import { Button } from '@/components/ui/button';
 export default function HelpDocsPage() {
   useHeaderInfo('Help Docs');
   const user = useAuthStore((s) => s.user);
-  const isSuperuser = !!user?.isSuperuser;
-  const [selectedPageId, setSelectedPageId] = useState<number | null>(null);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission('help_docs', 'can_edit');
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   const { data: foldersData, isLoading: foldersLoading, isError: foldersError } = useQuery({
-    queryKey: ['help-folders'],
+    queryKey: ['help-folders', activeTenantId],
     queryFn: getHelpFolders,
     staleTime: 30_000,
   });
 
   const { data: pagesData, isLoading: pagesLoading } = useQuery({
-    queryKey: ['help-pages'],
+    queryKey: ['help-pages', activeTenantId],
     queryFn: () => getHelpPages(),
     staleTime: 30_000,
   });
@@ -74,12 +78,16 @@ export default function HelpDocsPage() {
       pages={pages}
       selectedPageId={selectedPageId}
       onSelectPage={setSelectedPageId}
-      isSuperuser={isSuperuser}
+      isSuperuser={canEdit}
     />
   );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-background flex-col md:flex-row">
+    <div className="flex flex-col h-[calc(100vh-64px)] bg-background">
+      <div className="px-6 pt-3 shrink-0">
+        <TenantFilter />
+      </div>
+      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
       {/* Mobile Top Bar */}
       <div className="md:hidden flex items-center justify-between p-4 border-b border-border bg-background sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-2">
@@ -133,7 +141,7 @@ export default function HelpDocsPage() {
             <HelpPageEditor
               key={selectedPageId}
               pageId={selectedPageId}
-              isSuperuser={isSuperuser}
+              isSuperuser={canEdit}
             />
           </div>
         ) : (
@@ -144,7 +152,7 @@ export default function HelpDocsPage() {
             <div className="text-center">
               <p className="text-base font-medium">Chọn trang để xem</p>
               <p className="text-sm opacity-60 mt-1">
-                {isSuperuser
+                {canEdit
                   ? 'Chọn trang ở sidebar trái hoặc tạo folder/trang mới'
                   : 'Chọn trang ở sidebar trái để đọc hướng dẫn'
                 }
@@ -152,6 +160,7 @@ export default function HelpDocsPage() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

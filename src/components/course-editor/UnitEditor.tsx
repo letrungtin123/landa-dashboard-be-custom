@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, reorderChildren,
-} from '@/api/course-authoring';
+} from '@/api/custom-course-authoring';
 import {
   DndContext,
   closestCenter,
@@ -24,7 +24,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { apiClient } from '@/api/client';
+import { customApiClient } from '@/api/custom-client';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -651,7 +651,8 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     }
 
     case 'html': {
-      const html = blockData?.data || '';
+      const htmlRaw = blockData?.data;
+      const html = typeof htmlRaw === 'string' ? htmlRaw : '';
       
       if (!html.trim()) {
         return (
@@ -718,7 +719,9 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     }
 
     case 'problem': {
-      const xml = blockData?.data || '';
+      const rawData = blockData?.data;
+      // data can be: string (OLX XML), object (JSONB from DB), or null
+      const xml = typeof rawData === 'string' ? rawData : '';
       const parsed = parseProblemXml(xml);
 
       if (!parsed) {
@@ -1215,8 +1218,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
   const category = blockInfo?.category || blockInfo?.block_type || '';
 
   const [displayName, setDisplayName] = useState(blockInfo?.display_name || '');
-  const [htmlContent, setHtmlContent] = useState(blockInfo?.data || '');
-  const [problemXml, setProblemXml] = useState(blockInfo?.data || '');
+  const [htmlContent, setHtmlContent] = useState(typeof blockInfo?.data === 'string' ? blockInfo.data : '');
+  const [problemXml, setProblemXml] = useState(typeof blockInfo?.data === 'string' ? blockInfo.data : '');
 
   const [metadata, setMetadata] = useState<any>(() => {
     const meta = { ...(blockInfo?.metadata || {}) };

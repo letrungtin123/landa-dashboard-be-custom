@@ -1,0 +1,81 @@
+// ═══════════════════════════════════════════════════════════════
+// Custom Auth API — Login, Refresh, Logout, Me
+// Kết nối tới Express backend mới thay vì Open edX
+// ═══════════════════════════════════════════════════════════════
+
+import { customApiClient } from "./custom-client";
+
+/** Response format chuẩn từ custom backend */
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+/** Response từ login/refresh */
+export interface CustomLoginResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  user: CustomUserInfo;
+  permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
+  tenant_modules: string[];
+  managed_tenants: { id: string; name: string }[];
+}
+
+/** Thông tin user từ backend */
+export interface CustomUserInfo {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  phone: string;
+  avatar_url: string | null;
+  role: "learner" | "staff" | "superuser" | "superadmin";
+  tenant_id: string | null;
+  tenant_name: string | null;
+}
+
+/** Response từ GET /auth/me */
+export interface CustomMeResponse {
+  user: CustomUserInfo;
+  permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
+  tenant_modules: string[];
+  managed_tenants: { id: string; name: string }[];
+}
+
+/**
+ * Đăng nhập bằng username/password.
+ */
+export async function customLoginApi(username: string, password: string): Promise<CustomLoginResponse> {
+  const { data } = await customApiClient.post<ApiResponse<CustomLoginResponse>>("/api/auth/login", {
+    username,
+    password,
+  });
+  return data.data;
+}
+
+/**
+ * Refresh token — nhận token pair mới.
+ */
+export async function customRefreshApi(refreshToken: string): Promise<CustomLoginResponse> {
+  const { data } = await customApiClient.post<ApiResponse<CustomLoginResponse>>("/api/auth/refresh", {
+    refresh_token: refreshToken,
+  });
+  return data.data;
+}
+
+/**
+ * Lấy thông tin user hiện tại + permissions.
+ */
+export async function customGetMeApi(): Promise<CustomMeResponse> {
+  const { data } = await customApiClient.get<ApiResponse<CustomMeResponse>>("/api/auth/me");
+  return data.data;
+}
+
+/**
+ * Đăng xuất — revoke refresh token.
+ */
+export async function customLogoutApi(refreshToken: string): Promise<void> {
+  await customApiClient.post("/api/auth/logout", { refresh_token: refreshToken });
+}

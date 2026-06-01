@@ -7,13 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
-import { getCourses } from '@/api/landa-admin';
-import { assignCourses, assignTeamCourses } from '@/api/landa-groups';
+import { getCourses } from '@/api/custom-courses';
+import { assignCourses, assignTeamCourses } from '@/api/custom-groups';
 
 interface Props {
   open: boolean;
-  sgId: number;
-  teamId?: number;
+  sgId: string;
+  teamId?: string;
   assignedCourseIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
@@ -35,7 +35,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
   });
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? assignTeamCourses(teamId, selected) : assignCourses(sgId, selected),
+    mutationFn: () => teamId ? assignTeamCourses(teamId!, selected) : assignCourses(sgId, selected),
     onSuccess: (res) => {
       toast.success(`Đã phân ${res.assigned} course${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
       setSelected([]);
@@ -47,7 +47,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
   });
 
   // getCourses trả về { data: LandaCourse[], total, ... }
-  const courses = data?.data ?? [];
+  const courses = data?.courses ?? [];
   const availableCourses = courses.filter(c => !assignedCourseIds.includes(c.id));
   const allSelected = availableCourses.length > 0 && availableCourses.every(c => selected.includes(c.id));
 

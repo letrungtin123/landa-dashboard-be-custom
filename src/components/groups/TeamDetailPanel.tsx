@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { useAuthStore } from '@/utils/store';
 import { format } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -16,8 +17,9 @@ import {
 import {
   getTeamDetail, removeTeamMember, revokeTeamCourse, revokeTeamCategory, revokeTeamCourseCategory,
   type TeamDetail,
-} from '@/api/landa-groups';
-import { getCourseCategoryCourses, getDocuments } from '@/api/landa-admin';
+} from '@/api/custom-groups';
+import { getCourseCategoryCourses } from '@/api/custom-course-categories';
+import { getDocuments } from '@/api/custom-library';
 import { AddMembersModal } from './AddMembersModal';
 import { AssignCoursesModal } from './AssignCoursesModal';
 import { AssignCategoriesModal } from './AssignCategoriesModal';
@@ -25,7 +27,7 @@ import { AssignCourseCategoriesModal } from './AssignCourseCategoriesModal';
 
 
 interface Props {
-  teamId: number;
+  teamId: string;
 }
 
 type Tab = 'members' | 'courses' | 'categories' | 'course_categories';
@@ -64,22 +66,24 @@ export function TeamDetailPanel({ teamId }: Props) {
   const [assignCoursesOpen, setAssignCoursesOpen] = useState(false);
   const [assignCategoriesOpen, setAssignCategoriesOpen] = useState(false);
   const [assignCourseCategoriesOpen, setAssignCourseCategoriesOpen] = useState(false);
-  const [previewCatId, setPreviewCatId] = useState<number | null>(null);
-  const [previewFileCatId, setPreviewFileCatId] = useState<number | null>(null);
-  const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
+  const [previewCatId, setPreviewCatId] = useState<string | null>(null);
+  const [previewFileCatId, setPreviewFileCatId] = useState<string | null>(null);
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
-  const [selectedCourseCategories, setSelectedCourseCategories] = useState<number[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCourseCategories, setSelectedCourseCategories] = useState<string[]>([]);
   const qc = useQueryClient();
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission('groups', 'can_edit');
 
   const { data: sg, isLoading } = useQuery<TeamDetail>({
     queryKey: ['team-detail', teamId],
     queryFn: () => getTeamDetail(teamId),
-    enabled: teamId > 0,
+    enabled: !!teamId,
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: number) => removeTeamMember(teamId, userId),
+    mutationFn: (userId: string) => removeTeamMember(teamId, userId),
     onSuccess: () => {
       toast.success('Đã xóa thành viên');
       qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
@@ -99,7 +103,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   });
 
   const removeMultipleMembersMutation = useMutation({
-    mutationFn: async (userIds: number[]) => {
+    mutationFn: async (userIds: string[]) => {
       await Promise.all(userIds.map(id => removeTeamMember(teamId, id)));
     },
     onSuccess: () => {
@@ -125,7 +129,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   });
 
   const revokeCategoryMutation = useMutation({
-    mutationFn: (categoryId: number) => revokeTeamCategory(teamId, categoryId),
+    mutationFn: (categoryId: string) => revokeTeamCategory(teamId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục');
       qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
@@ -135,7 +139,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   });
 
   const revokeMultipleCategoriesMutation = useMutation({
-    mutationFn: async (categoryIds: number[]) => {
+    mutationFn: async (categoryIds: string[]) => {
       await Promise.all(categoryIds.map(id => revokeTeamCategory(teamId, id)));
     },
     onSuccess: () => {
@@ -148,7 +152,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   });
 
   const revokeCourseCategoryMutation = useMutation({
-    mutationFn: (categoryId: number) => revokeTeamCourseCategory(teamId, categoryId),
+    mutationFn: (categoryId: string) => revokeTeamCourseCategory(teamId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục khóa học');
       qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
@@ -158,7 +162,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   });
 
   const revokeMultipleCourseCategoriesMutation = useMutation({
-    mutationFn: async (categoryIds: number[]) => {
+    mutationFn: async (categoryIds: string[]) => {
       await Promise.all(categoryIds.map(id => revokeTeamCourseCategory(teamId, id)));
     },
     onSuccess: () => {
@@ -170,7 +174,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
   });
 
-  const handleRemoveMember = (id: number, username: string) => {
+  const handleRemoveMember = (id: string, username: string) => {
     confirmDialog({
       title: 'Xóa thành viên',
       description: `Xóa "${username}" khỏi nhóm? User sẽ không còn thấy courses của nhóm này.`,
@@ -206,7 +210,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     });
   };
 
-  const handleRevokeCategory = (categoryId: number, name: string) => {
+  const handleRevokeCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục',
       description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy danh mục này.`,
@@ -224,7 +228,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     });
   };
 
-  const handleRevokeCourseCategory = (categoryId: number, name: string) => {
+  const handleRevokeCourseCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục khóa học',
       description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy courses của danh mục này.`,
@@ -242,7 +246,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     });
   };
 
-  const toggleMember = (id: number) => {
+  const toggleMember = (id: string) => {
     setSelectedMembers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -266,7 +270,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     }
   };
 
-  const toggleCategory = (id: number) => {
+  const toggleCategory = (id: string) => {
     setSelectedCategories(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -278,7 +282,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     }
   };
 
-  const toggleCourseCategory = (id: number) => {
+  const toggleCourseCategory = (id: string) => {
     setSelectedCourseCategories(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -341,7 +345,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                   id="select-all-members"
                 />
                 <label htmlFor="select-all-members" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedMembers.length > 0 && (
+                {selectedMembers.length > 0 && canEdit && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -354,9 +358,9 @@ export function TeamDetailPanel({ teamId }: Props) {
                   </Button>
                 )}
               </div>
-              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddMembersOpen(true)}>
+              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddMembersOpen(true)}>
                 <UserPlus className="h-3.5 w-3.5" /> Thêm thành viên
-              </Button>
+              </Button>}
             </div>
             {sg.members.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -385,13 +389,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                     <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
                       {format(new Date(m.added_at), 'dd/MM/yyyy')}
                     </span>
-                    <button
+                    {canEdit && <button
                       onClick={() => handleRemoveMember(m.id, m.username)}
                       disabled={removeMemberMutation.isPending}
                       className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     >
                       {removeMemberMutation.isPending && removeMemberMutation.variables === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
@@ -410,7 +414,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                   id="select-all-courses"
                 />
                 <label htmlFor="select-all-courses" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCourses.length > 0 && (
+                {selectedCourses.length > 0 && canEdit && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -423,9 +427,9 @@ export function TeamDetailPanel({ teamId }: Props) {
                   </Button>
                 )}
               </div>
-              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCoursesOpen(true)}>
+              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCoursesOpen(true)}>
                 <BookPlus className="h-3.5 w-3.5" /> Phân course
-              </Button>
+              </Button>}
             </div>
             {sg.courses.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -450,13 +454,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                     <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
                       {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
                     </span>
-                    <button
+                    {canEdit && <button
                       onClick={() => handleRevokeCourse(c.course_id, c.display_name)}
                       disabled={revokeMutation.isPending}
                       className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     >
                       {revokeMutation.isPending && revokeMutation.variables === c.course_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
@@ -475,7 +479,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                   id="select-all-categories"
                 />
                 <label htmlFor="select-all-categories" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCategories.length > 0 && (
+                {selectedCategories.length > 0 && canEdit && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -488,9 +492,9 @@ export function TeamDetailPanel({ teamId }: Props) {
                   </Button>
                 )}
               </div>
-              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
+              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
                 <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục files
-              </Button>
+              </Button>}
             </div>
             {sg.categories.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -520,13 +524,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                     <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
                       {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
                     </span>
-                    <button
+                    {canEdit && <button
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCategory(c.category_id, c.name); }}
                       disabled={revokeCategoryMutation.isPending}
                       className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     >
                       {revokeCategoryMutation.isPending && revokeCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
@@ -545,7 +549,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                   id="select-all-course-categories"
                 />
                 <label htmlFor="select-all-course-categories" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCourseCategories.length > 0 && (
+                {selectedCourseCategories.length > 0 && canEdit && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -558,9 +562,9 @@ export function TeamDetailPanel({ teamId }: Props) {
                   </Button>
                 )}
               </div>
-              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
+              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
                 <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục courses
-              </Button>
+              </Button>}
             </div>
             {sg.course_categories.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -590,13 +594,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                     <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
                       {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
                     </span>
-                    <button
+                    {canEdit && <button
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCourseCategory(c.category_id, c.name); }}
                       disabled={revokeCourseCategoryMutation.isPending}
                       className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     >
                       {revokeCourseCategoryMutation.isPending && revokeCourseCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
@@ -671,11 +675,11 @@ export function TeamDetailPanel({ teamId }: Props) {
 // Modal xem danh sách courses trong 1 danh mục
 // ═══════════════════════════════════════
 
-function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: number | null; catName: string; onClose: () => void }) {
+function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['course-category-courses-preview', catId],
     queryFn: () => getCourseCategoryCourses(catId!),
-    enabled: catId !== null && catId > 0,
+    enabled: catId !== null,
   });
 
   const courses = data?.results ?? [];
@@ -725,14 +729,14 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: number
 // Modal xem danh sách files trong 1 danh mục
 // ═══════════════════════════════════════
 
-function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: number | null; catName: string; onClose: () => void }) {
+function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['file-category-files-preview', catId],
     queryFn: () => getDocuments({ category_id: catId!, page: 1, page_size: 100 }),
-    enabled: catId !== null && catId > 0,
+    enabled: catId !== null,
   });
 
-  const files = data?.data ?? [];
+  const files: any[] = data?.documents ?? [];
 
   return (
     <Dialog open={catId !== null} onOpenChange={(o) => !o && onClose()}>

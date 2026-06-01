@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCategories, getAllCategories, createCategory, updateCategory, deleteCategory,
-  bulkDeleteCategories, type LandaCategory,
-} from '@/api/landa-admin';
+  bulkDeleteCategories, type DocCategory,
+} from '@/api/custom-library';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
 import { Pagination } from '@/components/shared/pagination';
@@ -21,12 +22,17 @@ import {
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import { Plus, Pencil, Trash2, FolderOpen, Loader2, X } from 'lucide-react';
+import { useAuthStore } from '@/utils/store';
 
 export default function CategoriesTab() {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<number[]>([]);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('library', 'can_add');
+  const canEdit = hasPermission('library', 'can_edit');
+  const canDelete = hasPermission('library', 'can_delete');
+  const [selected, setSelected] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editCat, setEditCat] = useState<LandaCategory | null>(null);
+  const [editCat, setEditCat] = useState<DocCategory | null>(null);
   const [catName, setCatName] = useState('');
 
   // Search + filter + pagination (server-side)
@@ -35,12 +41,13 @@ export default function CategoriesTab() {
   const [docCountFilter, setDocCountFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
 
   useEffect(() => { setPage(1); }, [debouncedSearch, docCountFilter]);
 
   // Fetch categories (server-side pagination + search + filter)
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['landa-categories', page, limit, debouncedSearch, docCountFilter],
+    queryKey: ['landa-categories', page, limit, debouncedSearch, docCountFilter, activeTenantId],
     queryFn: () => getCategories({
       page,
       page_size: limit,
@@ -49,7 +56,7 @@ export default function CategoriesTab() {
     }),
   });
 
-  const cats = data?.data ?? [];
+  const cats = data?.categories ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
@@ -67,7 +74,7 @@ export default function CategoriesTab() {
 
   // Update
   const updateMut = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) => updateCategory(id, name),
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
       toast.success('Đã cập nhật');
@@ -103,7 +110,7 @@ export default function CategoriesTab() {
     setDialogOpen(true);
   };
 
-  const openEdit = (cat: LandaCategory) => {
+  const openEdit = (cat: DocCategory) => {
     setEditCat(cat);
     setCatName(cat.name);
     setDialogOpen(true);
@@ -118,7 +125,7 @@ export default function CategoriesTab() {
     }
   };
 
-  const handleDelete = (cat: LandaCategory) => {
+  const handleDelete = (cat: DocCategory) => {
     confirmDialog({
       title: 'Xóa danh mục',
       description: `Xóa "${cat.name}"? Tài liệu sẽ không bị xóa nhưng sẽ mất danh mục.`,
@@ -138,7 +145,7 @@ export default function CategoriesTab() {
 
   const allSelected = cats.length > 0 && cats.every((c) => selected.includes(c.id));
   const toggleAll = () => setSelected(allSelected ? [] : cats.map((c) => c.id));
-  const toggleOne = (id: number) =>
+  const toggleOne = (id: string) =>
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   const isSaving = createMut.isPending || updateMut.isPending;
@@ -168,9 +175,11 @@ export default function CategoriesTab() {
         }}
         onReset={() => { setSearch(''); setDocCountFilter('all'); }}
         actions={
-          <Button size="sm" onClick={openCreate} className="h-8 text-xs shadow-sm">
-            <Plus className="mr-1 h-3.5 w-3.5" /> Thêm danh mục
-          </Button>
+          canAdd ? (
+            <Button size="sm" onClick={openCreate} className="h-8 text-xs shadow-sm">
+              <Plus className="mr-1 h-3.5 w-3.5" /> Thêm danh mục
+            </Button>
+          ) : undefined
         }
       />
 
@@ -264,14 +273,14 @@ export default function CategoriesTab() {
                     <TableCell className="text-muted-foreground text-sm">{cat.sort_order}</TableCell>
                     <TableCell className="text-right pr-5">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
+                        {canEdit && <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
                           className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Sửa">
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
+                        </Button>}
+                        {canDelete && <Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
                           className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa">
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        </Button>}
                       </div>
                     </TableCell>
                   </TableRow>

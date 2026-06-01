@@ -6,20 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { useAuthStore } from '@/utils/store';
 import {
   getSubGroups, createSubGroup, updateSubGroup, deleteSubGroup,
   type SubGroup,
-} from '@/api/landa-groups';
+} from '@/api/custom-groups';
 
 interface Props {
-  groupId: number;
-  selectedId: number | null;
-  onSelect: (id: number) => void;
+  groupId: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }
 
 export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('groups', 'can_add');
+  const canEdit = hasPermission('groups', 'can_edit');
+  const canDelete = hasPermission('groups', 'can_delete');
   const [newName, setNewName] = useState('');
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const qc = useQueryClient();
@@ -27,7 +32,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ['sub-groups', groupId],
     queryFn: () => getSubGroups(groupId),
-    enabled: groupId > 0,
+    enabled: !!groupId,
   });
 
   const createMutation = useMutation({
@@ -43,7 +48,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) => updateSubGroup(id, { name }),
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateSubGroup(id, { name }),
     onSuccess: () => {
       toast.success('Đã cập nhật');
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
@@ -53,12 +58,12 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteSubGroup(id),
+    mutationFn: (id: string) => deleteSubGroup(id),
     onSuccess: (_, id) => {
       toast.success('Đã xóa nhóm');
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       qc.invalidateQueries({ queryKey: ['org-groups'] });
-      if (selectedId === id) onSelect(0);
+      if (selectedId === id) onSelect('');
     },
     onError: () => toast.error('Lỗi xóa nhóm'),
   });
@@ -78,9 +83,9 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phòng ban</span>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
+        {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> New
-        </Button>
+        </Button>}
       </div>
 
       {showCreate && (
@@ -152,14 +157,14 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
                   )}
                 </div>
                 <div className="hidden group-hover:flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-                  <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                  {canEdit && <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                     onClick={() => { setEditId(sg.id); setEditName(sg.name); }}>
                     <Pencil className="h-3 w-3" />
-                  </button>
-                  <button className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  </button>}
+                  {canDelete && <button className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                     onClick={() => handleDelete(sg)}>
                     <Trash2 className="h-3 w-3" />
-                  </button>
+                  </button>}
                 </div>
                 {selectedId === sg.id && <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />}
               </>

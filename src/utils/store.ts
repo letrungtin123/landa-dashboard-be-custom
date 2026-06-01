@@ -1,20 +1,22 @@
 // ============================================================
-// Auth Store — Real Open edX authentication + staff/superuser gate
-// Token: encrypted localStorage + auto-refresh
+// Auth Store — Custom Express Backend authentication
+// JWT access token + refresh token rotation
+// Multi-tenant RBAC permissions
 // KHÔNG LOG DỮ LIỆU NHẠY CẢM
 // ============================================================
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import {
-  loginApi, refreshTokenApi, getUserMe, getUserAccount,
-  establishLmsSessionFromToken, clearLmsSession,
-} from '@/api/auth';
+  customLoginApi,
+  customRefreshApi,
+  customLogoutApi,
+  type CustomLoginResponse,
+} from '@/api/custom-auth';
 import { config } from '@/config/env';
-import type { OAuthTokenResponse } from '@/api/types';
 
-// ── Encrypted storage ──
-const STORAGE_KEY = 'admin-auth-v1';
+// ── Encrypted storage (giữ nguyên logic cũ) ──
+const STORAGE_KEY = 'admin-auth-v2';
 const OBF_KEY = 42;
 
 function obfuscate(text: string): string {
@@ -50,7 +52,7 @@ const encryptedStorage = createJSONStorage(() => ({
 }));
 
 // ── Types ──
-export type UserRole = 'superadmin' | 'admin' | 'staff' | 'learner_plus';
+export type UserRole = 'superadmin' | 'superuser' | 'staff' | 'learner';
 export type UserStatus = 'active' | 'inactive';
 
 export interface User {
@@ -65,37 +67,27 @@ export interface User {
   isStaff: boolean;
   isSuperuser: boolean;
   tenant_id?: string | null;
+  tenant_name?: string | null;
   created_at?: string;
-  permission_group_id?: string | null;
-  memberGroupIds?: number[];
+  memberGroupIds?: string[];
   memberGroupNames?: string[];
 }
 
-export type PermissionsMap = Record<string, Record<string, { view: boolean; add: boolean; edit: boolean; delete: boolean }>>;
-
-// ── Custom error for staff gate ──
-export class StaffAccessDeniedError extends Error {
-  constructor() {
-    super('Tài khoản không có quyền truy cập admin panel. Chỉ staff/superuser mới được phép.');
-    this.name = 'StaffAccessDeniedError';
-  }
-}
+export type PermissionsMap = Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
 
 interface AuthState {
   user: User | null;
   permissions: PermissionsMap;
+  tenantModules: string[];
+  managedTenants: { id: string; name: string }[];
   isAuthenticated: boolean;
   isLoading: boolean;
   isLoggingOut: boolean;
   accessToken: string | null;
   refreshToken: string | null;
-  tokenType: string;
   tokenExpiresAt: number | null;
 
   login: (username: string, password: string) => Promise<void>;
-  loginWithGoogle: (edxTokens: OAuthTokenResponse) => Promise<void>;
-  loginWithMicrosoft: (edxTokens: OAuthTokenResponse) => Promise<void>;
-  loginWithKeycloak: (edxTokens: OAuthTokenResponse) => Promise<void>;
   logout: () => Promise<void>;
   startLogout: () => void;
   performTokenRefresh: () => Promise<boolean>;
@@ -103,7 +95,7 @@ interface AuthState {
   updateUser: (data: Partial<User>) => void;
   setLoading: (loading: boolean) => void;
   setPermissions: (permissions: PermissionsMap) => void;
-  hasPermission: (moduleCode: string, tabCode: string, action: 'can_view' | 'can_add' | 'can_edit' | 'can_delete') => boolean;
+  hasPermission: (moduleCode: string, action: 'can_view' | 'can_add' | 'can_edit' | 'can_delete') => boolean;
 }
 
 let refreshTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -112,122 +104,34 @@ function clearRefreshTimer(): void {
 }
 
 /**
- * Sau khi có tokens, fetch user info + kiểm tra quyền staff/superuser.
- * Nếu user KHÔNG phải staff → xóa token ngay + throw StaffAccessDeniedError.
- *
- * @param accessToken - Token vừa nhận được, truyền thẳng vào API để tránh
- *   race condition khi interceptor đọc store cũ (asyncimport có microtask delay).
+ * Map response từ custom backend thành User state.
  */
-async function fetchAndVerifyStaffUser(
-  set: (partial: Partial<AuthState>) => void,
-  accessToken: string,
-  tokenType = "Bearer",
-): Promise<void> {
-  const me = await getUserMe(accessToken, tokenType);
-
-  // ── GATE: staff/superuser hoặc learner_plus mới vào được ──
-  if (!me.is_staff && !me.is_superuser) {
-    // Không phải staff/superuser → kiểm tra custom role (learner_plus)
-    try {
-      const { getMyRole } = await import('@/api/landa-groups');
-      const roleData = await getMyRole();
-
-      if (roleData.role === 'learner_plus') {
-        // learner_plus được phép vào
-        let account;
-        try {
-          account = await getUserAccount(me.username);
-        } catch {
-          account = {
-            name: me.username,
-            profile_image: { has_image: false, image_url_full: '' },
-            date_joined: new Date().toISOString(),
-          };
-        }
-
-        const sanitizeUrlToRelative = (url: string | null | undefined): string | null => {
-          if (!url) return null;
-          try {
-            const parsed = new URL(url);
-            return parsed.pathname + parsed.search;
-          } catch {
-            return url;
-          }
-        };
-
-        set({
-          isAuthenticated: true,
-          user: {
-            id: me.username,
-            email: me.email,
-            name: account.name || me.username,
-            username: me.username,
-            role: 'learner_plus',
-            avatar: sanitizeUrlToRelative(account.profile_image?.has_image ? account.profile_image.image_url_full : null),
-            status: 'active',
-            isStaff: false,
-            isSuperuser: false,
-            memberGroupIds: roleData.group_ids,
-            memberGroupNames: roleData.group_names,
-          },
-        });
-        return;
-      }
-    } catch {
-      // API lỗi hoặc không có role → chặn
-    }
-
-    // Không phải learner_plus → chặn hoàn toàn
-    set({
-      accessToken: null,
-      refreshToken: null,
-      tokenExpiresAt: null,
-      isAuthenticated: false,
-      user: null,
-    });
-    await clearLmsSession();
-    throw new StaffAccessDeniedError();
-  }
-
-  let account;
-  try {
-    account = await getUserAccount(me.username);
-  } catch {
-    account = {
-      name: me.username,
-      profile_image: { has_image: false, image_url_full: '' },
-      date_joined: new Date().toISOString(),
-    };
-  }
-
-  const isSuperuser = !!me.is_superuser;
-  const role: UserRole = isSuperuser ? 'superadmin' : 'admin';
-
-  // Sanitize profile image URL to relative path to avoid CORS on production Kong Gateway
-  const sanitizeUrlToRelative = (url: string | null | undefined): string | null => {
-    if (!url) return null;
-    try {
-      const parsed = new URL(url);
-      return parsed.pathname + parsed.search;
-    } catch {
-      return url;
-    }
+function mapLoginResponseToState(data: CustomLoginResponse) {
+  const user: User = {
+    id: data.user.id,
+    email: data.user.email,
+    name: data.user.full_name || data.user.username,
+    username: data.user.username,
+    role: data.user.role,
+    avatar: data.user.avatar_url,
+    avatar_url: data.user.avatar_url,
+    status: 'active',
+    isStaff: data.user.role === 'staff' || data.user.role === 'superuser' || data.user.role === 'superadmin',
+    isSuperuser: data.user.role === 'superuser' || data.user.role === 'superadmin',
+    tenant_id: data.user.tenant_id,
+    tenant_name: data.user.tenant_name,
   };
 
-  set({
+  return {
+    user,
+    permissions: data.permissions,
+    tenantModules: data.tenant_modules,
+    managedTenants: data.managed_tenants || [],
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    tokenExpiresAt: Date.now() + data.expires_in * 1000,
     isAuthenticated: true,
-    user: {
-      id: me.username,
-      email: me.email,
-      name: account.name || me.username,
-      username: me.username,
-      role,
-      avatar: sanitizeUrlToRelative(account.profile_image?.has_image ? account.profile_image.image_url_full : null),
-      status: 'active',
-      isStaff: !!me.is_staff,
-      isSuperuser,
-    },
-  });
+  };
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -235,93 +139,60 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       permissions: {},
+      tenantModules: [],
+      managedTenants: [],
       isAuthenticated: false,
       isLoading: false,
       isLoggingOut: false,
       accessToken: null,
       refreshToken: null,
-      tokenType: 'Bearer',
       tokenExpiresAt: null,
 
       setLoading: (loading) => set({ isLoading: loading }),
       startLogout: () => set({ isLoggingOut: true }),
 
+      // ── Login qua custom backend ──
       login: async (username: string, password: string) => {
-        const tokenRes = await loginApi(username, password);
-        const tokenType = tokenRes.token_type || 'Bearer';
-        const expiresAt = Date.now() + tokenRes.expires_in * 1000;
-        set({
-          accessToken: tokenRes.access_token,
-          refreshToken: tokenRes.refresh_token,
-          tokenType,
-          tokenExpiresAt: expiresAt,
-        });
-
-        // Truyền token trực tiếp — tránh race condition khi interceptor đọc store cũ
-        await fetchAndVerifyStaffUser(set, tokenRes.access_token, tokenType);
-        await establishLmsSessionFromToken();
+        const data = await customLoginApi(username, password);
+        set(mapLoginResponseToState(data));
         get().scheduleTokenRefresh();
+
+        // Superadmin hoặc superuser multi-tenant: auto-fetch tenant list cho bộ lọc
+        if (data.user.role === 'superadmin' || (data.user.role === 'superuser' && (data.managed_tenants || []).length > 1)) {
+          try {
+            const { useTenantStore } = await import('@/utils/tenant-store');
+            useTenantStore.getState().fetchTenants();
+          } catch { /* ignore — tenant fetch is non-critical */ }
+        }
       },
 
-      loginWithGoogle: async (edxTokens) => {
-        const tokenType = edxTokens.token_type || 'Bearer';
-        const expiresAt = Date.now() + edxTokens.expires_in * 1000;
-        set({
-          accessToken: edxTokens.access_token,
-          refreshToken: edxTokens.refresh_token,
-          tokenType,
-          tokenExpiresAt: expiresAt,
-        });
-
-        await fetchAndVerifyStaffUser(set, edxTokens.access_token, tokenType);
-        await establishLmsSessionFromToken();
-        get().scheduleTokenRefresh();
-      },
-
-      loginWithMicrosoft: async (edxTokens) => {
-        const tokenType = edxTokens.token_type || 'Bearer';
-        const expiresAt = Date.now() + edxTokens.expires_in * 1000;
-        set({
-          accessToken: edxTokens.access_token,
-          refreshToken: edxTokens.refresh_token,
-          tokenType,
-          tokenExpiresAt: expiresAt,
-        });
-
-        await fetchAndVerifyStaffUser(set, edxTokens.access_token, tokenType);
-        await establishLmsSessionFromToken();
-        get().scheduleTokenRefresh();
-      },
-
-      loginWithKeycloak: async (edxTokens) => {
-        const tokenType = edxTokens.token_type || 'Bearer';
-        const expiresAt = Date.now() + edxTokens.expires_in * 1000;
-        set({
-          accessToken: edxTokens.access_token,
-          refreshToken: edxTokens.refresh_token,
-          tokenType,
-          tokenExpiresAt: expiresAt,
-        });
-
-        await fetchAndVerifyStaffUser(set, edxTokens.access_token, tokenType);
-        await establishLmsSessionFromToken();
-        get().scheduleTokenRefresh();
-      },
-
+      // ── Logout — revoke refresh token ──
       logout: async () => {
         clearRefreshTimer();
         set({ isLoggingOut: true });
-        await clearLmsSession();
+
+        const { refreshToken } = get();
+        if (refreshToken) {
+          try { await customLogoutApi(refreshToken); } catch { /* ignore */ }
+        }
+
         set({
           isAuthenticated: false,
           accessToken: null,
           refreshToken: null,
-          tokenType: 'Bearer',
           tokenExpiresAt: null,
           user: null,
           permissions: {},
+          tenantModules: [],
+          managedTenants: [],
           isLoggingOut: false,
         });
+
+        // Reset tenant store
+        try {
+          const { useTenantStore } = await import('@/utils/tenant-store');
+          useTenantStore.getState().reset();
+        } catch { /* ignore */ }
       },
 
       updateUser: (data) => set((state) => ({
@@ -330,42 +201,51 @@ export const useAuthStore = create<AuthState>()(
 
       setPermissions: (permissions) => set({ permissions }),
 
-      hasPermission: (moduleCode, tabCode, action) => {
+      // ── Permission check — sử dụng ma trận từ backend ──
+      hasPermission: (moduleCode, action) => {
         const state = get();
-        if (state.user?.role === 'superadmin') return true;
-        const perm = state.permissions?.[moduleCode]?.[tabCode];
-        // Shell mode: Nếu chưa có cấu hình quyền cho module này → mặc định cho phép truy cập
-        if (!perm) return true;
-        const actionKey = action.replace('can_', '') as 'view' | 'add' | 'edit' | 'delete';
-        return perm[actionKey] === true;
+
+        // superadmin & superuser bypass
+        if (state.user?.role === 'superadmin' || state.user?.role === 'superuser') return true;
+
+        // Kiểm tra module có được bật cho tenant không
+        if (state.tenantModules.length > 0 && !state.tenantModules.includes(moduleCode)) return false;
+
+        const perm = state.permissions?.[moduleCode];
+        if (!perm) return false;
+        return perm[action] === true;
       },
 
+      // ── Refresh token — rotation (token pair mới) ──
       performTokenRefresh: async (): Promise<boolean> => {
         const { refreshToken: currentRefreshToken } = get();
         if (!currentRefreshToken) return false;
+
         try {
-          const tokenRes = await refreshTokenApi(currentRefreshToken);
-          const expiresAt = Date.now() + tokenRes.expires_in * 1000;
-          set({
-            accessToken: tokenRes.access_token,
-            refreshToken: tokenRes.refresh_token,
-            tokenType: tokenRes.token_type || 'Bearer',
-            tokenExpiresAt: expiresAt,
-          });
+          const data = await customRefreshApi(currentRefreshToken);
+          set(mapLoginResponseToState(data));
           get().scheduleTokenRefresh();
           return true;
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       },
 
+      // ── Schedule auto-refresh trước khi token hết hạn ──
       scheduleTokenRefresh: () => {
         clearRefreshTimer();
         const { tokenExpiresAt } = get();
         if (!tokenExpiresAt) return;
+
+        // Refresh 5 phút trước khi hết hạn
         const delay = tokenExpiresAt - Date.now() - config.tokenRefreshBufferMs;
+
         if (delay <= 0) {
+          // Token sắp hết hoặc đã hết → refresh ngay
           get().performTokenRefresh().then((ok) => { if (!ok) get().logout(); });
           return;
         }
+
         refreshTimerId = setTimeout(() => {
           get().performTokenRefresh().then((ok) => { if (!ok) get().logout(); });
         }, delay);
@@ -378,18 +258,20 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
-        tokenType: state.tokenType,
         tokenExpiresAt: state.tokenExpiresAt,
         user: state.user,
         permissions: state.permissions,
+        tenantModules: state.tenantModules,
+        managedTenants: state.managedTenants,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.isAuthenticated && state?.tokenExpiresAt) {
           if (Date.now() >= state.tokenExpiresAt) {
+            // Token hết hạn → refresh ngay
             state.performTokenRefresh().then((ok) => { if (!ok) state.logout(); });
           } else {
+            // Token còn hạn → schedule refresh
             state.scheduleTokenRefresh();
-            establishLmsSessionFromToken();
           }
         }
       },

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { TenantFilter } from '@/components/shared/TenantFilter';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
-import { Activity, AlertTriangle, Plus, Pencil, Trash2, Clock, RefreshCw, CalendarIcon, X } from 'lucide-react';
+import { Activity, AlertTriangle, Plus, Pencil, Trash2, Clock, RefreshCw, CalendarIcon, X, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/shared/pagination';
@@ -13,8 +15,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
-import { getAuditLogs } from '@/api/landa-admin';
-import type { AuditLog } from '@/api/landa-admin';
+import { getAuditLogs } from '@/api/custom-audit-logs';
+import type { AuditLog } from '@/api/custom-audit-logs';
 
 function getRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -51,6 +53,7 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
 
   // Refresh cooldown
   const [refreshCooldown, setRefreshCooldown] = useState(0);
@@ -65,7 +68,7 @@ export default function AuditLogsPage() {
 
   // ── Real API call ──
   const { data: apiData, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['audit-logs', page, limit, debouncedSearch, actionFilter, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['audit-logs', page, limit, debouncedSearch, actionFilter, dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), activeTenantId],
     queryFn: () => getAuditLogs({
       page,
       page_size: limit,
@@ -74,7 +77,7 @@ export default function AuditLogsPage() {
       date_from: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
       date_to: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
     }),
-    enabled: mounted && !isLoggingOut && !!user?.isSuperuser,
+    enabled: mounted && !isLoggingOut,
     staleTime: 30_000,
   });
 
@@ -97,18 +100,7 @@ export default function AuditLogsPage() {
 
   if (!mounted || isLoggingOut) return null;
 
-  // Superuser-only gate
-  if (!user?.isSuperuser) {
-    return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
-        <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center mt-6">
-          <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-3" />
-          <h2 className="text-lg font-semibold text-destructive mb-1">Access Restricted</h2>
-          <p className="text-muted-foreground text-sm">Only superuser can view audit logs.</p>
-        </div>
-      </div>
-    );
-  }
+
 
   // Build filters
   const filters: any[] = [
@@ -139,6 +131,7 @@ export default function AuditLogsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto pb-10">
+      <TenantFilter className="mb-2" />
       <div className="pb-6 flex items-center justify-between" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
         {/* View mode toggle */}
         <div className="flex items-center bg-muted/50 rounded-lg p-0.5 border border-border/40">
@@ -215,16 +208,20 @@ export default function AuditLogsPage() {
               </div>
             ) : (
               activities.map((log, index) => {
-                const actionIcon = log.action === 'CREATE' ? Plus : log.action === 'DELETE' ? Trash2 : Pencil;
+                const actionIcon = log.action === 'CREATE' ? Plus : log.action === 'DELETE' ? Trash2 : log.action === 'LOGIN' ? LogIn : log.action === 'LOGOUT' ? LogOut : Pencil;
                 const ActionIcon = actionIcon;
                 const actionColor = log.action === 'CREATE'
                   ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                   : log.action === 'DELETE'
                     ? 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400'
-                    : 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400';
+                    : log.action === 'LOGIN'
+                      ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
+                      : log.action === 'LOGOUT'
+                        ? 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400'
+                        : 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400';
                 const entityType = (log.entity_type || '').toLowerCase();
                 const entityName = log.entity_name || log.entity_id || 'unknown';
-                const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : 'updated';
+                const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : log.action === 'LOGIN' ? 'logged in' : log.action === 'LOGOUT' ? 'logged out' : 'updated';
 
                 return (
                   <div key={log.id} className={`flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors ${index !== activities.length - 1 ? 'border-b border-border' : ''}`}>
@@ -234,8 +231,8 @@ export default function AuditLogsPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground">
                         <span className="font-medium">{log.actor_username}</span>{' '}
-                        <span className="text-muted-foreground">{actionVerb} {entityType}</span>{' '}
-                        <span className="font-medium">{entityName}</span>
+                        <span className="text-muted-foreground">{actionVerb}{log.action !== 'LOGIN' && log.action !== 'LOGOUT' ? ` ${entityType}` : ''}</span>
+                        {log.action !== 'LOGIN' && log.action !== 'LOGOUT' && <>{' '}<span className="font-medium">{entityName}</span></>}
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
@@ -286,10 +283,10 @@ export default function AuditLogsPage() {
                       <div className="absolute left-[7px] top-3 bottom-3 w-px bg-border" />
                       <div className="space-y-0">
                         {logs.map((log) => {
-                          const dotColor = log.action === 'CREATE' ? 'bg-emerald-500' : log.action === 'DELETE' ? 'bg-red-500' : 'bg-blue-500';
+                          const dotColor = log.action === 'CREATE' ? 'bg-emerald-500' : log.action === 'DELETE' ? 'bg-red-500' : log.action === 'LOGIN' ? 'bg-violet-500' : log.action === 'LOGOUT' ? 'bg-slate-500' : 'bg-blue-500';
                           const entityType = (log.entity_type || '').toLowerCase();
                           const entityName = log.entity_name || log.entity_id || 'unknown';
-                          const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : 'updated';
+                          const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : log.action === 'LOGIN' ? 'logged in' : log.action === 'LOGOUT' ? 'logged out' : 'updated';
                           const timeStr = new Date(log.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
                           return (
@@ -300,8 +297,8 @@ export default function AuditLogsPage() {
                               <div className="flex-1 min-w-0 -mt-0.5">
                                 <p className="text-[13px] text-foreground leading-relaxed">
                                   <span className="font-semibold">{log.actor_username}</span>{' '}
-                                  <span className="text-muted-foreground">{actionVerb} {entityType}</span>{' '}
-                                  <span className="font-medium text-foreground">{entityName}</span>
+                                  <span className="text-muted-foreground">{actionVerb}{log.action !== 'LOGIN' && log.action !== 'LOGOUT' ? ` ${entityType}` : ''}</span>
+                                  {log.action !== 'LOGIN' && log.action !== 'LOGOUT' && <>{' '}<span className="font-medium text-foreground">{entityName}</span></>}
                                 </p>
                                 <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
                                   <Clock className="h-3 w-3" />

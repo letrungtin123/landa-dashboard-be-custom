@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCourseOutlineIndex } from '@/api/course-authoring';
+import { getCourseOutlineIndex } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { Skeleton } from '@/components/ui/skeleton';
 import OutlineTree from '@/components/course-editor/OutlineTree';
@@ -9,7 +9,7 @@ import { AlertCircle, Menu } from 'lucide-react';
 import UnitEditor from '@/components/course-editor/UnitEditor';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { renameBlock } from '@/api/course-authoring';
+import { renameBlock } from '@/api/custom-course-authoring';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';

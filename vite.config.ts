@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => {
     // ── Dev server (npm run dev) ──────────────────────────────────
     server: {
       host: '0.0.0.0',
-      port: 3000,
+      port: 8080,
       strictPort: false,
       allowedHosts,
       proxy: proxyConfig,

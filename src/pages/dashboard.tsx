@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { TenantFilter } from '@/components/shared/TenantFilter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/utils/store';
 import { Users, Activity, ShieldCheck, Building2, AlertTriangle, TrendingUp, BarChart3, PieChart as PieChartIcon, Zap } from 'lucide-react';
@@ -69,7 +70,7 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
-  const canView = hasPermission('dashboard', 'general', 'can_view');
+  const canView = hasPermission('dashboard', 'can_view');
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -85,6 +86,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6">
+      <TenantFilter className="mb-4" />
       <div className="space-y-6 max-w-7xl mx-auto pb-10 mt-4">
 
         {!canView ? (

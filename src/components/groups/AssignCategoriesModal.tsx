@@ -7,21 +7,21 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
-import { getCategories } from '@/api/landa-admin';
-import { assignCategories, assignTeamCategories } from '@/api/landa-groups';
+import { getCategories } from '@/api/custom-library';
+import { assignCategories, assignTeamCategories } from '@/api/custom-groups';
 
 interface Props {
   open: boolean;
-  sgId: number;
-  teamId?: number;
-  assignedCategoryIds: number[];
+  sgId: string;
+  teamId?: string;
+  assignedCategoryIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
 export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
 
@@ -46,11 +46,11 @@ export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds,
     onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi phân danh mục'),
   });
 
-  const categories = data?.data ?? [];
-  const availableCategories = categories.filter(c => !assignedCategoryIds.includes(c.id));
+  const categories = data?.categories ?? [];
+  const availableCategories = categories.filter((c: { id: string }) => !assignedCategoryIds.includes(c.id));
   const allSelected = availableCategories.length > 0 && availableCategories.every(c => selected.includes(c.id));
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((id: string) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }, []);
 
@@ -96,7 +96,7 @@ export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds,
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
               Không tìm thấy danh mục
             </div>
-          ) : categories.map(c => {
+          ) : categories.map((c: { id: string; name: string }) => {
             const isAssigned = assignedCategoryIds.includes(c.id);
             const isSelected = selected.includes(c.id);
             return (

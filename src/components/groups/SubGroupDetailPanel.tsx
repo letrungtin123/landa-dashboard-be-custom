@@ -16,8 +16,9 @@ import {
 import {
   getSubGroupDetail, removeMember, revokeCourse, revokeCategory, revokeCourseCategory,
   type SubGroupDetail,
-} from '@/api/landa-groups';
-import { getCourseCategoryCourses, getDocuments } from '@/api/landa-admin';
+} from '@/api/custom-groups';
+import { getCourseCategoryCourses } from '@/api/custom-course-categories';
+import { getDocuments } from '@/api/custom-library';
 import { AddMembersModal } from './AddMembersModal';
 import { AssignCoursesModal } from './AssignCoursesModal';
 import { AssignCategoriesModal } from './AssignCategoriesModal';
@@ -25,7 +26,7 @@ import { AssignCourseCategoriesModal } from './AssignCourseCategoriesModal';
 
 
 interface Props {
-  sgId: number;
+  sgId: string;
 }
 
 type Tab = 'members' | 'courses' | 'categories' | 'course_categories';
@@ -64,26 +65,26 @@ export function SubGroupDetailPanel({ sgId }: Props) {
   const [assignCoursesOpen, setAssignCoursesOpen] = useState(false);
   const [assignCategoriesOpen, setAssignCategoriesOpen] = useState(false);
   const [assignCourseCategoriesOpen, setAssignCourseCategoriesOpen] = useState(false);
-  const [previewCatId, setPreviewCatId] = useState<number | null>(null);
-  const [previewFileCatId, setPreviewFileCatId] = useState<number | null>(null);
-  const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
+  const [previewCatId, setPreviewCatId] = useState<string | null>(null);
+  const [previewFileCatId, setPreviewFileCatId] = useState<string | null>(null);
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
-  const [selectedCourseCategories, setSelectedCourseCategories] = useState<number[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCourseCategories, setSelectedCourseCategories] = useState<string[]>([]);
   const qc = useQueryClient();
 
   const { data: sg, isLoading } = useQuery<SubGroupDetail>({
     queryKey: ['subgroup-detail', sgId],
     queryFn: () => getSubGroupDetail(sgId),
-    enabled: sgId > 0,
+    enabled: !!sgId,
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: number) => removeMember(sgId, userId),
+    mutationFn: (userId: string) => removeMember(sgId, userId),
     onSuccess: () => {
       toast.success('Đã xóa thành viên');
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi xóa thành viên'),
   });
@@ -93,20 +94,20 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     onSuccess: () => {
       toast.success('Đã thu hồi course');
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi course'),
   });
 
   const removeMultipleMembersMutation = useMutation({
-    mutationFn: async (userIds: number[]) => {
+    mutationFn: async (userIds: string[]) => {
       await Promise.all(userIds.map(id => removeMember(sgId, id)));
     },
     onSuccess: () => {
       toast.success('Đã xóa các thành viên đã chọn');
       setSelectedMembers([]);
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi xóa thành viên'),
   });
@@ -119,58 +120,58 @@ export function SubGroupDetailPanel({ sgId }: Props) {
       toast.success('Đã thu hồi các course đã chọn');
       setSelectedCourses([]);
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi course'),
   });
 
   const revokeCategoryMutation = useMutation({
-    mutationFn: (categoryId: number) => revokeCategory(sgId, categoryId),
+    mutationFn: (categoryId: string) => revokeCategory(sgId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục');
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi danh mục'),
   });
 
   const revokeMultipleCategoriesMutation = useMutation({
-    mutationFn: async (categoryIds: number[]) => {
+    mutationFn: async (categoryIds: string[]) => {
       await Promise.all(categoryIds.map(id => revokeCategory(sgId, id)));
     },
     onSuccess: () => {
       toast.success('Đã thu hồi các danh mục đã chọn');
       setSelectedCategories([]);
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi danh mục'),
   });
 
   const revokeCourseCategoryMutation = useMutation({
-    mutationFn: (categoryId: number) => revokeCourseCategory(sgId, categoryId),
+    mutationFn: (categoryId: string) => revokeCourseCategory(sgId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục khóa học');
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
   });
 
   const revokeMultipleCourseCategoriesMutation = useMutation({
-    mutationFn: async (categoryIds: number[]) => {
+    mutationFn: async (categoryIds: string[]) => {
       await Promise.all(categoryIds.map(id => revokeCourseCategory(sgId, id)));
     },
     onSuccess: () => {
       toast.success('Đã thu hồi các danh mục khóa học đã chọn');
       setSelectedCourseCategories([]);
       qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-      qc.invalidateQueries({ queryKey: ['sub-groups', sg?.org_group_id] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
     },
     onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
   });
 
-  const handleRemoveMember = (id: number, username: string) => {
+  const handleRemoveMember = (id: string, username: string) => {
     confirmDialog({
       title: 'Xóa thành viên',
       description: `Xóa "${username}" khỏi nhóm? User sẽ không còn thấy courses của nhóm này.`,
@@ -206,7 +207,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     });
   };
 
-  const handleRevokeCategory = (categoryId: number, name: string) => {
+  const handleRevokeCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục',
       description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy danh mục này.`,
@@ -224,7 +225,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     });
   };
 
-  const handleRevokeCourseCategory = (categoryId: number, name: string) => {
+  const handleRevokeCourseCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục khóa học',
       description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy courses của danh mục này.`,
@@ -242,7 +243,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     });
   };
 
-  const toggleMember = (id: number) => {
+  const toggleMember = (id: string) => {
     setSelectedMembers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -266,7 +267,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     }
   };
 
-  const toggleCategory = (id: number) => {
+  const toggleCategory = (id: string) => {
     setSelectedCategories(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -278,7 +279,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
     }
   };
 
-  const toggleCourseCategory = (id: number) => {
+  const toggleCourseCategory = (id: string) => {
     setSelectedCourseCategories(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -309,7 +310,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
       {/* Header */}
       <div className="px-5 py-4 border-b border-border shrink-0">
         <h3 className="font-semibold text-foreground text-base">{sg.name}</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">{sg.org_group_name}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{sg.org_group_name} · {sg.org_group_name}</p>
       </div>
 
       <div className="flex border-b border-border shrink-0 overflow-x-auto">
@@ -613,7 +614,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
         onOpenChange={setAddMembersOpen}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-          qc.invalidateQueries({ queryKey: ['sub-groups', sg.org_group_id] });
+          qc.invalidateQueries({ queryKey: ['teams'] });
         }}
       />
       <AssignCoursesModal
@@ -623,7 +624,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
         onOpenChange={setAssignCoursesOpen}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-          qc.invalidateQueries({ queryKey: ['sub-groups', sg.org_group_id] });
+          qc.invalidateQueries({ queryKey: ['teams'] });
         }}
       />
       <AssignCategoriesModal
@@ -633,7 +634,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
         onOpenChange={setAssignCategoriesOpen}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-          qc.invalidateQueries({ queryKey: ['sub-groups', sg.org_group_id] });
+          qc.invalidateQueries({ queryKey: ['teams'] });
         }}
       />
       <AssignCourseCategoriesModal
@@ -643,7 +644,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
         onOpenChange={setAssignCourseCategoriesOpen}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ['subgroup-detail', sgId] });
-          qc.invalidateQueries({ queryKey: ['sub-groups', sg.org_group_id] });
+          qc.invalidateQueries({ queryKey: ['teams'] });
         }}
       />
       {/* Preview courses in category modal */}
@@ -667,11 +668,11 @@ export function SubGroupDetailPanel({ sgId }: Props) {
 // Modal xem danh sách courses trong 1 danh mục
 // ═══════════════════════════════════════
 
-function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: number | null; catName: string; onClose: () => void }) {
+function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['course-category-courses-preview', catId],
     queryFn: () => getCourseCategoryCourses(catId!),
-    enabled: catId !== null && catId > 0,
+    enabled: catId !== null,
   });
 
   const courses = data?.results ?? [];
@@ -721,14 +722,14 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: number
 // Modal xem danh sách files trong 1 danh mục
 // ═══════════════════════════════════════
 
-function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: number | null; catName: string; onClose: () => void }) {
+function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['file-category-files-preview', catId],
     queryFn: () => getDocuments({ category_id: catId!, page: 1, page_size: 100 }),
-    enabled: catId !== null && catId > 0,
+    enabled: catId !== null,
   });
 
-  const files = data?.data ?? [];
+  const files: any[] = data?.documents ?? [];
 
   return (
     <Dialog open={catId !== null} onOpenChange={(o) => !o && onClose()}>

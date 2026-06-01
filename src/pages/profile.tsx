@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/utils/store';
-import { apiClient } from '@/api/client';
+import { customApiClient } from '@/api/custom-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -122,17 +122,18 @@ export default function ProfilePage() {
     if (!user?.username) return;
     setIsLoadingProfile(true);
     try {
-      const { data } = await apiClient.get(`/api/user/v1/accounts/${user.username}`);
-      setProfileData(data);
+      const { data } = await customApiClient.get(`/api/users/profile/${user.username}`);
+      const profile = data.data || data;
+      setProfileData(profile);
       setForm({
-        name: data.name || '',
-        bio: data.bio || '',
-        gender: data.gender || '',
-        country: data.country || '',
-        level_of_education: data.level_of_education || '',
-        language: data.language_proficiencies?.[0]?.code || '',
-        year_of_birth: data.year_of_birth ? String(data.year_of_birth) : '',
-        phone_number: data.phone_number || '',
+        name: profile.full_name || profile.name || '',
+        bio: profile.bio || '',
+        gender: profile.gender || '',
+        country: profile.country || '',
+        level_of_education: profile.level_of_education || '',
+        language: profile.language || '',
+        year_of_birth: profile.year_of_birth ? String(profile.year_of_birth) : '',
+        phone_number: profile.phone || '',
       });
     } catch {
       setToast({ msg: 'Không thể tải hồ sơ', type: 'error' });
@@ -171,19 +172,17 @@ export default function ProfilePage() {
       const { language, year_of_birth, ...rest } = form;
       const payload: Record<string, unknown> = {
         ...rest,
-        language_proficiencies: language ? [{ code: language }] : [],
+        language: language || '',
       };
       if (year_of_birth) payload.year_of_birth = parseInt(year_of_birth, 10);
 
-      await apiClient.patch(`/api/user/v1/accounts/${user.username}`, payload, {
-        headers: { 'Content-Type': 'application/merge-patch+json' },
-      });
+      await customApiClient.patch('/api/users/profile', payload);
 
       // Upload avatar nếu có
       if (avatarFile) {
         const fd = new FormData();
         fd.append('file', avatarFile);
-        await apiClient.post(`/api/profile_images/v1/${user.username}/upload`, fd, {
+        await customApiClient.post('/api/users/profile/avatar', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         setAvatarFile(null);
@@ -229,7 +228,7 @@ export default function ProfilePage() {
 
     setIsSavingPw(true);
     try {
-      await apiClient.post('/api/landa/v1/account/change-password/', {
+      await customApiClient.post('/api/users/profile/change-password', {
         current_password: pwForm.current,
         new_password: pwForm.newPw,
       });
@@ -309,11 +308,11 @@ export default function ProfilePage() {
                     <Badge
                       variant="outline"
                       className={`text-xs uppercase tracking-wider font-semibold ${
-                        user?.role === 'superadmin'
+                          user?.role === 'superadmin'
                           ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                          : user?.role === 'admin'
+                          : user?.role === 'superuser'
                             ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                            : user?.role === 'learner_plus'
+                            : user?.role === 'staff'
                               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                               : ''
                       }`}

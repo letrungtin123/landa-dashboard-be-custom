@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { TenantFilter } from '@/components/shared/TenantFilter';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, BookOpen, FolderKanban, Search, ChevronLeft, BookPlus, X } from 'lucide-react';
@@ -7,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { useAuthStore } from '@/utils/store';
 import {
   getCourseCategories,
   createCourseCategory,
@@ -15,11 +18,10 @@ import {
   getCourseCategoryCourses,
   addCoursesToCategory,
   removeCourseFromCategory,
-  getCourses,
   type CourseCategory,
   type CourseCategoryMembership,
-  type LandaCourse,
-} from '@/api/landa-admin';
+} from '@/api/custom-course-categories';
+import { getCourses } from '@/api/custom-courses';
 import {
   Dialog,
   DialogContent,
@@ -32,13 +34,18 @@ import { useDebounce } from '@/hooks/use-debounce';
 
 export default function CourseCategoriesPage() {
   const qc = useQueryClient();
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('course_categories', 'can_add');
+  const canEdit = hasPermission('course_categories', 'can_edit');
+  const canDelete = hasPermission('course_categories', 'can_delete');
   const [editingCat, setEditingCat] = useState<CourseCategory | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [detailCatId, setDetailCatId] = useState<number | null>(null);
+  const [detailCatId, setDetailCatId] = useState<string | null>(null);
 
   // ── Categories list ──
   const { data: catData, isLoading: catLoading } = useQuery({
-    queryKey: ['course-categories'],
+    queryKey: ['course-categories', activeTenantId],
     queryFn: getCourseCategories,
   });
   const categories = catData?.results ?? [];
@@ -61,7 +68,7 @@ export default function CourseCategoriesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, ...payload }: { id: number; name?: string; description?: string; sort_order?: number }) =>
+    mutationFn: ({ id, ...payload }: { id: string; name?: string; description?: string; sort_order?: number }) =>
       updateCourseCategory(id, payload),
     onSuccess: () => {
       toast.success('Đã cập nhật danh mục');
@@ -131,14 +138,15 @@ export default function CourseCategoriesPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <TenantFilter className="mb-2" />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Danh mục khóa học</h1>
           <p className="text-sm text-muted-foreground mt-1">Quản lý danh mục để phân nhóm courses</p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
+        {canAdd && <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" /> Tạo danh mục
-        </Button>
+        </Button>}
       </div>
 
       {catLoading ? (
@@ -174,18 +182,18 @@ export default function CourseCategoriesPage() {
                     </div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
+                    {canEdit && <button
                       className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                       onClick={() => openEdit(cat)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                    </button>}
+                    {canDelete && <button
                       className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       onClick={() => handleDelete(cat)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </button>}
                   </div>
                 </div>
               </CardHeader>
@@ -255,7 +263,7 @@ export default function CourseCategoriesPage() {
 // Category Detail View — Courses inside a category
 // ═══════════════════════════════════════
 
-function CategoryDetailView({ catId, onBack }: { catId: number; onBack: () => void }) {
+function CategoryDetailView({ catId, onBack }: { catId: string; onBack: () => void }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -268,7 +276,7 @@ function CategoryDetailView({ catId, onBack }: { catId: number; onBack: () => vo
   const { data: coursesData, isLoading } = useQuery({
     queryKey: ['course-category-courses', catId],
     queryFn: () => getCourseCategoryCourses(catId),
-    enabled: catId > 0,
+    enabled: !!catId,
   });
   const courses = coursesData?.results ?? [];
 
@@ -368,7 +376,7 @@ function AddCoursesToCategoryModal({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  catId: number;
+  catId: string;
   existingCourseIds: string[];
   onSuccess: () => void;
 }) {
@@ -394,7 +402,7 @@ function AddCoursesToCategoryModal({
     onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi thêm course'),
   });
 
-  const courses = data?.data ?? [];
+  const courses = data?.courses ?? [];
   const available = courses.filter((c) => !existingCourseIds.includes(c.id));
 
   const toggle = (id: string) => {

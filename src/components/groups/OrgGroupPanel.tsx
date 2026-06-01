@@ -6,19 +6,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { useAuthStore } from '@/utils/store';
 import {
   getOrgGroups, createOrgGroup, updateOrgGroup, deleteOrgGroup,
   type OrgGroup,
-} from '@/api/landa-groups';
+} from '@/api/custom-groups';
 
 interface Props {
-  selectedId: number | null;
-  onSelect: (id: number) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }
 
 export function OrgGroupPanel({ selectedId, onSelect }: Props) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('groups', 'can_add');
+  const canEdit = hasPermission('groups', 'can_edit');
+  const canDelete = hasPermission('groups', 'can_delete');
   const [newName, setNewName] = useState('');
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const qc = useQueryClient();
@@ -40,7 +45,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) => updateOrgGroup(id, { name }),
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateOrgGroup(id, { name }),
     onSuccess: () => {
       toast.success('Đã cập nhật');
       qc.invalidateQueries({ queryKey: ['org-groups'] });
@@ -50,11 +55,11 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteOrgGroup(id),
+    mutationFn: (id: string) => deleteOrgGroup(id),
     onSuccess: (_, id) => {
       toast.success('Đã xóa group');
       qc.invalidateQueries({ queryKey: ['org-groups'] });
-      if (selectedId === id) onSelect(0);
+      if (selectedId === id) onSelect('');
     },
     onError: () => toast.error('Lỗi xóa group'),
   });
@@ -74,9 +79,9 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tổ Chức</span>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
+        {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> New
-        </Button>
+        </Button>}
       </div>
 
       {showCreate && (
@@ -143,14 +148,14 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
                   </span>
                 )}
                 <div className="hidden group-hover:flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-                  <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                  {canEdit && <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                     onClick={() => { setEditId(g.id); setEditName(g.name); }}>
                     <Pencil className="h-3 w-3" />
-                  </button>
-                  <button className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  </button>}
+                  {canDelete && <button className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                     onClick={() => handleDelete(g)}>
                     <Trash2 className="h-3 w-3" />
-                  </button>
+                  </button>}
                 </div>
                 {selectedId === g.id && <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />}
               </>

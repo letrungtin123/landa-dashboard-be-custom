@@ -29,7 +29,7 @@ async function getAuthStore() {
 // Request: gắn Bearer + CSRF
 apiClient.interceptors.request.use(async (req) => {
   const store = await getAuthStore();
-  const { accessToken, tokenType } = store.getState();
+  const { accessToken, tokenType } = store.getState() as any;
   if (accessToken) {
     req.headers.Authorization = `${tokenType} ${accessToken}`;
   }
@@ -72,7 +72,7 @@ apiClient.interceptors.response.use(
     if (isRefreshing && refreshPromise) {
       const success = await refreshPromise;
       if (success) {
-        const { accessToken, tokenType } = store.getState();
+        const { accessToken, tokenType } = store.getState() as any;
         originalRequest.headers.Authorization = `${tokenType} ${accessToken}`;
         return apiClient(originalRequest);
       }
@@ -87,7 +87,7 @@ apiClient.interceptors.response.use(
 
     const success = await refreshPromise;
     if (success) {
-      const { accessToken, tokenType } = store.getState();
+      const { accessToken, tokenType } = store.getState() as any;
       originalRequest.headers.Authorization = `${tokenType} ${accessToken}`;
       return apiClient(originalRequest);
     }

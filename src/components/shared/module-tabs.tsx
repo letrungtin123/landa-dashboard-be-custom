@@ -34,9 +34,9 @@ export function ModuleTabs({ tabs, defaultTab }: ModuleTabsProps) {
     if (!user) return false;
     if (user.role === 'superadmin') return true;
     // Nếu chưa có permission entry cho module/tab → mặc định cho phép (shell mode)
-    const hasEntry = !!permissions?.[t.module]?.[t.tab];
+    const hasEntry = !!permissions?.[t.module];
     if (!hasEntry) return true;
-    return hasPermission(t.module, t.tab, 'can_view');
+    return hasPermission(t.module, 'can_view');
   });
 
   if (visibleTabs.length === 0) return null;

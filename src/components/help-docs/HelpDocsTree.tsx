@@ -19,17 +19,18 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import type { HelpFolder, HelpPageSummary } from '@/api/help-docs';
+import type { HelpFolder, HelpPageSummary } from '@/api/custom-help-docs';
 import {
   createHelpFolder, updateHelpFolder, deleteHelpFolder,
-  createHelpPage, deleteHelpPage, updateHelpFolder as updateFolder,
-} from '@/api/help-docs';
+  createHelpPage, deleteHelpPage,
+} from '@/api/custom-help-docs';
+import { useAuthStore } from '@/utils/store';
 
 interface HelpDocsTreeProps {
   folders: HelpFolder[];
   pages: HelpPageSummary[];
-  selectedPageId: number | null;
-  onSelectPage: (pageId: number) => void;
+  selectedPageId: string | null;
+  onSelectPage: (pageId: string) => void;
   isSuperuser: boolean;
 }
 
@@ -37,6 +38,10 @@ export default function HelpDocsTree({
   folders, pages, selectedPageId, onSelectPage, isSuperuser,
 }: HelpDocsTreeProps) {
   const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('help_docs', 'can_add');
+  const canEdit = hasPermission('help_docs', 'can_edit');
+  const canDelete = hasPermission('help_docs', 'can_delete');
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['help-folders'] });
@@ -59,10 +64,10 @@ export default function HelpDocsTree({
           />
         );
       })}
-      {isSuperuser && (
+      {canAdd && (
         <AddFolderButton onStructureChange={invalidate} />
       )}
-      {folders.length === 0 && !isSuperuser && (
+      {folders.length === 0 && !canAdd && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
           <BookOpen className="h-10 w-10 opacity-30" />
           <p className="text-sm">Chưa có tài liệu nào</p>
@@ -79,11 +84,15 @@ export default function HelpDocsTree({
 function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, onStructureChange }: {
   folder: HelpFolder;
   pages: HelpPageSummary[];
-  selectedPageId: number | null;
-  onSelectPage: (id: number) => void;
+  selectedPageId: string | null;
+  onSelectPage: (id: string) => void;
   isSuperuser: boolean;
   onStructureChange: () => void;
 }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('help_docs', 'can_add');
+  const canEdit = hasPermission('help_docs', 'can_edit');
+  const canDelete = hasPermission('help_docs', 'can_delete');
   const [expanded, setExpanded] = useState(pages.some((p) => p.id === selectedPageId));
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(folder.title);
@@ -153,7 +162,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
         )}
 
         {/* Actions */}
-        {!isRenaming && isSuperuser && (
+        {!isRenaming && (canEdit || canDelete) && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -190,7 +199,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
               onStructureChange={onStructureChange}
             />
           ))}
-          {isSuperuser && (
+          {canAdd && (
             <AddPageButton folderId={folder.id} onStructureChange={onStructureChange} />
           )}
         </div>
@@ -232,6 +241,8 @@ function PageNode({ page, isSelected, onSelect, isSuperuser, onStructureChange }
   isSuperuser: boolean;
   onStructureChange: () => void;
 }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canDelete = hasPermission('help_docs', 'can_delete');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const deleteMut = useMutation({
@@ -256,7 +267,7 @@ function PageNode({ page, isSelected, onSelect, isSuperuser, onStructureChange }
         </span>
 
         {/* Delete action (superuser only) */}
-        {isSuperuser && (
+        {canDelete && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost" size="icon" className="h-5 w-5"
@@ -351,7 +362,7 @@ function AddFolderButton({ onStructureChange }: { onStructureChange: () => void 
 // ─────────────────────────────────────────────
 
 function AddPageButton({ folderId, onStructureChange }: {
-  folderId: number;
+  folderId: string;
   onStructureChange: () => void;
 }) {
   const [isAdding, setIsAdding] = useState(false);

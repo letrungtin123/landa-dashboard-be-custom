@@ -99,7 +99,7 @@ interface ProblemState {
 }
 
 export function parseProblemXml(xmlStr: string): ProblemState | null {
-  if (!xmlStr || xmlStr.trim() === '') return null;
+  if (!xmlStr || typeof xmlStr !== 'string' || xmlStr.trim() === '') return null;
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlStr, 'text/xml');
   

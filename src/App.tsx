@@ -11,6 +11,7 @@ import { RouteProgress } from '@/components/route-progress';
 import { MotionProvider } from '@/components/motion-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthGuard } from '@/components/auth-guard';
+import { ModuleGuard } from '@/components/module-guard';
 import { useAuthStore } from '@/utils/store';
 import { config } from '@/config/env';
 
@@ -20,6 +21,7 @@ import DashboardLayout from '@/layout/dashboard-layout';
 import LoginPage from '@/pages/login';
 import DashboardPage from '@/pages/dashboard';
 import ProfilePage from '@/pages/profile';
+import NotFoundPage from '@/pages/not-found';
 
 import UsersPage from '@/pages/users';
 import AuditLogsPage from '@/pages/audit-logs';
@@ -30,6 +32,8 @@ import CourseEditorPage from '@/pages/course-editor';
 import GroupsPage from '@/pages/groups';
 import HelpDocsPage from '@/pages/help-docs';
 import CourseCategoriesPage from './pages/course-categories';
+import TenantManagementPage from '@/pages/tenant-management';
+import PermissionGroupsPage from '@/pages/permission-groups';
 
 
 function AppRoutes() {
@@ -47,15 +51,19 @@ function AppRoutes() {
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/accounts" element={<UsersPage />} />
-          <Route path="/audit-logs" element={<AuditLogsPage />} />
-          <Route path="/report-summary" element={<ReportSummaryPage />} />
-          <Route path="/library" element={<LibraryPage />} />
-          <Route path="/courses" element={<CoursesPage />} />
-          <Route path="/courses/:courseId/edit" element={<CourseEditorPage />} />
-          <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/course-categories" element={<CourseCategoriesPage />} />
-          <Route path="/help-docs" element={<HelpDocsPage />} />
+
+          {/* Module-guarded routes */}
+          <Route path="/accounts" element={<ModuleGuard module="account"><UsersPage /></ModuleGuard>} />
+          <Route path="/audit-logs" element={<ModuleGuard module="audit_log"><AuditLogsPage /></ModuleGuard>} />
+          <Route path="/report-summary" element={<ModuleGuard module="report_summary"><ReportSummaryPage /></ModuleGuard>} />
+          <Route path="/library" element={<ModuleGuard module="library"><LibraryPage /></ModuleGuard>} />
+          <Route path="/courses" element={<ModuleGuard module="courses"><CoursesPage /></ModuleGuard>} />
+          <Route path="/courses/:courseId/edit" element={<ModuleGuard module="courses"><CourseEditorPage /></ModuleGuard>} />
+          <Route path="/groups" element={<ModuleGuard module="groups"><GroupsPage /></ModuleGuard>} />
+          <Route path="/course-categories" element={<ModuleGuard module="course_categories"><CourseCategoriesPage /></ModuleGuard>} />
+          <Route path="/help-docs" element={<ModuleGuard module="help_docs"><HelpDocsPage /></ModuleGuard>} />
+          <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
+          <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />
@@ -64,24 +72,20 @@ function AppRoutes() {
           <Route path="/user/audit-log" element={<Navigate to="/audit-logs" replace />} />
           <Route path="/report/summary" element={<Navigate to="/report-summary" replace />} />
           <Route path="/users" element={<Navigate to="/accounts" replace />} />
+
+          {/* 404 within dashboard */}
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
 
-      {/* Default redirect — learner_plus → /report-summary, others → /library */}
-      <Route path="/" element={<DefaultRedirect />} />
-      <Route path="*" element={<DefaultRedirect />} />
+      {/* Default redirect */}
+      <Route path="/" element={<Navigate to="/library" replace />} />
+      <Route path="*" element={<Navigate to="/library" replace />} />
     </Routes>
   );
 }
 
-/** Redirect dựa trên role: learner_plus → /report-summary, còn lại → /library */
-function DefaultRedirect() {
-  const user = useAuthStore((s) => s.user);
-  if (user?.role === 'learner_plus') {
-    return <Navigate to="/report-summary" replace />;
-  }
-  return <Navigate to="/library" replace />;
-}
+
 
 export default function App() {
   // Wrap Google OAuth provider nếu có client ID

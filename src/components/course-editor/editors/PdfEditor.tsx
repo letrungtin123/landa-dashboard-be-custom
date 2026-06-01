@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { FileText, ExternalLink, Upload, Link2, Loader2, CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
-import { uploadCourseAsset, deleteCourseAsset } from '@/api/course-authoring';
+import { uploadCourseAsset, deleteCourseAsset } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
 

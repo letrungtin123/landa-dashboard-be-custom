@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { TenantFilter } from '@/components/shared/TenantFilter';
+import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCourses, updateCourse, bulkCourseAction, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, type LandaCourse, type CourseModalConfig } from '@/api/landa-admin';
-import { createCourse } from '@/api/course-authoring';
-import { apiClient } from '@/api/client';
+import { getCourses, updateCourse, bulkCourseAction, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, type CustomCourse, type CourseModalConfig } from '@/api/custom-courses';
+import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
+import { useAuthStore } from '@/utils/store';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
 import { Pagination } from '@/components/shared/pagination';
@@ -38,13 +40,17 @@ export default function CoursesPage() {
   useHeaderInfo('Khóa Học');
 
   const queryClient = useQueryClient();
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('courses', 'can_add');
+  const canEdit = hasPermission('courses', 'can_edit');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [visFilter, setVisFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [selected, setSelected] = useState<string[]>([]);
-  const [previewCourse, setPreviewCourse] = useState<LandaCourse | null>(null);
+  const [previewCourse, setPreviewCourse] = useState<CustomCourse | null>(null);
   const [selectedCourseFiles, setSelectedCourseFiles] = useState<string | null>(null);
   const [modalConfigCourseId, setModalConfigCourseId] = useState<string | null>(null);
   const [notifyCourseId, setNotifyCourseId] = useState<string | null>(null);
@@ -86,18 +92,13 @@ export default function CoursesPage() {
       formData.append('file', file);
 
       // 1. Upload to Assets API
-      const { data } = await apiClient.post(`/cms-api/landa-admin/api/authoring/assets/${courseId}/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const uploadResult = await uploadCourseAsset(courseId, file);
 
-      const display_name = data?.asset?.display_name || data?.display_name || file.name;
+      const display_name = uploadResult?.display_name || file.name;
       if (!display_name) throw new Error("Không nhận được tên file từ server");
 
-      // 2. Update Course Metadata
-      const usageKey = courseId.replace('course-v1:', 'block-v1:') + '+type@course+block@course';
-      await apiClient.post(`/cms-api/landa-admin/api/authoring/xblock/${usageKey}`, {
-        metadata: { course_image: display_name }
-      });
+      // 2. Update Course image via custom courses API
+      await updateCourse(courseId, { image_url: uploadResult?.url || '' });
 
       toast.success('Đã cập nhật ảnh đại diện khóa học!');
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
@@ -127,7 +128,7 @@ export default function CoursesPage() {
   useEffect(() => { setPage(1); }, [debouncedSearch, visFilter]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['landa-courses', page, limit, debouncedSearch, visFilter],
+    queryKey: ['landa-courses', page, limit, debouncedSearch, visFilter, activeTenantId],
     queryFn: () => getCourses({
       page, page_size: limit,
       search: debouncedSearch || undefined,
@@ -135,7 +136,7 @@ export default function CoursesPage() {
     }),
   });
 
-  const courses = data?.data ?? [];
+  const courses = data?.courses ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
@@ -170,6 +171,7 @@ export default function CoursesPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto pb-10">
+      <TenantFilter className="mb-2" />
 
       {/* Dialog tạo course */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -280,7 +282,7 @@ export default function CoursesPage() {
         onReset={() => { setSearch(''); setVisFilter('all'); }}
         actions={
           <div className="flex items-center gap-2">
-            {selected.length > 0 && (
+            {selected.length > 0 && canEdit && (
               <>
                 <Button size="sm" variant="outline" onClick={() => bulkMut.mutate({ action: 'public' })} className="h-8 text-xs">
                   <Globe className="mr-1 h-3.5 w-3.5" /> Hiển thị ({selected.length})
@@ -290,9 +292,9 @@ export default function CoursesPage() {
                 </Button>
               </>
             )}
-            <Button size="sm" onClick={() => setShowCreate(true)} className="h-8 text-xs gap-1.5">
+            {canAdd && <Button size="sm" onClick={() => setShowCreate(true)} className="h-8 text-xs gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Tạo khóa học
-            </Button>
+            </Button>}
           </div>
         }
       />
@@ -382,7 +384,7 @@ export default function CoursesPage() {
                           <TooltipContent>Xem thẻ xem trước</TooltipContent>
                         </Tooltip>
 
-                        <Tooltip>
+                        {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
                               onClick={() => triggerUpload(course.id)}
@@ -393,7 +395,7 @@ export default function CoursesPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Đổi ảnh đại diện</TooltipContent>
-                        </Tooltip>
+                        </Tooltip>}
 
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -407,7 +409,7 @@ export default function CoursesPage() {
                           <TooltipContent>Quản lý tệp tin</TooltipContent>
                         </Tooltip>
 
-                        <Tooltip>
+                        {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
                               onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })}
@@ -417,9 +419,9 @@ export default function CoursesPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
-                        </Tooltip>
+                        </Tooltip>}
 
-                        <Tooltip>
+                        {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
                               onClick={() => setNotifyCourseId(course.id)}
@@ -429,9 +431,9 @@ export default function CoursesPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Gửi thông báo</TooltipContent>
-                        </Tooltip>
+                        </Tooltip>}
 
-                        <Tooltip>
+                        {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
                               onClick={() => setModalConfigCourseId(course.id)}
@@ -441,9 +443,9 @@ export default function CoursesPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Cấu hình hộp thoại</TooltipContent>
-                        </Tooltip>
+                        </Tooltip>}
 
-                        <Tooltip>
+                        {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Link to={`/courses/${course.id}/edit`}>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10">
@@ -452,7 +454,7 @@ export default function CoursesPage() {
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent>Chỉnh sửa nội dung</TooltipContent>
-                        </Tooltip>
+                        </Tooltip>}
                       </TableCell>
                     </TableRow>
                   ))

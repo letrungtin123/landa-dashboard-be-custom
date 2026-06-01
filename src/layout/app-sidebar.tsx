@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, Link } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/utils/store';
-import logoImg from '@/assets/leandassociate.webp';
+import logoDark from '@/assets/WhiteLogoLeftPanel.png';
+import logoLight from '@/assets/leandassociate.webp';
 
 import { getIconComponent } from '@/utils/icon-map';
 import {
@@ -51,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: 'Users', url: '/accounts', module: 'account', fallbackIcon: 'Users' },
       { title: 'Groups', url: '/groups', module: 'groups', fallbackIcon: 'FolderTree' },
+      { title: 'Permission Groups', url: '/permission-groups', module: 'permission_groups', fallbackIcon: 'ShieldCheck' },
       { title: 'Audit Logs', url: '/audit-logs', module: 'audit_log', fallbackIcon: 'ScrollText' },
     ],
   },
@@ -65,11 +68,18 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: 'Help Docs', url: '/help-docs', module: 'help_docs', fallbackIcon: 'BookOpen' },
     ],
+  },
+  {
+    group: 'System',
+    items: [
+      { title: 'Tenant Management', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
+    ],
   }
 ];
 
 export function AppSidebar() {
   const { pathname } = useLocation();
+  const { theme } = useTheme();
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [moduleIcons, setModuleIcons] = useState<Record<string, string>>({});
@@ -86,26 +96,25 @@ export function AppSidebar() {
 
   const permissions = useAuthStore((state) => state.permissions);
 
-  // Check if user can see a module (has can_view on 'general' tab)
+  const tenantModules = useAuthStore((state) => state.tenantModules);
+
+  // Check if user can see a module (based on permissions + tenant modules)
   const canSeeModule = (item: NavItem): boolean => {
     if (!user) return false;
-    
-    // learner_plus chỉ thấy Report Summary
-    if (user.role === 'learner_plus') {
-      return item.module === 'report_summary';
-    }
-    
-    // Restrict Audit Logs to Superusers only
-    if (item.module === 'audit_log') {
-      return !!user.isSuperuser;
+
+    // superadmin thấy tất cả (cross-tenant)
+    if (user.role === 'superadmin') return true;
+
+    // Kiểm tra module có được bật cho tenant không
+    if (tenantModules.length > 0 && !tenantModules.includes(item.module)) {
+      return false;
     }
 
-    // Report Summary: superuser + staff/admin đều được xem
-    if (item.module === 'report_summary') {
-      return !!user.isSuperuser || user.isStaff || user.role === 'staff' || user.role === 'admin';
-    }
-    
-    return true;
+    // superuser thấy tất cả module ĐƯỢC BẬT cho tenant
+    if (user.role === 'superuser') return true;
+
+    // staff: kiểm tra quyền can_view
+    return hasPermission(item.module, 'can_view');
   };
 
   // Build filtered nav groups
@@ -120,8 +129,8 @@ export function AppSidebar() {
       <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border">
         <Link to="/library" className="flex items-center justify-center w-full overflow-hidden">
           {/* Full Logo - hidden when collapsed */}
-          <img src={logoImg} alt="L&A Logo" className="h-8 w-auto shrink-0 rounded-sm group-data-[collapsible=icon]:hidden" />
-          
+          <img src={theme === 'dark' ? logoDark : logoLight} alt="L&A Logo" className="h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden" />
+
           {/* Badge Icon - visible only when collapsed */}
           <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs shrink-0 shadow-sm">
             L&A
@@ -196,7 +205,7 @@ export function AppSidebar() {
                     {user?.name || 'Admin User'}
                   </span>
                   <span className="text-[11px] font-medium text-sidebar-foreground/40 truncate leading-tight mt-0.5">
-                    {user?.role === 'superadmin' ? 'Super Administrator' : user?.role === 'learner_plus' ? 'Report Viewer' : 'Administrator'}
+                    {user?.role === 'superadmin' ? 'Super Administrator' : user?.role === 'superuser' ? 'Tenant Admin' : user?.role === 'staff' ? 'Staff' : 'Learner'}
                   </span>
                 </div>
               </Link>

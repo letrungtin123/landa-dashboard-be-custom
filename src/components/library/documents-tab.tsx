@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDocuments, getAllCategories, uploadDocument, updateDocument, deleteDocument,
-  bulkDocumentAction, type LandaDocument, type LandaCategory,
-} from '@/api/landa-admin';
+  bulkDocumentAction, type Document, type DocCategory,
+} from '@/api/custom-library';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
 import { Pagination } from '@/components/shared/pagination';
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
+import { useAuthStore } from '@/utils/store';
 import {
   Upload, Trash2, Eye, EyeOff, FileText, FileImage,
   FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X,
@@ -48,14 +50,19 @@ export default function DocumentsTab() {
   const [extFilter, setExtFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [bulkCatId, setBulkCatId] = useState<string>('');
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canAdd = hasPermission('library', 'can_add');
+  const canEdit = hasPermission('library', 'can_edit');
+  const canDelete = hasPermission('library', 'can_delete');
 
   useEffect(() => { setPage(1); }, [debouncedSearch, catFilter, extFilter]);
 
   // Fetch documents
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['landa-documents', page, limit, debouncedSearch, catFilter, extFilter],
+    queryKey: ['landa-documents', page, limit, debouncedSearch, catFilter, extFilter, activeTenantId],
     queryFn: () => getDocuments({
       page, page_size: limit,
       search: debouncedSearch || undefined,
@@ -66,17 +73,17 @@ export default function DocumentsTab() {
 
   // Fetch categories for filter dropdown
   const { data: categories } = useQuery({
-    queryKey: ['landa-categories-all'],
+    queryKey: ['landa-categories-all', activeTenantId],
     queryFn: getAllCategories,
   });
 
-  const docs = data?.data ?? [];
+  const docs = data?.documents ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
 
   // Mutations
   const toggleVisibility = useMutation({
-    mutationFn: ({ id, visible }: { id: number; visible: boolean }) =>
+    mutationFn: ({ id, visible }: { id: string; visible: boolean }) =>
       updateDocument(id, { is_visible: visible }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
@@ -93,7 +100,7 @@ export default function DocumentsTab() {
   });
 
   const bulkMut = useMutation({
-    mutationFn: ({ action, categoryId }: { action: 'show' | 'hide' | 'set_category'; categoryId?: number | null }) =>
+    mutationFn: ({ action, categoryId }: { action: 'show' | 'hide' | 'set_category'; categoryId?: string | null }) =>
       bulkDocumentAction(selected, action, categoryId),
     onSuccess: (_, { action }) => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
@@ -133,7 +140,7 @@ export default function DocumentsTab() {
     input.click();
   };
 
-  const handleDelete = (id: number, title: string) => {
+  const handleDelete = (id: string, title: string) => {
     confirmDialog({
       title: 'Xóa tài liệu',
       description: `Xóa "${title}"? Hành động này không thể hoàn tác.`,
@@ -147,14 +154,14 @@ export default function DocumentsTab() {
   const toggleAll = () => {
     setSelected(allSelected ? [] : docs.map((d) => d.id));
   };
-  const toggleOne = (id: number) => {
+  const toggleOne = (id: string) => {
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
   const handleBulkApply = () => {
     if (!bulkCatId) return;
-    const catIdNum = bulkCatId === '__none__' ? null : Number(bulkCatId);
-    bulkMut.mutate({ action: 'set_category', categoryId: catIdNum });
+    const catIdStr = bulkCatId === '__none__' ? null : bulkCatId;
+    bulkMut.mutate({ action: 'set_category', categoryId: catIdStr });
   };
 
   const catOptions = (categories ?? []).map((c) => ({ value: String(c.id), label: `${c.name} (${c.doc_count})` }));
@@ -179,9 +186,11 @@ export default function DocumentsTab() {
         }}
         onReset={() => { setSearch(''); setCatFilter('all'); setExtFilter('all'); }}
         actions={
-          <Button size="sm" onClick={handleUpload} disabled={uploadMut.isPending} className="h-8 text-xs shadow-sm">
-            <Upload className="mr-1 h-3.5 w-3.5" /> Upload
-          </Button>
+          canAdd ? (
+            <Button size="sm" onClick={handleUpload} disabled={uploadMut.isPending} className="h-8 text-xs shadow-sm">
+              <Upload className="mr-1 h-3.5 w-3.5" /> Upload
+            </Button>
+          ) : undefined
         }
       />
 
@@ -336,18 +345,18 @@ export default function DocumentsTab() {
                       <TableCell className="text-muted-foreground text-sm">{doc.created_at}</TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon"
+                          {canEdit && <Button variant="ghost" size="icon"
                             onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
                             className="h-8 w-8 text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
                           >
                             {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </Button>
-                          <Button variant="ghost" size="icon"
+                          </Button>}
+                          {canDelete && <Button variant="ghost" size="icon"
                             onClick={() => handleDelete(doc.id, doc.title)}
                             className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          </Button>}
                         </div>
                       </TableCell>
                     </TableRow>

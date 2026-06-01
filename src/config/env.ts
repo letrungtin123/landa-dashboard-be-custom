@@ -44,8 +44,10 @@ export const config = {
   get cmsBaseUrl(): string {
     return requireUrl("VITE_OPENEDX_CMS_URL", true) || window.location.origin;
   },
-  clientId: requireEnv("VITE_OPENEDX_CLIENT_ID"),
-  clientSecret: requireEnv("VITE_OPENEDX_CLIENT_SECRET"),
+  /** OpenEdX Client ID — tùy chọn (đang chuyển sang custom backend) */
+  clientId: (import.meta.env.VITE_OPENEDX_CLIENT_ID || "").trim(),
+  /** OpenEdX Client Secret — tùy chọn (đang chuyển sang custom backend) */
+  clientSecret: (import.meta.env.VITE_OPENEDX_CLIENT_SECRET || "").trim(),
   tokenRefreshBufferMs: requireEnvNumber("VITE_TOKEN_REFRESH_BUFFER_MS", 300_000),
   apiTimeoutMs: requireEnvNumber("VITE_API_TIMEOUT_MS", 30_000),
   googleClientId: (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim(),
@@ -62,6 +64,9 @@ export const config = {
 
   /** Keycloak OIDC Client ID — tùy chọn, không crash nếu thiếu */
   keycloakClientId: (import.meta.env.VITE_KEYCLOAK_CLIENT_ID || "").trim(),
+
+  /** Custom Express Backend URL — bắt buộc cho auth mới */
+  customApiUrl: requireUrl("VITE_CUSTOM_API_URL"),
 
   get apiBaseUrl(): string {
     return "";

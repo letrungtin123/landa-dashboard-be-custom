@@ -25,8 +25,8 @@ import {
   getLearnerDetail,
   getAdminUserBadges,
   getAdminUserStudyTime,
-  LearnerDetailResult,
-} from '@/api/landa-admin';
+  type LearnerDetailResult,
+} from '@/api/custom-reports';
 
 // ── Badge Icons (đồng bộ với FE-5173 BadgeIcon.tsx) ──
 import badgeManhGhep from '@/assets/badges/ManhGhepHoanHao.png';

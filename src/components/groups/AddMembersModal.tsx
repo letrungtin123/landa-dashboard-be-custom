@@ -9,21 +9,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useQuery } from '@tanstack/react-query';
-import { getAdminUsers, type LandaUser } from '@/api/landa-admin';
-import { addMembers, addTeamMembers } from '@/api/landa-groups';
+import { fetchUsers, type CustomUser } from '@/api/custom-users';
+import { addMembers, addTeamMembers } from '@/api/custom-groups';
 
 interface Props {
   open: boolean;
-  sgId: number;
-  teamId?: number;
-  existingMemberIds: number[];
+  sgId: string;
+  teamId?: string;
+  existingMemberIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
 export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
 
@@ -31,7 +31,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
 
   const { data, isFetching } = useQuery({
     queryKey: ['users-for-group', debouncedSearch, page],
-    queryFn: () => getAdminUsers({ page, page_size: 20, search: debouncedSearch, role: 'learner,learner_plus' }),
+    queryFn: () => fetchUsers({ page, page_size: 20, search: debouncedSearch, role: 'learner' }),
     enabled: open,
     staleTime: 0,
   });
@@ -48,11 +48,11 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     onError: () => toast.error('Lỗi thêm thành viên'),
   });
 
-  const users: LandaUser[] = data?.data ?? [];
+  const users: CustomUser[] = data?.data ?? [];
   const availableUsers = users.filter(u => !existingMemberIds.includes(u.id));
   const allSelected = availableUsers.length > 0 && availableUsers.every(u => selected.includes(u.id));
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((id: string) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }, []);
 
@@ -125,8 +125,8 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
                   }`}>
                   {(isSelected || isExisting) && <UserCheck className="h-3 w-3 text-white" />}
                 </div>
-                {u.avatar ? (
-                  <img src={u.avatar} alt={u.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
+                {u.avatar_url ? (
+                  <img src={u.avatar_url} alt={u.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-semibold shrink-0">
                     {u.username[0]?.toUpperCase()}

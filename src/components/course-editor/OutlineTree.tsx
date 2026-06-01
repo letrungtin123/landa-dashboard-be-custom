@@ -6,14 +6,14 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  CourseIndexSection,
+  type CourseIndexSection,
   getCourseOutlineIndex,
   createBlock,
   deleteBlock,
   publishBlock,
   renameBlock,
   reorderChildren,
-} from '@/api/course-authoring';
+} from '@/api/custom-course-authoring';
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
   MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen,
@@ -48,7 +48,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Sparkles } from 'lucide-react';
-import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfig } from '@/api/landa-admin';
+import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfig } from '@/api/custom-courses';
 
 interface OutlineTreeProps {
   courseId: string;
@@ -99,7 +99,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId }: 
   return (
     <div className="space-y-1">
       <SortableList
-        items={structure.child_info?.children || []}
+        items={structure.children || []}
         parentId={structure.id}
         onReorder={handleReorder}
       >
@@ -202,7 +202,7 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, onStructure
       {expanded && (
         <div className="ml-5 pl-2 border-l border-border/40 mt-0.5 space-y-0.5">
           <SortableList
-            items={node.child_info?.children || []}
+            items={node.children || []}
             parentId={node.id}
             onReorder={onReorder}
           >
@@ -258,7 +258,7 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, onStructureChange,
       {expanded && (
         <div className="ml-5 pl-2 border-l border-border/40 mt-0.5 space-y-0.5">
           <SortableList
-            items={node.child_info?.children || []}
+            items={node.children || []}
             parentId={node.id}
             onReorder={onReorder}
           >
@@ -345,7 +345,7 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
     onError: () => toast.error('Đổi tên thất bại'),
   });
 
-  const hasChildren = !isSelectable && !!node.child_info?.children?.length;
+  const hasChildren = !isSelectable && !!node.children?.length;
 
   return (
     <div

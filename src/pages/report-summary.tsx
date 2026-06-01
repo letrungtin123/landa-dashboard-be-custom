@@ -1,4 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TenantFilter } from '@/components/shared/TenantFilter';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
 import {
@@ -6,8 +8,8 @@ import {
   getReportChart,
   getReportTopCourses,
   getReportLearners,
-} from '@/api/landa-admin';
-import { getOrgGroups, getSubGroups } from '@/api/landa-groups';
+} from '@/api/custom-reports';
+import { getOrgGroups, getSubGroups } from '@/api/custom-groups';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -74,8 +76,8 @@ function ChartTrendModal({
   title: string;
   isOpen: boolean;
   onClose: () => void;
-  groupId: number | 'all';
-  subgroupId: number | 'all';
+  groupId: string | 'all';
+  subgroupId: string | 'all';
 }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -140,11 +142,11 @@ function ChartTrendModal({
                 {data.is_grouped ? (
                   <LineChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="month_label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
                     <ReTooltip cursor={{ stroke: 'var(--muted)', strokeWidth: 2 }} contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)' }} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    {Object.keys(data.data[0] || {}).filter(k => k !== 'month').map((key, index) => (
+                    {Object.keys(data.data[0] || {}).filter(k => k !== 'month' && k !== 'month_label').map((key, index) => (
                       <Line
                         key={key}
                         type="monotone"
@@ -159,7 +161,7 @@ function ChartTrendModal({
                 ) : (
                   <BarChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="month_label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
                     <ReTooltip cursor={{ fill: 'var(--muted)', opacity: 0.4 }} contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)' }} />
                     <Bar dataKey="value" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={40} />
@@ -174,7 +176,7 @@ function ChartTrendModal({
   );
 }
 
-function TopCoursesWidget({ month, year, groupId, subgroupId }: { month: number, year: number, groupId: number | 'all', subgroupId: number | 'all' }) {
+function TopCoursesWidget({ month, year, groupId, subgroupId }: { month: number, year: number, groupId: string | 'all', subgroupId: string | 'all' }) {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
     queryKey: ['report-top-courses', month, year, page, groupId, subgroupId],
@@ -276,8 +278,8 @@ function GroupEnrollmentsWidget({
   selectedSubGroupId,
 }: {
   year: number;
-  selectedGroupId: number | 'all';
-  selectedSubGroupId: number | 'all';
+  selectedGroupId: string | 'all';
+  selectedSubGroupId: string | 'all';
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['group-enrollments-trend', year, selectedGroupId, selectedSubGroupId],
@@ -293,7 +295,7 @@ function GroupEnrollmentsWidget({
 
   const groupKeys = useMemo(() => {
     if (!data?.data || data.data.length === 0) return [];
-    return Object.keys(data.data[0]).filter(k => k !== 'month');
+    return Object.keys(data.data[0]).filter(k => k !== 'month' && k !== 'month_label');
   }, [data]);
 
   const totalThisYear = useMemo(() => {
@@ -350,7 +352,7 @@ function GroupEnrollmentsWidget({
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
                 <XAxis
-                  dataKey="month"
+                  dataKey="month_label"
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
@@ -399,7 +401,7 @@ function GroupEnrollmentsWidget({
   );
 }
 
-function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId }: { month: number, year: number, onSelectLearner: (u: string) => void, groupId: number | 'all', subgroupId: number | 'all' }) {
+function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId }: { month: number, year: number, onSelectLearner: (u: string) => void, groupId: string | 'all', subgroupId: string | 'all' }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -568,29 +570,30 @@ export default function ReportSummaryPage() {
   const currentYear = new Date().getFullYear();
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | 'all'>('all');
-  const [selectedSubGroupId, setSelectedSubGroupId] = useState<number | 'all'>('all');
+  const [selectedGroupId, setSelectedGroupId] = useState<string | 'all'>('all');
+  const [selectedSubGroupId, setSelectedSubGroupId] = useState<string | 'all'>('all');
   const [isExporting, setIsExporting] = useState(false);
 
   const user = useAuthStore((s) => s.user);
-  const isSuperadmin = user?.role === 'superadmin' || user?.isSuperuser === true;
-  const isStaff = user?.isStaff === true || user?.role === 'staff' || user?.role === 'admin';
-  const isLearnerPlus = user?.role === 'learner_plus';
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const isSuperadmin = user?.role === 'superadmin' || user?.role === 'superuser';
+  const isStaff = user?.role === 'staff';
+  const isLearnerPlus = user?.role === 'staff';
   const canViewReport = isSuperadmin || isStaff || isLearnerPlus;
 
   // learner_plus: auto-set group từ membership, không fetch all groups
   const learnerPlusGroupId = user?.memberGroupIds?.[0];
 
   const { data: groupsData } = useQuery({
-    queryKey: ['admin-groups-list'],
+    queryKey: ['admin-groups-list', activeTenantId],
     queryFn: () => getOrgGroups({ page_size: 100 }),
     enabled: isSuperadmin || isStaff,
   });
 
   // Fetch subgroups when a group is selected
   const { data: subGroupsData } = useQuery({
-    queryKey: ['admin-subgroups-list', selectedGroupId],
-    queryFn: () => getSubGroups(selectedGroupId as number),
+    queryKey: ['admin-subgroups-list', selectedGroupId, activeTenantId],
+    queryFn: () => getSubGroups(selectedGroupId as string),
     enabled: (isSuperadmin || isStaff) && selectedGroupId !== 'all',
   });
 
@@ -610,7 +613,7 @@ export default function ReportSummaryPage() {
   }, [isLearnerPlus, selectedGroupId, learnerPlusGroupId]);
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ['report-summary', selectedMonth, selectedYear, selectedGroupId, selectedSubGroupId],
+    queryKey: ['report-summary', selectedMonth, selectedYear, selectedGroupId, selectedSubGroupId, activeTenantId],
     queryFn: () => getReportSummary({
       month: selectedMonth,
       year: selectedYear,
@@ -624,7 +627,7 @@ export default function ReportSummaryPage() {
   const prevMonthYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
 
   const { data: prevData } = useQuery({
-    queryKey: ['report-summary', prevMonth, prevMonthYear, selectedGroupId, selectedSubGroupId],
+    queryKey: ['report-summary', prevMonth, prevMonthYear, selectedGroupId, selectedSubGroupId, activeTenantId],
     queryFn: () => getReportSummary({
       month: prevMonth,
       year: prevMonthYear,
@@ -746,6 +749,7 @@ export default function ReportSummaryPage() {
 
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto pb-20 relative">
+      <TenantFilter className="mb-2" />
       <LearnerDetailModal
         username={selectedLearner}
         isOpen={!!selectedLearner}

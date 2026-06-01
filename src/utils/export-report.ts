@@ -6,7 +6,7 @@ import {
   getReportTopCourses,
   getReportUncompletedLearners,
   type ReportSummaryResponse,
-} from '@/api/landa-admin';
+} from '@/api/custom-reports';
 
 // ── Style Helpers ──
 
@@ -104,7 +104,7 @@ function freezeAndFilter(ws: ExcelJS.Worksheet, headerRowNum: number, colCount: 
 
 interface ExportParams {
   selectedYear: number;
-  selectedGroupId: number | 'all';
+  selectedGroupId: string | 'all';
   groupName: string;
   exporterName: string;
 }
@@ -208,26 +208,24 @@ export async function exportReportExcel(params: ExportParams) {
     const metaSubtitle = `Nhóm: ${groupName} | Người xuất: ${exporterName} | Ngày xuất: ${exportDate}`;
 
     // ═══ SHEET 1: TỔNG QUAN THEO THÁNG ═══
-    const COL1 = 8;
+    const COL1 = 6;
     const ws1 = workbook.addWorksheet('📊 Tổng quan');
     ws1.columns = [
       { key: 'month', width: 14 },
       { key: 'total_learners', width: 18 },
       { key: 'active_learners', width: 22 },
       { key: 'total_enrollments', width: 20 },
-      { key: 'total_courses', width: 16 },
       { key: 'completion_rate', width: 22 },
-      { key: 'total_staff', width: 16 },
       { key: 'status', width: 14 },
     ];
 
     addSheetTitle(ws1, `BÁO CÁO TỔNG QUAN NĂM ${selectedYear}`, metaSubtitle, COL1);
 
-    const hdr1 = ws1.addRow(['Tháng', 'Tổng học viên', 'HV hoạt động', 'Lượt đăng ký', 'Tổng khóa học', 'Tỉ lệ hoàn thành (%)', 'Nhân viên', 'Trạng thái']);
+    const hdr1 = ws1.addRow(['Tháng', 'Tổng học viên', 'HV hoạt động', 'Lượt đăng ký', 'Tỉ lệ hoàn thành (%)', 'Trạng thái']);
     applyHeader(hdr1, COL1);
     freezeAndFilter(ws1, hdr1.number, COL1);
 
-    let totalLearners = 0, totalActive = 0, totalEnroll = 0, totalCourses = 0, rateSum = 0, rateCount = 0;
+    let totalLearners = 0, totalActive = 0, totalEnroll = 0, rateSum = 0, rateCount = 0;
 
     summaries.forEach((d, idx) => {
       const isFuture = !d;
@@ -236,9 +234,7 @@ export async function exportReportExcel(params: ExportParams) {
         d?.overview?.total_learners ?? '',
         d?.overview?.active_learners ?? '',
         d?.overview?.total_enrollments ?? '',
-        d?.overview?.total_courses ?? '',
         d?.overview?.completion_rate != null ? d.overview.completion_rate : '',
-        d?.overview?.total_staff ?? '',
         isFuture ? 'Chưa đến' : 'Đã có',
       ]);
       applyDataRow(row, COL1, idx % 2 === 0);
@@ -248,7 +244,6 @@ export async function exportReportExcel(params: ExportParams) {
         totalLearners = Math.max(totalLearners, d.overview.total_learners);
         totalActive = Math.max(totalActive, d.overview.active_learners);
         totalEnroll += d.overview.total_enrollments;
-        totalCourses = Math.max(totalCourses, d.overview.total_courses);
         rateSum += d.overview.completion_rate;
         rateCount++;
       }
@@ -256,12 +251,12 @@ export async function exportReportExcel(params: ExportParams) {
       // Completion rate coloring
       if (d?.overview?.completion_rate != null) {
         const rate = d.overview.completion_rate;
-        const cell = row.getCell(6);
+        const cell = row.getCell(5);
         cell.font = { size: 10, bold: true, color: { argb: rate >= 70 ? COLORS.accentGreen : rate >= 40 ? COLORS.accentAmber : COLORS.accentRed } };
       }
 
       if (isFuture) {
-        row.getCell(8).font = { size: 9, italic: true, color: { argb: COLORS.subtitleFg } };
+        row.getCell(6).font = { size: 9, italic: true, color: { argb: COLORS.subtitleFg } };
       }
     });
 
@@ -270,7 +265,6 @@ export async function exportReportExcel(params: ExportParams) {
     addSummaryRow(ws1, 'Cao nhất - Tổng học viên', totalLearners.toLocaleString('en-US'), COL1);
     addSummaryRow(ws1, 'Cao nhất - HV hoạt động', totalActive.toLocaleString('en-US'), COL1);
     addSummaryRow(ws1, 'Tổng lượt đăng ký cả năm', totalEnroll.toLocaleString('en-US'), COL1);
-    addSummaryRow(ws1, 'Cao nhất - Tổng khóa học', totalCourses.toLocaleString('en-US'), COL1);
     addSummaryRow(ws1, 'TB tỉ lệ hoàn thành', rateCount > 0 ? `${(rateSum / rateCount).toFixed(1)}%` : 'N/A', COL1);
 
     // ═══ SHEET 2: XẾP HẠNG CẢ NĂM ═══

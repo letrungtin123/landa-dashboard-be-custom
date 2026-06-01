@@ -1,26 +1,26 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Search, Loader2, FolderCheck } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { getCourseCategories } from '@/api/landa-admin';
-import { assignCourseCategories, assignTeamCourseCategories } from '@/api/landa-groups';
+import { getCourseCategories } from '@/api/custom-course-categories';
+import { assignCourseCategories, assignTeamCourseCategories } from '@/api/custom-groups';
 
 interface Props {
   open: boolean;
-  sgId: number;
-  teamId?: number;
-  assignedCategoryIds: number[];
+  sgId: string;
+  teamId?: string;
+  assignedCategoryIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
 export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
 
   const { data, isFetching } = useQuery({
     queryKey: ['course-categories-for-group'],
@@ -48,7 +48,7 @@ export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCatego
   const availableCategories = filtered.filter(c => !assignedCategoryIds.includes(c.id));
   const allSelected = availableCategories.length > 0 && availableCategories.every(c => selected.includes(c.id));
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((id: string) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }, []);
 

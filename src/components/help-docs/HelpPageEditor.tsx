@@ -7,8 +7,8 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/help-docs';
-import type { HelpPageDetail } from '@/api/help-docs';
+import { getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/custom-help-docs';
+import type { HelpPageDetail } from '@/api/custom-help-docs';
 import RichTextEditor from '@/components/course-editor/RichTextEditor';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 interface HelpPageEditorProps {
-  pageId: number;
+  pageId: string;
   isSuperuser: boolean;
 }
 

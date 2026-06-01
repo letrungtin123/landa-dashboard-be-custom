@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { apiClient } from '@/api/client';
+import { uploadCourseAsset } from '@/api/custom-course-authoring';
 import RichTextEditor from '../RichTextEditor';
 import { Field } from './VideoEditor';
 
@@ -23,12 +23,8 @@ export default function HtmlEditor({ displayName, onDisplayNameChange, htmlConte
     if (!file) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const { data } = await apiClient.post(`/cms-api/landa-admin/api/authoring/assets/${courseId}/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const assetUrl = data?.asset?.url || data?.url || '';
+      const result = await uploadCourseAsset(courseId, file);
+      const assetUrl = result?.url || '';
       if (assetUrl && editorRef) {
         editorRef.chain().focus().setImage({ src: assetUrl, alt: file.name }).run();
         toast.success('Đã upload ảnh thành công');

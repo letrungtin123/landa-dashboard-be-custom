@@ -22,8 +22,9 @@ import {
   uploadCourseAsset,
   deleteCourseAsset,
   updateCourseAssetLock,
-  CourseAsset
-} from '@/api/course-authoring';
+  type CourseAsset
+} from '@/api/custom-course-authoring';
+import { useAuthStore } from '@/utils/store';
 
 interface CourseFilesModalProps {
   courseId: string;
@@ -33,6 +34,9 @@ interface CourseFilesModalProps {
 
 export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModalProps) {
   const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission('courses', 'can_edit');
+  const canDelete = hasPermission('courses', 'can_delete');
   
   const getFileIcon = (fileName: string, contentType: string = '') => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -173,7 +177,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                 <p className="text-sm text-muted-foreground">Showing {assets.length} of {totalCount} assets</p>
               </div>
               <div className="flex gap-3">
-                <Button
+                {canEdit && <Button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadMut.isPending}
                   size="default"
@@ -181,7 +185,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                 >
                   {uploadMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Upload New File
-                </Button>
+                </Button>}
               </div>
             </div>
           </DialogHeader>
@@ -290,17 +294,17 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                                 <Download className="w-4 h-4 mr-2.5 text-muted-foreground" />
                                 <span className="font-medium">Tải xuống</span>
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => lockMut.mutate({ assetId: asset.id, locked: !asset.locked })} className="cursor-pointer py-2 px-3">
+                              {canEdit && <DropdownMenuItem onClick={() => lockMut.mutate({ assetId: asset.id, locked: !asset.locked })} className="cursor-pointer py-2 px-3">
                                 {asset.locked ? <Unlock className="w-4 h-4 mr-2.5 text-muted-foreground" /> : <Lock className="w-4 h-4 mr-2.5 text-amber-500" />}
                                 <span className="font-medium">{asset.locked ? 'Mở khóa file' : 'Khóa file'}</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
+                              </DropdownMenuItem>}
+                              {canDelete && <DropdownMenuItem
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer py-2 px-3"
                                 onClick={() => deleteMut.mutate(asset.id)}
                               >
                                 <Trash2 className="w-4 h-4 mr-2.5" />
                                 <span className="font-medium">Xóa file</span>
-                              </DropdownMenuItem>
+                              </DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -325,16 +329,16 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
             <div className="bg-muted/50 border-t px-6 py-3 flex items-center justify-between shrink-0">
               <span className="text-sm font-medium">Đã chọn {selectedIds.length} tệp</span>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkLock(true)} disabled={isBulkOperating}>
+                {canEdit && <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkLock(true)} disabled={isBulkOperating}>
                   <Lock className="w-4 h-4" /> Khóa
-                </Button>
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkLock(false)} disabled={isBulkOperating}>
+                </Button>}
+                {canEdit && <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkLock(false)} disabled={isBulkOperating}>
                   <Unlock className="w-4 h-4" /> Mở khóa
-                </Button>
-                <Button size="sm" variant="destructive" className="gap-2" onClick={handleBulkDelete} disabled={isBulkOperating}>
+                </Button>}
+                {canDelete && <Button size="sm" variant="destructive" className="gap-2" onClick={handleBulkDelete} disabled={isBulkOperating}>
                   {isBulkOperating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   Xóa đã chọn
-                </Button>
+                </Button>}
               </div>
             </div>
           )}
