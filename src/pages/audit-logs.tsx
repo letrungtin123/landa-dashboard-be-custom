@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -131,7 +131,7 @@ export default function AuditLogsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto pb-10">
-      <TenantFilter className="mb-2" />
+
       <div className="pb-6 flex items-center justify-between" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
         {/* View mode toggle */}
         <div className="flex items-center bg-muted/50 rounded-lg p-0.5 border border-border/40">

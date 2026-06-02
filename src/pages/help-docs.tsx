@@ -4,7 +4,7 @@
  * Giống Course Editor nhưng cho Help Docs.
  */
 import { useState } from 'react';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/utils/store';
@@ -85,7 +85,7 @@ export default function HelpDocsPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-background">
       <div className="px-6 pt-3 shrink-0">
-        <TenantFilter />
+
       </div>
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
       {/* Mobile Top Bar */}

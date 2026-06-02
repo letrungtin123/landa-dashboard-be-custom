@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -749,7 +749,7 @@ export default function ReportSummaryPage() {
 
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto pb-20 relative">
-      <TenantFilter className="mb-2" />
+
       <LearnerDetailModal
         username={selectedLearner}
         isOpen={!!selectedLearner}

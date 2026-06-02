@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { toast } from "sonner";
 import {
@@ -350,7 +350,7 @@ export default function PermissionGroupsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <TenantFilter />
+
           {canAdd && (
             <Button
               onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}

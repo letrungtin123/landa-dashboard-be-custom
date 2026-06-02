@@ -1,8 +1,11 @@
 // @ts-nocheck
 
+import { useEffect } from 'react';
 import { useAuthStore } from '@/utils/store';
 import { useHeaderStore } from '@/utils/header-store';
+import { useTenantStore } from '@/utils/tenant-store';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
@@ -12,8 +15,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, User, Moon, Sun, ChevronDown } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
 
@@ -22,8 +26,24 @@ export function Header() {
   const logout = useAuthStore((state) => state.logout);
   const startLogout = useAuthStore((state) => state.startLogout);
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { theme, setTheme } = useTheme();
   const { title, description } = useHeaderStore();
+
+  const isSuperadmin = user?.role === 'superadmin';
+  const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
+
+  // Fetch tenants on mount for superadmin
+  useEffect(() => {
+    if (isSuperadmin) {
+      fetchTenants();
+    }
+  }, [isSuperadmin, fetchTenants]);
+
+  const handleTenantChange = (tenantId: string, tenantName: string) => {
+    setActiveTenant(tenantId, tenantName);
+    qc.invalidateQueries();
+  };
 
   const handleLogout = async () => {
     // Set flag immediately so pages show blank instead of "Access Denied"
@@ -55,6 +75,43 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1">
+        {/* ── Tenant Switcher (superadmin only) ── */}
+        {isSuperadmin && tenants.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring mr-1">
+              <Building2 className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-xs font-medium text-foreground hidden sm:inline-block max-w-[140px] truncate">
+                {activeTenantName || 'Chọn tenant'}
+              </span>
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 mt-1 rounded-lg">
+              <DropdownMenuLabel className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tenant</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                  onClick={(e) => { e.stopPropagation(); fetchTenants(); }}
+                >
+                  <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {tenants.map(t => (
+                <DropdownMenuItem
+                  key={t.id}
+                  className="cursor-pointer text-[13px] mx-1 rounded-md flex items-center justify-between"
+                  onClick={() => handleTenantChange(t.id, t.name)}
+                >
+                  <span className={activeTenantId === t.id ? 'font-semibold text-primary' : ''}>{t.name}</span>
+                  {activeTenantId === t.id && <Check className="h-3.5 w-3.5 text-primary" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <Button
           variant="ghost"
           size="icon"

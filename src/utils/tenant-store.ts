@@ -38,13 +38,14 @@ export const useTenantStore = create<TenantContextState>()(
       isLoading: false,
 
       fetchTenants: async () => {
+        // Luôn fetch lại — không cache — để tenant mới hiện ngay
         set({ isLoading: true });
         try {
           const { data } = await customApiClient.get<{ success: boolean; data: SimpleTenant[] }>('/api/tenants/simple');
           const tenants = data.data;
           set({ tenants, isLoading: false });
 
-          // Auto-select tenant đầu tiên nếu chưa chọn (alphabet sort từ BE)
+          // Auto-select tenant đầu tiên nếu chưa chọn
           const current = get();
           if (!current.activeTenantId && tenants.length > 0) {
             set({ activeTenantId: tenants[0].id, activeTenantName: tenants[0].name });

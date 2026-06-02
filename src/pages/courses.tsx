@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -171,7 +171,7 @@ export default function CoursesPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto pb-10">
-      <TenantFilter className="mb-2" />
+
 
       {/* Dialog tạo course */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

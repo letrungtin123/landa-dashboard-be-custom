@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { FolderTree, Users, MousePointerClick, UsersRound, ChevronRight, Building2, Network } from 'lucide-react';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { OrgGroupPanel } from '@/components/groups/OrgGroupPanel';
 import { SubGroupPanel } from '@/components/groups/SubGroupPanel';
 import { TeamPanel } from '@/components/groups/TeamPanel';
@@ -51,7 +51,7 @@ export default function GroupsPage() {
             </p>
           </div>
         </div>
-        <TenantFilter />
+
       </div>
 
       {/* Breadcrumb indicator */}

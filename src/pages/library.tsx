@@ -1,5 +1,5 @@
 import { useHeaderInfo } from '@/utils/header-store';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { ModuleTabs, type ModuleTab } from '@/components/shared/module-tabs';
 import DocumentsTab from '@/components/library/documents-tab';
 import CategoriesTab from '@/components/library/categories-tab';
@@ -28,7 +28,7 @@ export default function LibraryPage() {
   return (
     <div>
       <div className="px-6 pt-4">
-        <TenantFilter className="mb-2" />
+
       </div>
       <ModuleTabs tabs={tabs} defaultTab="documents" />
     </div>

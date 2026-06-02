@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { Button } from '@/components/ui/button';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -116,7 +116,7 @@ export default function UsersPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
-      <TenantFilter className="mb-2" />
+
       <TableToolbar
         search={search}
         onSearchChange={setSearch}

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { TenantFilter } from '@/components/shared/TenantFilter';
+
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -138,7 +138,7 @@ export default function CourseCategoriesPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <TenantFilter className="mb-2" />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Danh mục khóa học</h1>
