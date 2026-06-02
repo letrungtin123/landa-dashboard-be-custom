@@ -101,10 +101,13 @@ export async function updateSectionModalConfig(courseId: string, config: Section
   return { success: true };
 }
 
-// ── Course Notification (placeholder — gửi qua backend mới) ──
+// ── Course Notification ──
 
 export async function sendCourseNotification(courseId: string, payload: { title: string; message: string }) {
-  // TODO: Implement notification service trên BE
-  console.warn('[sendCourseNotification] Not yet implemented on custom backend');
-  return { success: true, recipients: 0 };
+  const { data } = await customApiClient.post<ApiResponse<{ success: boolean; recipients: number }>>("/api/notifications", {
+    course_id: courseId,
+    title: payload.title,
+    message: payload.message,
+  });
+  return data.data;
 }

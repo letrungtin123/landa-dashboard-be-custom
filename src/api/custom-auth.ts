@@ -57,11 +57,19 @@ export async function customLoginApi(username: string, password: string): Promis
 
 /**
  * Refresh token — nhận token pair mới.
+ * QUAN TRỌNG: Dùng axios trực tiếp, KHÔNG dùng customApiClient.
+ * customApiClient interceptor gắn expired Bearer token → BE reject 401 → vòng lặp.
  */
 export async function customRefreshApi(refreshToken: string): Promise<CustomLoginResponse> {
-  const { data } = await customApiClient.post<ApiResponse<CustomLoginResponse>>("/api/auth/refresh", {
-    refresh_token: refreshToken,
-  });
+  const axios = (await import("axios")).default;
+  const { config } = await import("@/config/env");
+  const baseURL = config.customApiUrl;
+
+  const { data } = await axios.post<ApiResponse<CustomLoginResponse>>(
+    `${baseURL}/api/auth/refresh`,
+    { refresh_token: refreshToken },
+    { headers: { "Content-Type": "application/json" }, timeout: 10_000 }
+  );
   return data.data;
 }
 

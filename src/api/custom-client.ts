@@ -35,8 +35,8 @@ customApiClient.interceptors.request.use(async (req) => {
     req.headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  // Superadmin hoặc superuser multi-tenant: gắn X-Tenant-Id header từ tenant context store
-  if (user?.role === 'superadmin' || user?.role === 'superuser') {
+  // CHỈ superadmin mới switch tenant qua X-Tenant-Id header
+  if (user?.role === 'superadmin') {
     const tenantStore = await getTenantStore();
     const { activeTenantId } = tenantStore.getState();
     if (activeTenantId) {
@@ -53,9 +53,27 @@ customApiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
 
+    // 401 sau retry → refresh đã thất bại → logout
+    if (error.response?.status === 401 && originalRequest._retried) {
+      const store = await getAuthStore();
+      store.getState().logout();
+      window.location.href = "/login?session=expired";
+      return Promise.reject(error);
+    }
+
     if (error.response?.status !== 401 || originalRequest._retried) {
       return Promise.reject(error);
     }
+
+    // Tài khoản bị khóa bởi Admin → logout ngay, KHÔNG thử refresh
+    const responseData = error.response?.data as Record<string, unknown> | undefined;
+    if (responseData?.error === "account_disabled") {
+      const store = await getAuthStore();
+      store.getState().logout();
+      window.location.href = "/login?error=account_disabled";
+      return Promise.reject(error);
+    }
+
     originalRequest._retried = true;
 
     const store = await getAuthStore();
@@ -87,6 +105,7 @@ customApiClient.interceptors.response.use(
 
     // Refresh thất bại → logout
     store.getState().logout();
+    window.location.href = "/login?session=expired";
     return Promise.reject(error);
   }
 );

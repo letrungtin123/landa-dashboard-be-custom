@@ -96,12 +96,15 @@ export async function reorderHelpPages(folderId: string, orderedIds: string[]) {
   return { success: true };
 }
 
-// ── Image Upload (placeholder — needs multer on BE) ──
+// ── Image Upload ──
 
 export async function uploadHelpImage(file: File) {
   const formData = new FormData();
   formData.append('image', file);
-  // TODO: Add file upload endpoint to BE
-  console.warn('[uploadHelpImage] File upload endpoint not yet implemented');
-  return { success: true, url: URL.createObjectURL(file), filename: file.name };
+  const { data } = await customApiClient.post<ApiResponse<{ url: string; filename: string; size: number }>>(
+    "/api/help-docs/upload-image",
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data.data;
 }

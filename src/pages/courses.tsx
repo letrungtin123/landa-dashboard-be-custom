@@ -770,7 +770,7 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
 
         <div className="space-y-4 py-2">
           <div className="space-y-1">
-            <label className="text-sm font-medium">Tiêu đề</label>
+            <label className="text-sm font-medium">Tiêu đề <span className="text-red-500">*</span></label>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
               placeholder="Tiêu đề thông báo..."
@@ -782,13 +782,13 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
             <label className="text-sm font-medium">Nội dung <span className="text-red-500">*</span></label>
             <textarea
               className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-              placeholder="Nội dung thông báo sẽ gửi cho tất cả learner enrolled..."
+              placeholder="Nội dung thông báo..."
               value={message}
               onChange={e => setMessage(e.target.value)}
             />
           </div>
           <p className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2 rounded-md">
-            ⚠️ Thông báo sẽ được gửi cho <strong>tất cả learner</strong> đang enrolled trong khóa học này.
+            ⚠️ Thông báo sẽ gửi cho learner đã <strong>đăng ký</strong> khóa học + <strong>thuộc team</strong> được phân quyền xem khóa học này.
           </p>
         </div>
 
@@ -796,7 +796,7 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
           <Button variant="outline" onClick={onClose}>Hủy</Button>
           <Button
             onClick={() => sendMut.mutate()}
-            disabled={sendMut.isPending || !message.trim()}
+            disabled={sendMut.isPending || !title.trim() || !message.trim()}
             className="bg-amber-600 hover:bg-amber-700 text-white"
           >
             {sendMut.isPending ? 'Đang gửi...' : 'Gửi thông báo'}

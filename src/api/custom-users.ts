@@ -25,6 +25,8 @@ export interface CustomUser {
   last_login_at: string | null;
   created_at: string;
   permission_groups?: { id: string; name: string }[];
+  permission_group_id?: string | null;
+  permission_group_name?: string | null;
 }
 
 interface PaginatedResponse<T> {

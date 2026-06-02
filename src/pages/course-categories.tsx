@@ -133,7 +133,7 @@ export default function CourseCategoriesPage() {
 
   // ── Detail view (courses in category) ──
   if (detailCatId) {
-    return <CategoryDetailView catId={detailCatId} onBack={() => setDetailCatId(null)} />;
+    return <CategoryDetailView catId={detailCatId} onBack={() => setDetailCatId(null)} canEdit={canEdit} canDelete={canDelete} />;
   }
 
   return (
@@ -263,7 +263,7 @@ export default function CourseCategoriesPage() {
 // Category Detail View — Courses inside a category
 // ═══════════════════════════════════════
 
-function CategoryDetailView({ catId, onBack }: { catId: string; onBack: () => void }) {
+function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: string; onBack: () => void; canEdit: boolean; canDelete: boolean }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -311,9 +311,9 @@ function CategoryDetailView({ catId, onBack }: { catId: string; onBack: () => vo
             <p className="text-sm text-muted-foreground">{courses.length} courses</p>
           </div>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="gap-2">
+        {canEdit && <Button onClick={() => setAddOpen(true)} className="gap-2">
           <BookPlus className="h-4 w-4" /> Thêm course
-        </Button>
+        </Button>}
       </div>
 
       {isLoading ? (
@@ -336,13 +336,13 @@ function CategoryDetailView({ catId, onBack }: { catId: string; onBack: () => vo
                 <p className="text-sm font-medium text-foreground truncate">{c.display_name}</p>
                 <p className="text-[11px] text-muted-foreground truncate font-mono">{c.course_id}</p>
               </div>
-              <button
+              {canDelete && <button
                 onClick={() => handleRemove(c.course_id, c.display_name)}
                 disabled={removeMutation.isPending}
                 className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
               >
                 {removeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              </button>
+              </button>}
             </div>
           ))}
         </div>

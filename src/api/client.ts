@@ -62,9 +62,28 @@ apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
+
+    // 401 sau retry → refresh đã thất bại → logout
+    if (error.response?.status === 401 && originalRequest._retried) {
+      const store = await getAuthStore();
+      store.getState().logout();
+      window.location.href = "/login?session=expired";
+      return Promise.reject(error);
+    }
+
     if (error.response?.status !== 401 || originalRequest._retried) {
       return Promise.reject(error);
     }
+
+    // Tài khoản bị khóa bởi Admin → logout ngay, KHÔNG thử refresh
+    const responseData = error.response?.data as Record<string, unknown> | undefined;
+    if (responseData?.error === "account_disabled") {
+      const store = await getAuthStore();
+      store.getState().logout();
+      window.location.href = "/login?error=account_disabled";
+      return Promise.reject(error);
+    }
+
     originalRequest._retried = true;
 
     const store = await getAuthStore();
@@ -93,6 +112,7 @@ apiClient.interceptors.response.use(
     }
 
     store.getState().logout();
+    window.location.href = "/login?session=expired";
     return Promise.reject(error);
   }
 );

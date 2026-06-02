@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { TenantFilter } from '@/components/shared/TenantFilter';
 import { useTenantStore } from '@/utils/tenant-store';
 import { toast } from "sonner";
 import {
   ShieldCheck, Plus, Pencil, Trash2, Search, Loader2, Users, UserPlus, X,
-  Check, ToggleLeft, ToggleRight, Shield, Eye, PlusCircle, Edit3, Trash, Save, ChevronRight,
+  Check, ToggleLeft, ToggleRight, Shield, Eye, PlusCircle, Edit3, Trash, Save, ChevronRight, Undo2,
 } from "lucide-react";
 import { useAuthStore } from "@/utils/store";
 import { useHeaderInfo } from "@/utils/header-store";
@@ -64,6 +65,10 @@ export default function PermissionGroupsPage() {
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
 
+  // ── Pending member changes (local until save) ──
+  const [pendingAddMembers, setPendingAddMembers] = useState<GroupMember[]>([]);
+  const [pendingRemoveIds, setPendingRemoveIds] = useState<string[]>([]);
+
   // ── Add Member dialog ──
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
@@ -115,6 +120,8 @@ export default function PermissionGroupsPage() {
   async function openDetail(groupId: string) {
     setDetailLoading(true);
     setMatrixDirty(false);
+    setPendingAddMembers([]);
+    setPendingRemoveIds([]);
     setShowDetail(true);
     try {
       const d = await fetchPermGroupById(groupId);
@@ -158,19 +165,41 @@ export default function PermissionGroupsPage() {
     setMatrixDirty(true);
   }
 
-  async function saveMatrix() {
+  // ── Unified save: matrix + member changes ──
+  async function saveAll() {
     if (!detail) return;
     setSaving(true);
     try {
-      await updatePermMatrix(
-        detail.id,
-        matrixPerms.map(function mapPerm(p) {
-          return { module_code: p.code, can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_delete: p.can_delete };
-        })
-      );
-      toast.success("Cập nhật quyền thành công");
+      // 1) Save permission matrix if changed
+      if (matrixDirty) {
+        await updatePermMatrix(
+          detail.id,
+          matrixPerms.map(function mapPerm(p) {
+            return { module_code: p.code, can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_delete: p.can_delete };
+          })
+        );
+      }
+
+      // 2) Remove members
+      for (const userId of pendingRemoveIds) {
+        await removeMemberFromGroup(detail.id, userId);
+      }
+
+      // 3) Add new members
+      if (pendingAddMembers.length > 0) {
+        await addMembersToGroup(detail.id, pendingAddMembers.map(m => m.id));
+      }
+
+      toast.success("Đã lưu thay đổi");
       setMatrixDirty(false);
-    } catch { toast.error("Lỗi cập nhật quyền"); }
+      setPendingAddMembers([]);
+      setPendingRemoveIds([]);
+      setShowDetail(false);
+      setDetail(null);
+
+      // Reload group list
+      loadGroups();
+    } catch { toast.error("Lỗi lưu thay đổi"); }
     finally { setSaving(false); }
   }
 
@@ -216,15 +245,27 @@ export default function PermissionGroupsPage() {
     });
   }
 
-  // ── Member management — auto-load staff users của tenant ──
+  // ── Member management — load ALL staff users with their current group info ──
   async function loadStaffForAdd(searchTerm = "") {
     setMemberLoading(true);
     try {
       const result = await fetchUsers({ page: 1, page_size: 100, role: "staff", search: searchTerm || undefined });
-      const existingIds = new Set(detail?.members.map(function getId(m) { return m.id; }) || []);
-      setMemberResults(result.data.filter(function notIn(u) { return !existingIds.has(u.id); }));
+      // Show all staff — those already in THIS group will be hidden; those in OTHER groups will be disabled
+      setMemberResults(result.data);
     } catch { toast.error("Lỗi tải danh sách staff"); }
     finally { setMemberLoading(false); }
+  }
+
+  // Check if a user is already a member of the currently-viewed group (original + pending)
+  function isAlreadyInThisGroup(userId: string) {
+    if (pendingRemoveIds.includes(userId)) return false; // marked for removal
+    if (pendingAddMembers.some(m => m.id === userId)) return true;
+    return detail?.members.some(function check(m) { return m.id === userId; }) ?? false;
+  }
+
+  // Check if a user is in ANOTHER group (not this one)
+  function isInOtherGroup(user: CustomUser) {
+    return !!user.permission_group_id && user.permission_group_id !== detail?.id;
   }
 
   function toggleUserSelect(userId: string) {
@@ -233,40 +274,62 @@ export default function PermissionGroupsPage() {
     });
   }
 
-  async function handleAddMembers() {
-    if (!detail || selectedUserIds.length === 0) return;
-    setSaving(true);
-    try {
-      const result = await addMembersToGroup(detail.id, selectedUserIds);
-      toast.success(`Đã thêm ${result.added} thành viên`);
-      setShowAddMember(false);
-      setSelectedUserIds([]);
-      setMemberSearch("");
-      setMemberResults([]);
-      openDetail(detail.id);
-      loadGroups();
-    } catch { toast.error("Lỗi thêm thành viên"); }
-    finally { setSaving(false); }
+  // Add members locally (pending until save)
+  function handleAddMembersLocal() {
+    if (!detail) return;
+    // Get full user info for selected users
+    const usersToAdd = memberResults.filter(u => selectedUserIds.includes(u.id));
+    const newMembers: GroupMember[] = usersToAdd.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      full_name: u.full_name,
+      avatar_url: u.avatar_url,
+    }));
+
+    // Add to pending, also remove from pendingRemoveIds if re-adding
+    setPendingAddMembers(prev => {
+      const existingIds = new Set(prev.map(m => m.id));
+      return [...prev, ...newMembers.filter(m => !existingIds.has(m.id))];
+    });
+    setPendingRemoveIds(prev => prev.filter(id => !selectedUserIds.includes(id)));
+
+    setShowAddMember(false);
+    setSelectedUserIds([]);
+    setMemberSearch("");
+    setMemberResults([]);
+    toast.success(`Đã thêm ${usersToAdd.length} thành viên (chưa lưu)`);
   }
 
-  async function handleRemoveMember(userId: string, username: string) {
-    if (!detail) return;
-    confirmDialog({
-      title: "Xóa thành viên",
-      description: `Xóa ${username} khỏi nhóm quyền "${detail.name}"?`,
-      variant: "destructive",
-      onConfirm: async function doRemove() {
-        try {
-          await removeMemberFromGroup(detail!.id, userId);
-          toast.success("Đã xóa thành viên");
-          openDetail(detail!.id);
-          loadGroups();
-        } catch { toast.error("Lỗi xóa thành viên"); }
-      },
-    });
+  // Remove member locally (pending until save)
+  function handleRemoveMemberLocal(userId: string, username: string) {
+    // If this is a pending add, just remove from pending
+    if (pendingAddMembers.some(m => m.id === userId)) {
+      setPendingAddMembers(prev => prev.filter(m => m.id !== userId));
+      toast.success(`Đã bỏ ${username} (chưa lưu)`);
+      return;
+    }
+    // If this is an original member, mark for removal
+    setPendingRemoveIds(prev => [...prev, userId]);
+    toast.success(`Đã đánh dấu xóa ${username} (chưa lưu)`);
+  }
+
+  // Undo a pending removal
+  function undoRemoveMember(userId: string) {
+    setPendingRemoveIds(prev => prev.filter(id => id !== userId));
   }
 
   const totalPages = Math.ceil(total / limit) || 1;
+
+  // ── Computed: local members list (original + pending adds - pending removes) ──
+  const localMembers: GroupMember[] = (() => {
+    if (!detail) return [];
+    const origFiltered = detail.members.filter(m => !pendingRemoveIds.includes(m.id));
+    return [...origFiltered, ...pendingAddMembers];
+  })();
+
+  // ── Computed: is anything dirty? ──
+  const isDirty = matrixDirty || pendingAddMembers.length > 0 || pendingRemoveIds.length > 0;
 
   // Count enabled permissions for a module
   function countEnabled(p: ModulePermission) {
@@ -314,14 +377,26 @@ export default function PermissionGroupsPage() {
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-card rounded-2xl border border-border/50 p-5 space-y-3">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-3 w-full" />
-              <div className="flex gap-2 pt-2">
-                <Skeleton className="h-6 w-16 rounded-full" />
-                <Skeleton className="h-6 w-20 rounded-full" />
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="bg-card rounded-2xl border border-border/50 p-5 space-y-3 flex flex-col"
+            >
+              <div className="flex items-center gap-2.5">
+                <Skeleton className="h-9 w-9 rounded-xl shrink-0" />
+                <div className="space-y-1.5 flex-1">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
               </div>
-            </div>
+              <Skeleton className="h-3 w-full" />
+              <div className="flex gap-2 pt-2 mt-auto">
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            </motion.div>
           ))}
         </div>
       ) : groups.length === 0 ? (
@@ -343,12 +418,15 @@ export default function PermissionGroupsPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {groups.map(function renderCard(g) {
+          {groups.map(function renderCard(g, idx) {
             return (
-              <div
+              <motion.div
                 key={g.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: idx * 0.06, ease: [0.25, 0.46, 0.45, 0.94] }}
                 onClick={function open() { openDetail(g.id); }}
-                className="group bg-card hover:bg-accent/30 rounded-2xl border border-border/50 hover:border-primary/30 p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 relative overflow-hidden"
+                className="group bg-card hover:bg-accent/30 rounded-2xl border border-border/50 hover:border-primary/30 p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 relative overflow-hidden flex flex-col"
               >
                 {/* Decorative gradient line */}
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -391,9 +469,7 @@ export default function PermissionGroupsPage() {
                   )}
                 </div>
 
-                {g.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">{g.description}</p>
-                )}
+                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed flex-1">{g.description || '\u00A0'}</p>
 
                 <div className="flex items-center gap-2 mt-auto pt-1">
                   <Badge variant="secondary" className="text-[10px] font-medium gap-1 bg-primary/8 text-primary border-primary/15 hover:bg-primary/12 px-2 py-0.5">
@@ -404,7 +480,7 @@ export default function PermissionGroupsPage() {
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 ml-auto group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -418,7 +494,27 @@ export default function PermissionGroupsPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* ── Detail Dialog (Tabs: Phân quyền + Thành viên) ──       */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <Dialog open={showDetail} onOpenChange={function close(v) { if (!v) { setShowDetail(false); setDetail(null); } }}>
+      <Dialog open={showDetail} onOpenChange={function close(v) {
+        if (!v) {
+          if (isDirty) {
+            confirmDialog({
+              title: "Có thay đổi chưa lưu",
+              description: "Bạn có thay đổi chưa lưu. Nếu đóng, tất cả thay đổi sẽ bị mất.",
+              variant: "destructive",
+              onConfirm: function discard() {
+                setShowDetail(false);
+                setDetail(null);
+                setMatrixDirty(false);
+                setPendingAddMembers([]);
+                setPendingRemoveIds([]);
+              },
+            });
+          } else {
+            setShowDetail(false);
+            setDetail(null);
+          }
+        }
+      }}>
         <DialogContent className="sm:max-w-6xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col p-0 rounded-2xl gap-0">
           {/* Dialog header */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-border/50 bg-primary/5">
@@ -431,36 +527,68 @@ export default function PermissionGroupsPage() {
                 <p className="text-xs text-muted-foreground truncate">{detail.description}</p>
               )}
             </div>
-            {matrixDirty && (
-              <Button
-                onClick={saveMatrix}
-                disabled={saving}
-                size="sm"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 gap-1.5 shadow-md shadow-primary/20"
-              >
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Lưu thay đổi
-              </Button>
+            {isDirty && (
+              <div className="flex items-center gap-2">
+                {/* Change summary badges */}
+                <div className="flex items-center gap-1.5">
+                  {matrixDirty && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">Quyền</span>
+                  )}
+                  {pendingAddMembers.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">+{pendingAddMembers.length}</span>
+                  )}
+                  {pendingRemoveIds.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400 font-medium">-{pendingRemoveIds.length}</span>
+                  )}
+                </div>
+                <Button
+                  onClick={saveAll}
+                  disabled={saving}
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 gap-1.5 shadow-md shadow-primary/20"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Lưu thay đổi
+                </Button>
+              </div>
             )}
           </div>
 
           {detailLoading ? (
-            <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            <div className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: '55vh' }}>
+              {/* Skeleton tabs */}
+              <div className="flex gap-2 mx-6 mt-4">
+                <Skeleton className="h-9 w-40 rounded-lg" />
+                <Skeleton className="h-9 w-32 rounded-lg" />
+              </div>
+              {/* Skeleton matrix */}
+              <div className="px-6 pb-6 mt-4 space-y-2 flex-1">
+                <Skeleton className="h-10 w-full rounded-lg" />
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full rounded-lg" style={{ opacity: 1 - i * 0.12 }} />
+                ))}
+              </div>
+            </div>
           ) : detail ? (
-            <Tabs defaultValue="permissions" className="flex-1 overflow-hidden flex flex-col">
+            <Tabs defaultValue="permissions" className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: '55vh' }}>
               <TabsList className="shrink-0 mx-6 mt-4 bg-muted/50 p-1 rounded-xl h-auto">
                 <TabsTrigger value="permissions" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm gap-2 text-xs font-medium py-2 px-4">
                   <Shield className="h-3.5 w-3.5" /> Ma trận phân quyền
                 </TabsTrigger>
                 <TabsTrigger value="members" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm gap-2 text-xs font-medium py-2 px-4">
                   <Users className="h-3.5 w-3.5" /> Thành viên
-                  <Badge variant="secondary" className="ml-0.5 text-[10px] px-1.5 py-0 h-4 font-mono">{detail.members.length}</Badge>
+                  <Badge variant="secondary" className={`ml-0.5 text-[10px] px-1.5 py-0 h-4 font-mono ${(pendingAddMembers.length > 0 || pendingRemoveIds.length > 0) ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : ''}`}>{localMembers.length}</Badge>
                 </TabsTrigger>
               </TabsList>
 
               {/* ── Tab: Permissions matrix ── */}
               <TabsContent value="permissions" className="flex-1 overflow-auto px-6 pb-6 mt-4">
-                <div className="rounded-xl border border-border/50 overflow-hidden shadow-sm">
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="rounded-xl border border-border/50 overflow-hidden shadow-sm"
+                >
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-border/50 bg-muted/30">
@@ -538,16 +666,28 @@ export default function PermissionGroupsPage() {
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </motion.div>
               </TabsContent>
 
               {/* ── Tab: Members ── */}
               <TabsContent value="members" className="flex-1 overflow-auto px-6 pb-6 mt-4">
-                <div className="space-y-4">
+                <motion.div
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
+                >
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      {detail.members.length > 0 ? `${detail.members.length} thành viên trong nhóm` : 'Chưa có thành viên'}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        {localMembers.length > 0 ? `${localMembers.length} thành viên` : 'Chưa có thành viên'}
+                      </p>
+                      {(pendingAddMembers.length > 0 || pendingRemoveIds.length > 0) && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium italic">
+                          chưa lưu
+                        </span>
+                      )}
+                    </div>
                     {canEdit && <Button
                       size="sm"
                       onClick={function open() { setShowAddMember(true); setMemberSearch(""); setMemberResults([]); setSelectedUserIds([]); loadStaffForAdd(); }}
@@ -557,7 +697,33 @@ export default function PermissionGroupsPage() {
                     </Button>}
                   </div>
 
-                  {detail.members.length === 0 ? (
+                  {/* Pending removals — show with undo option */}
+                  {pendingRemoveIds.length > 0 && (
+                    <div className="space-y-1">
+                      {detail.members.filter(m => pendingRemoveIds.includes(m.id)).map(function renderRemoved(m) {
+                        return (
+                          <div key={m.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-dashed border-red-300 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/5">
+                            <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-500/15 flex items-center justify-center text-xs font-bold text-red-400 shrink-0 line-through">
+                              {m.username?.[0]?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm text-red-600 dark:text-red-400 truncate line-through opacity-60">{m.full_name || m.username}</p>
+                              <p className="text-[10px] text-red-400 dark:text-red-500 truncate">Đánh dấu xóa</p>
+                            </div>
+                            <button
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
+                              onClick={function undo() { undoRemoveMember(m.id); }}
+                              title="Hoàn tác"
+                            >
+                              <Undo2 className="h-3 w-3" /> Hoàn tác
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {localMembers.length === 0 && pendingRemoveIds.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <div className="w-14 h-14 rounded-2xl bg-muted/30 flex items-center justify-center mb-3">
                         <Users className="w-7 h-7 text-muted-foreground/20" />
@@ -567,29 +733,45 @@ export default function PermissionGroupsPage() {
                     </div>
                   ) : (
                     <div className="grid gap-2">
-                      {detail.members.map(function renderMember(m) {
+                      {localMembers.map(function renderMember(m) {
+                        const isPendingAdd = pendingAddMembers.some(p => p.id === m.id);
                         return (
-                          <div key={m.id} className="group flex items-center gap-3 p-3 rounded-xl border border-border/30 hover:border-primary/20 bg-card hover:bg-accent/20 transition-all">
-                            <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                          <div key={m.id} className={`group flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                            isPendingAdd
+                              ? 'border-emerald-300 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5'
+                              : 'border-border/30 hover:border-primary/20 bg-card hover:bg-accent/20'
+                          }`}>
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
+                              isPendingAdd
+                                ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-primary/15 text-primary'
+                            }`}>
                               {m.username?.[0]?.toUpperCase() || "U"}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm text-foreground truncate">{m.full_name || m.username}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-medium text-sm text-foreground truncate">{m.full_name || m.username}</p>
+                                {isPendingAdd && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium shrink-0">Mới</span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
                             </div>
-                            <button
-                              className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
-                              onClick={function remove() { handleRemoveMember(m.id, m.full_name || m.username); }}
-                              title="Xóa khỏi nhóm"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                                onClick={function remove() { handleRemoveMemberLocal(m.id, m.full_name || m.username); }}
+                                title="Xóa khỏi nhóm"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   )}
-                </div>
+                </motion.div>
               </TabsContent>
             </Tabs>
           ) : null}
@@ -600,14 +782,23 @@ export default function PermissionGroupsPage() {
       {/* ── Add Member Dialog ──                                    */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
-        <DialogContent className="max-w-md rounded-2xl">
+        <DialogContent className="max-w-lg rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" /> Thêm thành viên
             </DialogTitle>
-            <DialogDescription>Tìm và chọn user để thêm vào nhóm "{detail?.name}"</DialogDescription>
+            <DialogDescription>Chọn staff để thêm vào nhóm "{detail?.name}"</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+
+          {/* Info: 1 group per user rule */}
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
+            <Shield className="h-3.5 w-3.5 text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+              Mỗi staff chỉ được gán vào <span className="font-semibold">1 nhóm quyền duy nhất</span>. Staff đã có nhóm sẽ không thể chọn.
+            </p>
+          </div>
+
+          <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
               <Input
@@ -628,34 +819,67 @@ export default function PermissionGroupsPage() {
               </Button>
             </div>
 
-            <div className="max-h-[300px] overflow-y-auto rounded-xl border border-border/50">
+            <div className="max-h-[350px] overflow-y-auto rounded-xl border border-border/50">
               {memberResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                   <Search className="h-6 w-6 text-muted-foreground/20 mb-2" />
                   <p className="text-xs text-muted-foreground">
-                    {memberSearch ? "Không tìm thấy user" : "Nhập từ khóa và nhấn Enter để tìm"}
+                    {memberLoading ? "Đang tải..." : memberSearch ? "Không tìm thấy staff" : "Nhập từ khóa và nhấn Enter để tìm"}
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-border/30">
                   {memberResults.map(function renderResult(u) {
+                    // Skip users already in THIS group
+                    if (isAlreadyInThisGroup(u.id)) return null;
+
+                    const inOtherGroup = isInOtherGroup(u);
                     const isSelected = selectedUserIds.includes(u.id);
+                    const isDisabled = inOtherGroup;
+
                     return (
                       <div
                         key={u.id}
-                        className={`flex items-center gap-3 p-3 cursor-pointer transition-all ${isSelected ? "bg-primary/5" : "hover:bg-muted/30"}`}
-                        onClick={function click() { toggleUserSelect(u.id); }}
+                        className={`flex items-center gap-3 p-3 transition-all ${
+                          isDisabled
+                            ? "opacity-60 cursor-not-allowed bg-muted/20"
+                            : isSelected
+                              ? "bg-primary/5 cursor-pointer"
+                              : "hover:bg-muted/30 cursor-pointer"
+                        }`}
+                        onClick={function click() {
+                          if (!isDisabled) toggleUserSelect(u.id);
+                        }}
                       >
-                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                          isSelected ? 'bg-primary border-primary' : 'border-border/50'
+                        {/* Checkbox */}
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
+                          isDisabled
+                            ? 'border-border/30 bg-muted/30'
+                            : isSelected
+                              ? 'bg-primary border-primary'
+                              : 'border-border/50'
                         }`}>
-                          {isSelected && <Check className="h-3 w-3 text-white" />}
+                          {isSelected && !isDisabled && <Check className="h-3 w-3 text-white" />}
+                          {isDisabled && <X className="h-3 w-3 text-muted-foreground/40" />}
                         </div>
+
+                        {/* User info */}
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-sm truncate">{u.full_name || u.username}</p>
                           <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>
                         </div>
-                        <Badge variant="outline" className="shrink-0 text-[10px] rounded-md">{u.role}</Badge>
+
+                        {/* Group status */}
+                        {inOtherGroup ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 shrink-0">
+                            <Shield className="h-2.5 w-2.5" />
+                            {u.permission_group_name || "Nhóm khác"}
+                          </span>
+                        ) : (
+                          <Badge variant="outline" className="shrink-0 text-[10px] rounded-md text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10">
+                            Chưa gán
+                          </Badge>
+                        )}
                       </div>
                     );
                   })}
@@ -668,17 +892,22 @@ export default function PermissionGroupsPage() {
                 <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
                   {selectedUserIds.length} đã chọn
                 </Badge>
+                <button
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={function clear() { setSelectedUserIds([]); }}
+                >
+                  Bỏ chọn tất cả
+                </button>
               </div>
             )}
           </div>
           <DialogFooter className="gap-2">
             <DialogClose asChild><Button variant="outline" className="rounded-xl">Hủy</Button></DialogClose>
             <Button
-              onClick={handleAddMembers}
-              disabled={saving || selectedUserIds.length === 0}
+              onClick={handleAddMembersLocal}
+              disabled={selectedUserIds.length === 0}
               className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 rounded-xl gap-1.5"
             >
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Thêm {selectedUserIds.length > 0 ? `(${selectedUserIds.length})` : ''}
             </Button>
           </DialogFooter>

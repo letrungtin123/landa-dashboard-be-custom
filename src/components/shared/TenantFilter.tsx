@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// TenantFilter — Bộ lọc tenant cho superadmin + superuser multi-tenant
+// TenantFilter — Bộ lọc tenant CHỈ cho superadmin
 // Hiển thị dropdown chọn tenant
-// Render khi user.role === 'superadmin' hoặc superuser có nhiều managed_tenants
+// Render khi user.role === 'superadmin'
 // ═══════════════════════════════════════════════════════════════
 
 import { useEffect } from 'react';
@@ -29,17 +29,16 @@ export function TenantFilter({ className }: TenantFilterProps) {
   const qc = useQueryClient();
 
   const isSuperadmin = user?.role === 'superadmin';
-  const isSuperuserMultiTenant = user?.role === 'superuser' && managedTenants.length > 1;
-  const canSwitch = isSuperadmin || isSuperuserMultiTenant;
+  const canSwitch = isSuperadmin;
 
-  // Fetch tenants khi mount (superadmin hoặc superuser multi-tenant)
+  // Fetch tenants khi mount (chỉ superadmin)
   useEffect(() => {
     if (canSwitch && tenants.length === 0) {
       fetchTenants();
     }
   }, [canSwitch, tenants.length, fetchTenants]);
 
-  // Không hiển thị nếu không có quyền switch
+  // Không hiển thị nếu không phải superadmin
   if (!canSwitch) return null;
 
   const handleChange = (tenantId: string) => {

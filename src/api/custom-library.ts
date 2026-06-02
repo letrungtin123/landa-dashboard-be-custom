@@ -79,9 +79,12 @@ export async function getDocuments(params: { page?: number; page_size?: number; 
 }
 
 export async function uploadDocument(formData: FormData) {
-  // For now, create via JSON (file upload needs separate handling with multer)
-  const { data } = await customApiClient.post<ApiResponse<Document>>("/api/library/documents", formData);
-  return { success: true, created: 1, errors: [] as string[] };
+  const { data } = await customApiClient.post<ApiResponse<Document>>(
+    "/api/library/documents/upload",
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return { success: true, created: 1, document: data.data, errors: [] as string[] };
 }
 
 export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; category_id?: string | null }) {

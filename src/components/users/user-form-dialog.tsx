@@ -80,10 +80,12 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
   const tenantTotalPages = tenantData?.totalPages ?? 1;
   const tenantTotal = tenantData?.total ?? 0;
 
-  // Load managed tenants nếu đang edit superuser
+  // Load managed tenants nếu đang edit superuser — KHÔNG CÒN CẦN vì superuser chỉ 1 tenant
+  // Giữ lại managed tenants state cho superadmin assignment flow (nếu có)
   useEffect(function loadManagedTenants() {
     if (!isSuperadmin || !open) return;
-    if (isEditing && user?.role === 'superuser') {
+    // Chỉ load nếu edit user có role superadmin (multi-tenant)
+    if (isEditing && user?.role === 'superadmin') {
       getUserTenants(user.id)
         .then(function onOk(res) { setManagedTenantIds(res.map(r => r.tenant_id)); })
         .catch(function onErr() { /* ignore */ });
@@ -136,8 +138,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
       if (isEditing) {
         await updateUser(user!.id, payload);
 
-        // Lưu managed tenants nếu đang edit superuser
-        if (isSuperadmin && user!.role === 'superuser') {
+        // Lưu managed tenants nếu đang edit superadmin (multi-tenant)
+        if (isSuperadmin && user!.role === 'superadmin') {
           try {
             await setUserTenants(user!.id, managedTenantIds);
           } catch { /* ignore — non-critical */ }
@@ -147,8 +149,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
       } else {
         const newUser = await createUser(payload);
 
-        // Gán managed tenants cho superuser mới tạo
-        if (isSuperadmin && payload.role === 'superuser' && managedTenantIds.length > 0) {
+        // Gán managed tenants cho superadmin mới tạo (multi-tenant)
+        if (isSuperadmin && payload.role === 'superadmin' && managedTenantIds.length > 0) {
           try {
             await setUserTenants(newUser.id, managedTenantIds);
           } catch { /* ignore — non-critical */ }
@@ -329,8 +331,20 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                   </div>
                 )}
 
-                {/* Tenant selector — superadmin tạo mới (non-superuser) */}
-                {isSuperadmin && !isEditing && watchedRole !== 'superuser' && (
+                {/* Warning: changing staff/superuser role to learner removes from permission groups + teams */}
+                {isEditing && (user?.role === 'staff' || user?.role === 'superuser') && watchedRole === 'learner' && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-red-800 dark:text-red-300 leading-relaxed">
+                      <span className="font-semibold">Cảnh báo:</span> Đổi vai trò của <span className="font-semibold">{user.username}</span> từ <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">{user.role}</span> sang <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">learner</span> sẽ tự động:<br/>
+                      • Xóa khỏi <span className="font-semibold">Nhóm quyền (Permission Group)</span> hiện tại<br/>
+                      • Xóa khỏi tất cả <span className="font-semibold">Teams</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tenant selector — superadmin tạo mới (learner/staff/superuser đều chọn 1 tenant) */}
+                {isSuperadmin && !isEditing && watchedRole !== 'superadmin' && (
                   <FormField control={form.control} name="tenant_id" render={function renderField({ field }) {
                     return (
                       <FormItem>
@@ -351,8 +365,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                   }} />
                 )}
 
-                {/* Managed Tenants — superadmin + role superuser (cả tạo mới và edit) */}
-                {isSuperadmin && watchedRole === 'superuser' && (
+                {/* Managed Tenants — CHỈ khi tạo/edit superadmin (multi-tenant) */}
+                {isSuperadmin && watchedRole === 'superadmin' && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 mb-1">
                       <Building2 className="h-3.5 w-3.5 text-muted-foreground" />

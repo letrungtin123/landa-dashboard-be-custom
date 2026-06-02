@@ -157,8 +157,8 @@ export const useAuthStore = create<AuthState>()(
         set(mapLoginResponseToState(data));
         get().scheduleTokenRefresh();
 
-        // Superadmin hoặc superuser multi-tenant: auto-fetch tenant list cho bộ lọc
-        if (data.user.role === 'superadmin' || (data.user.role === 'superuser' && (data.managed_tenants || []).length > 1)) {
+        // CHỈ superadmin mới cần fetch tenant list cho bộ lọc (multi-tenant)
+        if (data.user.role === 'superadmin') {
           try {
             const { useTenantStore } = await import('@/utils/tenant-store');
             useTenantStore.getState().fetchTenants();

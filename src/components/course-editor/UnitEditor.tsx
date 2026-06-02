@@ -745,14 +745,18 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     }
 
     case 'la_crossword': {
-      const parsed = parseMaybeJson(blockData?.metadata?.crossword_data || blockData?.crossword_data);
-      return <CrosswordPreviewInteractive parsed={parsed} />;
+      // Support both formats: metadata.crossword_data.words OR metadata.words
+      const cd = parseMaybeJson(blockData?.metadata?.crossword_data || blockData?.crossword_data);
+      const words = cd?.words || blockData?.metadata?.words || [];
+      return <CrosswordPreviewInteractive parsed={{ words, keyword_coordinates: cd?.keyword_coordinates || blockData?.metadata?.keyword_coordinates || [], grid_size: cd?.grid_size || blockData?.metadata?.grid_size || 10 }} />;
     }
 
     case 'la_sortable': {
-      const parsed = parseMaybeJson(blockData?.metadata?.sortable_data || blockData?.sortable_data);
-      const qt = blockData?.metadata?.question_text || blockData?.question_text || '';
-      return <SortablePreviewInteractive parsed={parsed} questionText={qt} />;
+      // Support both formats: metadata.sortable_data.items OR metadata.items
+      const sd = parseMaybeJson(blockData?.metadata?.sortable_data || blockData?.sortable_data);
+      const items = sd?.items || blockData?.metadata?.items || [];
+      const qt = blockData?.metadata?.question_text || blockData?.question_text || sd?.question_text || '';
+      return <SortablePreviewInteractive parsed={{ items }} questionText={qt} />;
     }
     case 'la_diagram': {
       const parsed = parseMaybeJson(blockData?.metadata?.diagram_data || blockData?.diagram_data);
@@ -771,8 +775,9 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     }
 
     case 'la_faq': {
-      const parsed = parseMaybeJson(blockData?.metadata?.faq_data || blockData?.faq_data);
-      const faqItems = parsed?.items || [];
+      // Support both formats: metadata.faq_data.items OR metadata.items
+      const fd = parseMaybeJson(blockData?.metadata?.faq_data || blockData?.faq_data);
+      const faqItems = fd?.items || blockData?.metadata?.items || [];
 
       if (faqItems.length === 0) {
         return (
@@ -1238,13 +1243,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
   const [cwWords, setCwWords] = useState<CrosswordWord[]>(() => {
     const raw = blockInfo?.metadata?.crossword_data || blockInfo?.crossword_data;
     const parsed = parseMaybeJson(raw);
-    return Array.isArray(parsed.words) ? parsed.words : [];
+    // Support both: parsed.words (nested) OR metadata.words (root-level)
+    const words = Array.isArray(parsed?.words) ? parsed.words : (Array.isArray(blockInfo?.metadata?.words) ? blockInfo.metadata.words : []);
+    return words;
   });
 
   const [cwKeywordCol, setCwKeywordCol] = useState<number>(() => {
     const raw = blockInfo?.metadata?.crossword_data || blockInfo?.crossword_data;
     const parsed = parseMaybeJson(raw);
-    const kc = parsed?.keyword_coordinates;
+    const kc = parsed?.keyword_coordinates || blockInfo?.metadata?.keyword_coordinates;
     if (Array.isArray(kc) && kc.length > 0) {
       return kc[0].col ?? 0;
     }
@@ -1257,7 +1264,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
   const [soItems, setSoItems] = useState<SortableItem[]>(() => {
     const raw = blockInfo?.metadata?.sortable_data || blockInfo?.sortable_data;
     const parsed = parseMaybeJson(raw);
-    return Array.isArray(parsed.items) ? parsed.items : [];
+    // Support both: parsed.items (nested) OR metadata.items (root-level)
+    const items = Array.isArray(parsed?.items) ? parsed.items : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []);
+    return items;
   });
 
   const [diagramData, setDiagramData] = useState<DiagramXBlockData>(() => {
@@ -1269,7 +1278,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
   const [faqItems, setFaqItems] = useState<FaqItem[]>(() => {
     const raw = blockInfo?.metadata?.faq_data || blockInfo?.faq_data;
     const parsed = parseMaybeJson(raw);
-    return Array.isArray(parsed.items) ? parsed.items : [];
+    // Support both: parsed.items (nested) OR metadata.items (root-level)
+    const items = Array.isArray(parsed?.items) ? parsed.items : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []);
+    return items;
   });
 
   const [pdfUrl, setPdfUrl] = useState(

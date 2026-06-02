@@ -31,9 +31,9 @@ const ROLE_LABEL: Record<string, string> = {
   staff: 'Nhân viên',
   learner_plus: 'Quản lý nhóm',
 };
-const GENDER_MAP: Record<string, string> = { m: 'Nam', f: 'Nữ', o: 'Khác' };
+const GENDER_MAP: Record<string, string> = { male: 'Nam', female: 'Nữ', other: 'Khác' };
 const COUNTRY_MAP: Record<string, string> = { VN: 'Việt Nam', US: 'Hoa Kỳ', JP: 'Nhật Bản', KR: 'Hàn Quốc', GB: 'Anh', OTHER: 'Khác' };
-const EDU_MAP: Record<string, string> = { p: 'Tiến sĩ', m: 'Thạc sĩ', b: 'Cử nhân', a: 'Cao đẳng', hs: 'THPT', jhs: 'THCS', el: 'Tiểu học', none: 'Không có', other: 'Khác' };
+const EDU_MAP: Record<string, string> = { doctorate: 'Tiến sĩ', master: 'Thạc sĩ', bachelor: 'Cử nhân', associate: 'Cao đẳng', high_school: 'THPT', junior_high: 'THCS', primary: 'Tiểu học', none: 'Không có', other: 'Khác' };
 const LANG_MAP: Record<string, string> = { vi: 'Tiếng Việt', en: 'English', ja: '日本語', ko: '한국어', zh: '中文' };
 
 const containerVariants = {
@@ -182,15 +182,22 @@ export default function ProfilePage() {
       if (avatarFile) {
         const fd = new FormData();
         fd.append('file', avatarFile);
-        await customApiClient.post('/api/users/profile/avatar', fd, {
+        const avatarRes = await customApiClient.post('/api/users/profile/avatar', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+        let newAvatarUrl = avatarRes.data?.data?.avatar_url;
+        if (newAvatarUrl) {
+          // Cache-bust: append timestamp to prevent browser caching old image
+          const bustUrl = `${newAvatarUrl}${newAvatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+          updateUser({ name: form.name, avatar: bustUrl, avatar_url: bustUrl });
+        }
         setAvatarFile(null);
-        setAvatarPreview(null);
+      } else {
+        updateUser({ name: form.name });
       }
 
-      updateUser({ name: form.name });
       await loadProfile();
+      setAvatarPreview(null);
       setToast({ msg: 'Cập nhật hồ sơ thành công!', type: 'success' });
     } catch {
       setToast({ msg: 'Cập nhật thất bại. Vui lòng thử lại.', type: 'error' });
@@ -255,8 +262,9 @@ export default function ProfilePage() {
   };
 
   const avatarSrc = avatarPreview
-    || sanitizeUrlToRelative(profileData?.profile_image?.has_image ? profileData.profile_image.image_url_full : null)
-    || user?.avatar_url;
+    || user?.avatar_url
+    || user?.avatar
+    || profileData?.avatar_url;
 
   // ── Loading state ──
   if (isLoadingProfile) {

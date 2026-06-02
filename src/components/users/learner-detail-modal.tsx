@@ -19,7 +19,7 @@ import {
   Users, AlertTriangle, Award, BarChart3, RefreshCcw,
 } from 'lucide-react';
 import {
-  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip,
+  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid,
 } from 'recharts';
 import {
   getLearnerDetail,
@@ -128,11 +128,13 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
 
   const studyChartData = (studyTimeData?.entries || []).map((e) => {
     const d = new Date(e.date);
-    const dayLabel = d.toLocaleDateString('vi-VN', { weekday: 'short' });
+    // Format dd/MM giống FE 5173 (ví dụ: 02/06)
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
     return {
-      name: dayLabel,
+      name: `${dd}/${mm}`,
       hours: Number((e.minutes / 60).toFixed(1)),
-      minutes: e.minutes,
+      rawMinutes: e.minutes,
     };
   });
 
@@ -245,32 +247,113 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                 )}
               </div>
 
-              {/* Weekly Momentum Chart */}
-              <div className="rounded-xl border border-border bg-gradient-to-br from-primary to-primary/80 p-3 sm:p-4 shadow-sm text-white min-w-0 overflow-hidden">
-                <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="h-4 w-4 text-white/80 shrink-0" />
-                  <h4 className="text-xs sm:text-sm font-bold">Weekly Momentum</h4>
-                  <span className="ml-auto text-[9px] sm:text-[10px] font-medium text-white/70 whitespace-nowrap">Tuần hiện tại</span>
+              {/* Weekly Momentum Chart — giống FE 5173 WelcomeBanner */}
+              <div className="rounded-xl border border-border bg-gradient-to-br from-primary to-primary/80 p-3 sm:p-4 shadow-sm text-white min-w-0 overflow-hidden relative">
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-white/80 shrink-0" />
+                      Weekly Momentum
+                    </h4>
+                    {studyTimeData && (() => {
+                      const todayMins = studyChartData[studyChartData.length - 1]?.rawMinutes || 0;
+                      const pastDays = studyChartData.slice(0, -1).filter(d => d.rawMinutes > 0);
+                      const avgMins = pastDays.length > 0
+                        ? Math.round(pastDays.reduce((a, d) => a + d.rawMinutes, 0) / pastDays.length)
+                        : 0;
+                      const fmtTime = (m: number) => {
+                        if (m < 60) return `${m} phút`;
+                        const h = Math.floor(m / 60);
+                        const r = m % 60;
+                        return r > 0 ? `${h} tiếng ${r} phút` : `${h} tiếng`;
+                      };
+                      if (todayMins === 0) {
+                        return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">Hôm nay chưa bắt đầu học.</p>;
+                      }
+                      if (avgMins > 0) {
+                        const pct = Math.round((todayMins / avgMins) * 100);
+                        return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
+                          Hôm nay: <span className="text-[#45FFCA] font-semibold">{fmtTime(todayMins)}</span>
+                          {pct >= 100 ? ` — cao hơn ${pct - 100}% so với TB tuần` : ` — TB tuần: ${fmtTime(avgMins)}/ngày`}
+                        </p>;
+                      }
+                      return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
+                        Hôm nay: <span className="text-[#45FFCA] font-semibold">{fmtTime(todayMins)}</span>
+                      </p>;
+                    })()}
+                  </div>
+                  <span className="text-[9px] sm:text-[10px] font-medium text-white/60 whitespace-nowrap self-start">Tuần hiện tại</span>
                 </div>
                 {!studyTimeData ? (
-                  <Skeleton className="h-[100px] sm:h-[120px] w-full rounded-lg opacity-30" />
+                  <Skeleton className="h-[130px] sm:h-[150px] w-full rounded-lg opacity-30" />
                 ) : (
-                  <div className="h-[100px] sm:h-[120px] w-full min-w-0 relative">
+                  <div className="h-[130px] sm:h-[150px] w-full min-w-0 relative">
+                    <div className="absolute top-[0px] left-[18px] text-[10px] text-white/70 z-10">(h)</div>
                     <ResponsiveContainer width="99%" height="100%">
-                      <AreaChart data={studyChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <AreaChart
+                        data={[...studyChartData, { name: '', hours: studyChartData[studyChartData.length - 1]?.hours ? studyChartData[studyChartData.length - 1].hours * 1.1 : 0, rawMinutes: 0 }]}
+                        margin={{ top: 20, right: 15, left: -5, bottom: 10 }}
+                      >
                         <defs>
                           <linearGradient id="studyGradModal" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#45FFCA" stopOpacity={0.4} />
                             <stop offset="95%" stopColor="#45FFCA" stopOpacity={0} />
                           </linearGradient>
                         </defs>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 9 }} interval={0} padding={{ left: 15, right: 15 }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 9 }} allowDecimals={false} width={25} />
-                        <ReTooltip
-                          contentStyle={{ background: '#1a1a2e', border: 'none', borderRadius: '8px', fontSize: '11px', color: '#fff' }}
-                          formatter={(val: number) => [`${val}h`, 'Giờ học']}
+                        <CartesianGrid
+                          strokeDasharray="4 4"
+                          vertical={true}
+                          horizontal={false}
+                          stroke="rgba(255,255,255,0.15)"
                         />
-                        <Area type="monotone" dataKey="hours" stroke="#45FFCA" strokeWidth={2} fill="url(#studyGradModal)" />
+                        <XAxis
+                          dataKey="name"
+                          axisLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
+                          tickLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
+                          tick={{ fill: 'rgba(255,255,255,0.85)', fontSize: 10 }}
+                          tickMargin={8}
+                          interval={0}
+                        />
+                        <YAxis
+                          axisLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
+                          tickLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
+                          tick={{ fill: 'rgba(255,255,255,0.85)', fontSize: 10 }}
+                          allowDecimals={false}
+                          tickFormatter={(val) => val === 0 ? '' : val}
+                          tickCount={4}
+                          domain={[0, 'auto']}
+                          width={30}
+                        />
+                        <ReTooltip
+                          content={({ active, payload }: any) => {
+                            if (!active || !payload?.[0]) return null;
+                            const mins = payload[0].payload.rawMinutes || 0;
+                            if (mins === 0) return null;
+                            const timeText = mins < 60
+                              ? `${mins} phút`
+                              : mins % 60 > 0
+                                ? `${Math.floor(mins / 60)} tiếng ${mins % 60} phút`
+                                : `${Math.floor(mins / 60)} tiếng`;
+                            return (
+                              <div className="relative bg-[#45FFCA] text-[#0a1628] px-2.5 py-1.5 rounded-lg shadow-lg text-center min-w-[90px] -mt-8 flex flex-col items-center">
+                                <span className="text-[10px] font-normal">Đã học</span>
+                                <span className="text-[12px] font-bold">{timeText}</span>
+                                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#45FFCA] rotate-45 rounded-[1px]" />
+                              </div>
+                            );
+                          }}
+                          cursor={{ stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                          isAnimationActive={false}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="hours"
+                          stroke="#45FFCA"
+                          strokeWidth={2.5}
+                          fillOpacity={1}
+                          fill="url(#studyGradModal)"
+                          activeDot={{ r: 4, fill: '#45FFCA', stroke: '#fff', strokeWidth: 2 }}
+                        />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>

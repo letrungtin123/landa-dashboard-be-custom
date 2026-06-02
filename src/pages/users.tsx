@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -163,6 +163,7 @@ export default function UsersPage() {
               <TableRow className="hover:bg-transparent border-border">
                 <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider h-11 pl-5">Người dùng</TableHead>
                 <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Vai trò</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Nhóm quyền</TableHead>
                 <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Điện thoại</TableHead>
                 {isSuperadmin && <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Tenant</TableHead>}
                 <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
@@ -178,6 +179,7 @@ export default function UsersPage() {
                       <TableCell className="pl-5 py-3"><div className="flex items-center gap-3"><Skeleton className="h-9 w-9 rounded-full" /><div className="space-y-1.5"><Skeleton className="h-4 w-28" /><Skeleton className="h-3 w-36" /></div></div></TableCell>
                       <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       {isSuperadmin && <TableCell><Skeleton className="h-4 w-20" /></TableCell>}
                       <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
@@ -187,7 +189,7 @@ export default function UsersPage() {
                 })
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={isSuperadmin ? 7 : 6} className="h-48 text-center">
+                  <TableCell colSpan={isSuperadmin ? 8 : 7} className="h-48 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <UsersIcon className="w-10 h-10 mb-3 opacity-20" />
                       <p className="text-sm font-medium">Không tìm thấy người dùng</p>
@@ -232,6 +234,18 @@ export default function UsersPage() {
                           {u.role}
                         </span>
                       </TableCell>
+                      <TableCell>
+                        {u.permission_group_name ? (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md border bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-500/20">
+                            <ShieldCheck className="h-3 w-3" />
+                            {u.permission_group_name}
+                          </span>
+                        ) : (u.role === 'staff' || u.role === 'superuser') ? (
+                          <span className="text-[11px] text-muted-foreground/40 italic">Chưa gán</span>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-foreground text-sm font-medium">
                         {u.phone || <span className="text-muted-foreground/40">—</span>}
                       </TableCell>
@@ -250,18 +264,18 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
+                          {(u.role === 'learner' || u.role === 'staff') && (
+                            <Button variant="ghost" size="icon" onClick={function viewDetail() { setSelectedLearner(u.username); }}
+                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors rounded-md" title="Xem chi tiết">
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {!canEditDelete ? (
                             <span title="Không có quyền">
                               <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
                             </span>
                           ) : (
                             <>
-                              {(u.role === 'learner' || u.role === 'staff') && (
-                                <Button variant="ghost" size="icon" onClick={function viewDetail() { setSelectedLearner(u.username); }}
-                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors rounded-md" title="Xem chi tiết">
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
                               {!u.is_active && canEdit && (
                                 <Button variant="ghost" size="icon" onClick={function approve() { activateMutation.mutate(u.id); }}
                                   disabled={activateMutation.isPending}

@@ -3,18 +3,27 @@
 // Layout: 4-panel (OrgGroup | SubGroup | Team | Detail)
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FolderTree, Users, MousePointerClick, UsersRound, ChevronRight, Building2, Network } from 'lucide-react';
 import { TenantFilter } from '@/components/shared/TenantFilter';
 import { OrgGroupPanel } from '@/components/groups/OrgGroupPanel';
 import { SubGroupPanel } from '@/components/groups/SubGroupPanel';
 import { TeamPanel } from '@/components/groups/TeamPanel';
 import { TeamDetailPanel } from '@/components/groups/TeamDetailPanel';
+import { useTenantStore } from '@/utils/tenant-store';
 
 export default function GroupsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [selectedSubGroupId, setSelectedSubGroupId] = useState<string>('');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+
+  // Reset tất cả selections khi superadmin đổi tenant
+  useEffect(() => {
+    setSelectedGroupId('');
+    setSelectedSubGroupId('');
+    setSelectedTeamId('');
+  }, [activeTenantId]);
 
   const handleSelectGroup = (id: string) => {
     setSelectedGroupId(id);
