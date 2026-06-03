@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
@@ -237,7 +238,7 @@ export default function UsersPage() {
                       <TableCell className="pl-5 py-3">
                         <div className="flex items-center gap-3">
                           {u.avatar_url ? (
-                            <img src={u.avatar_url} alt={u.username} className="w-9 h-9 flex-shrink-0 rounded-full object-cover border border-border" />
+                            <img src={storageUrl(u.avatar_url)} alt={u.username} className="w-9 h-9 flex-shrink-0 rounded-full object-cover border border-border" />
                           ) : (
                             <div className="w-9 h-9 flex-shrink-0 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground font-semibold text-xs">
                               {u.username?.[0]?.toUpperCase() || 'U'}

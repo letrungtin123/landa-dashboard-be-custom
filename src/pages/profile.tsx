@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/utils/store';
 import { customApiClient } from '@/api/custom-client';
+import { storageUrl } from '@/utils/storage-url';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -188,7 +189,8 @@ export default function ProfilePage() {
         let newAvatarUrl = avatarRes.data?.data?.avatar_url;
         if (newAvatarUrl) {
           // Cache-bust: append timestamp to prevent browser caching old image
-          const bustUrl = `${newAvatarUrl}${newAvatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+          const resolvedUrl = storageUrl(newAvatarUrl);
+          const bustUrl = `${resolvedUrl}${resolvedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
           updateUser({ name: form.name, avatar: bustUrl, avatar_url: bustUrl });
         }
         setAvatarFile(null);
@@ -262,9 +264,8 @@ export default function ProfilePage() {
   };
 
   const avatarSrc = avatarPreview
-    || user?.avatar_url
-    || user?.avatar
-    || profileData?.avatar_url;
+    || storageUrl(user?.avatar_url || user?.avatar || null)
+    || storageUrl(profileData?.avatar_url);
 
   // ── Loading state ──
   if (isLoadingProfile) {

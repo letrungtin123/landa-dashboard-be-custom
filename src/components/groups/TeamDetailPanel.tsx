@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 import { UserPlus, BookPlus, Trash2, Users, BookOpen, Loader2, FolderOpen, FolderPlus, FolderKanban, Eye, FileText, FileImage, FileSpreadsheet, FileType, Film } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -376,7 +377,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                       onCheckedChange={() => toggleMember(m.id)}
                     />
                     {m.avatar ? (
-                      <img src={m.avatar} alt={m.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
+                      <img src={storageUrl(m.avatar)} alt={m.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
                         {m.username[0]?.toUpperCase()}

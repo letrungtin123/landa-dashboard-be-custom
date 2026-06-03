@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { storageUrl } from '@/utils/storage-url';
 import {
   customLoginApi,
   customRefreshApi,
@@ -113,8 +114,8 @@ function mapLoginResponseToState(data: CustomLoginResponse) {
     name: data.user.full_name || data.user.username,
     username: data.user.username,
     role: data.user.role,
-    avatar: data.user.avatar_url,
-    avatar_url: data.user.avatar_url,
+    avatar: storageUrl(data.user.avatar_url) || null,
+    avatar_url: storageUrl(data.user.avatar_url) || null,
     status: 'active',
     isStaff: data.user.role === 'staff' || data.user.role === 'superuser' || data.user.role === 'superadmin',
     isSuperuser: data.user.role === 'superuser' || data.user.role === 'superadmin',

@@ -87,3 +87,21 @@ export async function customGetMeApi(): Promise<CustomMeResponse> {
 export async function customLogoutApi(refreshToken: string): Promise<void> {
   await customApiClient.post("/api/auth/logout", { refresh_token: refreshToken });
 }
+
+/**
+ * Exchange One-Time Token → full auth session.
+ * Dùng cho cross-app SSO (FE 5173 → Admin Dashboard).
+ * KHÔNG cần auth header — OTT tự nó là proof of identity.
+ */
+export async function customExchangeOttApi(ott: string): Promise<CustomLoginResponse> {
+  const axios = (await import("axios")).default;
+  const { config } = await import("@/config/env");
+  const baseURL = config.customApiUrl;
+
+  const { data } = await axios.post<ApiResponse<CustomLoginResponse>>(
+    `${baseURL}/api/auth/ott/exchange`,
+    { ott },
+    { headers: { "Content-Type": "application/json" }, timeout: 10_000 }
+  );
+  return data.data;
+}

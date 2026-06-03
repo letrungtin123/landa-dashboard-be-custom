@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 import { Search, Loader2, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -126,7 +127,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
                   {(isSelected || isExisting) && <UserCheck className="h-3 w-3 text-white" />}
                 </div>
                 {u.avatar_url ? (
-                  <img src={u.avatar_url} alt={u.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
+                  <img src={storageUrl(u.avatar_url)} alt={u.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-semibold shrink-0">
                     {u.username[0]?.toUpperCase()}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
@@ -243,7 +244,7 @@ export default function CoursesPage() {
             <div className="flex h-44 items-center justify-center relative overflow-hidden shrink-0 rounded-[20px] bg-muted">
               {previewCourse?.image_url && !previewCourse.image_url.includes('images/course_image') && !previewCourse.image_url.includes('images_course_image') ? (
                 <img
-                  src={previewCourse.image_url}
+                  src={storageUrl(previewCourse.image_url)}
                   alt={previewCourse.display_name}
                   className="absolute inset-0 z-10 h-full w-full object-cover rounded-[20px]"
                 />

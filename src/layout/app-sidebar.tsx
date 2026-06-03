@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 import { useLocation, Link } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/utils/store';
@@ -191,7 +192,7 @@ export function AppSidebar() {
               <Link to="/profile">
                 {(user?.avatar_url || user?.avatar) ? (
                   <img
-                    src={user.avatar_url || user.avatar || ''}
+                    src={storageUrl(user.avatar_url || user.avatar || '')}
                     alt={user?.name || 'User'}
                     className="w-9 h-9 rounded-xl object-cover shrink-0 shadow-sm ring-1 ring-sidebar-border"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
