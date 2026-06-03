@@ -5,15 +5,13 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { config } from "@/config/env";
+import { ensureTokenRefresh } from "./refresh-manager";
 
 export const apiClient = axios.create({
   baseURL: config.apiBaseUrl,
   headers: { "Content-Type": "application/json" },
   timeout: config.apiTimeoutMs,
 });
-
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
 
 function getCsrfToken(): string {
   const match = document.cookie.match(/csrftoken=([^;]+)/);
@@ -29,9 +27,9 @@ async function getAuthStore() {
 // Request: gắn Bearer + CSRF
 apiClient.interceptors.request.use(async (req) => {
   const store = await getAuthStore();
-  const { accessToken, tokenType } = store.getState() as any;
+  const { accessToken } = store.getState();
   if (accessToken) {
-    req.headers.Authorization = `${tokenType} ${accessToken}`;
+    req.headers.Authorization = `Bearer ${accessToken}`;
   }
   if (req.method && req.method !== "get") {
     const csrf = getCsrfToken();
@@ -57,19 +55,11 @@ apiClient.interceptors.request.use(async (req) => {
   return req;
 });
 
-// Response: 401 → refresh → retry
+// Response: 401 → refresh (shared singleton) → retry
 apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
-
-    // 401 sau retry → refresh đã thất bại → logout
-    if (error.response?.status === 401 && originalRequest._retried) {
-      const store = await getAuthStore();
-      store.getState().logout();
-      window.location.href = "/login?session=expired";
-      return Promise.reject(error);
-    }
 
     if (error.response?.status !== 401 || originalRequest._retried) {
       return Promise.reject(error);
@@ -86,33 +76,20 @@ apiClient.interceptors.response.use(
 
     originalRequest._retried = true;
 
-    const store = await getAuthStore();
-
-    if (isRefreshing && refreshPromise) {
-      const success = await refreshPromise;
-      if (success) {
-        const { accessToken, tokenType } = store.getState() as any;
-        originalRequest.headers.Authorization = `${tokenType} ${accessToken}`;
-        return apiClient(originalRequest);
-      }
-      return Promise.reject(error);
-    }
-
-    isRefreshing = true;
-    refreshPromise = store.getState().performTokenRefresh().finally(() => {
-      isRefreshing = false;
-      refreshPromise = null;
-    });
-
-    const success = await refreshPromise;
+    // Dùng shared singleton → tránh race condition 2 clients cùng refresh
+    const success = await ensureTokenRefresh();
     if (success) {
-      const { accessToken, tokenType } = store.getState() as any;
-      originalRequest.headers.Authorization = `${tokenType} ${accessToken}`;
+      const store = await getAuthStore();
+      const { accessToken } = store.getState();
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return apiClient(originalRequest);
     }
 
+    // Refresh thất bại → logout
+    const store = await getAuthStore();
     store.getState().logout();
     window.location.href = "/login?session=expired";
     return Promise.reject(error);
   }
 );
+

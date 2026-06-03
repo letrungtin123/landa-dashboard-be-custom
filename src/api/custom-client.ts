@@ -5,15 +5,13 @@
 
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { config } from "@/config/env";
+import { ensureTokenRefresh } from "./refresh-manager";
 
 export const customApiClient = axios.create({
   baseURL: config.customApiUrl,
   headers: { "Content-Type": "application/json" },
   timeout: config.apiTimeoutMs,
 });
-
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
 
 // Lazy import store — tránh circular dependency
 async function getAuthStore() {
@@ -47,19 +45,11 @@ customApiClient.interceptors.request.use(async (req) => {
   return req;
 });
 
-// ── Response Interceptor: 401 → refresh → retry ──
+// ── Response Interceptor: 401 → refresh (shared singleton) → retry ──
 customApiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
-
-    // 401 sau retry → refresh đã thất bại → logout
-    if (error.response?.status === 401 && originalRequest._retried) {
-      const store = await getAuthStore();
-      store.getState().logout();
-      window.location.href = "/login?session=expired";
-      return Promise.reject(error);
-    }
 
     if (error.response?.status !== 401 || originalRequest._retried) {
       return Promise.reject(error);
@@ -76,36 +66,20 @@ customApiClient.interceptors.response.use(
 
     originalRequest._retried = true;
 
-    const store = await getAuthStore();
-
-    // Nếu đang refresh → đợi promise hiện tại
-    if (isRefreshing && refreshPromise) {
-      const success = await refreshPromise;
-      if (success) {
-        const { accessToken } = store.getState();
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        return customApiClient(originalRequest);
-      }
-      return Promise.reject(error);
-    }
-
-    // Bắt đầu refresh
-    isRefreshing = true;
-    refreshPromise = store.getState().performTokenRefresh().finally(() => {
-      isRefreshing = false;
-      refreshPromise = null;
-    });
-
-    const success = await refreshPromise;
+    // Dùng shared singleton → tránh race condition 2 clients cùng refresh
+    const success = await ensureTokenRefresh();
     if (success) {
+      const store = await getAuthStore();
       const { accessToken } = store.getState();
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return customApiClient(originalRequest);
     }
 
     // Refresh thất bại → logout
+    const store = await getAuthStore();
     store.getState().logout();
     window.location.href = "/login?session=expired";
     return Promise.reject(error);
   }
 );
+

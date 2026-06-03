@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCourses, updateCourse, bulkCourseAction, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, type CustomCourse, type CourseModalConfig } from '@/api/custom-courses';
+import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, type CustomCourse, type CourseModalConfig } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -20,8 +20,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2
 } from 'lucide-react';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
 import { Switch } from '@/components/ui/switch';
@@ -44,6 +45,7 @@ export default function CoursesPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('courses', 'can_add');
   const canEdit = hasPermission('courses', 'can_edit');
+  const canDelete = hasPermission('courses', 'can_delete');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [visFilter, setVisFilter] = useState('all');
@@ -162,6 +164,25 @@ export default function CoursesPage() {
     },
     onError: () => toast.error('Cập nhật hàng loạt thất bại'),
   });
+
+  // Delete course
+  const deleteMut = useMutation({
+    mutationFn: (courseId: string) => deleteCourse(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+      toast.success('Đã xóa khóa học');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Xóa thất bại'),
+  });
+
+  function handleDeleteCourse(course: CustomCourse) {
+    confirmDialog({
+      title: 'Xóa vĩnh viễn khóa học',
+      description: `Bạn có chắc muốn xóa "${course.display_name}"? Toàn bộ nội dung, tiến độ học viên, tệp tin sẽ bị xóa vĩnh viễn và KHÔNG thể khôi phục.`,
+      variant: 'destructive',
+      onConfirm: () => deleteMut.mutate(course.id),
+    });
+  }
 
   // Selection
   const allSelected = courses.length > 0 && courses.every((c) => selected.includes(c.id));
@@ -454,6 +475,19 @@ export default function CoursesPage() {
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent>Chỉnh sửa nội dung</TooltipContent>
+                        </Tooltip>}
+
+                        {canDelete && <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon"
+                              onClick={() => handleDeleteCourse(course)}
+                              disabled={deleteMut.isPending}
+                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Xóa vĩnh viễn</TooltipContent>
                         </Tooltip>}
                       </TableCell>
                     </TableRow>

@@ -77,6 +77,11 @@ export async function bulkCourseAction(ids: string[], action: 'staff_only' | 'pu
   return { success: true, updated: data.data.updated };
 }
 
+/** Hard delete course */
+export async function deleteCourse(courseId: string) {
+  await customApiClient.delete(`/api/courses/${encodeURIComponent(courseId)}`);
+}
+
 // ── Course Modal Config ──
 
 export async function getCourseModalConfig(courseId: string): Promise<CourseModalConfig> {

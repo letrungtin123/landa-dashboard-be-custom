@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,7 +17,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { Pagination } from '@/components/shared/pagination';
 import { TableToolbar } from '@/components/shared/table-toolbar';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { fetchUsers, updateUser, type CustomUser } from '@/api/custom-users';
+import { fetchUsers, updateUser, deleteUser, type CustomUser } from '@/api/custom-users';
 import { toast } from 'sonner';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 
@@ -99,6 +99,17 @@ export default function UsersPage() {
     },
   });
 
+  const hardDeleteMutation = useMutation({
+    mutationFn: function hardDel(id: string) { return deleteUser(id); },
+    onSuccess: function onOk() {
+      toast.success('Đã xóa vĩnh viễn tài khoản');
+      queryClient.invalidateQueries({ queryKey: ['custom-users'] });
+    },
+    onError: function onErr(error: any) {
+      toast.error(error.response?.data?.error || 'Xóa thất bại');
+    },
+  });
+
   const users = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
@@ -109,6 +120,15 @@ export default function UsersPage() {
       description: `Bạn có chắc muốn vô hiệu hóa ${user.username}? Người dùng này sẽ không thể đăng nhập.`,
       variant: 'destructive',
       onConfirm: function confirm() { deactivateMutation.mutate(user.id); },
+    });
+  }
+
+  function handleHardDelete(user: CustomUser) {
+    confirmDialog({
+      title: 'Xóa vĩnh viễn tài khoản',
+      description: `Bạn có chắc muốn xóa vĩnh viễn "${user.full_name || user.username}"? Toàn bộ dữ liệu (tiến độ học, nhóm, quyền) sẽ bị xóa và KHÔNG thể khôi phục.`,
+      variant: 'destructive',
+      onConfirm: function confirm() { hardDeleteMutation.mutate(user.id); },
     });
   }
 
@@ -289,7 +309,14 @@ export default function UsersPage() {
                               </Button>}
                               {u.is_active && canDelete && (
                                 <Button variant="ghost" size="icon" onClick={function deact() { handleDeactivate(u); }}
-                                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors rounded-md" title="Vô hiệu hóa">
+                                  className="h-8 w-8 text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors rounded-md" title="Vô hiệu hóa">
+                                  <Ban className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {canDelete && (
+                                <Button variant="ghost" size="icon" onClick={function del() { handleHardDelete(u); }}
+                                  disabled={hardDeleteMutation.isPending}
+                                  className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors rounded-md" title="Xóa vĩnh viễn">
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               )}
