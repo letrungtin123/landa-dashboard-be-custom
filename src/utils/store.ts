@@ -279,3 +279,40 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// ── Wake-up refresh: khi user quay lại tab sau sleep/hibernate ──
+// setTimeout bị đóng băng khi máy sleep → token hết hạn mà không được refresh.
+// Listener này check và refresh proactively khi tab trở lại visible.
+let isRefreshingOnWake = false;
+
+function handleWakeUp() {
+  if (isRefreshingOnWake) return;
+  const state = useAuthStore.getState();
+  if (!state.isAuthenticated || !state.tokenExpiresAt) return;
+
+  const now = Date.now();
+  const buffer = config.tokenRefreshBufferMs || 300_000;
+
+  // Token đã hết hạn hoặc sắp hết hạn → refresh ngay
+  if (now >= state.tokenExpiresAt - buffer) {
+    isRefreshingOnWake = true;
+    state.performTokenRefresh()
+      .then((ok) => {
+        if (!ok) state.logout();
+      })
+      .finally(() => { isRefreshingOnWake = false; });
+  } else {
+    // Token còn hạn → re-schedule timer (timer cũ có thể đã bị kill)
+    state.scheduleTokenRefresh();
+  }
+}
+
+// visibilitychange: khi user switch tab hoặc mở lại từ taskbar
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    handleWakeUp();
+  }
+});
+
+// focus: backup — khi browser window nhận focus (bao gồm wake from sleep)
+window.addEventListener('focus', handleWakeUp);

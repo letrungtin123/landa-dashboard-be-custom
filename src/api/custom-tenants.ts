@@ -15,6 +15,7 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  domain: string | null;
   is_active: boolean;
   settings: Record<string, unknown>;
   created_at: string;
@@ -51,13 +52,13 @@ export async function fetchTenantById(id: string) {
 }
 
 /** Tạo tenant */
-export async function createTenant(input: { name: string; slug: string; settings?: Record<string, unknown> }) {
+export async function createTenant(input: { name: string; slug: string; domain?: string | null; settings?: Record<string, unknown> }) {
   const { data } = await customApiClient.post<ApiResponse<Tenant>>("/api/tenants", input);
   return data.data;
 }
 
 /** Cập nhật tenant */
-export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; is_active: boolean; settings: Record<string, unknown> }>) {
+export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain: string | null; is_active: boolean; settings: Record<string, unknown> }>) {
   const { data } = await customApiClient.put<ApiResponse<Tenant>>(`/api/tenants/${id}`, input);
   return data.data;
 }

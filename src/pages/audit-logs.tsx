@@ -4,6 +4,7 @@ import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
 import { Activity, AlertTriangle, Plus, Pencil, Trash2, Clock, RefreshCw, CalendarIcon, X, LogIn, LogOut } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/shared/pagination';
@@ -131,6 +132,12 @@ export default function AuditLogsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto pb-10">
+
+      <PageHeader
+        icon={Activity}
+        title="Nhật ký hoạt động"
+        description="Theo dõi tất cả thao tác trong hệ thống"
+      />
 
       <div className="pb-6 flex items-center justify-between" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
         {/* View mode toggle */}

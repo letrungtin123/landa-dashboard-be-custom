@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/utils/store";
 import { useHeaderInfo } from "@/utils/header-store";
+import { PageHeader } from '@/components/shared/page-header';
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -339,28 +340,21 @@ export default function PermissionGroupsPage() {
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto pb-10">
       {/* ── Page Header ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20">
-            <ShieldCheck className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Nhóm quyền</h1>
-            <p className="text-xs text-muted-foreground">Quản lý phân quyền cho các vai trò trong hệ thống</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-
-          {canAdd && (
+      <PageHeader
+        icon={ShieldCheck}
+        title="Nhóm quyền"
+        description="Quản lý phân quyền cho các vai trò trong hệ thống"
+        actions={
+          canAdd ? (
             <Button
               onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20 border-0 gap-2"
             >
               <Plus className="h-4 w-4" /> Tạo nhóm
             </Button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* ── Search Bar ── */}
       <div className="relative">

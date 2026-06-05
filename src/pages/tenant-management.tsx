@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe } from "lucide-react";
+import { PageHeader } from '@/components/shared/page-header';
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ export default function TenantManagementPage() {
   // Form states
   const [formName, setFormName] = useState("");
   const [formSlug, setFormSlug] = useState("");
+  const [formDomain, setFormDomain] = useState("");
   const [saving, setSaving] = useState(false);
 
   const loadTenants = useCallback(async function loadTenants() {
@@ -60,10 +62,10 @@ export default function TenantManagementPage() {
     if (!formName.trim() || !formSlug.trim()) { toast.error("Điền đầy đủ thông tin"); return; }
     setSaving(true);
     try {
-      await createTenant({ name: formName, slug: formSlug });
+      await createTenant({ name: formName, slug: formSlug, domain: formDomain.trim() || null });
       toast.success("Tạo tenant thành công");
       setShowCreate(false);
-      setFormName(""); setFormSlug("");
+      setFormName(""); setFormSlug(""); setFormDomain("");
       loadTenants();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Lỗi tạo tenant");
@@ -75,7 +77,7 @@ export default function TenantManagementPage() {
     if (!editTenant) return;
     setSaving(true);
     try {
-      await updateTenant(editTenant.id, { name: formName, slug: formSlug });
+      await updateTenant(editTenant.id, { name: formName, slug: formSlug, domain: formDomain.trim() || null });
       toast.success("Cập nhật thành công");
       setEditTenant(null);
       loadTenants();
@@ -140,20 +142,16 @@ export default function TenantManagementPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Building2 className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Tenant Management</h1>
-            <p className="text-sm text-muted-foreground">Quản lý tổ chức/đơn vị trong hệ thống ({total})</p>
-          </div>
-        </div>
-        <Button onClick={function open() { setFormName(""); setFormSlug(""); setShowCreate(true); }} className="gap-2">
-          <Plus className="h-4 w-4" /> Tạo Tenant
-        </Button>
-      </div>
+      <PageHeader
+        icon={Building2}
+        title="Quản lý Tenant"
+        description={`Quản lý tổ chức/đơn vị trong hệ thống (${total})`}
+        actions={
+          <Button onClick={function open() { setFormName(""); setFormSlug(""); setFormDomain(""); setShowCreate(true); }} className="gap-2">
+            <Plus className="h-4 w-4" /> Tạo Tenant
+          </Button>
+        }
+      />
 
       {/* Search */}
       <div className="relative max-w-sm">
@@ -173,6 +171,7 @@ export default function TenantManagementPage() {
             <TableRow>
               <TableHead>Tên</TableHead>
               <TableHead>Slug</TableHead>
+              <TableHead>Domain</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
               <TableHead>Ngày tạo</TableHead>
               <TableHead className="text-right">Thao tác</TableHead>
@@ -180,9 +179,9 @@ export default function TenantManagementPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
             ) : tenants.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-12 text-muted-foreground">Chưa có tenant nào</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Chưa có tenant nào</TableCell></TableRow>
             ) : (
               <AnimatePresence>
                 {tenants.map(function renderRow(t) {
@@ -191,6 +190,16 @@ export default function TenantManagementPage() {
                       className="border-b transition-colors hover:bg-muted/50">
                       <TableCell className="font-medium">{t.name}</TableCell>
                       <TableCell><code className="text-xs bg-muted px-2 py-1 rounded">{t.slug}</code></TableCell>
+                      <TableCell>
+                        {t.domain ? (
+                          <code className="text-xs bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-1 rounded flex items-center gap-1 w-fit">
+                            <Globe className="h-3 w-3" />
+                            {t.domain}
+                          </code>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-center">
                         <Badge variant={t.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={function click() { handleToggleActive(t); }}>
                           {t.is_active ? "Active" : "Inactive"}
@@ -202,7 +211,7 @@ export default function TenantManagementPage() {
                           <Button variant="ghost" size="icon" onClick={function click() { openModules(t); }} title="Modules">
                             <Settings2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={function click() { setFormName(t.name); setFormSlug(t.slug); setEditTenant(t); }} title="Sửa">
+                          <Button variant="ghost" size="icon" onClick={function click() { setFormName(t.name); setFormSlug(t.slug); setFormDomain(t.domain || ""); setEditTenant(t); }} title="Sửa">
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={function click() { setDeletingId(t.id); }} title="Xóa">
@@ -244,6 +253,11 @@ export default function TenantManagementPage() {
               <label className="text-sm font-medium">Slug</label>
               <Input value={formSlug} onChange={function onChange(e) { setFormSlug(e.target.value); }} placeholder="landa-demo" />
               <p className="text-xs text-muted-foreground">Chỉ chứa chữ thường, số và dấu gạch ngang</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Domain <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
+              <Input value={formDomain} onChange={function onChange(e) { setFormDomain(e.target.value); }} placeholder="landa-demo.example.com" />
+              <p className="text-xs text-muted-foreground">Domain mà FE 5173 sẽ dùng để xác định tenant (ví dụ: learn.landa.vn)</p>
             </div>
           </div>
           <DialogFooter>

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { format } from 'date-fns';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -137,6 +138,12 @@ export default function UsersPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
+
+      <PageHeader
+        icon={UsersIcon}
+        title="Tài khoản"
+        description="Quản lý người dùng, phân quyền và trạng thái tài khoản"
+      />
 
       <TableToolbar
         search={search}

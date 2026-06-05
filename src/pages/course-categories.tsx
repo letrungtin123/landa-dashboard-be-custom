@@ -4,6 +4,7 @@ import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2, BookOpen, FolderKanban, Search, ChevronLeft, BookPlus, X } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -139,15 +140,18 @@ export default function CourseCategoriesPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Danh mục khóa học</h1>
-          <p className="text-sm text-muted-foreground mt-1">Quản lý danh mục để phân nhóm courses</p>
-        </div>
-        {canAdd && <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" /> Tạo danh mục
-        </Button>}
-      </div>
+      <PageHeader
+        icon={FolderKanban}
+        title="Danh mục khóa học"
+        description="Quản lý danh mục để phân nhóm courses"
+        actions={
+          canAdd ? (
+            <Button onClick={openCreate} className="gap-2">
+              <Plus className="h-4 w-4" /> Tạo danh mục
+            </Button>
+          ) : undefined
+        }
+      />
 
       {catLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

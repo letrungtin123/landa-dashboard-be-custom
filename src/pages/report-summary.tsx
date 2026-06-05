@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
+import { PageHeader } from '@/components/shared/page-header';
 import { useAuthStore } from '@/utils/store';
 import {
   getReportSummary,
@@ -771,10 +772,11 @@ export default function ReportSummaryPage() {
 
       {/* Header Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Tổng quan Phân tích</h1>
-          <p className="text-muted-foreground text-sm">Chỉ số hệ thống thời gian thực và hiệu suất người học.</p>
-        </div>
+        <PageHeader
+          icon={BarChart3}
+          title="Tổng quan Phân tích"
+          description="Chỉ số hệ thống thời gian thực và hiệu suất người học."
+        />
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">

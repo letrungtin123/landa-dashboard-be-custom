@@ -25,6 +25,7 @@ import { confirmDialog } from '@/utils/confirm-store';
 import {
   BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2
 } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
 import { Switch } from '@/components/ui/switch';
 import FacebookIcon from '@/assets/SocialIcon/facebook.png';
@@ -194,7 +195,11 @@ export default function CoursesPage() {
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto pb-10">
 
-
+      <PageHeader
+        icon={GraduationCap}
+        title="Khóa học"
+        description="Quản lý khóa học, nội dung và cấu hình cho học viên"
+      />
       {/* Dialog tạo course */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-md">

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/utils/store';
-import { Users, Activity, ShieldCheck, Building2, AlertTriangle, TrendingUp, BarChart3, PieChart as PieChartIcon, Zap } from 'lucide-react';
+import { Users, Activity, ShieldCheck, Building2, AlertTriangle, TrendingUp, BarChart3, PieChart as PieChartIcon, Zap, LayoutDashboard } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { motion } from 'framer-motion';
 import { useAnimatedCounter } from '@/hooks/use-animated-counter';
@@ -88,6 +89,12 @@ export default function DashboardPage() {
     <div className="p-6">
 
       <div className="space-y-6 max-w-7xl mx-auto pb-10 mt-4">
+
+        <PageHeader
+          icon={LayoutDashboard}
+          title="Dashboard"
+          description="Tổng quan hệ thống và chỉ số hoạt động"
+        />
 
         {!canView ? (
           <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center mt-6">

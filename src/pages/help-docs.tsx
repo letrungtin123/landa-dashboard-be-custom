@@ -13,7 +13,8 @@ import { getHelpFolders, getHelpPages } from '@/api/custom-help-docs';
 import HelpDocsTree from '@/components/help-docs/HelpDocsTree';
 import HelpPageEditor from '@/components/help-docs/HelpPageEditor';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, BookOpen, Menu } from 'lucide-react';
+import { AlertCircle, BookOpen, Menu, HelpCircle } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 
@@ -85,7 +86,11 @@ export default function HelpDocsPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-background">
       <div className="px-6 pt-3 shrink-0">
-
+        <PageHeader
+          icon={HelpCircle}
+          title="Hướng dẫn sử dụng"
+          description="Tài liệu hướng dẫn và trợ giúp"
+        />
       </div>
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
       {/* Mobile Top Bar */}

@@ -18,6 +18,14 @@ export default defineConfig(({ mode }) => {
     '192.168.0.226',
     '192.168.0.226.nip.io',
     'studio.192.168.0.226.nip.io',
+    'cms.nesso.vn',
+    'localhost',
+    '127.0.0.1',
+    '192.168.47.19',
+    // Đọc thêm từ env nếu có
+    ...(env.VITE_ALLOWED_HOSTS
+      ? env.VITE_ALLOWED_HOSTS.split(',').map((h: string) => h.trim()).filter(Boolean)
+      : []),
   ];
 
   // Proxy config dùng chung cho cả server (dev) và preview (prod)
@@ -76,29 +84,36 @@ export default defineConfig(({ mode }) => {
       proxy: proxyConfig,
     },
 
-    // ── Production build ──────────────────────────────────────────
+    // ── Production build — giảm request cho Tunnelto ──
     build: {
       sourcemap: false,
+      assetsInlineLimit: 200 * 1024,
+      cssCodeSplit: false,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
-            ui: ['framer-motion', 'recharts', 'sonner'],
+          // Vite 8 / Rolldown: manualChunks phải là function
+          manualChunks(id: string) {
+            if (id.includes('node_modules/react-dom') ||
+                id.includes('node_modules/react/') ||
+                id.includes('node_modules/react-router') ||
+                id.includes('node_modules/@tanstack/react-query')) {
+              return 'vendor';
+            }
+            if (id.includes('node_modules/framer-motion') ||
+                id.includes('node_modules/recharts') ||
+                id.includes('node_modules/sonner')) {
+              return 'ui';
+            }
           },
         },
       },
     },
 
     // ── Preview server (npm run preview / PM2 production) ─────────
-    // Chạy port 5174 khớp với PM2 config trên production server
-    // Khi truy cập qua Kong (https://elearning.l-a.vn/admin/):
-    //   Kong forward /admin/* → port 5174, /api/* → LMS, /oauth2/* → LMS
-    //   → proxy bên dưới KHÔNG được gọi (Kong đã lo)
-    // Khi truy cập trực tiếp (http://192.168.0.226:5174/admin/):
-    //   → proxy bên dưới forward API calls về LMS nội bộ
+    // Chạy port 5274 — LAN access: http://192.168.47.19:5274/admin/
     preview: {
       host: '0.0.0.0',
-      port: 5174,
+      port: 5274,
       strictPort: true,
       allowedHosts,
       proxy: proxyConfig,

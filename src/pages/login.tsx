@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuthStore } from '@/utils/store';
-import logoImg from '@/assets/WhiteLogoLeftPanel.png';
+import { useBrandingPublic } from '@/hooks/useBranding';
 
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ export default function LoginPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const { branding, isLoading: brandingLoading } = useBrandingPublic();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -70,7 +71,7 @@ export default function LoginPage() {
           animate={{ scale: 1 }}
           transition={{ type: 'spring', delay: 0.2, stiffness: 200, damping: 15 }}
         >
-          <img src={logoImg} alt="L&A Logo" className="h-[2.5rem] w-auto drop-shadow-xl mb-3" />
+          <img src={branding.loginLogo} alt="Logo" className={`h-[2.5rem] w-auto drop-shadow-xl mb-3 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
         </motion.div>
       </div>
 

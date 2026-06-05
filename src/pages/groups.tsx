@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { FolderTree, Users, MousePointerClick, UsersRound, ChevronRight, Building2, Network } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 
 import { OrgGroupPanel } from '@/components/groups/OrgGroupPanel';
 import { SubGroupPanel } from '@/components/groups/SubGroupPanel';
@@ -39,19 +40,12 @@ export default function GroupsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Page Header */}
-      <div className="px-6 py-4 border-b border-border/50 shrink-0 flex items-center justify-between bg-card/50">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <FolderTree className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight tracking-tight">Quản lý nhóm</h1>
-            <p className="text-xs text-muted-foreground">
-              Tổ chức học viên theo nhóm và phân quyền xem khóa học
-            </p>
-          </div>
-        </div>
-
+      <div className="px-6 py-4 border-b border-border/50 shrink-0 bg-card/50">
+        <PageHeader
+          icon={FolderTree}
+          title="Quản lý nhóm"
+          description="Tổ chức học viên theo nhóm và phân quyền xem khóa học"
+        />
       </div>
 
       {/* Breadcrumb indicator */}

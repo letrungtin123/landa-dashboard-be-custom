@@ -3,8 +3,7 @@ import { storageUrl } from '@/utils/storage-url';
 import { useLocation, Link } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/utils/store';
-import logoDark from '@/assets/WhiteLogoLeftPanel.png';
-import logoLight from '@/assets/leandassociate.webp';
+import { useBranding } from '@/hooks/useBranding';
 
 import { getIconComponent } from '@/utils/icon-map';
 import {
@@ -74,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
     group: 'System',
     items: [
       { title: 'Tenant Management', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
+      { title: 'Branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
     ],
   }
 ];
@@ -81,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
 export function AppSidebar() {
   const { pathname } = useLocation();
   const { theme } = useTheme();
+  const { branding, isLoading: brandingLoading } = useBranding();
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [moduleIcons, setModuleIcons] = useState<Record<string, string>>({});
@@ -130,7 +131,7 @@ export function AppSidebar() {
       <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border">
         <Link to="/library" className="flex items-center justify-center w-full overflow-hidden">
           {/* Full Logo - hidden when collapsed */}
-          <img src={theme === 'dark' ? logoDark : logoLight} alt="L&A Logo" className="h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden" />
+          <img src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
 
           {/* Badge Icon - visible only when collapsed */}
           <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs shrink-0 shadow-sm">

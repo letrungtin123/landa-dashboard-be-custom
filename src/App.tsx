@@ -34,6 +34,7 @@ import HelpDocsPage from '@/pages/help-docs';
 import CourseCategoriesPage from './pages/course-categories';
 import TenantManagementPage from '@/pages/tenant-management';
 import PermissionGroupsPage from '@/pages/permission-groups';
+import BrandingPage from '@/pages/branding';
 
 
 function AppRoutes() {
@@ -64,6 +65,7 @@ function AppRoutes() {
           <Route path="/help-docs" element={<ModuleGuard module="help_docs"><HelpDocsPage /></ModuleGuard>} />
           <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
           <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
+          <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />
