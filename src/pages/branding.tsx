@@ -138,7 +138,7 @@ export default function BrandingPage() {
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; label: string } | null>(null);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['branding', activeTenantId],
     queryFn: getBranding,
     staleTime: 30_000,
@@ -259,6 +259,7 @@ export default function BrandingPage() {
             onDelete={setDeletingKey}
             uploadingKey={uploadMutation.isPending ? uploadMutation.variables?.imageKey || null : null}
             onPreview={setPreviewImage}
+            cacheBuster={dataUpdatedAt}
           />
         ))}
 
@@ -349,6 +350,7 @@ function BrandingSection({
   onDelete,
   uploadingKey,
   onPreview,
+  cacheBuster,
 }: {
   section: SectionConfig;
   images: Record<string, string | null>;
@@ -356,6 +358,7 @@ function BrandingSection({
   onDelete: (key: string) => void;
   uploadingKey: string | null;
   onPreview: (img: { url: string; label: string }) => void;
+  cacheBuster?: number;
 }) {
   const accent = accentMap[section.accentColor] || accentMap.blue;
   const Icon = section.icon;
@@ -385,7 +388,13 @@ function BrandingSection({
           <ImageCard
             key={slot.key}
             slot={slot}
-            currentUrl={storageUrl(images[slot.key]) || null}
+            currentUrl={(() => {
+              const raw = storageUrl(images[slot.key]);
+              if (!raw) return null;
+              // Cache-busting: append timestamp khi data thay đổi
+              const sep = raw.includes('?') ? '&' : '?';
+              return `${raw}${sep}v=${cacheBuster || 0}`;
+            })()}
             onUpload={onUpload}
             onDelete={() => onDelete(slot.key)}
             isUploading={uploadingKey === slot.key}
