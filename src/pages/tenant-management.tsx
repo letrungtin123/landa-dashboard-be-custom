@@ -256,8 +256,8 @@ export default function TenantManagementPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
-              <Input value={formDomain} onChange={function onChange(e) { setFormDomain(e.target.value); }} placeholder="landa-demo.example.com" />
-              <p className="text-xs text-muted-foreground">Domain mà FE 5173 sẽ dùng để xác định tenant (ví dụ: learn.landa.vn)</p>
+              <Input value={formDomain} onChange={function onChange(e) { setFormDomain(e.target.value); }} placeholder="lms.nesso.vn,cms.nesso.vn" />
+              <p className="text-xs text-muted-foreground">Nhập các domain cách nhau bằng dấu phẩy (không có dấu cách). Ví dụ: lms.nesso.vn,cms.nesso.vn</p>
             </div>
           </div>
           <DialogFooter>
