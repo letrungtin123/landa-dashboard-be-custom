@@ -15,11 +15,21 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
-  domain: string | null;
+  domain_learner: string | null;
+  domain_admin: string | null;
+  max_users: number | null;
+  max_courses: number | null;
   is_active: boolean;
   settings: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface TenantQuotaUsage {
+  max_users: number | null;
+  max_courses: number | null;
+  current_users: number;
+  current_courses: number;
 }
 
 export interface TenantModule {
@@ -52,13 +62,13 @@ export async function fetchTenantById(id: string) {
 }
 
 /** Tạo tenant */
-export async function createTenant(input: { name: string; slug: string; domain?: string | null; settings?: Record<string, unknown> }) {
+export async function createTenant(input: { name: string; slug: string; domain_learner?: string | null; domain_admin?: string | null; max_users?: number | null; max_courses?: number | null; settings?: Record<string, unknown> }) {
   const { data } = await customApiClient.post<ApiResponse<Tenant>>("/api/tenants", input);
   return data.data;
 }
 
 /** Cập nhật tenant */
-export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain: string | null; is_active: boolean; settings: Record<string, unknown> }>) {
+export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain_learner: string | null; domain_admin: string | null; max_users: number | null; max_courses: number | null; is_active: boolean; settings: Record<string, unknown> }>) {
   const { data } = await customApiClient.put<ApiResponse<Tenant>>(`/api/tenants/${id}`, input);
   return data.data;
 }
@@ -88,5 +98,11 @@ export async function getUserTenants(userId: string): Promise<{ tenant_id: strin
 /** Gán user quản lý nhiều tenants (thay thế toàn bộ) */
 export async function setUserTenants(userId: string, tenantIds: string[]): Promise<{ updated: number }> {
   const { data } = await customApiClient.put<ApiResponse<{ updated: number }>>(`/api/tenants/user-tenants/${userId}`, { tenant_ids: tenantIds });
+  return data.data;
+}
+
+/** Lấy quota usage hiện tại của tenant */
+export async function fetchTenantQuota(tenantId: string): Promise<TenantQuotaUsage> {
+  const { data } = await customApiClient.get<ApiResponse<TenantQuotaUsage>>(`/api/tenants/${tenantId}/quota`);
   return data.data;
 }

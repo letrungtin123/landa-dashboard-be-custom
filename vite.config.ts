@@ -7,26 +7,18 @@ export default defineConfig(({ mode }) => {
   // PROXY_* không bị bake vào browser bundle vì không có prefix VITE_
   const env = loadEnv(mode, process.cwd(), '');
 
-  // Proxy targets — dùng PROXY_* để tách biệt khỏi VITE_* client vars
-  // Fallback về IP thật của LMS/CMS khi không có biến môi trường
-  const lmsProxyTarget = env.PROXY_OPENEDX_LMS_URL || 'http://192.168.0.226.nip.io';
-  const cmsProxyTarget = env.PROXY_OPENEDX_CMS_URL || 'http://studio.192.168.0.226.nip.io';
+  // Proxy targets — đọc từ env, fallback localhost
+  const lmsProxyTarget = env.PROXY_OPENEDX_LMS_URL || 'http://localhost:18000';
+  const cmsProxyTarget = env.PROXY_OPENEDX_CMS_URL || 'http://localhost:18010';
 
-  const allowedHosts = [
-    'elearning.l-a.vn',
-    'www.elearning.l-a.vn',
-    '192.168.0.226',
-    '192.168.0.226.nip.io',
-    'studio.192.168.0.226.nip.io',
-    'cms.nesso.vn',
-    'localhost',
-    '127.0.0.1',
-    '192.168.47.19',
-    // Đọc thêm từ env nếu có
-    ...(env.VITE_ALLOWED_HOSTS
-      ? env.VITE_ALLOWED_HOSTS.split(',').map((h: string) => h.trim()).filter(Boolean)
-      : []),
-  ];
+  // Allowed hosts — đọc hoàn toàn từ env, phân cách bằng dấu phẩy
+  const allowedHosts = env.VITE_ALLOWED_HOSTS
+    ? env.VITE_ALLOWED_HOSTS.split(',').map((h: string) => h.trim()).filter(Boolean)
+    : [];
+
+  // Ports — đọc từ env
+  const devPort = Number(env.VITE_DEV_PORT) || 8080;
+  const previewPort = Number(env.VITE_PREVIEW_PORT) || 5274;
 
   // Proxy config dùng chung cho cả server (dev) và preview (prod)
   // Chỉ dùng khi truy cập trực tiếp qua IP, KHÔNG cần khi qua Kong
@@ -64,8 +56,7 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
-    // base: '/admin/' — bắt buộc để assets và route hoạt động đúng qua Kong subpath
-    base: '/admin/',
+    base: '/',
 
     plugins: [react()],
 
@@ -78,7 +69,7 @@ export default defineConfig(({ mode }) => {
     // ── Dev server (npm run dev) ──────────────────────────────────
     server: {
       host: '0.0.0.0',
-      port: 8080,
+      port: devPort,
       strictPort: false,
       allowedHosts,
       proxy: proxyConfig,
@@ -110,13 +101,13 @@ export default defineConfig(({ mode }) => {
     },
 
     // ── Preview server (npm run preview / PM2 production) ─────────
-    // Chạy port 5274 — LAN access: http://192.168.47.19:5274/admin/
     preview: {
       host: '0.0.0.0',
-      port: 5274,
+      port: previewPort,
       strictPort: true,
       allowedHosts,
       proxy: proxyConfig,
     },
   };
 });
+

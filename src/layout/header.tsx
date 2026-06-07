@@ -49,6 +49,8 @@ export function Header() {
     // Set flag immediately so pages show blank instead of "Access Denied"
     startLogout();
     try {
+      // Xoá toàn bộ React Query cache (branding, users, courses, etc.)
+      qc.clear();
       navigate('/login');
       await new Promise(r => setTimeout(r, 500));
     } catch (error) {

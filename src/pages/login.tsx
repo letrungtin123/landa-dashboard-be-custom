@@ -39,6 +39,7 @@ export default function LoginPage() {
     setAuthError(null);
     try {
       await login(values.email, values.password);
+
       toast.success('Đăng nhập thành công');
       navigate('/library');
     } catch (err) {

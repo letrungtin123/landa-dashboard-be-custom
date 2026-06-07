@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
 // useBranding — Branding hook cho Admin Dashboard
-// Lấy branding images theo tenant context (authenticated)
-// hoặc theo domain (unauthenticated — login page)
+// Lấy branding images theo domain (public, không cần auth)
+// Cả login page và sidebar đều dùng chung 1 cache key
 // ═══════════════════════════════════════════════════════════════
 
 import { useQuery } from '@tanstack/react-query';
 import { config } from '@/config/env';
 import { storageUrl } from '@/utils/storage-url';
-import { getBranding, type BrandingData } from '@/api/custom-branding';
 
 // ── Static fallback imports ──
 import fallbackLogoDark from '@/assets/WhiteLogoLeftPanel.png';
@@ -30,36 +29,46 @@ const DEFAULT_BRANDING: AdminBranding = {
   sidebarLogoDark: fallbackLogoDark,
 };
 
-// ── Helpers ──
+// ── Shared fetch function ──
 
-function resolveFromData(data: BrandingData | null | undefined): AdminBranding {
-  if (!data?.tenant_id) return DEFAULT_BRANDING;
+async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
+  try {
+    const baseUrl = config.customApiUrl;
+    const response = await fetch(`${baseUrl}/api/branding/by-domain/${encodeURIComponent(domain)}`);
+    if (!response.ok) return DEFAULT_BRANDING;
 
-  const bustCache = `?t=${Date.now()}`;
-  const resolve = (path: string | null | undefined, fallback: string): string =>
-    path ? (storageUrl(path) + bustCache) || fallback : fallback;
+    const json = await response.json();
+    const data = json.data;
+    if (!data?.tenant_id) return DEFAULT_BRANDING;
 
-  return {
-    loginLogo: resolve(data.images.white_logo, DEFAULT_BRANDING.loginLogo),
-    sidebarLogo: resolve(data.images.header_logo, DEFAULT_BRANDING.sidebarLogo),
-    sidebarLogoDark: resolve(data.images.header_logo_dark, DEFAULT_BRANDING.sidebarLogoDark),
-  };
+    const bustCache = `?t=${Date.now()}`;
+    const resolve = (path: string | null | undefined, fallback: string): string =>
+      path ? (storageUrl(path) + bustCache) || fallback : fallback;
+
+    return {
+      loginLogo: resolve(data.images.white_logo, DEFAULT_BRANDING.loginLogo),
+      sidebarLogo: resolve(data.images.header_logo, DEFAULT_BRANDING.sidebarLogo),
+      sidebarLogoDark: resolve(data.images.header_logo_dark, DEFAULT_BRANDING.sidebarLogoDark),
+    };
+  } catch {
+    return DEFAULT_BRANDING;
+  }
 }
 
-// ── Authenticated hook (sidebar, sau login) ──
+// ── Shared query key — cả login page và sidebar dùng chung ──
+const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+const BRANDING_QUERY_KEY = ['admin-branding', currentDomain];
 
 /**
- * Hook lấy branding cho admin đã đăng nhập.
- * Dùng protected API `GET /api/branding` (auto X-Tenant-Id).
+ * Hook lấy branding cho sidebar (sau login).
+ * Dùng public API — chia sẻ cache với useBrandingPublic().
+ * Data đã được fetch sẵn ở login page → sidebar hiển thị logo ngay lập tức.
  */
 export function useBranding() {
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-branding'],
-    queryFn: async () => {
-      const brandingData = await getBranding();
-      return resolveFromData(brandingData);
-    },
-    staleTime: 0,
+    queryKey: BRANDING_QUERY_KEY,
+    queryFn: () => fetchBrandingByDomain(currentDomain),
+    staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
@@ -71,32 +80,15 @@ export function useBranding() {
   };
 }
 
-// ── Public hook (login page, chưa đăng nhập) ──
-
-async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
-  try {
-    const baseUrl = config.customApiUrl;
-    const response = await fetch(`${baseUrl}/api/branding/by-domain/${encodeURIComponent(domain)}`);
-    if (!response.ok) return DEFAULT_BRANDING;
-
-    const json = await response.json();
-    return resolveFromData(json.data);
-  } catch {
-    return DEFAULT_BRANDING;
-  }
-}
-
 /**
  * Hook lấy branding cho trang login (chưa auth).
- * Dùng public API `GET /api/branding/by-domain/:domain`.
+ * Chia sẻ cùng cache key với useBranding() → logo không flash khi navigate.
  */
 export function useBrandingPublic() {
-  const domain = window.location.hostname;
-
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-branding-public', domain],
-    queryFn: () => fetchBrandingByDomain(domain),
-    staleTime: 0,
+    queryKey: BRANDING_QUERY_KEY,
+    queryFn: () => fetchBrandingByDomain(currentDomain),
+    staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
