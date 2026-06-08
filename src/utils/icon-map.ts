@@ -21,7 +21,7 @@ import {
   ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify, Type, Underline, Bold, Italic, Strikethrough,
   Scissors, Copy, Clipboard, Archive, Inbox, Phone, PhoneCall, PhoneForwarded, PhoneMissed, PhoneOff,
   Mic, MicOff, Volume, Volume1, Volume2, VolumeX, Radio, Tv, Cast, Airplay,
-  Contact, ScrollText, Library, GraduationCap, FolderTree, FolderKanban,
+  Contact, ScrollText, Library, GraduationCap, FolderTree, FolderKanban, Drama,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -52,7 +52,7 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify, Type, Underline, Bold, Italic, Strikethrough,
   Scissors, Copy, Clipboard, Archive, Inbox, Phone, PhoneCall, PhoneForwarded, PhoneMissed, PhoneOff,
   Mic, MicOff, Volume, Volume1, Volume2, VolumeX, Radio, Tv, Cast, Airplay,
-  Contact, ScrollText, Library, GraduationCap, FolderTree, FolderKanban,
+  Contact, ScrollText, Library, GraduationCap, FolderTree, FolderKanban, Drama,
 };
 
 export const ICON_LIST = Object.keys(ICON_MAP);

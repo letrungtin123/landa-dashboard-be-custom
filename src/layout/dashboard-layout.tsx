@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/layout/app-sidebar';
 import { Header } from '@/layout/header';
+import ChatWidget from '@/components/chat-widget/chat-widget';
 
 export default function DashboardLayout() {
   return (
@@ -24,6 +25,7 @@ export default function DashboardLayout() {
           </motion.div>
         </main>
       </div>
+      <ChatWidget />
     </SidebarProvider>
   );
 }

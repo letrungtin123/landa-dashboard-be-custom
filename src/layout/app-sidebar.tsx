@@ -46,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: 'Library', url: '/library', module: 'library', fallbackIcon: 'Library' },
       { title: 'Courses', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
       { title: 'Course Categories', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
+      { title: 'AI Chatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
     ],
   },
   {
@@ -74,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: 'Tenant Management', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
       { title: 'Branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
+      { title: 'System Prompts', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
     ],
   }
 ];

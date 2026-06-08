@@ -7,7 +7,17 @@
   <meta name="description" content="Nesso" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
-  <title>Le & Associates</title>
+  <title>Nesso</title>
+  <script>
+    // Auto-redirect to /admin if path doesn't start with /admin
+    (function () {
+      var p = window.location.pathname;
+      if (p.indexOf('/admin') !== 0) {
+        var newPath = '/admin' + (p === '/' ? '' : p);
+        window.location.replace(newPath + window.location.search + window.location.hash);
+      }
+    })();
+  </script>
   <script>
     // Restore theme color CSS variables before first paint to prevent FOUC
     try {

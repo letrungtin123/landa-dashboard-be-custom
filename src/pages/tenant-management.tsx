@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,8 @@ export default function TenantManagementPage() {
   const [formDomainAdmin, setFormDomainAdmin] = useState("");
   const [formMaxUsers, setFormMaxUsers] = useState<string>("");
   const [formMaxCourses, setFormMaxCourses] = useState<string>("");
+  const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loadTenants = useCallback(async function loadTenants() {
@@ -64,40 +66,30 @@ export default function TenantManagementPage() {
   // Hostname hợp lệ: chữ, số, dấu chấm, gạch ngang. Không http://, không port, không dấu phẩy
   const HOSTNAME_REGEX = /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 
+  function validateDomain(value: string, label: string): boolean {
+    if (value.includes(',')) {
+      toast.error(`${label} chỉ nhập 1 domain duy nhất, không dùng dấu phẩy.`);
+      return false;
+    }
+    if (value.includes('://') || value.includes(':')) {
+      toast.error(`${label} chỉ nhập hostname, không nhập http:// hoặc port. Ví dụ: lms.nesso.vn`);
+      return false;
+    }
+    if (!HOSTNAME_REGEX.test(value)) {
+      toast.error(`${label} không hợp lệ. Ví dụ đúng: lms.nesso.com.vn`);
+      return false;
+    }
+    return true;
+  }
+
   function validateForm(): boolean {
     if (!formName.trim() || !formSlug.trim()) { toast.error("Điền đầy đủ thông tin"); return false; }
 
-    // Domain learner: 1 hostname duy nhất, không cho http://, port, dấu phẩy
     const dl = formDomainLearner.trim();
-    if (dl) {
-      if (dl.includes(',')) {
-        toast.error("Domain Learner chỉ nhập 1 domain duy nhất, không dùng dấu phẩy.");
-        return false;
-      }
-      if (dl.includes('://') || dl.includes(':')) {
-        toast.error("Domain Learner chỉ nhập hostname, không nhập http:// hoặc port. Ví dụ: lms.nesso.vn");
-        return false;
-      }
-      if (!HOSTNAME_REGEX.test(dl)) {
-        toast.error("Domain Learner không hợp lệ. Ví dụ đúng: lms.nesso.vn");
-        return false;
-      }
-    }
+    if (dl && !validateDomain(dl, "Domain Learner")) return false;
 
-    // Domain admin: phải là URL hợp lệ, chỉ 1 URL duy nhất (không cho phép dấu phẩy)
     const da = formDomainAdmin.trim();
-    if (da) {
-      if (da.includes(',')) {
-        toast.error("Domain Admin chỉ nhập 1 URL duy nhất, không dùng dấu phẩy.");
-        return false;
-      }
-      try {
-        new URL(da);
-      } catch {
-        toast.error("Domain Admin phải là URL hợp lệ. Ví dụ: http://cms.nesso.vn:5274/");
-        return false;
-      }
-    }
+    if (da && !validateDomain(da, "Domain Admin")) return false;
 
     return true;
   }
@@ -107,6 +99,8 @@ export default function TenantManagementPage() {
     if (!validateForm()) return;
     setSaving(true);
     try {
+      const settings: Record<string, unknown> = {};
+      if (formGeminiApiKey.trim()) settings.gemini_api_key = formGeminiApiKey.trim();
       await createTenant({
         name: formName,
         slug: formSlug,
@@ -114,10 +108,11 @@ export default function TenantManagementPage() {
         domain_admin: formDomainAdmin.trim() || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
+        settings: Object.keys(settings).length > 0 ? settings : undefined,
       });
       toast.success("Tạo tenant thành công");
       setShowCreate(false);
-      setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses("");
+      setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses(""); setFormGeminiApiKey("");
       loadTenants();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Lỗi tạo tenant");
@@ -130,6 +125,10 @@ export default function TenantManagementPage() {
     if (!validateForm()) return;
     setSaving(true);
     try {
+      const updSettings: Record<string, unknown> = { ...(editTenant.settings || {}) };
+      if (formGeminiApiKey.trim()) {
+        updSettings.gemini_api_key = formGeminiApiKey.trim();
+      }
       await updateTenant(editTenant.id, {
         name: formName,
         slug: formSlug,
@@ -137,6 +136,7 @@ export default function TenantManagementPage() {
         domain_admin: formDomainAdmin.trim() || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
+        settings: updSettings,
       });
       toast.success("Cập nhật thành công");
       setEditTenant(null);
@@ -207,7 +207,7 @@ export default function TenantManagementPage() {
         title="Quản lý Tenant"
         description={`Quản lý tổ chức/đơn vị trong hệ thống (${total})`}
         actions={
-          <Button onClick={function open() { setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses(""); setShowCreate(true); }} className="gap-2">
+          <Button onClick={function open() { setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses(""); setFormGeminiApiKey(""); setShowApiKey(false); setShowCreate(true); }} className="gap-2">
             <Plus className="h-4 w-4" /> Tạo Tenant
           </Button>
         }
@@ -314,6 +314,9 @@ export default function TenantManagementPage() {
                             setFormDomainAdmin(t.domain_admin || "");
                             setFormMaxUsers(t.max_users !== null ? String(t.max_users) : "");
                             setFormMaxCourses(t.max_courses !== null ? String(t.max_courses) : "");
+                            const existingKey = (t.settings?.gemini_api_key as string) || "";
+                            setFormGeminiApiKey(existingKey);
+                            setShowApiKey(false);
                             setEditTenant(t);
                           }} title="Sửa">
                             <Pencil className="h-4 w-4" />
@@ -360,13 +363,13 @@ export default function TenantManagementPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain Learner <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
-              <Input value={formDomainLearner} onChange={function onChange(e) { setFormDomainLearner(e.target.value); }} placeholder="lms.nesso.vn" />
-              <p className="text-xs text-muted-foreground">Domain trang học viên (FE 5173). Nhiều domain cách nhau bằng dấu phẩy.</p>
+              <Input value={formDomainLearner} onChange={function onChange(e) { setFormDomainLearner(e.target.value); }} placeholder="lms.nesso.com.vn" />
+              <p className="text-xs text-muted-foreground">Hostname trang học viên. Ví dụ: lms.nesso.com.vn</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain Admin <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
-              <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="http://cms.nesso.vn:5274/admin/" />
-              <p className="text-xs text-muted-foreground">Full URL trang quản trị (CMS). Ví dụ: http://cms.nesso.vn:5274/admin/</p>
+              <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="cms.nesso.com.vn" />
+              <p className="text-xs text-muted-foreground">Hostname trang quản trị. Ví dụ: cms.nesso.com.vn</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -395,6 +398,31 @@ export default function TenantManagementPage() {
                 />
                 <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                Gemini API Key <span className="text-muted-foreground font-normal">(tùy chọn)</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showApiKey ? "text" : "password"}
+                  value={formGeminiApiKey}
+                  onChange={function onChange(e) { setFormGeminiApiKey(e.target.value); }}
+                  placeholder="AIzaSy..."
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={function toggle() { setShowApiKey(!showApiKey); }}
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">API key Google Gemini cho AI Chatbot. Lấy từ Google AI Studio.</p>
             </div>
           </div>
           <DialogFooter>

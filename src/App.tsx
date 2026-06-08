@@ -35,6 +35,8 @@ import CourseCategoriesPage from './pages/course-categories';
 import TenantManagementPage from '@/pages/tenant-management';
 import PermissionGroupsPage from '@/pages/permission-groups';
 import BrandingPage from '@/pages/branding';
+import AiChatbotPage from '@/pages/ai-chatbot';
+import PromptTemplatesPage from '@/pages/prompt-templates';
 
 
 function AppRoutes() {
@@ -66,6 +68,8 @@ function AppRoutes() {
           <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
           <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
           <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
+          <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><AiChatbotPage /></ModuleGuard>} />
+          <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />
