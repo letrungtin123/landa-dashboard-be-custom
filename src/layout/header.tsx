@@ -17,9 +17,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw, GraduationCap } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
+import { useBranding } from '@/hooks/useBranding';
+import { customGenerateOttApi } from '@/api/custom-auth';
 
 export function Header() {
   const user = useAuthStore((state) => state.user);
@@ -32,6 +34,7 @@ export function Header() {
 
   const isSuperadmin = user?.role === 'superadmin';
   const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
+  const { branding } = useBranding();
 
   // Fetch tenants on mount for superadmin
   useEffect(() => {
@@ -149,6 +152,25 @@ export function Header() {
               <User className="mr-2 h-4 w-4 text-muted-foreground" />
               Profile
             </DropdownMenuItem>
+            {branding.learnerUrl && (
+              <DropdownMenuItem
+                className="cursor-pointer text-[13px] mx-1 rounded-md text-primary focus:text-primary"
+                onClick={async () => {
+                  try {
+                    const { ott } = await customGenerateOttApi();
+                    const learnerUrl = branding.learnerUrl!;
+                    const separator = learnerUrl.includes('?') ? '&' : '?';
+                    window.open(`${learnerUrl}${separator}ott=${ott}`, '_blank');
+                  } catch {
+                    // Fallback: mở learner mà không có OTT
+                    window.open(branding.learnerUrl!, '_blank');
+                  }
+                }}
+              >
+                <GraduationCap className="mr-2 h-4 w-4" />
+                E-learning
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer text-[13px] text-destructive focus:text-destructive mx-1 mb-1 rounded-md"

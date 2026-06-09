@@ -49,6 +49,7 @@ export default function ChatWidget() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const streamAccRef = useRef('');  // accumulate stream text without React state race
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -234,18 +235,20 @@ export default function ChatWidget() {
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamText('');
+    streamAccRef.current = '';
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
 
     abortRef.current = sendMessageStream(
       currentConv.id,
       content,
       (text) => {
-        setStreamText(prev => prev + text);
+        streamAccRef.current += text;
+        setStreamText(streamAccRef.current);
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 10);
       },
       () => {
-        setStreamText(prev => {
-          const full = prev;
+        const full = streamAccRef.current;
+        if (full) {
           const assistantMsg: ChatMessage = {
             id: 'resp-' + Date.now(),
             conversation_id: currentConv.id,
@@ -255,14 +258,16 @@ export default function ChatWidget() {
             created_at: new Date().toISOString(),
           };
           setMessages(msgs => [...msgs, assistantMsg]);
-          return '';
-        });
+        }
+        setStreamText('');
+        streamAccRef.current = '';
         setStreaming(false);
       },
       (message) => {
         toast.error(message);
         setStreaming(false);
         setStreamText('');
+        streamAccRef.current = '';
       },
     );
   };
@@ -286,8 +291,8 @@ export default function ChatWidget() {
   if (!hasPermission) return null;
 
   const widgetClass = fullscreen
-    ? 'fixed inset-4 z-50 rounded-2xl'
-    : 'fixed bottom-6 right-6 z-50 w-[420px] h-[600px] rounded-2xl';
+    ? 'fixed inset-4 z-[9998] rounded-2xl'
+    : 'fixed bottom-6 right-6 z-[9998] w-[420px] h-[600px] rounded-2xl';
 
   const botAvatarSrc = activeBot?.bot_avatar_url ? storageUrl(activeBot.bot_avatar_url) : null;
 
@@ -562,7 +567,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
           <Plus className="h-3 w-3" /> Mới
         </Button>
       </div>
-      <ScrollArea className="flex-1 px-2 pb-2">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2">
         {loading ? (
           <div className="space-y-2 px-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -577,7 +582,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.04 }}
-                className="group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                className="group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors overflow-hidden"
                 onClick={() => onOpen(conv)}
               >
                 <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center shrink-0 overflow-hidden">
@@ -608,7 +613,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@
 // Cả login page và sidebar đều dùng chung 1 cache key
 // ═══════════════════════════════════════════════════════════════
 
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { config } from '@/config/env';
 import { storageUrl } from '@/utils/storage-url';
@@ -11,6 +12,7 @@ import { storageUrl } from '@/utils/storage-url';
 // ── Static fallback imports ──
 import fallbackLogoDark from '@/assets/WhiteLogoLeftPanel.png';
 import fallbackLogoLight from '@/assets/leandassociate.webp';
+import fallbackSquareIcon from '@/assets/WhiteLogoLeftPanel.png';
 
 // ── Types ──
 
@@ -21,12 +23,21 @@ export interface AdminBranding {
   sidebarLogo: string;
   /** Logo sidebar - dark mode */
   sidebarLogoDark: string;
+  /** Icon vuông — dùng cho favicon */
+  squareIcon: string;
+  /** Tên tenant từ API */
+  tenantName: string | null;
+  /** URL trang FE Learner — dùng cho button E-learning */
+  learnerUrl: string | null;
 }
 
 const DEFAULT_BRANDING: AdminBranding = {
   loginLogo: fallbackLogoDark,
   sidebarLogo: fallbackLogoLight,
   sidebarLogoDark: fallbackLogoDark,
+  squareIcon: fallbackSquareIcon,
+  tenantName: null,
+  learnerUrl: null,
 };
 
 // ── Shared fetch function ──
@@ -49,6 +60,9 @@ async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
       loginLogo: resolve(data.images.white_logo, DEFAULT_BRANDING.loginLogo),
       sidebarLogo: resolve(data.images.header_logo, DEFAULT_BRANDING.sidebarLogo),
       sidebarLogoDark: resolve(data.images.header_logo_dark, DEFAULT_BRANDING.sidebarLogoDark),
+      squareIcon: resolve(data.images.square_icon, DEFAULT_BRANDING.squareIcon),
+      tenantName: data.tenant_name || null,
+      learnerUrl: data.domain_learner || null,
     };
   } catch {
     return DEFAULT_BRANDING;
@@ -58,6 +72,9 @@ async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
 // ── Shared query key — cả login page và sidebar dùng chung ──
 const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
 const BRANDING_QUERY_KEY = ['admin-branding', currentDomain];
+
+/** Default title from index.html — dùng làm fallback */
+const DEFAULT_TITLE = 'Nesso';
 
 /**
  * Hook lấy branding cho sidebar (sau login).
@@ -73,6 +90,23 @@ export function useBranding() {
     retry: 1,
     refetchOnWindowFocus: false,
   });
+
+  // Cập nhật document.title + favicon theo tenant từ API
+  useEffect(() => {
+    // Title
+    if (data?.tenantName) {
+      document.title = `${data.tenantName} | Admin`;
+    } else {
+      document.title = DEFAULT_TITLE;
+    }
+
+    // Favicon — dùng square_icon của tenant
+    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    if (link && data?.squareIcon && data.squareIcon !== fallbackSquareIcon) {
+      link.type = 'image/png';
+      link.href = data.squareIcon;
+    }
+  }, [data?.tenantName, data?.squareIcon]);
 
   return {
     branding: data || DEFAULT_BRANDING,
@@ -93,6 +127,23 @@ export function useBrandingPublic() {
     retry: 1,
     refetchOnWindowFocus: false,
   });
+
+  // Cập nhật document.title + favicon trên trang login
+  useEffect(() => {
+    // Title
+    if (data?.tenantName) {
+      document.title = `${data.tenantName} | Admin`;
+    } else {
+      document.title = DEFAULT_TITLE;
+    }
+
+    // Favicon — dùng square_icon của tenant
+    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    if (link && data?.squareIcon && data.squareIcon !== fallbackSquareIcon) {
+      link.type = 'image/png';
+      link.href = data.squareIcon;
+    }
+  }, [data?.tenantName, data?.squareIcon]);
 
   return {
     branding: data || DEFAULT_BRANDING,

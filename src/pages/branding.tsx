@@ -70,7 +70,7 @@ const SECTIONS: SectionConfig[] = [
     darkPreview: true,
     slots: [
       { key: 'white_logo', label: 'Logo trắng', sizeHint: '~300×36px, PNG', description: 'Trang Đăng nhập/Đăng ký (FE) + Đăng nhập (Admin)', icon: Moon },
-      { key: 'square_icon', label: 'Biểu tượng vuông', sizeHint: '96×96px', description: 'Cạnh form đăng nhập (FE)', icon: ImageIcon },
+      { key: 'square_icon', label: 'Biểu tượng vuông', sizeHint: '96×96px', description: 'Cạnh form đăng nhập (FE) và ảnh trên tab trình duyệt', icon: ImageIcon },
       { key: 'header_logo', label: 'Logo — Sáng', sizeHint: '~300×40px', description: 'Header + Sidebar chế độ sáng', icon: Monitor },
       { key: 'header_logo_dark', label: 'Logo — Tối', sizeHint: '~300×40px', description: 'Header + Sidebar chế độ tối', icon: Moon },
     ],

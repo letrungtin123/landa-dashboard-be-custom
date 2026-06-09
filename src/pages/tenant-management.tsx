@@ -63,20 +63,14 @@ export default function TenantManagementPage() {
   useEffect(() => { loadTenants(); }, [loadTenants]);
 
   // ── Validate domain fields ──
-  // Hostname hợp lệ: chữ, số, dấu chấm, gạch ngang. Không http://, không port, không dấu phẩy
-  const HOSTNAME_REGEX = /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
+  // Full URL hợp lệ: http:// hoặc https:// + hostname
+  const URL_REGEX = /^https?:\/\/[a-zA-Z0-9]([a-zA-Z0-9.:@-]*[a-zA-Z0-9])?$/;
 
   function validateDomain(value: string, label: string): boolean {
-    if (value.includes(',')) {
-      toast.error(`${label} chỉ nhập 1 domain duy nhất, không dùng dấu phẩy.`);
-      return false;
-    }
-    if (value.includes('://') || value.includes(':')) {
-      toast.error(`${label} chỉ nhập hostname, không nhập http:// hoặc port. Ví dụ: lms.nesso.vn`);
-      return false;
-    }
-    if (!HOSTNAME_REGEX.test(value)) {
-      toast.error(`${label} không hợp lệ. Ví dụ đúng: lms.nesso.com.vn`);
+    // Bỏ trailing slash trước khi validate
+    const cleaned = value.replace(/\/+$/, '');
+    if (!URL_REGEX.test(cleaned)) {
+      toast.error(`${label} không hợp lệ. Nhập đầy đủ URL gồm http:// hoặc https://. Ví dụ: https://lms.nesso.com.vn`);
       return false;
     }
     return true;
@@ -104,8 +98,8 @@ export default function TenantManagementPage() {
       await createTenant({
         name: formName,
         slug: formSlug,
-        domain_learner: formDomainLearner.trim() || null,
-        domain_admin: formDomainAdmin.trim() || null,
+        domain_learner: formDomainLearner.trim().replace(/\/+$/, '') || null,
+        domain_admin: formDomainAdmin.trim().replace(/\/+$/, '') || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         settings: Object.keys(settings).length > 0 ? settings : undefined,
@@ -132,8 +126,8 @@ export default function TenantManagementPage() {
       await updateTenant(editTenant.id, {
         name: formName,
         slug: formSlug,
-        domain_learner: formDomainLearner.trim() || null,
-        domain_admin: formDomainAdmin.trim() || null,
+        domain_learner: formDomainLearner.trim().replace(/\/+$/, '') || null,
+        domain_admin: formDomainAdmin.trim().replace(/\/+$/, '') || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         settings: updSettings,
@@ -363,13 +357,13 @@ export default function TenantManagementPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain Learner <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
-              <Input value={formDomainLearner} onChange={function onChange(e) { setFormDomainLearner(e.target.value); }} placeholder="lms.nesso.com.vn" />
-              <p className="text-xs text-muted-foreground">Hostname trang học viên. Ví dụ: lms.nesso.com.vn</p>
+              <Input value={formDomainLearner} onChange={function onChange(e) { setFormDomainLearner(e.target.value); }} placeholder="https://lms.nesso.com.vn" />
+              <p className="text-xs text-muted-foreground">URL đầy đủ trang học viên. Ví dụ: https://lms.nesso.com.vn</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Domain Admin <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
-              <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="cms.nesso.com.vn" />
-              <p className="text-xs text-muted-foreground">Hostname trang quản trị. Ví dụ: cms.nesso.com.vn</p>
+              <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="https://cms.nesso.com.vn" />
+              <p className="text-xs text-muted-foreground">URL đầy đủ trang quản trị. Ví dụ: https://cms.nesso.com.vn</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

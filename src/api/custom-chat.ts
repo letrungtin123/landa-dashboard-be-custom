@@ -153,6 +153,7 @@ export function sendMessageStream(
       const decoder = new TextDecoder();
       let buffer = '';
       let receivedDone = false;
+      let receivedError = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -168,13 +169,13 @@ export function sendMessageStream(
             const event = JSON.parse(line.slice(6));
             if (event.type === 'chunk') onChunk(event.text);
             else if (event.type === 'done') { receivedDone = true; onDone(); }
-            else if (event.type === 'error') { receivedDone = true; onError(event.message || 'Lỗi không xác định'); }
+            else if (event.type === 'error') { receivedError = true; onError(event.message || 'Lỗi không xác định'); }
           } catch { /* skip malformed line */ }
         }
       }
 
       // Safety: if stream ended without done/error event, still notify
-      if (!receivedDone) onDone();
+      if (!receivedDone && !receivedError) onDone();
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         onError(err.message || 'Lỗi kết nối');

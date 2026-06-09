@@ -105,3 +105,12 @@ export async function customExchangeOttApi(ott: string): Promise<CustomLoginResp
   );
   return data.data;
 }
+
+/**
+ * Generate One-Time Token cho cross-app SSO (Admin → FE Learner).
+ * Cần auth header — user phải đã login.
+ */
+export async function customGenerateOttApi(): Promise<{ ott: string; expires_in: number }> {
+  const { data } = await customApiClient.post<ApiResponse<{ ott: string; expires_in: number }>>("/api/auth/ott/generate");
+  return data.data;
+}
