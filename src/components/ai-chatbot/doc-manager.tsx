@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useTenantStore } from "@/utils/tenant-store";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,6 +44,15 @@ const TiptapEditor = lazy(() => import("@/components/shared/tiptap-editor"));
 // ═══════════════════════════════════════════════════════════════
 export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () => void }) {
   const [docTab, setDocTab] = useState("files");
+
+  // Tự động quay lại KB list khi superadmin đổi tenant
+  const activeTenantId = useTenantStore(s => s.activeTenantId);
+  const initialTenantRef = useRef(activeTenantId);
+  useEffect(() => {
+    if (initialTenantRef.current !== activeTenantId) {
+      onBack();
+    }
+  }, [activeTenantId, onBack]);
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">

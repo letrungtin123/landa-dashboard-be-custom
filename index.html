@@ -7,7 +7,21 @@
   <meta name="description" content="Nesso" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
-  <title>Nesso</title>
+  <title></title>
+  <script>
+    // Restore cached branding trước khi React mount — tránh flash default
+    try {
+      var b = sessionStorage.getItem('__branding');
+      if (b) {
+        var d = JSON.parse(b);
+        if (d.t) document.title = d.t;
+        if (d.f) {
+          var link = document.querySelector("link[rel*='icon']");
+          if (link) { link.type = 'image/png'; link.href = d.f; }
+        }
+      }
+    } catch(e) {}
+  </script>
   <script>
     // Auto-redirect to /admin if path doesn't start with /admin
     (function () {

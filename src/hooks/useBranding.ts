@@ -91,20 +91,21 @@ export function useBranding() {
     refetchOnWindowFocus: false,
   });
 
-  // Cập nhật document.title + favicon theo tenant từ API
+  // Cập nhật document.title + favicon theo tenant từ API + cache vào sessionStorage
   useEffect(() => {
-    // Title
-    if (data?.tenantName) {
-      document.title = `${data.tenantName} | Admin`;
-    } else {
-      document.title = DEFAULT_TITLE;
+    const title = data?.tenantName ? `${data.tenantName} | Admin` : '';
+    if (title) document.title = title;
+
+    const faviconUrl = data?.squareIcon && data.squareIcon !== fallbackSquareIcon
+      ? data.squareIcon : '';
+    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    if (link && faviconUrl) {
+      link.type = 'image/png';
+      link.href = faviconUrl;
     }
 
-    // Favicon — dùng square_icon của tenant
-    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
-    if (link && data?.squareIcon && data.squareIcon !== fallbackSquareIcon) {
-      link.type = 'image/png';
-      link.href = data.squareIcon;
+    if (title || faviconUrl) {
+      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch {}
     }
   }, [data?.tenantName, data?.squareIcon]);
 
@@ -128,20 +129,21 @@ export function useBrandingPublic() {
     refetchOnWindowFocus: false,
   });
 
-  // Cập nhật document.title + favicon trên trang login
+  // Cập nhật document.title + favicon trên trang login + cache vào sessionStorage
   useEffect(() => {
-    // Title
-    if (data?.tenantName) {
-      document.title = `${data.tenantName} | Admin`;
-    } else {
-      document.title = DEFAULT_TITLE;
+    const title = data?.tenantName ? `${data.tenantName} | Admin` : '';
+    if (title) document.title = title;
+
+    const faviconUrl = data?.squareIcon && data.squareIcon !== fallbackSquareIcon
+      ? data.squareIcon : '';
+    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    if (link && faviconUrl) {
+      link.type = 'image/png';
+      link.href = faviconUrl;
     }
 
-    // Favicon — dùng square_icon của tenant
-    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
-    if (link && data?.squareIcon && data.squareIcon !== fallbackSquareIcon) {
-      link.type = 'image/png';
-      link.href = data.squareIcon;
+    if (title || faviconUrl) {
+      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch {}
     }
   }, [data?.tenantName, data?.squareIcon]);
 

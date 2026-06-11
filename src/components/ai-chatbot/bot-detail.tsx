@@ -38,7 +38,7 @@ import {
   type PromptTemplate,
 } from "@/api/custom-prompt-templates";
 import { storageUrl } from "@/utils/storage-url";
-
+import { useTenantStore } from "@/utils/tenant-store";
 // ── Mascot palette ──
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 function getMascotColor(i: number) { return MASCOT_COLORS[i % MASCOT_COLORS.length]; }
@@ -98,6 +98,15 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
   const [activeTemplates, setActiveTemplates] = useState<PromptTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [addingTemplateId, setAddingTemplateId] = useState<string | null>(null);
+
+  // ── Tự động quay lại bot list khi superadmin đổi tenant ──
+  const activeTenantId = useTenantStore(s => s.activeTenantId);
+  const initialTenantRef = useRef(activeTenantId);
+  useEffect(() => {
+    if (initialTenantRef.current !== activeTenantId) {
+      onBack();
+    }
+  }, [activeTenantId, onBack]);
 
 
 
