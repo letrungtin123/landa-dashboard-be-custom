@@ -37,6 +37,7 @@ import PermissionGroupsPage from '@/pages/permission-groups';
 import BrandingPage from '@/pages/branding';
 import AiChatbotPage from '@/pages/ai-chatbot';
 import PromptTemplatesPage from '@/pages/prompt-templates';
+import BadgesPage from './pages/badges';
 
 
 function AppRoutes() {
@@ -70,6 +71,7 @@ function AppRoutes() {
           <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
           <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><AiChatbotPage /></ModuleGuard>} />
           <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
+          <Route path="/badges" element={<ModuleGuard module="superadmin_only"><BadgesPage /></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />

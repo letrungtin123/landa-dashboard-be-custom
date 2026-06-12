@@ -76,6 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: 'Tenant Management', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
       { title: 'Branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
       { title: 'System Prompts', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
+      { title: 'Badges', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
     ],
   }
 ];
@@ -108,6 +109,9 @@ export function AppSidebar() {
 
     // superadmin thấy tất cả (cross-tenant)
     if (user.role === 'superadmin') return true;
+
+    // Các module dành riêng cho superadmin
+    if (item.module === 'superadmin_only') return false;
 
     // Kiểm tra module có được bật cho tenant không
     if (tenantModules.length > 0 && !tenantModules.includes(item.module)) {

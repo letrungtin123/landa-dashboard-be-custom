@@ -1297,8 +1297,19 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
         if (payloadMetadata.start_time === "00:00:00" || payloadMetadata.start_time === "") delete payloadMetadata.start_time;
         if (payloadMetadata.end_time === "00:00:00" || payloadMetadata.end_time === "") delete payloadMetadata.end_time;
         
+        const ytId = payloadMetadata.youtube_id_1_0 || '';
+        const ytUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : '';
+        const payloadData = {
+          url: ytUrl,
+          video_url: ytUrl,
+          encoded_videos: {
+            youtube: { url: ytUrl }
+          }
+        };
+        
         return updateXBlock(id, {
           metadata: payloadMetadata,
+          data: payloadData as any,
         });
       }
       if (category === 'html') {
