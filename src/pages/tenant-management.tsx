@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
+import { cn } from "@/utils/utils";
+import { getIconComponent } from "@/utils/icon-map";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -445,34 +447,96 @@ export default function TenantManagementPage() {
 
       {/* ── Modules Toggle Dialog ── */}
       <Dialog open={!!modulesTenant} onOpenChange={function close() { setModulesTenant(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Modules — {modulesTenant?.name}</DialogTitle>
-            <DialogDescription>Bật/tắt modules cho tenant này</DialogDescription>
-          </DialogHeader>
-          {modulesLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
-          ) : (
-            <div className="space-y-3 py-4 max-h-[400px] overflow-y-auto">
-              {modules.map(function renderMod(m) {
-                return (
-                  <div key={m.module_id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium text-sm">{m.name}</span>
-                      <code className="text-xs text-muted-foreground">{m.code}</code>
-                    </div>
-                    <Switch checked={m.is_enabled} onCheckedChange={function toggle() { toggleModule(m.module_id); }} />
-                  </div>
-                );
-              })}
+        <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-card to-muted/30 p-6 border-b border-border/50">
+            <DialogHeader>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
+                  <Settings2 className="w-8 h-8 text-primary" />
+                </div>
+                <div>
+                  <DialogTitle className="text-2xl font-bold">Phân quyền Module</DialogTitle>
+                  <DialogDescription className="text-base mt-1.5">
+                    Cấu hình tính năng cho hệ thống <strong className="text-foreground">{modulesTenant?.name}</strong>
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="mt-6 flex items-center gap-3">
+                <Badge variant="outline" className="px-3 py-1 rounded-full bg-primary/5 text-primary border-primary/20 shadow-sm font-semibold text-sm">
+                  <span className="relative flex h-2 w-2 mr-2 inline-flex">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                  </span>
+                  Đang kích hoạt: {modules.filter(m => m.is_enabled).length} / {modules.length} modules
+                </Badge>
+              </div>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-6 bg-muted/10">
+            {modulesLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                <p>Đang tải cấu hình modules...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                {modules.map(function renderMod(m) {
+                  const Icon = getIconComponent(m.icon);
+                  return (
+                    <motion.div 
+                      key={m.module_id} 
+                      className={cn(
+                        "relative flex items-start gap-4 p-5 rounded-[20px] border transition-all duration-300",
+                        m.is_enabled 
+                          ? "border-primary/40 bg-card shadow-md hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/60" 
+                          : "border-border/60 bg-muted/30 opacity-85 hover:opacity-100 hover:bg-muted/50"
+                      )}
+                      layout
+                    >
+                      <div className={cn(
+                        "p-3.5 rounded-[14px] shadow-inner border",
+                        m.is_enabled ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-muted-foreground border-border/50"
+                      )}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1 min-w-0 pt-0.5">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className={cn("font-bold text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
+                              {m.name}
+                            </h4>
+                            <div className="mt-2">
+                              <code className={cn(
+                                "text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md border",
+                                m.is_enabled ? "bg-primary/5 text-primary/80 border-primary/20" : "bg-background text-muted-foreground border-border/50"
+                              )}>
+                                {m.code}
+                              </code>
+                            </div>
+                          </div>
+                          <Switch 
+                            checked={m.is_enabled} 
+                            onCheckedChange={function toggle() { toggleModule(m.module_id); }} 
+                            className={cn("mt-1 scale-110 shadow-sm", m.is_enabled && "data-[state=checked]:bg-emerald-500")}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="p-6 bg-card border-t border-border/50">
+            <div className="flex justify-end gap-3 w-full">
+              <DialogClose asChild><Button variant="outline" className="px-6 rounded-xl">Hủy</Button></DialogClose>
+              <Button onClick={saveModules} disabled={saving} className="px-8 rounded-xl shadow-md">
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                Lưu cấu hình
+              </Button>
             </div>
-          )}
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
-            <Button onClick={saveModules} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Lưu
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

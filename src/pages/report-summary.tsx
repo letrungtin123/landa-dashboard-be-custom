@@ -415,12 +415,12 @@ function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId }
 
   const { data, isLoading } = useQuery({
     queryKey: ['report-learners', month, year, page, debouncedSearch, groupId, subgroupId, statusFilter],
-    queryFn: () => getReportLearners({ 
-      month, year, page, page_size: 5, 
-      search: debouncedSearch, 
+    queryFn: () => getReportLearners({
+      month, year, page, page_size: 5,
+      search: debouncedSearch,
       group_id: groupId === 'all' ? undefined : groupId,
       subgroup_id: subgroupId === 'all' ? undefined : subgroupId,
-      status: statusFilter 
+      status: statusFilter
     }),
   });
 
@@ -476,74 +476,74 @@ function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId }
             Không có dữ liệu
           </div>
         ) : (
-            <div className="divide-y divide-border/40 overflow-y-auto custom-scrollbar max-h-[440px]">
-              <AnimatePresence>
-                {data.results.map((u, i) => {
-                  const cfg = statusConfig[u.status] || statusConfig.not_started;
-                  return (
-                    <motion.div key={u.username}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex items-center p-4 hover:bg-muted/50 transition-all cursor-pointer group gap-4"
-                      onClick={() => onSelectLearner(u.username)}
-                    >
-                      {/* User Info Column */}
-                      <div className="flex items-center gap-3 w-[30%] min-w-[140px] shrink-0">
-                        {u.avatar ? (
-                          <img src={u.avatar} alt={u.username} className="h-8 w-8 rounded-full object-cover border border-border shrink-0" />
-                        ) : (
-                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${cfg.avatarClass}`}>
-                            {u.username.substring(0, 2).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{u.username}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+          <div className="divide-y divide-border/40 overflow-y-auto custom-scrollbar max-h-[440px]">
+            <AnimatePresence>
+              {data.results.map((u, i) => {
+                const cfg = statusConfig[u.status] || statusConfig.not_started;
+                return (
+                  <motion.div key={u.username}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center p-4 hover:bg-muted/50 transition-all cursor-pointer group gap-4"
+                    onClick={() => onSelectLearner(u.username)}
+                  >
+                    {/* User Info Column */}
+                    <div className="flex items-center gap-3 w-[30%] min-w-[140px] shrink-0">
+                      {u.avatar ? (
+                        <img src={u.avatar} alt={u.username} className="h-8 w-8 rounded-full object-cover border border-border shrink-0" />
+                      ) : (
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${cfg.avatarClass}`}>
+                          {u.username.substring(0, 2).toUpperCase()}
                         </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{u.username}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                       </div>
-                      
-                      {/* Course Name Column */}
-                      <div className="flex-1 min-w-0">
-                        {u.course_name ? (
-                          <p className="text-xs text-foreground truncate" title={u.course_name}>
-                            {u.course_name}
-                          </p>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">{u.enrolled_courses > 0 ? `${u.enrolled_courses} khóa học` : 'Chưa đăng ký'}</span>
-                        )}
-                      </div>
-                      
-                      {/* Progress Column */}
-                      <div className="w-[15%] min-w-[60px] shrink-0 flex flex-col justify-center">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-medium text-foreground">{u.progress}%</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full ${cfg.barClass}`} 
-                            style={{ width: `${Math.min(u.progress, 100)}%` }} 
-                          />
-                        </div>
-                      </div>
+                    </div>
 
-                      {/* Status Column */}
-                      <div className="w-[20%] min-w-[90px] shrink-0 text-right flex flex-col items-end justify-center">
-                        <div className="flex items-center justify-end gap-1 mb-1">
-                          <Clock className="h-2.5 w-2.5 text-muted-foreground" />
-                          <span className="text-[10px] text-muted-foreground">
-                            {u.last_completion_at
-                              ? new Date(u.last_completion_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                              : 'Chưa học'}
-                          </span>
-                        </div>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${cfg.badgeClass}`}>{cfg.label}</span>
+                    {/* Course Name Column */}
+                    <div className="flex-1 min-w-0">
+                      {u.course_name ? (
+                        <p className="text-xs text-foreground truncate" title={u.course_name}>
+                          {u.course_name}
+                        </p>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">{u.enrolled_courses > 0 ? `${u.enrolled_courses} khóa học` : 'Chưa đăng ký'}</span>
+                      )}
+                    </div>
+
+                    {/* Progress Column */}
+                    <div className="w-[15%] min-w-[60px] shrink-0 flex flex-col justify-center">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-medium text-foreground">{u.progress}%</span>
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
+                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${cfg.barClass}`}
+                          style={{ width: `${Math.min(u.progress, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Status Column */}
+                    <div className="w-[20%] min-w-[90px] shrink-0 text-right flex flex-col items-end justify-center">
+                      <div className="flex items-center justify-end gap-1 mb-1">
+                        <Clock className="h-2.5 w-2.5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">
+                          {u.last_completion_at
+                            ? new Date(u.last_completion_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            : 'Chưa học'}
+                        </span>
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${cfg.badgeClass}`}>{cfg.label}</span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
         )}
       </CardContent>
       {data && data.total_pages > 1 && (
@@ -710,10 +710,10 @@ export default function ReportSummaryPage() {
   }
 
   const overview = data.overview;
-  
+
   const calculateTrend = (current: number | string, previous: number | string | undefined, isAbsolute: boolean = false, suffix: string = '%') => {
     if (previous === undefined || previous === null) return { text: '', type: 'up' as const };
-    
+
     const cur = Number(current) || 0;
     const prev = Number(previous) || 0;
 
@@ -833,7 +833,7 @@ export default function ReportSummaryPage() {
                 <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedSubGroupId === 'all'
-                    ? 'Tất cả SubGroup'
+                    ? 'Tất cả phòng ban'
                     : subGroupsData?.subgroups.find(sg => sg.id === selectedSubGroupId)?.name || 'Đang tải...'}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
@@ -843,7 +843,7 @@ export default function ReportSummaryPage() {
                   onClick={() => setSelectedSubGroupId('all')}
                   className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${selectedSubGroupId === 'all' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
                 >
-                  Tất cả SubGroup
+                  Tất cả phòng ban
                   <div className={`w-1.5 h-1.5 rounded-full transition-colors ${selectedSubGroupId === 'all' ? 'bg-foreground' : 'bg-transparent'}`} />
                 </DropdownMenuItem>
                 {subGroupsData?.subgroups.map(sg => (
@@ -939,14 +939,13 @@ export default function ReportSummaryPage() {
                   <div className="text-[34px] font-bold tracking-tight text-foreground leading-none mb-4">
                     {typeof stat.value === 'number' ? stat.value.toLocaleString('en-US') : stat.value}{stat.suffix}
                   </div>
-                  
+
                   {stat.trend && (
                     <div className="inline-flex">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                        stat.trendType === 'up' 
-                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' 
-                          : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
-                      }`}>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${stat.trendType === 'up'
+                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+                        : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
+                        }`}>
                         {stat.trend} so với tháng trước
                       </span>
                     </div>

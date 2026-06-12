@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { Maximize2, X } from "lucide-react";
@@ -22,7 +23,7 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
       className={cn(
         "relative flex flex-col p-6 w-full max-w-[560px] mx-auto rounded-[32px] border bg-background shadow-sm transition-all",
         isActive 
-          ? "border-primary/20 shadow-primary/5 hover:border-primary/40 hover:shadow-primary/10 hover:-translate-y-2" 
+          ? cn("border-primary/20 shadow-primary/5", !showPreview && "hover:border-primary/40 hover:shadow-primary/10 hover:-translate-y-2")
           : "border-border/40 opacity-80 grayscale"
       )}
       layout
@@ -136,50 +137,53 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
       )}
 
       {/* Fullscreen Preview Modal */}
-      <AnimatePresence>
-        {showPreview && (
-          <motion.div 
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm cursor-zoom-out"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowPreview(false)}
-          >
-            <motion.div
-              className="relative h-full max-h-[85vh] aspect-[4/6.5] rounded-[32px] overflow-hidden shadow-2xl cursor-default"
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {showPreview && (
+            <motion.div 
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm cursor-zoom-out"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPreview(false)}
             >
-              <button 
-                onClick={() => setShowPreview(false)}
-                className="absolute top-4 right-4 z-10 p-3 bg-black/40 text-white/90 rounded-full hover:bg-black/80 hover:text-white backdrop-blur-md transition-colors"
+              <motion.div
+                className="relative h-full max-h-[85vh] aspect-[4/6.5] rounded-[32px] overflow-hidden shadow-2xl cursor-default"
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                <X className="w-6 h-6" />
-              </button>
-              <img 
-                src={imgSrc} 
-                alt={`${badge.name} Full Preview`} 
-                className={cn(
-                  "w-full h-full object-cover",
-                  badge.id === "omnipotent_master" && "scale-[1.06]"
-                )}
-              />
-              
-              {/* Shine effect inside preview */}
-              <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden rounded-[20px]">
-                <motion.div 
-                  className="absolute top-[-50%] w-[60%] h-[200%] bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg]"
-                  animate={{ left: ["-100%", "250%"] }}
-                  transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 2.5, ease: "easeInOut" }}
+                <button 
+                  onClick={() => setShowPreview(false)}
+                  className="absolute top-4 right-4 z-10 p-3 bg-black/40 text-white/90 rounded-full hover:bg-black/80 hover:text-white backdrop-blur-md transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+                <img 
+                  src={imgSrc} 
+                  alt={`${badge.name} Full Preview`} 
+                  className={cn(
+                    "w-full h-full object-cover",
+                    badge.id === "omnipotent_master" && "scale-[1.06]"
+                  )}
                 />
-              </div>
+                
+                {/* Shine effect inside preview */}
+                <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden rounded-[20px]">
+                  <motion.div 
+                    className="absolute top-[-50%] w-[60%] h-[200%] bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg]"
+                    animate={{ left: ["-100%", "250%"] }}
+                    transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 2.5, ease: "easeInOut" }}
+                  />
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </motion.div>
   );
 }

@@ -1,14 +1,17 @@
 import { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Loader2, BookOpen, FolderKanban, Search, ChevronLeft, BookPlus, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, BookOpen, FolderKanban, Search, ChevronLeft, BookPlus, X, LayoutGrid, CheckCircle2, Circle } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/utils/utils';
 import { confirmDialog } from '@/utils/confirm-store';
 import { useAuthStore } from '@/utils/store';
 import {
@@ -28,6 +31,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -154,60 +158,72 @@ export default function CourseCategoriesPage() {
       />
 
       {catLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
+            <Skeleton key={i} className="h-36 rounded-[24px]" />
           ))}
         </div>
       ) : categories.length === 0 ? (
-        <Card className="p-12 text-center">
-          <FolderKanban className="h-12 w-12 mx-auto text-muted-foreground/20 mb-3" />
-          <p className="text-muted-foreground">Chưa có danh mục nào</p>
-        </Card>
+        <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed rounded-[32px] bg-muted/10">
+          <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mb-4">
+            <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">Chưa có danh mục nào</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">Tạo danh mục để phân loại và tổ chức các khóa học của bạn một cách khoa học hơn.</p>
+          {canAdd && (
+            <Button onClick={openCreate} className="mt-6 gap-2 rounded-full px-6">
+              <Plus className="h-4 w-4" /> Tạo danh mục đầu tiên
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {categories.map((cat) => (
-            <Card
+            <motion.div
               key={cat.id}
-              className="group hover:shadow-md transition-all cursor-pointer"
+              whileHover={{ y: -4 }}
+              className="group relative flex flex-col p-5 bg-card rounded-[24px] border border-border/50 shadow-sm hover:shadow-xl hover:border-primary/30 transition-all cursor-pointer overflow-hidden"
               onClick={() => setDetailCatId(cat.id)}
             >
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <FolderKanban className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="text-sm font-semibold truncate">{cat.name}</CardTitle>
-                      {cat.description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{cat.description}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {canEdit && <button
-                      className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() => openEdit(cat)}
-                    >
+              {/* Background accent */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none transition-opacity opacity-50 group-hover:opacity-100" />
+              
+              <div className="flex items-start justify-between relative z-10 mb-4">
+                <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0 shadow-inner">
+                  <FolderKanban className="h-6 w-6 text-primary drop-shadow-sm" />
+                </div>
+                
+                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {canEdit && (
+                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full bg-background shadow-sm hover:bg-primary/10 hover:text-primary hover:border-primary/20" onClick={() => openEdit(cat)}>
                       <Pencil className="h-3.5 w-3.5" />
-                    </button>}
-                    {canDelete && <button
-                      className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      onClick={() => handleDelete(cat)}
-                    >
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full bg-background shadow-sm hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20" onClick={() => handleDelete(cat)}>
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              <div className="relative z-10 flex-1 flex flex-col">
+                <h3 className="text-lg font-bold text-foreground mb-1 truncate group-hover:text-primary transition-colors">{cat.name}</h3>
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-4 min-h-[40px]">
+                  {cat.description || <span className="italic opacity-50">Không có mô tả</span>}
+                </p>
+                
+                <div className="mt-auto pt-4 border-t border-border/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <BookOpen className="h-4 w-4 text-muted-foreground/70" />
+                    <span>{cat.course_count} khóa học</span>
+                  </div>
+                  <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                    <ChevronLeft className="h-4 w-4 rotate-180" />
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  <span>{cat.course_count} courses</span>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </motion.div>
           ))}
         </div>
       )}
@@ -304,51 +320,97 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={onBack}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{cat?.name || 'Danh mục'}</h1>
-            <p className="text-sm text-muted-foreground">{courses.length} courses</p>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="relative p-8 rounded-[32px] overflow-hidden bg-gradient-to-r from-card to-muted/30 border shadow-sm">
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <Button variant="outline" size="icon" onClick={onBack} className="h-10 w-10 rounded-full shrink-0 shadow-sm hover:bg-primary/5 hover:text-primary">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 px-2.5 py-0.5 text-xs rounded-full">
+                  Danh mục khóa học
+                </Badge>
+              </div>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">{cat?.name || 'Đang tải...'}</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {cat?.description || 'Chi tiết các khóa học thuộc danh mục này'}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="flex flex-col items-end px-5 py-2.5 bg-background/50 backdrop-blur-md rounded-2xl border">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Tổng số</span>
+              <span className="text-xl font-bold text-foreground flex items-center gap-2">
+                {courses.length} <BookOpen className="h-4 w-4 text-primary" />
+              </span>
+            </div>
+            {canEdit && (
+              <Button onClick={() => setAddOpen(true)} className="gap-2 h-12 px-6 rounded-2xl shadow-md hover:shadow-lg transition-all">
+                <BookPlus className="h-4 w-4" /> Thêm khóa học
+              </Button>
+            )}
           </div>
         </div>
-        {canEdit && <Button onClick={() => setAddOpen(true)} className="gap-2">
-          <BookPlus className="h-4 w-4" /> Thêm course
-        </Button>}
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
         </div>
       ) : courses.length === 0 ? (
-        <Card className="p-12 text-center">
-          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground/20 mb-3" />
-          <p className="text-muted-foreground">Chưa có course nào trong danh mục</p>
-        </Card>
+        <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed rounded-[32px] bg-muted/10">
+          <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mb-4">
+            <BookOpen className="h-8 w-8 text-muted-foreground/40" />
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">Chưa có khóa học nào</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">Thêm các khóa học vào danh mục này để học viên dễ dàng theo dõi.</p>
+          {canEdit && (
+            <Button onClick={() => setAddOpen(true)} variant="outline" className="gap-2 rounded-full px-6">
+              <Plus className="h-4 w-4" /> Thêm ngay
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="border rounded-xl divide-y">
-          {courses.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 group">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{c.display_name}</p>
-                <p className="text-[11px] text-muted-foreground truncate font-mono">{c.course_id}</p>
-              </div>
-              {canDelete && <button
-                onClick={() => handleRemove(c.course_id, c.display_name)}
-                disabled={removeMutation.isPending}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+        <div className="space-y-3">
+          <AnimatePresence>
+            {courses.map((c, i) => (
+              <motion.div 
+                key={c.id} 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-4 px-5 py-4 bg-card rounded-[20px] border shadow-sm hover:shadow-md hover:border-primary/30 group transition-all"
               >
-                {removeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              </button>}
-            </div>
-          ))}
+                <div className="w-12 h-12 rounded-[14px] bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                  <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-base font-bold text-foreground truncate group-hover:text-primary transition-colors">{c.display_name}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="text-[10px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-mono font-semibold tracking-wider">
+                      {c.course_id}
+                    </code>
+                  </div>
+                </div>
+                {canDelete && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemove(c.course_id, c.display_name)}
+                    disabled={removeMutation.isPending}
+                    className="opacity-0 group-hover:opacity-100 h-9 w-9 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all shrink-0"
+                  >
+                    {removeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  </Button>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -415,84 +477,114 @@ function AddCoursesToCategoryModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Thêm course vào danh mục</DialogTitle>
-        </DialogHeader>
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Tìm course theo tên..."
-            className="pl-9"
-          />
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-0 shadow-2xl rounded-[32px]">
+        <div className="bg-gradient-to-br from-card to-muted/30 p-6 border-b border-border/50">
+          <DialogHeader>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
+                <BookPlus className="w-7 h-7 text-primary" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-bold">Thêm Khóa học vào Danh mục</DialogTitle>
+                <DialogDescription className="text-sm mt-1">
+                  Chọn các khóa học muốn hiển thị trong danh mục này
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
         </div>
 
-        <div className="flex-1 overflow-y-auto border rounded-lg divide-y min-h-[200px] max-h-[400px]">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-40">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : courses.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
-              Không tìm thấy course
-            </div>
-          ) : courses.map((c) => {
-            const isAssigned = existingCourseIds.includes(c.id);
-            const isSelected = selected.includes(c.id);
-            return (
-              <div
-                key={c.id}
-                className={`flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 ${isAssigned ? 'opacity-40' : 'cursor-pointer'}`}
-                onClick={() => !isAssigned && toggle(c.id)}
-              >
-                <Checkbox
-                  checked={isSelected || isAssigned}
-                  disabled={isAssigned}
-                  className="pointer-events-none"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{c.display_name}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono truncate">{c.id}</p>
+        <div className="p-6 bg-muted/5 flex flex-col gap-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Tìm kiếm khóa học theo tên hoặc mã..."
+              className="pl-11 h-12 rounded-xl bg-background border-border/50 shadow-sm text-base focus-visible:ring-primary/20"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto border border-border/50 rounded-2xl bg-background shadow-inner divide-y min-h-[300px] max-h-[450px] custom-scrollbar">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+                <p className="text-sm">Đang tải dữ liệu khóa học...</p>
+              </div>
+            ) : courses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                <BookOpen className="h-8 w-8 text-muted-foreground/30 mb-3" />
+                <p className="text-sm font-medium">Không tìm thấy khóa học nào phù hợp</p>
+              </div>
+            ) : courses.map((c) => {
+              const isAssigned = existingCourseIds.includes(c.id);
+              const isSelected = selected.includes(c.id);
+              return (
+                <div
+                  key={c.id}
+                  className={cn(
+                    "flex items-center gap-4 px-5 py-3.5 transition-colors",
+                    isAssigned ? "bg-muted/30 opacity-60" : "cursor-pointer hover:bg-muted/50",
+                    isSelected && !isAssigned ? "bg-primary/5 hover:bg-primary/10" : ""
+                  )}
+                  onClick={() => !isAssigned && toggle(c.id)}
+                >
+                  <div className="shrink-0">
+                    {isAssigned ? (
+                      <CheckCircle2 className="h-5 w-5 text-muted-foreground opacity-50" />
+                    ) : isSelected ? (
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-muted-foreground/30" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-sm font-bold truncate", isSelected ? "text-primary" : "text-foreground")}>
+                      {c.display_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{c.id}</p>
+                  </div>
+                  {isAssigned && (
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wider shrink-0 bg-muted-foreground/10 text-muted-foreground">
+                      Đã thêm
+                    </Badge>
+                  )}
                 </div>
-                {isAssigned && <span className="text-[10px] text-muted-foreground shrink-0">Đã có</span>}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-2">
-            {data && data.total > 20 && (
-              <div className="flex items-center gap-1 text-xs">
-                <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="h-7 w-7 p-0">
-                  ←
-                </Button>
-                <span className="text-muted-foreground">Trang {page}</span>
-                <Button size="sm" variant="ghost" disabled={page * 20 >= data.total} onClick={() => setPage((p) => p + 1)} className="h-7 w-7 p-0">
-                  →
-                </Button>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {selected.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                Đã chọn <span className="font-semibold text-primary">{selected.length}</span>
+        <DialogFooter className="p-6 bg-card border-t border-border/50">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              {data && data.total > 20 && (
+                <div className="flex items-center gap-1.5 text-sm bg-muted/50 px-2 py-1 rounded-lg">
+                  <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="h-7 w-7 rounded-md hover:bg-background shadow-sm">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-muted-foreground font-medium px-2">Trang {page}</span>
+                  <Button size="icon" variant="ghost" disabled={page * 20 >= data.total} onClick={() => setPage((p) => p + 1)} className="h-7 w-7 rounded-md hover:bg-background shadow-sm">
+                    <ChevronLeft className="h-4 w-4 rotate-180" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-muted-foreground">
+                Đã chọn: <strong className="text-primary text-base ml-1">{selected.length}</strong>
               </span>
-            )}
-            <Button
-              onClick={() => assignMutation.mutate()}
-              disabled={selected.length === 0 || assignMutation.isPending}
-              size="sm"
-            >
-              {assignMutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-              Thêm ({selected.length})
-            </Button>
+              <Button
+                onClick={() => assignMutation.mutate()}
+                disabled={selected.length === 0 || assignMutation.isPending}
+                className="gap-2 rounded-xl px-6 shadow-md"
+              >
+                {assignMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Thêm vào danh mục
+              </Button>
+            </div>
           </div>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
