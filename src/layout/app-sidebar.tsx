@@ -77,6 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: 'Branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
       { title: 'System Prompts', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
       { title: 'Badges', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
+      { title: 'SSO Management', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'KeyRound' },
     ],
   }
 ];

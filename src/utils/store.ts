@@ -89,6 +89,7 @@ interface AuthState {
   tokenExpiresAt: number | null;
 
   login: (username: string, password: string) => Promise<void>;
+  setSession: (data: CustomLoginResponse) => Promise<void>;
   logout: () => Promise<void>;
   startLogout: () => void;
   performTokenRefresh: () => Promise<boolean>;
@@ -152,19 +153,23 @@ export const useAuthStore = create<AuthState>()(
       setLoading: (loading) => set({ isLoading: loading }),
       startLogout: () => set({ isLoggingOut: true }),
 
-      // ── Login qua custom backend ──
-      login: async (username: string, password: string) => {
-        const data = await customLoginApi(username, password);
+      setSession: async (data: CustomLoginResponse) => {
         set(mapLoginResponseToState(data));
         get().scheduleTokenRefresh();
 
-        // CHỈ superadmin mới cần fetch tenant list cho bộ lọc (multi-tenant)
+        // CHI superadmin moi can fetch tenant list cho bo loc multi-tenant.
         if (data.user.role === 'superadmin') {
           try {
             const { useTenantStore } = await import('@/utils/tenant-store');
-            useTenantStore.getState().fetchTenants();
-          } catch { /* ignore — tenant fetch is non-critical */ }
+            await useTenantStore.getState().fetchTenants();
+          } catch { /* ignore - tenant fetch is non-critical */ }
         }
+      },
+
+      // ── Login qua custom backend ──
+      login: async (username: string, password: string) => {
+        const data = await customLoginApi(username, password);
+        await get().setSession(data);
       },
 
       // ── Logout — revoke refresh token ──
