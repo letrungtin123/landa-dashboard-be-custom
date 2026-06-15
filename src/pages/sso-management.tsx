@@ -48,8 +48,8 @@ const MicrosoftIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const KeycloakIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-    <path fill="#007EAF" d="M16 2.221L2.158 9.387v12.27L16 28.823l13.842-7.166V9.387L16 2.221zm10.748 18.064L16 25.845 5.252 20.285V10.748L16 5.188l10.748 5.56v9.537z"/>
-    <path fill="#007EAF" d="M16 9.608c-3.136 0-5.68 2.544-5.68 5.68s2.544 5.68 5.68 5.68c.552 0 1.085-.084 1.59-.234l-1.637-2.637h-1.666v-1.665h1.162c.15-.36.234-.754.234-1.162 0-1.763-1.432-3.194-3.194-3.194S9.294 13.508 9.294 15.271c0 1.763 1.432 3.194 3.194 3.194.524 0 1.018-.127 1.46-.347L15.353 20.3h2.385l.89-1.434h2.518l.89-1.433h2.46l.89-1.434h-8.033v-1.666h-1.077c-.452-.224-1.155-.387-1.782-.442l-.504-.002z"/>
+    <path fill="#007EAF" d="M16 2.221L2.158 9.387v12.27L16 28.823l13.842-7.166V9.387L16 2.221zm10.748 18.064L16 25.845 5.252 20.285V10.748L16 5.188l10.748 5.56v9.537z" />
+    <path fill="#007EAF" d="M16 9.608c-3.136 0-5.68 2.544-5.68 5.68s2.544 5.68 5.68 5.68c.552 0 1.085-.084 1.59-.234l-1.637-2.637h-1.666v-1.665h1.162c.15-.36.234-.754.234-1.162 0-1.763-1.432-3.194-3.194-3.194S9.294 13.508 9.294 15.271c0 1.763 1.432 3.194 3.194 3.194.524 0 1.018-.127 1.46-.347L15.353 20.3h2.385l.89-1.434h2.518l.89-1.433h2.46l.89-1.434h-8.033v-1.666h-1.077c-.452-.224-1.155-.387-1.782-.442l-.504-.002z" />
   </svg>
 );
 
@@ -295,7 +295,7 @@ export default function SsoManagementPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-8">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"
@@ -332,7 +332,7 @@ export default function SsoManagementPage() {
           </Card>
         </motion.div>
       ) : (
-        <motion.div 
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -353,7 +353,7 @@ export default function SsoManagementPage() {
                 <Card className={`group relative flex h-full flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${draft.is_enabled ? 'border-primary/40 ring-1 ring-primary/10' : ''}`}>
                   {/* Decorative gradient background */}
                   <div className="absolute inset-x-0 -top-px h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  
+
                   <CardHeader className="pb-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex gap-3">
@@ -432,7 +432,7 @@ export default function SsoManagementPage() {
                             <div className="space-y-1">
                               <div className="text-sm font-medium">Tu dong kich hoat learner moi</div>
                               <p className="text-xs leading-relaxed text-muted-foreground">
-                                Bat: tao learner active va cho login FE 5173 ngay. Tat: tao learner inactive, can staff/superuser duyet trong Users.
+                                Bật: Tự động tạo account learner và không cần admin duyệt xác thực. Tắt: Cần admin duyệt xác thực account learner khi đăng nhập SSO.
                               </p>
                             </div>
                             <Switch

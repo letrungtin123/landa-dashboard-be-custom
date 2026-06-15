@@ -50,6 +50,13 @@ import { CrosswordPreviewInteractive } from './CrosswordPreview';
 import DiagramPreviewInteractive from './editors/diagram/DiagramPreviewInteractive';
 import DiagramEditor, { DiagramXBlockData } from './editors/DiagramEditor';
 import ImageCarousel from './ImageCarousel';
+import {
+  hasProblemMedia,
+  normalizeProblemMedia,
+  problemMediaForSave,
+  resolveProblemMediaImageUrl,
+  type ProblemMedia,
+} from './problemMedia';
 
 import { config } from '@/config/env';
 
@@ -600,6 +607,53 @@ function parseMaybeJson(raw: any): any {
   return raw;
 }
 
+function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
+  const normalized = normalizeProblemMedia(media);
+  if (!hasProblemMedia(normalized)) return null;
+
+  const images = normalized.images.map((img) => ({
+    ...img,
+    src: resolveProblemMediaImageUrl(img.src),
+  }));
+
+  return (
+    <div className="space-y-3">
+      {normalized.youtube_id && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground tracking-wide uppercase">
+            <Video className="h-4 w-4 text-red-500" />
+            <span>YouTube Video</span>
+          </div>
+          <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
+            <iframe
+              key={normalized.youtube_id}
+              width="100%"
+              height="100%"
+              src={`https://www.youtube.com/embed/${normalized.youtube_id}?rel=0`}
+              title="Problem video preview"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+
+      {images.length === 1 && (
+        <div className="rounded-lg border border-border bg-muted/20 p-2">
+          <img
+            src={images[0].src}
+            alt={images[0].alt || 'Problem image'}
+            className="max-h-[280px] w-full rounded-md object-contain"
+          />
+        </div>
+      )}
+
+      {images.length >= 2 && <ImageCarousel images={images} />}
+    </div>
+  );
+}
+
 function ComponentPreview({ blockType, blockData }: { blockType: string; blockData: any }) {
   switch (blockType) {
     case 'video': {
@@ -723,10 +777,11 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       // data can be: string (OLX XML), object (JSONB from DB), or null
       const xml = typeof rawData === 'string' ? rawData : '';
       const parsed = parseProblemXml(xml);
+      const problemMedia = normalizeProblemMedia(blockData?.metadata?.problem_media);
 
       if (!parsed) {
         const trimmed = xml.trim().replace(/<\/?problem>/g, '').trim();
-        return trimmed ? (
+        const fallback = trimmed ? (
           <div className="flex items-start gap-2">
             <HelpCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
             <pre className="text-xs text-muted-foreground font-mono max-h-24 overflow-hidden line-clamp-4 whitespace-pre-wrap">
@@ -739,9 +794,16 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <span>Problem — hover để Edit câu hỏi</span>
           </div>
         );
+
+        return (
+          <div className="space-y-3">
+            <ProblemMediaPreview media={problemMedia} />
+            {fallback}
+          </div>
+        );
       }
 
-      return <ProblemPreviewInteractive parsed={parsed} weight={blockData?.metadata?.weight ?? 1.0} />;
+      return <ProblemPreviewInteractive parsed={parsed} weight={blockData?.metadata?.weight ?? 1.0} media={problemMedia} />;
     }
 
     case 'la_crossword': {
@@ -956,7 +1018,7 @@ function ProblemPreviewDropdown({
   );
 }
 
-function ProblemPreviewInteractive({ parsed, weight }: { parsed: any; weight: number }) {
+function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; weight: number; media?: ProblemMedia | null }) {
   const isMulti = parsed.type === 'choiceresponse';
   const isInput = parsed.type === 'numericalresponse' || parsed.type === 'stringresponse';
   const isDropdown = parsed.type === 'optionresponse';
@@ -1017,6 +1079,7 @@ function ProblemPreviewInteractive({ parsed, weight }: { parsed: any; weight: nu
   return (
     <div className="w-full">
       <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-6">
+        <ProblemMediaPreview media={media} />
 
         {/* Question */}
         <div
@@ -1319,8 +1382,13 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
         });
       }
       if (category === 'problem') {
+        const payloadMetadata = { ...metadata, display_name: displayName };
+        const mediaForSave = problemMediaForSave(metadata?.problem_media);
+        if (mediaForSave) payloadMetadata.problem_media = mediaForSave;
+        else delete payloadMetadata.problem_media;
+
         return updateXBlock(id, {
-          metadata: { display_name: displayName },
+          metadata: payloadMetadata,
           data: problemXml,
         });
       }
@@ -1390,6 +1458,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
             onDisplayNameChange={setDisplayName}
             problemXml={problemXml}
             onXmlChange={setProblemXml}
+            problemMedia={normalizeProblemMedia(metadata?.problem_media)}
+            onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
+            courseId={courseId || ''}
           />
         );
       case 'la_crossword':
