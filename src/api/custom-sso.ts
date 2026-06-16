@@ -75,7 +75,7 @@ export async function fetchPublicSsoConfigByDomain(domain: string): Promise<Publ
 
 export async function exchangeSsoCode(
   provider: SsoProvider,
-  payload: { tenant_id: string; code: string; redirect_uri: string; code_verifier: string },
+  payload: { tenant_id: string; code: string; redirect_uri: string; code_verifier: string; client_app?: "admin" | "learner" },
 ): Promise<CustomLoginResponse> {
   const { data } = await axios.post<ApiResponse<CustomLoginResponse>>(
     `${config.customApiUrl}/api/sso/exchange/${provider}`,

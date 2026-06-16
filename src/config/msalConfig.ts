@@ -4,11 +4,12 @@
 // ============================================================
 
 import { config } from "@/config/env";
+import { generateRandomToken } from "@/utils/pkce";
 
 const MICROSOFT_SCOPES = ["openid", "profile", "email"];
 
 function buildMicrosoftAuthUrl(): string {
-  const nonce = crypto.randomUUID();
+  const nonce = generateRandomToken();
   sessionStorage.setItem("ms_auth_nonce", nonce);
 
   const params = new URLSearchParams({

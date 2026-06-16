@@ -5,6 +5,7 @@
 // ============================================================
 
 import { config } from "@/config/env";
+import { generateCodeChallenge, generateCodeVerifier, generateRandomToken } from "@/utils/pkce";
 
 /** Kết quả popup login — code + code_verifier cho PKCE */
 export interface KeycloakPopupResult {
@@ -13,30 +14,6 @@ export interface KeycloakPopupResult {
 }
 
 // ── PKCE Utilities ──────────────────────────────────────────
-
-/** Sinh random code_verifier (43–128 ký tự, RFC 7636) */
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(64);
-  crypto.getRandomValues(array);
-  return base64UrlEncode(array);
-}
-
-/** SHA-256 hash → base64url encoded code_challenge */
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return base64UrlEncode(new Uint8Array(digest));
-}
-
-/** Base64url encode (RFC 4648 §5) */
-function base64UrlEncode(buffer: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < buffer.byteLength; i++) {
-    binary += String.fromCharCode(buffer[i]);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
 // ── Auth URL Builder ────────────────────────────────────────
 
@@ -50,8 +27,8 @@ async function buildKeycloakAuthUrl(): Promise<{
   state: string;
   codeVerifier: string;
 }> {
-  const state = crypto.randomUUID();
-  const nonce = crypto.randomUUID();
+  const state = generateRandomToken();
+  const nonce = generateRandomToken();
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
 
@@ -105,7 +82,7 @@ export function keycloakPopupLogin(): Promise<KeycloakPopupResult> {
       return;
     }
 
-    // Build auth URL (async vì PKCE dùng crypto.subtle)
+    // Build auth URL async because PKCE challenge generation may use Web Crypto.
     buildKeycloakAuthUrl()
       .then(({ url: authUrl, state: expectedState, codeVerifier }) => {
         // Mở popup giữa màn hình

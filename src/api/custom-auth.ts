@@ -51,6 +51,7 @@ export async function customLoginApi(username: string, password: string): Promis
   const { data } = await customApiClient.post<ApiResponse<CustomLoginResponse>>("/api/auth/login", {
     username,
     password,
+    client_app: "admin",
   });
   return data.data;
 }

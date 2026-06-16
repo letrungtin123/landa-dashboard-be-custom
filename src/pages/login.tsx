@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,6 +25,7 @@ const formSchema = z.object({
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
   const setSession = useAuthStore((s) => s.setSession);
 
@@ -78,6 +79,12 @@ export default function LoginPage() {
     defaultValues: { email: '', password: '' },
   });
 
+  useEffect(() => {
+    if (searchParams.get('error') === 'admin_forbidden') {
+      setAuthError('Tài khoản learner chỉ được truy cập trang học viên.');
+    }
+  }, [searchParams]);
+
   // ── Password login ──
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
@@ -89,8 +96,9 @@ export default function LoginPage() {
       navigate('/library');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Đăng nhập thất bại.';
+      const shouldShowRawError = msg.includes('learner') || msg.includes('quyền truy cập');
       // Parse backend error message
-      if (msg.includes('không đúng')) {
+      if (shouldShowRawError || msg.includes('không đúng')) {
         setAuthError(msg);
       } else if (msg.includes('vô hiệu hóa')) {
         setAuthError(msg);
@@ -115,6 +123,7 @@ export default function LoginPage() {
         code: result.code,
         redirect_uri: result.redirectUri,
         code_verifier: result.codeVerifier,
+        client_app: 'admin',
       });
       await setSession(session);
       toast.success('Đăng nhập SSO thành công');

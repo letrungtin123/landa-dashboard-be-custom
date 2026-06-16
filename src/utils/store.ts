@@ -56,6 +56,14 @@ const encryptedStorage = createJSONStorage(() => ({
 export type UserRole = 'superadmin' | 'superuser' | 'staff' | 'learner';
 export type UserStatus = 'active' | 'inactive';
 
+const ADMIN_ROLES: UserRole[] = ['staff', 'superuser', 'superadmin'];
+
+function assertDashboardUser(data: CustomLoginResponse): void {
+  if (!ADMIN_ROLES.includes(data.user.role)) {
+    throw new Error('Tài khoản learner chỉ được truy cập trang học viên');
+  }
+}
+
 export interface User {
   id: string;
   email: string;
@@ -154,6 +162,7 @@ export const useAuthStore = create<AuthState>()(
       startLogout: () => set({ isLoggingOut: true }),
 
       setSession: async (data: CustomLoginResponse) => {
+        assertDashboardUser(data);
         set(mapLoginResponseToState(data));
         get().scheduleTokenRefresh();
 
