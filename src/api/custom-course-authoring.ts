@@ -84,6 +84,7 @@ export interface CourseAsset {
   thumbnail_url?: string | null;
   locked?: boolean;
   is_locked?: boolean;
+  is_reference?: boolean;
   file_size?: number;
 }
 
@@ -281,6 +282,14 @@ export async function deleteCourseAssetByStoragePath(courseId: string, storagePa
 export async function updateCourseAssetLock(courseId: string, assetId: string, locked: boolean): Promise<any> {
   // Not implemented in custom backend yet, but keeping API compat
   return { success: true };
+}
+
+export async function updateCourseAssetReference(courseId: string, assetIds: string[], isReference: boolean): Promise<any> {
+  const { data } = await customApiClient.patch(
+    `${BASE}/assets/${encodeURIComponent(courseId)}/reference`,
+    { assetIds, is_reference: isReference },
+  );
+  return data;
 }
 
 // ── Course Creation ──

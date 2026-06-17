@@ -78,6 +78,7 @@ export interface CourseAsset {
   portable_url: string;
   thumbnail?: string;
   locked: boolean;
+  is_reference?: boolean;
   file_size?: number;
 }
 
@@ -346,6 +347,15 @@ export async function updateCourseAssetLock(courseId: string, assetId: string, l
   const { data } = await apiClient.put(
     `/cms-api/landa-admin/api/authoring/assets/${encodeURIComponent(courseId)}/${encodeURIComponent(assetId)}`,
     { locked },
+    { headers: cmsHeaders() }
+  );
+  return data;
+}
+
+export async function updateCourseAssetReference(courseId: string, assetIds: string[], isReference: boolean): Promise<any> {
+  const { data } = await apiClient.patch(
+    `/cms-api/landa-admin/api/authoring/assets/${encodeURIComponent(courseId)}/reference`,
+    { assetIds, is_reference: isReference },
     { headers: cmsHeaders() }
   );
   return data;

@@ -23,6 +23,7 @@ import {
   uploadCourseAsset,
   deleteCourseAsset,
   updateCourseAssetLock,
+  updateCourseAssetReference,
   type CourseAsset
 } from '@/api/custom-course-authoring';
 import { useAuthStore } from '@/utils/store';
@@ -108,6 +109,17 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
     onError: () => toast.error('Cập nhật thất bại')
   });
 
+  // Reference Mutation
+  const refMut = useMutation({
+    mutationFn: ({ assetIds, isReference }: { assetIds: string[], isReference: boolean }) =>
+      updateCourseAssetReference(courseId, assetIds, isReference),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
+      toast.success('Đã cập nhật hiển thị tham khảo');
+    },
+    onError: () => toast.error('Cập nhật thất bại')
+  });
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -164,6 +176,19 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
     }
   };
 
+  const handleBulkReference = async (isReference: boolean) => {
+    setIsBulkOperating(true);
+    try {
+      await updateCourseAssetReference(courseId, selectedIds, isReference);
+      toast.success(`Đã ${isReference ? 'hiển thị' : 'ẩn'} ${selectedIds.length} tài liệu tham khảo`);
+      queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
+    } catch (error) {
+      toast.error('Có lỗi xảy ra khi cập nhật trạng thái');
+    } finally {
+      setIsBulkOperating(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success('Đã copy đường dẫn URL');
@@ -209,6 +234,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                     <TableHead className="font-medium">File name</TableHead>
                     <TableHead className="w-[120px] font-medium text-right">Size</TableHead>
                     <TableHead className="w-[100px] text-center font-medium">Access</TableHead>
+                    <TableHead className="w-[120px] text-center font-medium">Reference</TableHead>
                     <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -221,6 +247,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         <TableCell><Skeleton className="h-5 w-48 mb-2" /><Skeleton className="h-4 w-32" /></TableCell>
                         <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-16 mx-auto rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-10 mx-auto rounded-full" /></TableCell>
                         <TableCell><Skeleton className="h-8 w-8 ml-auto rounded-full" /></TableCell>
                       </TableRow>
                     ))
@@ -285,6 +312,23 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                             )}
                           </div>
                         </TableCell>
+                        <TableCell className="text-center align-middle">
+                          <div className="flex justify-center">
+                            {canEdit ? (
+                              <Checkbox
+                                checked={asset.is_reference || false}
+                                onCheckedChange={(checked) => refMut.mutate({ assetIds: [asset.id], isReference: !!checked })}
+                                className="rounded-[4px] data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                              />
+                            ) : (
+                              <Checkbox
+                                checked={asset.is_reference || false}
+                                disabled
+                                className="rounded-[4px]"
+                              />
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right align-middle">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -332,6 +376,12 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
             <div className="bg-muted/50 border-t px-6 py-3 flex items-center justify-between shrink-0">
               <span className="text-sm font-medium">Đã chọn {selectedIds.length} tệp</span>
               <div className="flex items-center gap-2">
+                {canEdit && <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkReference(true)} disabled={isBulkOperating}>
+                  <FileText className="w-4 h-4" /> Bật tham khảo
+                </Button>}
+                {canEdit && <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkReference(false)} disabled={isBulkOperating}>
+                  <FileText className="w-4 h-4 opacity-50" /> Tắt tham khảo
+                </Button>}
                 {canEdit && <Button size="sm" variant="outline" className="gap-2" onClick={() => handleBulkLock(true)} disabled={isBulkOperating}>
                   <Lock className="w-4 h-4" /> Khóa
                 </Button>}
