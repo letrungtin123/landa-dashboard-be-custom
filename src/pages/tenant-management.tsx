@@ -342,12 +342,12 @@ export default function TenantManagementPage() {
 
       {/* ── Create/Edit Dialog ── */}
       <Dialog open={showCreate || !!editTenant} onOpenChange={function close() { setShowCreate(false); setEditTenant(null); }}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b bg-muted/20 shrink-0">
             <DialogTitle>{editTenant ? "Sửa Tenant" : "Tạo Tenant Mới"}</DialogTitle>
             <DialogDescription>Điền thông tin tổ chức/đơn vị</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Tên tenant</label>
               <Input value={formName} onChange={function onChange(e) { setFormName(e.target.value); }} placeholder="LANDA Demo" />
@@ -367,7 +367,7 @@ export default function TenantManagementPage() {
               <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="https://cms.nesso.com.vn" />
               <p className="text-xs text-muted-foreground">URL đầy đủ trang quản trị. Ví dụ: https://cms.nesso.com.vn</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5 text-muted-foreground" />
@@ -421,7 +421,7 @@ export default function TenantManagementPage() {
               <p className="text-xs text-muted-foreground">API key Google Gemini cho AI Chatbot. Lấy từ Google AI Studio.</p>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t bg-muted/10 shrink-0">
             <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
             <Button onClick={editTenant ? handleUpdate : handleCreate} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -433,7 +433,7 @@ export default function TenantManagementPage() {
 
       {/* ── Delete Confirmation ── */}
       <Dialog open={!!deletingId} onOpenChange={function close() { setDeletingId(null); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md w-[95vw]">
           <DialogHeader>
             <DialogTitle>Xác nhận xóa</DialogTitle>
             <DialogDescription>Bạn có chắc chắn muốn xóa tenant này? Thao tác không thể hoàn tác.</DialogDescription>
@@ -447,22 +447,22 @@ export default function TenantManagementPage() {
 
       {/* ── Modules Toggle Dialog ── */}
       <Dialog open={!!modulesTenant} onOpenChange={function close() { setModulesTenant(null); }}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 shadow-2xl">
-          <div className="bg-gradient-to-br from-card to-muted/30 p-6 border-b border-border/50">
+        <DialogContent className="max-w-4xl w-[95vw] h-[90vh] md:h-auto md:max-h-[85vh] p-0 flex flex-col overflow-hidden border-0 shadow-2xl rounded-2xl">
+          <div className="bg-gradient-to-br from-card to-muted/30 p-4 md:p-6 border-b border-border/50 shrink-0">
             <DialogHeader>
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
-                  <Settings2 className="w-8 h-8 text-primary" />
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="p-2.5 md:p-3 bg-primary/10 rounded-xl md:rounded-2xl shadow-inner border border-primary/20">
+                  <Settings2 className="w-6 h-6 md:w-8 md:h-8 text-primary" />
                 </div>
                 <div>
-                  <DialogTitle className="text-2xl font-bold">Phân quyền Module</DialogTitle>
-                  <DialogDescription className="text-base mt-1.5">
-                    Cấu hình tính năng cho hệ thống <strong className="text-foreground">{modulesTenant?.name}</strong>
+                  <DialogTitle className="text-xl md:text-2xl font-bold">Phân quyền Module</DialogTitle>
+                  <DialogDescription className="text-sm md:text-base mt-1">
+                    Cấu hình tính năng cho <strong className="text-foreground">{modulesTenant?.name}</strong>
                   </DialogDescription>
                 </div>
               </div>
-              <div className="mt-6 flex items-center gap-3">
-                <Badge variant="outline" className="px-3 py-1 rounded-full bg-primary/5 text-primary border-primary/20 shadow-sm font-semibold text-sm">
+              <div className="mt-4 flex items-center">
+                <Badge variant="outline" className="px-3 py-1 rounded-full bg-primary/5 text-primary border-primary/20 shadow-sm font-semibold text-xs md:text-sm">
                   <span className="relative flex h-2 w-2 mr-2 inline-flex">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -473,42 +473,42 @@ export default function TenantManagementPage() {
             </DialogHeader>
           </div>
 
-          <div className="px-6 py-6 bg-muted/10">
+          <div className="flex-1 px-4 py-4 md:px-6 md:py-6 bg-muted/10 overflow-y-auto custom-scrollbar">
             {modulesLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-                <p>Đang tải cấu hình modules...</p>
+              <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+                <p className="text-sm">Đang tải cấu hình...</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 {modules.map(function renderMod(m) {
                   const Icon = getIconComponent(m.icon);
                   return (
                     <motion.div 
                       key={m.module_id} 
                       className={cn(
-                        "relative flex items-start gap-4 p-5 rounded-[20px] border transition-all duration-300",
+                        "relative flex items-start gap-3 md:gap-4 p-4 md:p-5 rounded-[16px] md:rounded-[20px] border transition-all duration-300",
                         m.is_enabled 
-                          ? "border-primary/40 bg-card shadow-md hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/60" 
+                          ? "border-primary/40 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-primary/60" 
                           : "border-border/60 bg-muted/30 opacity-85 hover:opacity-100 hover:bg-muted/50"
                       )}
                       layout
                     >
                       <div className={cn(
-                        "p-3.5 rounded-[14px] shadow-inner border",
+                        "p-2.5 md:p-3.5 rounded-[12px] md:rounded-[14px] shadow-inner border shrink-0",
                         m.is_enabled ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-muted-foreground border-border/50"
                       )}>
-                        <Icon className="w-6 h-6" />
+                        <Icon className="w-5 h-5 md:w-6 md:h-6" />
                       </div>
                       <div className="flex-1 min-w-0 pt-0.5">
-                        <div className="flex justify-between items-start gap-3">
+                        <div className="flex justify-between items-start gap-2">
                           <div className="flex-1 min-w-0">
-                            <h4 className={cn("font-bold text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
+                            <h4 className={cn("font-bold text-[14px] md:text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
                               {m.name}
                             </h4>
-                            <div className="mt-2">
+                            <div className="mt-1.5 md:mt-2">
                               <code className={cn(
-                                "text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md border",
+                                "text-[9px] md:text-[10px] uppercase tracking-widest font-bold px-2 md:px-2.5 py-1 rounded border",
                                 m.is_enabled ? "bg-primary/5 text-primary/80 border-primary/20" : "bg-background text-muted-foreground border-border/50"
                               )}>
                                 {m.code}
@@ -518,7 +518,7 @@ export default function TenantManagementPage() {
                           <Switch 
                             checked={m.is_enabled} 
                             onCheckedChange={function toggle() { toggleModule(m.module_id); }} 
-                            className={cn("mt-1 scale-110 shadow-sm", m.is_enabled && "data-[state=checked]:bg-emerald-500")}
+                            className={cn("mt-0.5 scale-90 md:scale-110 shadow-sm shrink-0", m.is_enabled && "data-[state=checked]:bg-emerald-500")}
                           />
                         </div>
                       </div>
@@ -529,12 +529,12 @@ export default function TenantManagementPage() {
             )}
           </div>
 
-          <DialogFooter className="p-6 bg-card border-t border-border/50">
-            <div className="flex justify-end gap-3 w-full">
-              <DialogClose asChild><Button variant="outline" className="px-6 rounded-xl">Hủy</Button></DialogClose>
-              <Button onClick={saveModules} disabled={saving} className="px-8 rounded-xl shadow-md">
+          <DialogFooter className="p-4 md:p-6 bg-card border-t border-border/50 shrink-0 mt-auto">
+            <div className="flex justify-end gap-2 md:gap-3 w-full">
+              <DialogClose asChild><Button variant="outline" className="px-4 md:px-6 rounded-lg md:rounded-xl">Hủy</Button></DialogClose>
+              <Button onClick={saveModules} disabled={saving} className="px-6 md:px-8 rounded-lg md:rounded-xl shadow-md">
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                Lưu cấu hình
+                Lưu
               </Button>
             </div>
           </DialogFooter>
