@@ -170,17 +170,57 @@ export default function CoursesPage() {
   // Delete course
   const deleteMut = useMutation({
     mutationFn: (courseId: string) => deleteCourse(courseId),
+    onMutate: async (courseId) => {
+      await queryClient.cancelQueries({ queryKey: ['landa-courses'] });
+      const previousCourses = queryClient.getQueriesData<{
+        courses: CustomCourse[];
+        total: number;
+        page: number;
+        page_size: number;
+      }>({ queryKey: ['landa-courses'] });
+      const previousSelected = selected;
+
+      queryClient.setQueriesData<{
+        courses: CustomCourse[];
+        total: number;
+        page: number;
+        page_size: number;
+      }>({ queryKey: ['landa-courses'] }, (old) => {
+        if (!old) return old;
+        const nextCourses = old.courses.filter((item) => item.id !== courseId);
+        const removed = old.courses.length - nextCourses.length;
+        if (removed === 0) return old;
+        return {
+          ...old,
+          courses: nextCourses,
+          total: Math.max(0, old.total - removed),
+        };
+      });
+      setSelected((prev) => prev.filter((id) => id !== courseId));
+
+      return { previousCourses, previousSelected };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
       toast.success('Đã xóa khóa học');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Xóa thất bại'),
+    onError: (err: any, _courseId, context) => {
+      context?.previousCourses.forEach(([queryKey, value]) => {
+        queryClient.setQueryData(queryKey, value);
+      });
+      if (context?.previousSelected) setSelected(context.previousSelected);
+      toast.error(err?.response?.data?.error || 'Xóa thất bại');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+    },
   });
 
   function handleDeleteCourse(course: CustomCourse) {
     confirmDialog({
-      title: 'Xóa vĩnh viễn khóa học',
-      description: `Bạn có chắc muốn xóa "${course.display_name}"? Toàn bộ nội dung, tiến độ học viên, tệp tin sẽ bị xóa vĩnh viễn và KHÔNG thể khôi phục.`,
+      title: 'Xóa khóa học',
+      description: `Bạn có chắc muốn xóa "${course.display_name}"? Sau khi xác nhận, khóa học sẽ không còn hiển thị trong danh sách.`,
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(course.id),
     });

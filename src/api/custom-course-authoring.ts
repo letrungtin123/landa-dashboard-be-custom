@@ -81,7 +81,9 @@ export interface CourseAsset {
   external_url?: string;
   portable_url?: string;
   thumbnail?: string | null;
-  locked: boolean;
+  thumbnail_url?: string | null;
+  locked?: boolean;
+  is_locked?: boolean;
   file_size?: number;
 }
 

@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { storageUrl } from '@/utils/storage-url';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -56,6 +57,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
   const isImage = (asset: CourseAsset) => {
     return asset.content_type?.toLowerCase().startsWith('image/') || asset.display_name.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i);
   };
+
+  const assetUrl = (asset: CourseAsset) => storageUrl(asset.url);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState(0);
@@ -245,9 +248,9 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         </TableCell>
                         <TableCell className="align-middle">
                           <div className="flex justify-center">
-                            {isImage(asset) && asset.thumbnail ? (
+                            {isImage(asset) ? (
                               <div className="h-14 w-[80px] rounded-lg border border-border/50 bg-black/5 flex items-center justify-center overflow-hidden shadow-sm">
-                                <img src={asset.external_url} alt={asset.display_name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                <img src={assetUrl(asset)} alt={asset.display_name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                               </div>
                             ) : (
                               <div className="h-14 w-[80px] rounded-lg border border-border/50 bg-muted/30 flex items-center justify-center">
@@ -271,7 +274,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         </TableCell>
                         <TableCell className="text-center align-middle">
                           <div className="flex justify-center">
-                            {asset.locked ? (
+                            {asset.is_locked ?? asset.locked ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
                                 <Lock className="w-3.5 h-3.5" /> Locked
                               </span>
@@ -290,13 +293,13 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48 shadow-lg rounded-xl border-border/50">
-                              <DropdownMenuItem onClick={() => window.open(asset.external_url, '_blank')} className="cursor-pointer py-2 px-3">
+                              <DropdownMenuItem onClick={() => window.open(assetUrl(asset), '_blank')} className="cursor-pointer py-2 px-3">
                                 <Download className="w-4 h-4 mr-2.5 text-muted-foreground" />
                                 <span className="font-medium">Tải xuống</span>
                               </DropdownMenuItem>
-                              {canEdit && <DropdownMenuItem onClick={() => lockMut.mutate({ assetId: asset.id, locked: !asset.locked })} className="cursor-pointer py-2 px-3">
-                                {asset.locked ? <Unlock className="w-4 h-4 mr-2.5 text-muted-foreground" /> : <Lock className="w-4 h-4 mr-2.5 text-amber-500" />}
-                                <span className="font-medium">{asset.locked ? 'Mở khóa file' : 'Khóa file'}</span>
+                              {canEdit && <DropdownMenuItem onClick={() => lockMut.mutate({ assetId: asset.id, locked: !(asset.is_locked ?? asset.locked) })} className="cursor-pointer py-2 px-3">
+                                {asset.is_locked ?? asset.locked ? <Unlock className="w-4 h-4 mr-2.5 text-muted-foreground" /> : <Lock className="w-4 h-4 mr-2.5 text-amber-500" />}
+                                <span className="font-medium">{asset.is_locked ?? asset.locked ? 'Mở khóa file' : 'Khóa file'}</span>
                               </DropdownMenuItem>}
                               {canDelete && <DropdownMenuItem
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer py-2 px-3"

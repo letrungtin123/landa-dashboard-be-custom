@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   type CourseIndexSection,
+  type CourseIndexResponse,
   getCourseOutlineIndex,
   createBlock,
   deleteBlock,
@@ -54,6 +55,28 @@ interface OutlineTreeProps {
   courseId: string;
   onSelectUnit: (unitId: string) => void;
   selectedUnitId: string | null;
+}
+
+function removeNodeFromOutline(node: CourseIndexSection, targetId: string): CourseIndexSection | null {
+  if (node.id === targetId) return null;
+
+  const nextChildren = node.children
+    ?.map((child) => removeNodeFromOutline(child, targetId))
+    .filter((child): child is CourseIndexSection => Boolean(child));
+  const nextChildInfo = node.child_info
+    ? {
+        ...node.child_info,
+        children: node.child_info.children
+          .map((child) => removeNodeFromOutline(child, targetId))
+          .filter((child): child is CourseIndexSection => Boolean(child)),
+      }
+    : undefined;
+
+  return {
+    ...node,
+    ...(nextChildren ? { children: nextChildren } : {}),
+    ...(nextChildInfo ? { child_info: nextChildInfo } : {}),
+  };
 }
 
 export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId }: OutlineTreeProps) {
@@ -453,11 +476,38 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSectionModal, setShowSectionModal] = useState(false);
+  const queryClient = useQueryClient();
 
   const delMut = useMutation({
     mutationFn: () => deleteBlock(node.id),
-    onSuccess: () => { toast.success('Đã xóa'); onStructureChange(); },
-    onError: () => toast.error('Xóa thất bại'),
+    onMutate: async () => {
+      setShowDeleteDialog(false);
+      if (!courseId) return { previousOutline: undefined };
+
+      const queryKey = ['course-outline-index', courseId];
+      await queryClient.cancelQueries({ queryKey });
+      const previousOutline = queryClient.getQueryData<CourseIndexResponse>(queryKey);
+
+      queryClient.setQueryData<CourseIndexResponse>(queryKey, (old) => {
+        if (!old) return old;
+        const nextStructure = removeNodeFromOutline(old.course_structure, node.id);
+        if (!nextStructure) return old;
+        return { ...old, course_structure: nextStructure };
+      });
+
+      return { previousOutline };
+    },
+    onSuccess: () => { toast.success('Đã xóa'); },
+    onError: (_err, _variables, context) => {
+      if (courseId && context?.previousOutline) {
+        queryClient.setQueryData(['course-outline-index', courseId], context.previousOutline);
+      }
+      toast.error('Xóa thất bại');
+    },
+    onSettled: () => {
+      if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+      onStructureChange();
+    },
   });
 
   const publishMut = useMutation({

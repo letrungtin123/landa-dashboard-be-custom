@@ -49,7 +49,7 @@ export default function HtmlEditor({
   const carouselImages = React.useMemo(() => htmlMediaCarouselImages(uploadedImages), [uploadedImages]);
 
   const persistImages = React.useCallback(async (nextImages: HtmlMediaImage[]) => {
-    if (!blockId) throw new Error('Block ID khong hop le');
+    if (!blockId) throw new Error('Block ID không hợp lệ');
     const nextMetadata = htmlMediaMetadata(metadata, nextImages);
     await updateXBlock(blockId, { metadata: nextMetadata });
     onMetadataChange(nextMetadata);
@@ -64,7 +64,7 @@ export default function HtmlEditor({
     try {
       const result = await uploadCourseAsset(courseId, file);
       uploadedPath = htmlImageStoragePath(result?.url) || '';
-      if (!uploadedPath) throw new Error('Upload response khong co storage path');
+      if (!uploadedPath) throw new Error('Upload response không có storage path');
 
       const exists = uploadedImages.some((image) => image.src === uploadedPath);
       const nextImages = exists
@@ -79,12 +79,12 @@ export default function HtmlEditor({
           ];
 
       await persistImages(nextImages);
-      toast.success('Da upload va luu anh');
+      toast.success('Đã upload và lưu ảnh');
     } catch (err: any) {
       if (uploadedPath) {
         deleteCourseAssetByStoragePath(courseId, uploadedPath).catch(() => {});
       }
-      toast.error('Upload anh that bai: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
     } finally {
       setUploading(false);
     }
@@ -96,9 +96,9 @@ export default function HtmlEditor({
       const nextImages = uploadedImages.filter((item) => item.src !== image.src);
       await persistImages(nextImages);
       await deleteCourseAssetByStoragePath(courseId, image.src);
-      toast.success('Da xoa anh');
+      toast.success('Đã xóa ảnh');
     } catch (err: any) {
-      toast.error('Xoa anh that bai: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
     } finally {
       setDeletingPath(null);
     }
@@ -106,7 +106,7 @@ export default function HtmlEditor({
 
   return (
     <div className="space-y-6">
-      <Field label="Ten hien thi">
+      <Field label="Tên hiển thị">
         <input
           className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-4 text-sm font-medium shadow-sm transition-all duration-200 hover:bg-background focus:border-primary focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
           value={displayName}
@@ -114,7 +114,7 @@ export default function HtmlEditor({
         />
       </Field>
 
-      <Field label="Anh upload rieng">
+      <Field label="Ảnh upload riêng">
         <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -125,10 +125,10 @@ export default function HtmlEditor({
               disabled={uploading || !courseId || !blockId}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              Upload anh
+              Upload ảnh
             </Button>
             <span className="text-xs text-muted-foreground/80 font-medium">
-              Anh upload o day duoc luu ngay sau khi upload thanh cong. Khi co tu 2 anh, hai FE se hien thi dang carousel.
+              Ảnh upload ở đây được lưu ngay sau khi upload thành công. Khi có từ 2 ảnh, hai FE sẽ hiển thị dạng carousel.
             </span>
             <input
               ref={fileInputRef}
@@ -145,7 +145,7 @@ export default function HtmlEditor({
 
           {uploadedImages.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground">
-              Chua co anh upload rieng.
+              Chưa có ảnh upload riêng.
             </div>
           ) : (
             <div className="space-y-4">
@@ -181,7 +181,7 @@ export default function HtmlEditor({
                         className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10"
                         onClick={() => handleDeleteImage(image)}
                         disabled={deletingPath === image.src}
-                        aria-label="Xoa anh upload"
+                        aria-label="Xóa ảnh upload"
                       >
                         {deletingPath === image.src
                           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -196,9 +196,9 @@ export default function HtmlEditor({
         </div>
       </Field>
 
-      <Field label="Noi dung bai hoc (Rich Text + anh paste tu web)">
+      <Field label="Nội dung bài học (Rich Text + ảnh paste từ web)">
         <p className="mb-2 text-xs font-medium text-muted-foreground">
-          Noi dung HTML ben duoi chi duoc luu khi bam nut Luu thay doi. Anh paste tu website khac se giu nguyen vi tri trong HTML va khong bi dua vao carousel.
+          Nội dung HTML bên dưới chỉ được lưu khi bấm nút Lưu thay đổi. Ảnh paste từ website khác sẽ giữ nguyên vị trí trong HTML và không bị đưa vào carousel.
         </p>
         <div className="rounded-xl overflow-hidden border border-input bg-background shadow-sm focus-within:ring-4 focus-within:ring-primary/10 focus-within:border-primary transition-all duration-200">
           <RichTextEditorWithRef
@@ -222,7 +222,7 @@ function RichTextEditorWithRef({
       content={content}
       onChange={onChange}
       onUnsupportedImagePaste={() => {
-        toast.warning('Clipboard image khong co URL ben ngoai. Hay dung nut Upload anh de luu anh vao he thong.');
+        toast.warning('Clipboard image không có URL bên ngoài. Hãy dùng nút Upload ảnh để lưu ảnh vào hệ thống.');
       }}
     />
   );
