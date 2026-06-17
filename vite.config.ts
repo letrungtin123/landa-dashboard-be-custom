@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   const lmsProxyTarget = env.PROXY_OPENEDX_LMS_URL || 'http://localhost:18000';
   const cmsProxyTarget = env.PROXY_OPENEDX_CMS_URL || 'http://localhost:18010';
 
+  const backendProxyTarget = env.PROXY_BACKEND_URL || 'http://localhost:3001';
+
   // Allowed hosts — đọc hoàn toàn từ env, phân cách bằng dấu phẩy
   const allowedHosts = env.VITE_ALLOWED_HOSTS
     ? env.VITE_ALLOWED_HOSTS.split(',').map((h: string) => h.trim()).filter(Boolean)
@@ -23,32 +25,16 @@ export default defineConfig(({ mode }) => {
   // Proxy config dùng chung cho cả server (dev) và preview (prod)
   // Chỉ dùng khi truy cập trực tiếp qua IP, KHÔNG cần khi qua Kong
   const proxyConfig = {
-    '/oauth2': {
-      target: lmsProxyTarget,
-      changeOrigin: true,
-      cookieDomainRewrite: '',
-    },
-    '/cms-api': {
-      target: cmsProxyTarget,
-      changeOrigin: true,
-      cookieDomainRewrite: '',
-      rewrite: (path: string) => path.replace(/^\/cms-api/, ''),
-    },
     '/api': {
-      target: lmsProxyTarget,
+      target: backendProxyTarget,
       changeOrigin: true,
       cookieDomainRewrite: '',
     },
-    '/login_ajax': {
-      target: lmsProxyTarget,
+    '/uploads': {
+      target: backendProxyTarget,
       changeOrigin: true,
-      cookieDomainRewrite: '',
     },
-    '/logout': {
-      target: lmsProxyTarget,
-      changeOrigin: true,
-      cookieDomainRewrite: '',
-    },
+    // Vẫn giữ lại proxy cho các asset của edX cũ nếu frontend còn link cứng đến đó
     '/asset-v1:': { target: lmsProxyTarget, changeOrigin: true },
     '/c4x/':      { target: lmsProxyTarget, changeOrigin: true },
     '/static':    { target: lmsProxyTarget, changeOrigin: true },
@@ -56,7 +42,7 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
-    base: '/',
+    base: '/admin/',
 
     plugins: [react()],
 

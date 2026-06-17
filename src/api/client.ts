@@ -70,7 +70,7 @@ apiClient.interceptors.response.use(
     if (responseData?.error === "account_disabled") {
       const store = await getAuthStore();
       store.getState().logout();
-      window.location.href = "/login?error=account_disabled";
+      window.location.href = "/admin/login?error=account_disabled";
       return Promise.reject(error);
     }
 
@@ -88,7 +88,7 @@ apiClient.interceptors.response.use(
     // Refresh thất bại → logout
     const store = await getAuthStore();
     store.getState().logout();
-    window.location.href = "/login?session=expired";
+    window.location.href = "/admin/login?session=expired";
     return Promise.reject(error);
   }
 );
