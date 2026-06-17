@@ -65,10 +65,11 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
   const [page, setPage] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+  const PAGE_SIZE = 20;
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['course-assets', courseId, page],
-    queryFn: () => getCourseAssets(courseId, page, 50),
+    queryFn: () => getCourseAssets(courseId, page, PAGE_SIZE),
     enabled: isOpen && !!courseId,
   });
 
@@ -277,7 +278,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                           <div className="flex justify-center">
                             {isImage(asset) ? (
                               <div className="h-14 w-[80px] rounded-lg border border-border/50 bg-black/5 flex items-center justify-center overflow-hidden shadow-sm">
-                                <img src={assetUrl(asset)} alt={asset.display_name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                <img src={assetUrl(asset)} alt={asset.display_name} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                               </div>
                             ) : (
                               <div className="h-14 w-[80px] rounded-lg border border-border/50 bg-muted/30 flex items-center justify-center">
@@ -361,6 +362,31 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination */}
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-4">
+                <span className="text-sm text-muted-foreground">
+                  Trang {page + 1} / {Math.ceil(totalCount / PAGE_SIZE)}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={page === 0 || isFetching}
+                    onClick={() => { setPage(p => p - 1); setSelectedIds([]); }}
+                  >
+                    Trước
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={(page + 1) * PAGE_SIZE >= totalCount || isFetching}
+                    onClick={() => { setPage(p => p + 1); setSelectedIds([]); }}
+                  >
+                    Sau
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <input
               type="file"
