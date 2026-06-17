@@ -9,6 +9,11 @@ import { Bold, Italic, Strikethrough, Heading1, Heading2, List, ListOrdered, Quo
 import { Button } from '@/components/ui/button';
 
 import { config } from '@/config/env';
+import {
+  htmlImageDisplaySrc,
+  htmlImagePersistSrc,
+  isTransientHtmlImageSrc,
+} from '@/utils/storage-url';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -31,12 +36,72 @@ function restoreContentUrls(html: string): string {
   return html.replace(regex, 'src="$1"');
 }
 
+function transformImageSources(
+  html: string,
+  transform: (src: string) => string | null,
+): string {
+  if (!html || typeof DOMParser === 'undefined') return html;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      const nextSrc = transform(src);
+      if (!nextSrc) {
+        img.remove();
+        return;
+      }
+      img.setAttribute('src', nextSrc);
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
+function prepareContentForEditor(html: string): string {
+  return transformImageSources(rewriteContentUrls(html), (src) => {
+    if (isTransientHtmlImageSrc(src)) return null;
+    return htmlImageDisplaySrc(src);
+  });
+}
+
+function prepareContentForSave(html: string): string {
+  const restored = restoreContentUrls(html);
+  return transformImageSources(restored, (src) => {
+    if (isTransientHtmlImageSrc(src)) return null;
+    return htmlImagePersistSrc(src);
+  });
+}
+
+function sanitizePastedHtml(html: string): string {
+  return transformImageSources(html, (src) => {
+    if (isTransientHtmlImageSrc(src)) return null;
+    return htmlImageDisplaySrc(src);
+  });
+}
+
+function hasPersistentImageInHtml(html: string): boolean {
+  if (!html || typeof DOMParser === 'undefined') return false;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return Array.from(doc.querySelectorAll('img')).some((img) => {
+      const src = img.getAttribute('src') || '';
+      return !!src && !isTransientHtmlImageSrc(src);
+    });
+  } catch {
+    return false;
+  }
+}
+
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
   onEditorReady?: (editor: any) => void;
   minHeight?: string;
   hideToolbar?: boolean;
+  onUnsupportedImagePaste?: () => void;
 }
 
 const MenuBar = ({ editor }: { editor: any }) => {
@@ -132,19 +197,26 @@ const MenuBar = ({ editor }: { editor: any }) => {
   );
 };
 
-export default function RichTextEditor({ content, onChange, onEditorReady, minHeight, hideToolbar }: RichTextEditorProps) {
+export default function RichTextEditor({
+  content,
+  onChange,
+  onEditorReady,
+  minHeight,
+  hideToolbar,
+  onUnsupportedImagePaste,
+}: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
       TextStyle,
       Color,
       Link.configure({ openOnClick: false }),
-      Image.configure({ inline: true, allowBase64: true }),
+      Image.configure({ inline: true, allowBase64: false }),
     ],
-    content: rewriteContentUrls(content),
+    content: prepareContentForEditor(content),
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
-      onChange(restoreContentUrls(html));
+      onChange(prepareContentForSave(html));
     },
     onCreate: ({ editor }) => {
       if (onEditorReady) onEditorReady(editor);
@@ -152,6 +224,17 @@ export default function RichTextEditor({ content, onChange, onEditorReady, minHe
     editorProps: {
       attributes: {
         class: `prose prose-sm sm:prose-base dark:prose-invert max-w-none ${minHeight || 'min-h-[300px]'} w-full bg-background p-4 outline-none focus-visible:outline-none tiptap-editor`,
+      },
+      transformPastedHTML: sanitizePastedHtml,
+      handlePaste: (_view, event) => {
+        const items = Array.from(event.clipboardData?.items || []);
+        const hasImageFile = items.some((item) => item.kind === 'file' && item.type.startsWith('image/'));
+        const html = event.clipboardData?.getData('text/html') || '';
+        if (!hasImageFile || hasPersistentImageInHtml(html)) return false;
+
+        event.preventDefault();
+        onUnsupportedImagePaste?.();
+        return true;
       },
     },
   });

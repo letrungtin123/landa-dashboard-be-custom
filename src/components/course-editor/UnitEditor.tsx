@@ -6,6 +6,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, reorderChildren,
+  deleteCourseAssetByStoragePath,
 } from '@/api/custom-course-authoring';
 import {
   DndContext,
@@ -50,6 +51,7 @@ import { CrosswordPreviewInteractive } from './CrosswordPreview';
 import DiagramPreviewInteractive from './editors/diagram/DiagramPreviewInteractive';
 import DiagramEditor, { DiagramXBlockData } from './editors/DiagramEditor';
 import ImageCarousel from './ImageCarousel';
+import { getHtmlMediaImages, htmlMediaCarouselImages } from './htmlMedia';
 import {
   hasProblemMedia,
   normalizeProblemMedia,
@@ -57,6 +59,12 @@ import {
   resolveProblemMediaImageUrl,
   type ProblemMedia,
 } from './problemMedia';
+import {
+  htmlImageStoragePath,
+  htmlImageDisplaySrc,
+  isUploadedStorageImageSrc,
+  isTransientHtmlImageSrc,
+} from '@/utils/storage-url';
 
 import { config } from '@/config/env';
 
@@ -65,11 +73,55 @@ const LMS_BASE = '';
 
 function rewriteHtml(html: string): string {
   if (!html) return '';
-  return html
+  const rewritten = html
     .replace(/src="(\/asset-v1:[^"]+)"/g, `src="${LMS_BASE}$1"`)
     .replace(/src="(\/c4x\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
     .replace(/src="(\/static\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
     .replace(/src="(\/assets\/[^"]+)"/g, `src="${LMS_BASE}$1"`);
+
+  if (typeof DOMParser === 'undefined') return rewritten;
+
+  try {
+    const doc = new DOMParser().parseFromString(rewritten, 'text/html');
+    doc.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      if (isTransientHtmlImageSrc(src)) {
+        img.remove();
+        return;
+      }
+      img.setAttribute('src', htmlImageDisplaySrc(src));
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return rewritten;
+  }
+}
+
+function extractUploadedHtmlImagePaths(html: string): string[] {
+  if (!html || typeof DOMParser === 'undefined') return [];
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const paths = Array.from(doc.querySelectorAll('img'))
+      .map((img) => htmlImageStoragePath(img.getAttribute('src')))
+      .filter((path): path is string => !!path);
+    return Array.from(new Set(paths));
+  } catch {
+    return [];
+  }
+}
+
+function removedUploadedHtmlImagePaths(beforeHtml: string, afterHtml: string): string[] {
+  const beforePaths = extractUploadedHtmlImagePaths(beforeHtml);
+  const afterPaths = new Set(extractUploadedHtmlImagePaths(afterHtml));
+  return beforePaths.filter((path) => !afterPaths.has(path));
+}
+
+async function cleanupCourseHtmlImages(courseId: string | undefined, storagePaths: string[]): Promise<void> {
+  if (!courseId || storagePaths.length === 0) return;
+  await Promise.all(
+    Array.from(new Set(storagePaths)).map((path) => deleteCourseAssetByStoragePath(courseId, path)),
+  );
 }
 
 // ─── Component type registry ──────────────────────────────────────────────────
@@ -378,6 +430,11 @@ function ComponentCard({ block, courseId, onDelete, onSaved }: {
     onSaved();
   }, [loadDetail, onSaved]);
 
+  const handleImmediateSaved = useCallback(async () => {
+    await loadDetail();
+    onSaved();
+  }, [loadDetail, onSaved]);
+
   return (
     <div
       ref={setNodeRef}
@@ -458,6 +515,7 @@ function ComponentCard({ block, courseId, onDelete, onSaved }: {
             blockInfo={blockData}
             courseId={courseId}
             onSaved={handleSaved}
+            onImmediateSaved={handleImmediateSaved}
             onCancel={() => setIsEditing(false)}
           />
         </div>
@@ -487,6 +545,7 @@ function ComponentCard({ block, courseId, onDelete, onSaved }: {
                 blockInfo={blockData}
                 courseId={courseId}
                 onSaved={handleSaved}
+                onImmediateSaved={handleImmediateSaved}
                 onCancel={() => setIsEditing(false)}
               />
             )}
@@ -707,8 +766,9 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     case 'html': {
       const htmlRaw = blockData?.data;
       const html = typeof htmlRaw === 'string' ? htmlRaw : '';
+      const mediaImages = htmlMediaCarouselImages(getHtmlMediaImages(blockData?.metadata));
       
-      if (!html.trim()) {
+      if (!html.trim() && mediaImages.length === 0) {
         return (
           <div className="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-border bg-muted/30 text-muted-foreground gap-3">
             <div className="p-3 bg-background rounded-full shadow-sm">
@@ -720,23 +780,36 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       }
 
       const rewrittenHtml = rewriteHtml(html);
-      let images: { src: string; alt: string }[] = [];
+      let images: { src: string; alt: string }[] = mediaImages;
       let finalHtml = rewrittenHtml;
 
       try {
         const parser = new DOMParser();
         const doc = parser.parseFromString(rewrittenHtml, 'text/html');
-        const imgEls = doc.querySelectorAll('img');
+        const uploadedImgEls = Array.from(doc.querySelectorAll('img'))
+          .filter((img) => isUploadedStorageImageSrc(img.getAttribute('src')));
         
-        if (imgEls.length >= 2) {
-          images = Array.from(imgEls).map(img => ({
+        if (uploadedImgEls.length >= 2) {
+          images = uploadedImgEls.map(img => ({
             src: img.getAttribute('src') || '',
             alt: img.getAttribute('alt') || ''
           }));
+          images = [...mediaImages, ...images];
           
-          imgEls.forEach(img => img.remove());
+          uploadedImgEls.forEach(img => img.remove());
           
           // Xóa các thẻ p bị rỗng
+          doc.querySelectorAll('p').forEach(p => {
+            if (!p.textContent?.trim() && p.children.length === 0) {
+              p.remove();
+            }
+          });
+          finalHtml = doc.body.innerHTML;
+        } else if (uploadedImgEls.length === 1) {
+          const uploadedImg = uploadedImgEls[0];
+          uploadedImg.remove();
+          doc.body.insertBefore(uploadedImg, doc.body.firstChild);
+
           doc.querySelectorAll('p').forEach(p => {
             if (!p.textContent?.trim() && p.children.length === 0) {
               p.remove();
@@ -758,6 +831,15 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
           </div>
           <div className="p-4 rounded-xl bg-background border border-border shadow-sm">
             {images.length >= 2 && <ImageCarousel images={images} />}
+            {images.length === 1 && (
+              <div className="mb-4 rounded-lg border border-border bg-muted/20 p-2">
+                <img
+                  src={images[0].src}
+                  alt={images[0].alt || 'Uploaded image'}
+                  className="max-h-[280px] w-full rounded-md object-contain"
+                />
+              </div>
+            )}
             {finalHtml.trim() && (
               <div
                 dangerouslySetInnerHTML={{ __html: finalHtml }}
@@ -1277,16 +1359,18 @@ function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; wei
 
 // ─── ComponentEditForm ────────────────────────────────────────────────────────
 
-function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
+function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onCancel }: {
   blockInfo: any;
   courseId?: string;
   onSaved: () => void;
+  onImmediateSaved?: () => void;
   onCancel: () => void;
 }) {
   const category = blockInfo?.category || blockInfo?.block_type || '';
 
   const [displayName, setDisplayName] = useState(blockInfo?.display_name || '');
-  const [htmlContent, setHtmlContent] = useState(typeof blockInfo?.data === 'string' ? blockInfo.data : '');
+  const initialHtmlContent = typeof blockInfo?.data === 'string' ? blockInfo.data : '';
+  const [htmlContent, setHtmlContent] = useState(initialHtmlContent);
   const [problemXml, setProblemXml] = useState(typeof blockInfo?.data === 'string' ? blockInfo.data : '');
 
   const [metadata, setMetadata] = useState<any>(() => {
@@ -1376,10 +1460,20 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
         });
       }
       if (category === 'html') {
-        return updateXBlock(id, {
-          metadata: { display_name: displayName },
+        const updated = await updateXBlock(id, {
+          metadata: { ...metadata, display_name: displayName },
           data: htmlContent,
         });
+        const removedPaths = removedUploadedHtmlImagePaths(initialHtmlContent, htmlContent);
+        if (removedPaths.length > 0) {
+          try {
+            await cleanupCourseHtmlImages(courseId, removedPaths);
+          } catch (err) {
+            console.warn('Failed to cleanup removed HTML images:', err);
+            toast.warning('Đã lưu nội dung nhưng chưa xoá được một số ảnh khỏi storage.');
+          }
+        }
+        return updated;
       }
       if (category === 'problem') {
         const payloadMetadata = { ...metadata, display_name: displayName };
@@ -1444,11 +1538,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onCancel }: {
       case 'html':
         return (
           <HtmlEditor
+            blockId={blockInfo?.id || ''}
             displayName={displayName}
             onDisplayNameChange={setDisplayName}
             htmlContent={htmlContent}
             onHtmlChange={setHtmlContent}
+            metadata={metadata}
+            onMetadataChange={setMetadata}
             courseId={courseId || ''}
+            onImmediateSaved={onImmediateSaved}
           />
         );
       case 'problem':

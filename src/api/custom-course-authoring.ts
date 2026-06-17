@@ -269,6 +269,13 @@ export async function deleteCourseAsset(courseId: string, assetId: string): Prom
   );
 }
 
+export async function deleteCourseAssetByStoragePath(courseId: string, storagePath: string): Promise<void> {
+  await customApiClient.post(
+    `${BASE}/assets/${encodeURIComponent(courseId)}/delete-by-path`,
+    { storage_path: storagePath },
+  );
+}
+
 export async function updateCourseAssetLock(courseId: string, assetId: string, locked: boolean): Promise<any> {
   // Not implemented in custom backend yet, but keeping API compat
   return { success: true };
