@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon, FileText
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
@@ -78,6 +78,7 @@ export default function CoursesPage() {
   const [modalConfigCourseId, setModalConfigCourseId] = useState<string | null>(null);
   const [notifyCourseId, setNotifyCourseId] = useState<string | null>(null);
   const [mentorCourse, setMentorCourse] = useState<CustomCourse | null>(null);
+  const [courseInfoCourse, setCourseInfoCourse] = useState<CustomCourse | null>(null);
 
   // --- Tạo course mới ---
   const [showCreate, setShowCreate] = useState(false);
@@ -85,19 +86,22 @@ export default function CoursesPage() {
   const [newNumber, setNewNumber] = useState('');
   const [newRun, setNewRun] = useState(String(new Date().getFullYear()));
   const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const canSubmitCreateCourse = Boolean(newName.trim() && newDescription.trim() && newNumber.trim() && newOrg.trim() && newRun.trim());
 
   const createMut = useMutation({
     mutationFn: () => createCourse({
-      org: newOrg,
-      number: newNumber,
-      run: newRun,
-      display_name: newName,
+      org: newOrg.trim(),
+      number: newNumber.trim(),
+      run: newRun.trim(),
+      display_name: newName.trim(),
+      description: newDescription.trim(),
       start: '2020-01-01T00:00:00Z',
     }),
     onSuccess: (data) => {
       toast.success(`Đã tạo course: ${data.display_name}`);
       setShowCreate(false);
-      setNewNumber(''); setNewName('');
+      setNewNumber(''); setNewName(''); setNewDescription('');
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
     },
     onError: (err: any) => {
@@ -271,6 +275,19 @@ export default function CoursesPage() {
               <label className="text-sm font-medium">Tên khóa học</label>
               <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ví dụ: Văn hóa doanh nghiệp L&A" />
             </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Mô tả <span className="text-red-500">*</span></label>
+              <textarea
+                className="flex min-h-[96px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={newDescription}
+                onChange={e => setNewDescription(e.target.value)}
+                maxLength={5000}
+                placeholder="Nhập mô tả ngắn gọn về mục tiêu, nội dung hoặc đối tượng phù hợp của khóa học"
+              />
+              {!newDescription.trim() && (
+                <p className="text-xs text-red-500">Bắt buộc nhập mô tả khóa học trước khi lưu.</p>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Tổ chức</label>
@@ -290,7 +307,7 @@ export default function CoursesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Hủy</Button>
-            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending || !newName || !newNumber || !newOrg || !newRun}>
+            <Button onClick={() => createMut.mutate()} disabled={createMut.isPending || !canSubmitCreateCourse}>
               {createMut.isPending ? 'Đang tạo...' : 'Tạo khóa học'}
             </Button>
           </DialogFooter>
@@ -487,6 +504,12 @@ export default function CoursesPage() {
                               Xem thẻ preview
                             </DropdownMenuItem>
                             {canEdit && (
+                              <DropdownMenuItem onClick={() => setCourseInfoCourse(course)} className="gap-2">
+                                <FileText className="h-4 w-4 text-emerald-600" />
+                                Chỉnh thông tin
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
                               <DropdownMenuItem onClick={() => triggerUpload(course.id)} disabled={uploadingCourseId === course.id} className="gap-2">
                                 {uploadingCourseId === course.id ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <ImagePlus className="h-4 w-4 text-indigo-600" />}
                                 Đổi ảnh đại diện
@@ -627,6 +650,18 @@ export default function CoursesPage() {
                         {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
+                              onClick={() => setCourseInfoCourse(course)}
+                              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Chỉnh thông tin khóa học</TooltipContent>
+                        </Tooltip>}
+
+                        {canEdit && <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon"
                               onClick={() => triggerUpload(course.id)}
                               disabled={uploadingCourseId === course.id}
                               className="h-8 w-8 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
@@ -747,6 +782,14 @@ export default function CoursesPage() {
       )}
 
       {/* Dialog cấu hình Modal */}
+      {courseInfoCourse && (
+        <CourseInfoDialog
+          course={courseInfoCourse}
+          open={!!courseInfoCourse}
+          onClose={() => setCourseInfoCourse(null)}
+        />
+      )}
+
       {modalConfigCourseId && (
         <CourseModalConfigDialog
           courseId={modalConfigCourseId}
@@ -768,6 +811,88 @@ export default function CoursesPage() {
 }
 
 // ── Course Modal Config Dialog (tách ra làm component riêng bên dưới) ──
+
+function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [displayName, setDisplayName] = useState(course.display_name);
+  const [description, setDescription] = useState(course.description ?? '');
+
+  useEffect(() => {
+    if (!open) return;
+    setDisplayName(course.display_name);
+    setDescription(course.description ?? '');
+  }, [course, open]);
+
+  const saveMut = useMutation({
+    mutationFn: () => updateCourse(course.id, {
+      display_name: displayName.trim(),
+      description: description.trim(),
+    }),
+    onSuccess: () => {
+      toast.success('Đã cập nhật thông tin khóa học');
+      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+      onClose();
+    },
+    onError: (err: any) => {
+      toast.error('Cập nhật thất bại: ' + (err?.response?.data?.error || err?.response?.data?.message || err.message));
+    },
+  });
+
+  const canSave = Boolean(displayName.trim() && description.trim()) && !saveMut.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Thông tin khóa học</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Tên khóa học <span className="text-red-500">*</span></Label>
+            <input
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={500}
+              placeholder="Nhập tên khóa học"
+            />
+            {!displayName.trim() && (
+              <p className="text-xs text-red-500">Bắt buộc nhập tên khóa học.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Mô tả <span className="text-red-500">*</span></Label>
+            <textarea
+              className="flex min-h-[132px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={5000}
+              placeholder="Nhập mô tả khóa học"
+            />
+            <div className="flex items-center justify-between gap-3">
+              {!description.trim() ? (
+                <p className="text-xs text-red-500">Bắt buộc nhập mô tả khóa học trước khi lưu.</p>
+              ) : (
+                <span />
+              )}
+              <p className="text-xs text-muted-foreground">{description.length}/5000</p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saveMut.isPending}>Hủy</Button>
+          <Button onClick={() => saveMut.mutate()} disabled={!canSave}>
+            {saveMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Lưu thông tin
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();

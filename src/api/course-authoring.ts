@@ -94,6 +94,7 @@ export interface CourseAssetsResponse {
 export interface Course {
   id: string;
   display_name: string;
+  description?: string | null;
   org: string;
   number: string;
   run: string;
@@ -278,6 +279,7 @@ export async function createCourse(payload: {
   number: string;
   run: string;
   display_name: string;
+  description: string;
   start?: string;
 }): Promise<Course> {
   const { data } = await apiClient.post(

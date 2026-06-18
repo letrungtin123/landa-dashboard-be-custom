@@ -11,6 +11,7 @@ interface ApiResponse<T> { success: boolean; data: T; message?: string; }
 export interface CustomCourse {
   id: string;
   display_name: string;
+  description: string | null;
   org: string;
   visible_to_staff_only: boolean;
   start_date: string | null;
@@ -83,12 +84,12 @@ export async function getCourses(params: { page?: number; page_size?: number; se
   return { courses: data.data.data, total: data.data.total, page: data.data.page, page_size: data.data.pageSize };
 }
 
-export async function createCourse(input: { id: string; display_name: string; org?: string; tenant_id?: string }) {
+export async function createCourse(input: { id: string; display_name: string; description: string; org?: string; tenant_id?: string }) {
   const { data } = await customApiClient.post<ApiResponse<CustomCourse>>("/api/courses", input);
   return data.data;
 }
 
-export async function updateCourse(courseId: string, updates: { visible_to_staff_only?: boolean; display_name?: string; image_url?: string }) {
+export async function updateCourse(courseId: string, updates: { visible_to_staff_only?: boolean; display_name?: string; description?: string; image_url?: string }) {
   await customApiClient.patch(`/api/courses/${encodeURIComponent(courseId)}`, updates);
   return { success: true };
 }

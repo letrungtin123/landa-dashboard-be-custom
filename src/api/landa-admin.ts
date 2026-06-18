@@ -32,6 +32,7 @@ export interface LandaCategory {
 export interface LandaCourse {
   id: string;
   display_name: string;
+  description?: string | null;
   org: string;
   visible_to_staff_only: boolean;
   start: string;
@@ -222,6 +223,7 @@ export async function getCourses(params: {
 export async function updateCourse(courseId: string, updates: {
   visible_to_staff_only?: boolean;
   display_name?: string;
+  description?: string;
 }): Promise<{ success: boolean }> {
   const { data } = await apiClient.patch(`${BASE}/courses/${encodeURIComponent(courseId)}/`, updates);
   return data;
