@@ -35,6 +35,14 @@ export interface CourseMentor {
   bio?: string | null;
 }
 
+export interface CourseMentorSection {
+  course_id: string;
+  description: string | null;
+  logo_light: string | null;
+  logo_dark: string | null;
+  updated_at: string | null;
+}
+
 export interface CourseModalConfig {
   course_id: string;
   welcome_enabled: boolean;
@@ -125,6 +133,50 @@ export async function updateCourseMentor(courseId: string, mentorId: string | nu
     { mentor_id: mentorId },
   );
   return data.data.mentor;
+}
+
+export async function getCourseMentorSection(courseId: string): Promise<CourseMentorSection | null> {
+  const { data } = await customApiClient.get<ApiResponse<{ mentor_section: CourseMentorSection | null }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-section`,
+  );
+  return data.data.mentor_section;
+}
+
+export async function updateCourseMentorSection(
+  courseId: string,
+  payload: { description: string | null },
+): Promise<CourseMentorSection> {
+  const { data } = await customApiClient.put<ApiResponse<{ mentor_section: CourseMentorSection }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-section`,
+    payload,
+  );
+  return data.data.mentor_section;
+}
+
+export async function uploadCourseMentorSectionLogo(
+  courseId: string,
+  mode: 'light' | 'dark',
+  file: File,
+): Promise<CourseMentorSection> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('mode', mode);
+  const { data } = await customApiClient.post<ApiResponse<{ mentor_section: CourseMentorSection }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-section/logo`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data.data.mentor_section;
+}
+
+export async function deleteCourseMentorSectionLogo(
+  courseId: string,
+  mode: 'light' | 'dark',
+): Promise<CourseMentorSection | null> {
+  const { data } = await customApiClient.delete<ApiResponse<{ mentor_section: CourseMentorSection | null }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-section/logo/${mode}`,
+  );
+  return data.data.mentor_section;
 }
 
 // ── Course Modal Config ──

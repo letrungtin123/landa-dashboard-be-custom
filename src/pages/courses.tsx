@@ -4,7 +4,7 @@ import { storageUrl } from '@/utils/storage-url';
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, type CustomCourse, type CourseMentor, type CourseModalConfig } from '@/api/custom-courses';
+import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
@@ -772,9 +772,12 @@ export default function CoursesPage() {
 function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [description, setDescription] = useState('');
   const debouncedSearch = useDebounce(search);
   const [page, setPage] = useState(1);
   const pageSize = 8;
+  const lightLogoInputRef = useRef<HTMLInputElement>(null);
+  const darkLogoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setPage(1);
@@ -798,6 +801,17 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
     staleTime: 30_000,
   });
 
+  const { data: mentorSection, isLoading: loadingMentorSection } = useQuery({
+    queryKey: ['course-mentor-section', course.id],
+    queryFn: () => getCourseMentorSection(course.id),
+    enabled: open && !!course.id,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(mentorSection?.description ?? '');
+  }, [mentorSection?.description, open]);
+
   const updateMut = useMutation({
     mutationFn: (mentorId: string | null) => updateCourseMentor(course.id, mentorId),
     onSuccess: (mentor) => {
@@ -809,19 +823,65 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
     onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Cập nhật mentor thất bại'),
   });
 
+  const updateSectionMut = useMutation({
+    mutationFn: () => updateCourseMentorSection(course.id, { description: description.trim() || null }),
+    onSuccess: (section) => {
+      queryClient.setQueryData(['course-mentor-section', course.id], section);
+      toast.success('Đã lưu thông tin hiển thị');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Lưu thông tin thất bại'),
+  });
+
+  const uploadLogoMut = useMutation({
+    mutationFn: (args: { mode: 'light' | 'dark'; file: File }) => uploadCourseMentorSectionLogo(course.id, args.mode, args.file),
+    onSuccess: (section) => {
+      queryClient.setQueryData(['course-mentor-section', course.id], section);
+      toast.success('Đã upload logo');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Upload logo thất bại'),
+  });
+
+  const deleteLogoMut = useMutation({
+    mutationFn: (mode: 'light' | 'dark') => deleteCourseMentorSectionLogo(course.id, mode),
+    onSuccess: (section) => {
+      queryClient.setQueryData(['course-mentor-section', course.id], section);
+      toast.success('Đã xóa logo');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Xóa logo thất bại'),
+  });
+
   const rows = candidates?.mentors ?? [];
   const totalPages = candidates?.total_pages ?? 1;
   const total = candidates?.total ?? 0;
 
   const avatarUrl = (mentor: CourseMentor | null | undefined) => storageUrl(mentor?.avatar || '') || null;
   const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || 'Chưa có mentor';
+  const validLogoTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/gif'];
+  const logoUrl = (path: string | null | undefined) => storageUrl(path || '') || '';
+
+  const handleLogoFile = (mode: 'light' | 'dark', file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File quá lớn. Tối đa 5MB');
+      return;
+    }
+    if (!validLogoTypes.includes(file.type)) {
+      toast.error('Định dạng không hỗ trợ. Chấp nhận JPEG, PNG, WEBP, SVG, GIF');
+      return;
+    }
+    uploadLogoMut.mutate({ mode, file });
+  };
+  const logoSlots = [
+    { mode: 'light' as const, label: 'Logo sáng', hint: 'Dùng cho giao diện light', icon: Sun, path: mentorSection?.logo_light, inputRef: lightLogoInputRef },
+    { mode: 'dark' as const, label: 'Logo tối', hint: 'Dùng cho giao diện dark', icon: Moon, path: mentorSection?.logo_dark, inputRef: darkLogoInputRef },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="sm:max-w-2xl overflow-hidden p-0">
-        <div className="border-b border-border bg-muted/20 px-6 py-5">
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl md:max-w-3xl">
+        <div className="shrink-0 border-b border-border bg-muted/20 px-4 py-4 sm:px-6 sm:py-5">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
+            <DialogTitle className="flex items-center gap-2 pr-8 text-lg leading-6 sm:text-xl">
               <UserRound className="h-5 w-5 text-cyan-600" />
               Chọn mentor cho khóa học
             </DialogTitle>
@@ -829,8 +889,8 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           </DialogHeader>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
-          <div className="rounded-xl border border-border bg-background p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:space-y-5 sm:px-6 sm:py-5">
+          <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
             <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mentor hiện tại</div>
             {loadingCurrent ? (
               <div className="flex items-center gap-3">
@@ -880,6 +940,125 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             )}
           </div>
 
+          <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thông tin hiển thị trên section Người Hướng Dẫn ở trang learner</div>
+                <p className="mt-1 text-xs text-muted-foreground">Mô tả và logo light/dark cho section Người hướng dẫn của riêng course này.</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={loadingMentorSection || updateSectionMut.isPending}
+                onClick={() => updateSectionMut.mutate()}
+                className="h-8 w-full text-xs sm:w-auto"
+              >
+                {updateSectionMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Lưu mô tả
+              </Button>
+            </div>
+
+            {loadingMentorSection ? (
+              <div className="space-y-3">
+                <Skeleton className="h-20 w-full rounded-lg" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-32 rounded-lg" />
+                  <Skeleton className="h-32 rounded-lg" />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    maxLength={2000}
+                    placeholder="Nhập mô tả công ty hoặc thông tin mentor section..."
+                    className="min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24"
+                  />
+                  <div className="mt-1 text-right text-[11px] text-muted-foreground">{description.length}/2000</div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {logoSlots.map((slot) => {
+                    const Icon = slot.icon;
+                    const url = logoUrl(slot.path);
+                    const uploading = uploadLogoMut.isPending && uploadLogoMut.variables?.mode === slot.mode;
+                    const deleting = deleteLogoMut.isPending && deleteLogoMut.variables === slot.mode;
+                    const previewClass = slot.mode === 'dark'
+                      ? 'border-slate-800 bg-slate-950 text-slate-300'
+                      : 'border-slate-200 bg-white text-slate-500';
+                    const previewLabelClass = slot.mode === 'dark'
+                      ? 'bg-white/10 text-slate-200'
+                      : 'bg-slate-100 text-slate-600';
+                    return (
+                      <div key={slot.mode} className="rounded-lg border border-border bg-muted/20 p-3">
+                        <input
+                          ref={slot.inputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+                          className="hidden"
+                          onChange={(event) => {
+                            handleLogoFile(slot.mode, event.target.files?.[0]);
+                            event.target.value = '';
+                          }}
+                        />
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold">{slot.label}</div>
+                              <div className="text-[11px] text-muted-foreground">{slot.hint}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={`relative mb-3 flex h-20 items-center justify-center rounded-lg border border-dashed px-3 ${previewClass}`}>
+                          {url ? (
+                            <img src={url} alt={slot.label} className="max-h-12 max-w-full object-contain" />
+                          ) : (
+                            <div className="text-center text-xs text-current">Chưa có logo</div>
+                          )}
+                          <span className={`absolute bottom-1.5 right-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${previewLabelClass}`}>
+                            {slot.mode === 'dark' ? 'Nền tối' : 'Nền sáng'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 flex-1 text-xs"
+                            disabled={uploading || deleteLogoMut.isPending}
+                            onClick={() => slot.inputRef.current?.click()}
+                          >
+                            {uploading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="mr-1.5 h-3.5 w-3.5" />}
+                            {url ? 'Đổi ảnh' : 'Upload'}
+                          </Button>
+                          {url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+                              disabled={deleting || uploadLogoMut.isPending}
+                              onClick={() => deleteLogoMut.mutate(slot.mode)}
+                            >
+                              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -891,7 +1070,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               />
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-border">
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-border sm:max-h-80">
               {loadingCandidates ? (
                 <div className="space-y-0 divide-y divide-border">
                   {Array.from({ length: 5 }).map((_, idx) => (
@@ -919,28 +1098,30 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                         type="button"
                         disabled={active || updateMut.isPending}
                         onClick={() => updateMut.mutate(mentor.id)}
-                        className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-muted/50 disabled:cursor-default disabled:hover:bg-transparent"
+                        className="flex w-full flex-col gap-2 p-3 text-left transition-colors hover:bg-muted/50 disabled:cursor-default disabled:hover:bg-transparent sm:flex-row sm:items-center sm:gap-3"
                       >
-                        {avatarUrl(mentor) ? (
-                          <img src={avatarUrl(mentor)!} alt={mentorName(mentor)} className="h-10 w-10 rounded-full object-cover" />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                            <UserRound className="h-4 w-4" />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold">{mentorName(mentor)}</div>
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{mentor.email}</span>
-                            {mentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{mentor.phone}</span>}
+                        <div className="flex w-full min-w-0 items-center gap-3 sm:flex-1">
+                          {avatarUrl(mentor) ? (
+                            <img src={avatarUrl(mentor)!} alt={mentorName(mentor)} className="h-10 w-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                              <UserRound className="h-4 w-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold">{mentorName(mentor)}</div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              <span className="inline-flex min-w-0 items-center gap-1"><Mail className="h-3 w-3 shrink-0" /><span className="truncate">{mentor.email}</span></span>
+                              {mentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 shrink-0" />{mentor.phone}</span>}
+                            </div>
                           </div>
                         </div>
                         {active ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300">
+                          <span className="ml-[52px] inline-flex w-fit items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300 sm:ml-0 sm:shrink-0">
                             <CheckCircle2 className="h-3.5 w-3.5" /> Đang chọn
                           </span>
                         ) : (
-                          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                          <span className="ml-[52px] w-fit rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground sm:ml-0 sm:shrink-0">
                             Chọn
                           </span>
                         )}
@@ -951,9 +1132,9 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               )}
             </div>
 
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>{total > 0 ? `${total} staff phù hợp` : 'Không có staff'}</span>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                 <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
                   Trước
                 </Button>
@@ -966,8 +1147,8 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           </div>
         </div>
 
-        <DialogFooter className="border-t border-border bg-muted/20 px-6 py-4">
-          <Button variant="outline" onClick={onClose}>Đóng</Button>
+        <DialogFooter className="m-0 shrink-0 rounded-none border-t border-border bg-muted/20 px-4 py-3 sm:px-6 sm:py-4">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={onClose}>Đóng</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
