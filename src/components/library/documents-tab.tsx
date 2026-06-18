@@ -5,6 +5,7 @@ import {
   bulkDocumentAction, type Document, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';
+import { storageUrl } from '@/utils/storage-url';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
 import { Pagination } from '@/components/shared/pagination';
@@ -23,7 +24,7 @@ import { confirmDialog } from '@/utils/confirm-store';
 import { useAuthStore } from '@/utils/store';
 import {
   Upload, Trash2, Eye, EyeOff, FileText, FileImage,
-  FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X,
+  FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X, Download,
 } from 'lucide-react';
 
 const EXT_ICONS: Record<string, React.ElementType> = {
@@ -41,6 +42,44 @@ const EXT_COLORS: Record<string, string> = {
   mp4: 'text-purple-500',
   jpg: 'text-pink-500', jpeg: 'text-pink-500', png: 'text-pink-500',
 };
+
+function formatDocumentCreatedAt(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDocumentFileSize(value: number | string | null | undefined, fallback?: string | null): string {
+  const display = fallback?.trim();
+  if (display) return display;
+
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = unitIndex === 0 || size >= 10 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function getDocumentDownloadUrl(doc: Document): string {
+  const url = storageUrl(doc.file_url);
+  if (!url) return '#';
+  return `${url}${url.includes('?') ? '&' : '?'}download=1`;
+}
 
 export default function DocumentsTab() {
   const queryClient = useQueryClient();
@@ -196,7 +235,7 @@ export default function DocumentsTab() {
 
       {/* ── Bulk Action Bar (giống landa-admin) ── */}
       {selected.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
           <Checkbox
             checked={allSelected}
             onCheckedChange={toggleAll}
@@ -232,7 +271,7 @@ export default function DocumentsTab() {
           <div className="h-5 w-px bg-border" />
 
           {/* Gán danh mục dropdown + Áp dụng */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={bulkCatId} onValueChange={setBulkCatId}>
               <SelectTrigger className="h-8 w-[180px] text-xs bg-background border-input">
                 <SelectValue placeholder="Gán danh mục..." />
@@ -269,7 +308,106 @@ export default function DocumentsTab() {
       )}
 
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-border md:hidden">
+          {isLoading ? (
+            Array.from({ length: Math.min(limit, 5) }).map((_, i) => (
+              <div key={i} className="p-4">
+                <div className="flex items-start gap-3">
+                  <Skeleton className="mt-1 h-4 w-4" />
+                  <div className="flex-1 space-y-3">
+                    <Skeleton className="h-4 w-40" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className="h-5 w-20" />
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-28" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : docs.length === 0 ? (
+            <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
+              <FolderOpen className="mb-2 h-8 w-8 opacity-20" />
+              <p className="text-sm">Chưa có tài liệu</p>
+            </div>
+          ) : (
+            docs.map((doc) => {
+              const Icon = EXT_ICONS[doc.extension] || FileText;
+              const color = EXT_COLORS[doc.extension] || 'text-muted-foreground';
+              return (
+                <div key={doc.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox checked={selected.includes(doc.id)} onCheckedChange={() => toggleOne(doc.id)} className="mt-1" />
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <Icon className={`mt-0.5 h-4 w-4 ${color} shrink-0`} />
+                          <div className="min-w-0">
+                            <div className="line-clamp-2 text-sm font-semibold text-foreground">{doc.title}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="text-[10px] font-mono uppercase">{doc.extension}</Badge>
+                              <span className="text-xs text-muted-foreground">{formatDocumentFileSize(doc.file_size, doc.file_size_display)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Danh mục</div>
+                          <div className="truncate font-medium">{doc.category_name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Trạng thái</div>
+                          <Badge
+                            variant="outline"
+                            className={doc.is_visible
+                              ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20'
+                            }
+                          >
+                            {doc.is_visible ? 'Hiện' : 'Ẩn'}
+                          </Badge>
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Người đăng</div>
+                          <div className="truncate font-medium">{doc.uploaded_by_name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Ngày tạo</div>
+                          <div className="font-medium">{formatDocumentCreatedAt(doc.created_at)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-primary" title="Tải xuống">
+                          <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                        {canEdit && <Button variant="ghost" size="icon-sm"
+                          onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
+                          className="text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
+                        >
+                          {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </Button>}
+                        {canDelete && <Button variant="ghost" size="icon-sm"
+                          onClick={() => handleDelete(doc.id, doc.title)}
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <Table>
             <TableHeader className="bg-muted/10">
               <TableRow className="hover:bg-transparent border-border">
@@ -328,7 +466,7 @@ export default function DocumentsTab() {
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] font-mono uppercase">{doc.extension}</Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{doc.file_size_display}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentFileSize(doc.file_size, doc.file_size_display)}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{doc.category_name || <span className="opacity-40">—</span>}</TableCell>
                       <TableCell>
                         <Badge
@@ -342,9 +480,14 @@ export default function DocumentsTab() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{doc.uploaded_by_name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{doc.created_at}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentCreatedAt(doc.created_at)}</TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-primary" title="Tải xuống">
+                            <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
+                              <Download className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
                           {canEdit && <Button variant="ghost" size="icon"
                             onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
                             className="h-8 w-8 text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}

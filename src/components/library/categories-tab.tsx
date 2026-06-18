@@ -185,7 +185,7 @@ export default function CategoriesTab() {
 
       {/* ── Bulk Action Bar ── */}
       {selected.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
           <Checkbox
             checked={allSelected}
             onCheckedChange={toggleAll}
@@ -220,7 +220,70 @@ export default function CategoriesTab() {
 
       {/* Table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-border md:hidden">
+          {isLoading ? (
+            Array.from({ length: Math.min(limit, 5) }).map((_, i) => (
+              <div key={i} className="p-4">
+                <div className="flex items-start gap-3">
+                  <Skeleton className="mt-1 h-4 w-4" />
+                  <div className="flex-1 space-y-3">
+                    <Skeleton className="h-4 w-36" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-5 w-12" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : cats.length === 0 ? (
+            <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
+              <FolderOpen className="mb-2 h-8 w-8 opacity-20" />
+              <p className="text-sm">{debouncedSearch || docCountFilter !== 'all' ? 'Không tìm thấy danh mục' : 'Chưa có danh mục'}</p>
+            </div>
+          ) : (
+            cats.map((cat) => (
+              <div key={cat.id} className="p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox checked={selected.includes(cat.id)} onCheckedChange={() => toggleOne(cat.id)} className="mt-1" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 text-sm font-semibold text-foreground">{cat.name}</div>
+                        <div className="mt-1 truncate text-xs font-mono text-muted-foreground">{cat.slug}</div>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 text-xs">{cat.doc_count}</Badge>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <div>
+                        <div className="mb-0.5 text-muted-foreground">Số tài liệu</div>
+                        <div className="font-medium">{cat.doc_count}</div>
+                      </div>
+                      <div>
+                        <div className="mb-0.5 text-muted-foreground">Thứ tự</div>
+                        <div className="font-medium">{cat.sort_order}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-end gap-1">
+                      {canEdit && <Button variant="ghost" size="icon-sm" onClick={() => openEdit(cat)}
+                        className="text-muted-foreground hover:text-foreground" title="Sửa">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>}
+                      {canDelete && <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(cat)}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <Table>
             <TableHeader className="bg-muted/10">
               <TableRow className="hover:bg-transparent border-border">

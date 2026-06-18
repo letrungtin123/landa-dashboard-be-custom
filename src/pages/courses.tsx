@@ -4,7 +4,7 @@ import { storageUrl } from '@/utils/storage-url';
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, type CustomCourse, type CourseModalConfig } from '@/api/custom-courses';
+import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, type CustomCourse, type CourseMentor, type CourseModalConfig } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
@@ -39,15 +39,34 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+function getCourseMentorDisplayName(course: CustomCourse): string {
+  return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || 'Chưa có mentor';
+}
+
+function formatCourseUpdatedAt(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function CoursesPage() {
   useHeaderInfo('Khóa Học');
 
   const queryClient = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  const currentUser = useAuthStore((s) => s.user);
   const canAdd = hasPermission('courses', 'can_add');
   const canEdit = hasPermission('courses', 'can_edit');
   const canDelete = hasPermission('courses', 'can_delete');
+  const canManageMentors = currentUser?.role === 'superuser' || currentUser?.role === 'superadmin';
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [visFilter, setVisFilter] = useState('all');
@@ -58,6 +77,7 @@ export default function CoursesPage() {
   const [selectedCourseFiles, setSelectedCourseFiles] = useState<string | null>(null);
   const [modalConfigCourseId, setModalConfigCourseId] = useState<string | null>(null);
   const [notifyCourseId, setNotifyCourseId] = useState<string | null>(null);
+  const [mentorCourse, setMentorCourse] = useState<CustomCourse | null>(null);
 
   // --- Tạo course mới ---
   const [showCreate, setShowCreate] = useState(false);
@@ -233,7 +253,7 @@ export default function CoursesPage() {
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto pb-10">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto pb-10">
 
       <PageHeader
         icon={GraduationCap}
@@ -348,7 +368,7 @@ export default function CoursesPage() {
         }}
         onReset={() => { setSearch(''); setVisFilter('all'); }}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {selected.length > 0 && canEdit && (
               <>
                 <Button size="sm" variant="outline" onClick={() => bulkMut.mutate({ action: 'public' })} className="h-8 text-xs">
@@ -368,7 +388,155 @@ export default function CoursesPage() {
 
       <TooltipProvider delayDuration={300}>
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="divide-y divide-border md:hidden">
+            {isLoading ? (
+              Array.from({ length: Math.min(limit, 5) }).map((_, i) => (
+                <div key={i} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="mt-1 h-4 w-4" />
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-56" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-5 w-24" />
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-4 w-24" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : courses.length === 0 ? (
+              <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
+                <GraduationCap className="mb-2 h-8 w-8 opacity-20" />
+                <p className="text-sm">Chưa có khóa học</p>
+              </div>
+            ) : (
+              courses.map((course) => (
+                <div key={course.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox checked={selected.includes(course.id)} onCheckedChange={() => toggleOne(course.id)} className="mt-1" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" />
+                          <div className="min-w-0">
+                            <div className="line-clamp-2 text-sm font-semibold text-foreground">{course.display_name}</div>
+                            <div className="mt-1 truncate text-[11px] font-mono text-muted-foreground">{course.id}</div>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={course.visible_to_staff_only
+                            ? 'shrink-0 bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
+                            : 'shrink-0 bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                          }
+                        >
+                          {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Tổ chức</div>
+                          <div className="truncate font-mono font-medium">{course.org}</div>
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-muted-foreground">Mentor</div>
+                          <div className="flex min-w-0 items-center gap-1.5 font-medium">
+                            <UserRound className="h-3.5 w-3.5 shrink-0 text-cyan-600/70" />
+                            <span className="truncate">{getCourseMentorDisplayName(course)}</span>
+                          </div>
+                        </div>
+                        <div className="col-span-2">
+                          <div className="mb-0.5 text-muted-foreground">Cập nhật</div>
+                          <div className="font-medium">{formatCourseUpdatedAt(course.updated_at)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                        {canEdit && (
+                          <Button size="sm" asChild className="h-8 text-xs">
+                            <Link to={`/courses/${course.id}/edit`}>
+                              <Edit2 className="h-3.5 w-3.5" />
+                              Chỉnh sửa
+                            </Link>
+                          </Button>
+                        )}
+
+                        <Button variant="outline" size="icon-sm"
+                          onClick={() => setSelectedCourseFiles(course.id)}
+                          className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30"
+                          title="Quản lý tệp tin"
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                        </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon-sm" title="Thao tác khác">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem onClick={() => setPreviewCourse(course)} className="gap-2">
+                              <LayoutTemplate className="h-4 w-4 text-sky-600" />
+                              Xem thẻ preview
+                            </DropdownMenuItem>
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => triggerUpload(course.id)} disabled={uploadingCourseId === course.id} className="gap-2">
+                                {uploadingCourseId === course.id ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <ImagePlus className="h-4 w-4 text-indigo-600" />}
+                                Đổi ảnh đại diện
+                              </DropdownMenuItem>
+                            )}
+                            {canManageMentors && (
+                              <DropdownMenuItem onClick={() => setMentorCourse(course)} className="gap-2">
+                                <UserRound className="h-4 w-4 text-cyan-600" />
+                                Chọn mentor
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })} className="gap-2">
+                                {course.visible_to_staff_only ? <ArchiveRestore className="h-4 w-4 text-amber-600" /> : <Archive className="h-4 w-4 text-slate-500" />}
+                                {course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => setNotifyCourseId(course.id)} className="gap-2">
+                                <Bell className="h-4 w-4 text-amber-600" />
+                                Gửi thông báo
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => setModalConfigCourseId(course.id)} className="gap-2">
+                                <Settings2 className="h-4 w-4 text-violet-600" />
+                                Cấu hình hộp thoại
+                              </DropdownMenuItem>
+                            )}
+                            {canDelete && (
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteCourse(course)}
+                                disabled={deleteMut.isPending}
+                                className="gap-2 text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Xóa vĩnh viễn
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader className="bg-muted/10">
                 <TableRow className="hover:bg-transparent border-border">
@@ -376,12 +544,12 @@ export default function CoursesPage() {
                     <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
                   </TableHead>
                   <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Khóa học</TableHead>
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Tổ chức</TableHead>
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Tổ chức</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
 
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Kết thúc</TableHead>
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Cập nhật</TableHead>
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">Thao tác</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Mentor</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Cập nhật</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider pr-5">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className={isFetching && courses.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
@@ -390,12 +558,12 @@ export default function CoursesPage() {
                     <TableRow key={i} className="border-border">
                       <TableCell className="pl-4"><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><div className="space-y-1"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-52" /></div></TableCell>
-                      <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="mx-auto h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="mx-auto h-5 w-16" /></TableCell>
 
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="mx-auto h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="mx-auto h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="mx-auto h-8 w-8" /></TableCell>
                     </TableRow>
                   ))
                 ) : courses.length === 0 ? (
@@ -422,10 +590,10 @@ export default function CoursesPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <span className="text-xs font-mono font-medium bg-secondary px-2 py-0.5 rounded border border-border">{course.org}</span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <Badge
                           variant="outline"
                           className={course.visible_to_staff_only
@@ -436,9 +604,14 @@ export default function CoursesPage() {
                           {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{course.end}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{course.modified || '—'}</TableCell>
-                      <TableCell className="text-right pr-5 flex justify-end gap-1">
+                      <TableCell className="text-center text-muted-foreground text-sm">
+                        <div className="mx-auto flex max-w-[180px] items-center justify-center gap-2">
+                          <UserRound className="h-3.5 w-3.5 shrink-0 text-cyan-600/70" />
+                          <span className="truncate">{getCourseMentorDisplayName(course)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center text-muted-foreground text-sm whitespace-nowrap">{formatCourseUpdatedAt(course.updated_at)}</TableCell>
+                      <TableCell className="pr-5 flex justify-center gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon"
@@ -475,6 +648,18 @@ export default function CoursesPage() {
                           </TooltipTrigger>
                           <TooltipContent>Quản lý tệp tin</TooltipContent>
                         </Tooltip>
+
+                        {canManageMentors && <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon"
+                              onClick={() => setMentorCourse(course)}
+                              className="h-8 w-8 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50 dark:text-cyan-400 dark:hover:bg-cyan-950/30"
+                            >
+                              <UserRound className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{course.mentor?.full_name || course.mentor?.email || 'Chọn mentor'}</TooltipContent>
+                        </Tooltip>}
 
                         {canEdit && <Tooltip>
                           <TooltipTrigger asChild>
@@ -553,6 +738,14 @@ export default function CoursesPage() {
         courseId={selectedCourseFiles || ''}
       />
 
+      {mentorCourse && (
+        <CourseMentorDialog
+          course={mentorCourse}
+          open={!!mentorCourse}
+          onClose={() => setMentorCourse(null)}
+        />
+      )}
+
       {/* Dialog cấu hình Modal */}
       {modalConfigCourseId && (
         <CourseModalConfigDialog
@@ -575,6 +768,211 @@ export default function CoursesPage() {
 }
 
 // ── Course Modal Config Dialog (tách ra làm component riêng bên dưới) ──
+
+function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const { data: currentMentor, isLoading: loadingCurrent } = useQuery({
+    queryKey: ['course-mentor', course.id],
+    queryFn: () => getCourseMentor(course.id),
+    enabled: open && !!course.id,
+    initialData: course.mentor ?? undefined,
+  });
+
+  const { data: candidates, isLoading: loadingCandidates, isFetching } = useQuery({
+    queryKey: ['course-mentor-candidates', course.id, page, pageSize, debouncedSearch],
+    queryFn: () => getCourseMentorCandidates(course.id, {
+      page,
+      page_size: pageSize,
+      search: debouncedSearch || undefined,
+    }),
+    enabled: open && !!course.id,
+    staleTime: 30_000,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (mentorId: string | null) => updateCourseMentor(course.id, mentorId),
+    onSuccess: (mentor) => {
+      toast.success(mentor ? 'Đã cập nhật mentor' : 'Đã gỡ mentor');
+      queryClient.setQueryData(['course-mentor', course.id], mentor);
+      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+      onClose();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Cập nhật mentor thất bại'),
+  });
+
+  const rows = candidates?.mentors ?? [];
+  const totalPages = candidates?.total_pages ?? 1;
+  const total = candidates?.total ?? 0;
+
+  const avatarUrl = (mentor: CourseMentor | null | undefined) => storageUrl(mentor?.avatar || '') || null;
+  const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || 'Chưa có mentor';
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="sm:max-w-2xl overflow-hidden p-0">
+        <div className="border-b border-border bg-muted/20 px-6 py-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <UserRound className="h-5 w-5 text-cyan-600" />
+              Chọn mentor cho khóa học
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
+          </DialogHeader>
+        </div>
+
+        <div className="space-y-5 px-6 py-5">
+          <div className="rounded-xl border border-border bg-background p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mentor hiện tại</div>
+            {loadingCurrent ? (
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-11 w-11 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-52" />
+                </div>
+              </div>
+            ) : currentMentor ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {avatarUrl(currentMentor) ? (
+                    <img src={avatarUrl(currentMentor)!} alt={mentorName(currentMentor)} className="h-11 w-11 rounded-full object-cover ring-2 ring-cyan-500/20" />
+                  ) : (
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 ring-2 ring-cyan-500/20 dark:bg-cyan-950/30 dark:text-cyan-300">
+                      <UserRound className="h-5 w-5" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{mentorName(currentMentor)}</div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{currentMentor.email}</span>
+                      {currentMentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{currentMentor.phone}</span>}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={updateMut.isPending}
+                  onClick={() => updateMut.mutate(null)}
+                  className="w-full shrink-0 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 sm:w-auto"
+                >
+                  {updateMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                  Gỡ mentor
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
+                  <UserRound className="h-5 w-5" />
+                </div>
+                Course này chưa có mentor. Chọn một staff bên dưới để gán.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm staff theo tên, email hoặc username..."
+                className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border">
+              {loadingCandidates ? (
+                <div className="space-y-0 divide-y divide-border">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-56" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-4 py-10 text-center text-sm text-muted-foreground">
+                  <UserRound className="mb-2 h-8 w-8 opacity-30" />
+                  Không tìm thấy staff phù hợp.
+                </div>
+              ) : (
+                <div className={isFetching ? 'divide-y divide-border opacity-60' : 'divide-y divide-border'}>
+                  {rows.map((mentor) => {
+                    const active = currentMentor?.id === mentor.id;
+                    return (
+                      <button
+                        key={mentor.id}
+                        type="button"
+                        disabled={active || updateMut.isPending}
+                        onClick={() => updateMut.mutate(mentor.id)}
+                        className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-muted/50 disabled:cursor-default disabled:hover:bg-transparent"
+                      >
+                        {avatarUrl(mentor) ? (
+                          <img src={avatarUrl(mentor)!} alt={mentorName(mentor)} className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                            <UserRound className="h-4 w-4" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold">{mentorName(mentor)}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{mentor.email}</span>
+                            {mentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{mentor.phone}</span>}
+                          </div>
+                        </div>
+                        {active ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Đang chọn
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            Chọn
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{total > 0 ? `${total} staff phù hợp` : 'Không có staff'}</span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  Trước
+                </Button>
+                <span className="min-w-16 text-center">Trang {page}/{totalPages}</span>
+                <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page >= totalPages || isFetching} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                  Sau
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-border bg-muted/20 px-6 py-4">
+          <Button variant="outline" onClick={onClose}>Đóng</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();

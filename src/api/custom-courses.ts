@@ -20,6 +20,19 @@ export interface CustomCourse {
   image_url: string;
   created_at: string;
   updated_at: string;
+  mentor?: CourseMentor | null;
+  mentor_id?: string | null;
+}
+
+export interface CourseMentor {
+  id: string;
+  username: string;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  avatar: string | null;
+  role: string;
+  bio?: string | null;
 }
 
 export interface CourseModalConfig {
@@ -80,6 +93,38 @@ export async function bulkCourseAction(ids: string[], action: 'staff_only' | 'pu
 /** Request course deletion. Backend hides it immediately and purges data in the background. */
 export async function deleteCourse(courseId: string) {
   await customApiClient.delete(`/api/courses/${encodeURIComponent(courseId)}`);
+}
+
+export async function getCourseMentor(courseId: string): Promise<CourseMentor | null> {
+  const { data } = await customApiClient.get<ApiResponse<{ mentor: CourseMentor | null }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor`,
+  );
+  return data.data.mentor;
+}
+
+export async function getCourseMentorCandidates(
+  courseId: string,
+  params: { page?: number; page_size?: number; search?: string },
+) {
+  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<CourseMentor>>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-candidates`,
+    { params },
+  );
+  return {
+    mentors: data.data.data,
+    total: data.data.total,
+    page: data.data.page,
+    page_size: data.data.pageSize,
+    total_pages: data.data.totalPages,
+  };
+}
+
+export async function updateCourseMentor(courseId: string, mentorId: string | null): Promise<CourseMentor | null> {
+  const { data } = await customApiClient.patch<ApiResponse<{ mentor: CourseMentor | null }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor`,
+    { mentor_id: mentorId },
+  );
+  return data.data.mentor;
 }
 
 // ── Course Modal Config ──
