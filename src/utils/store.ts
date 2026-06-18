@@ -53,10 +53,10 @@ const encryptedStorage = createJSONStorage(() => ({
 }));
 
 // ── Types ──
-export type UserRole = 'superadmin' | 'superuser' | 'staff' | 'learner';
+export type UserRole = 'superadmin' | 'superuser' | 'staff' | 'learner_plus' | 'learner';
 export type UserStatus = 'active' | 'inactive';
 
-const ADMIN_ROLES: UserRole[] = ['staff', 'superuser', 'superadmin'];
+const ADMIN_ROLES: UserRole[] = ['staff', 'superuser', 'superadmin', 'learner_plus'];
 
 function assertDashboardUser(data: CustomLoginResponse): void {
   if (!ADMIN_ROLES.includes(data.user.role)) {
@@ -126,10 +126,12 @@ function mapLoginResponseToState(data: CustomLoginResponse) {
     avatar: storageUrl(data.user.avatar_url) || null,
     avatar_url: storageUrl(data.user.avatar_url) || null,
     status: 'active',
-    isStaff: data.user.role === 'staff' || data.user.role === 'superuser' || data.user.role === 'superadmin',
+    isStaff: data.user.role === 'staff' || data.user.role === 'learner_plus' || data.user.role === 'superuser' || data.user.role === 'superadmin',
     isSuperuser: data.user.role === 'superuser' || data.user.role === 'superadmin',
     tenant_id: data.user.tenant_id,
     tenant_name: data.user.tenant_name,
+    memberGroupIds: data.member_groups?.map(g => g.id) || [],
+    memberGroupNames: data.member_groups?.map(g => g.name) || [],
   };
 
   return {

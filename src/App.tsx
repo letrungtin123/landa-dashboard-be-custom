@@ -12,6 +12,7 @@ import { MotionProvider } from '@/components/motion-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthGuard } from '@/components/auth-guard';
 import { ModuleGuard } from '@/components/module-guard';
+import { SmartRedirect } from '@/components/smart-redirect';
 import { useAuthStore } from '@/utils/store';
 import { config } from '@/config/env';
 
@@ -88,9 +89,9 @@ function AppRoutes() {
         </Route>
       </Route>
 
-      {/* Default redirect */}
-      <Route path="/" element={<Navigate to="/library" replace />} />
-      <Route path="*" element={<Navigate to="/library" replace />} />
+      {/* Default redirect — tự tìm module đầu tiên mà user có quyền */}
+      <Route path="/" element={<SmartRedirect />} />
+      <Route path="*" element={<SmartRedirect />} />
     </Routes>
   );
 }

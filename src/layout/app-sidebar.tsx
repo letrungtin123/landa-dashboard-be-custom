@@ -136,7 +136,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
       {/* Header */}
       <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border">
-        <Link to="/library" className="flex items-center justify-center w-full overflow-hidden">
+        <Link to="/" className="flex items-center justify-center w-full overflow-hidden">
           {/* Full Logo - hidden when collapsed */}
           <img src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
 
@@ -214,7 +214,7 @@ export function AppSidebar() {
                     {user?.name || 'Admin User'}
                   </span>
                   <span className="text-[11px] font-medium text-sidebar-foreground/40 truncate leading-tight mt-0.5">
-                    {user?.role === 'superadmin' ? 'Super Administrator' : user?.role === 'superuser' ? 'Tenant Admin' : user?.role === 'staff' ? 'Staff' : 'Learner'}
+                    {user?.role === 'superadmin' ? 'Super Administrator' : user?.role === 'superuser' ? 'Tenant Admin' : user?.role === 'staff' ? 'Staff' : user?.role === 'learner_plus' ? 'Learner Plus' : 'Learner'}
                   </span>
                 </div>
               </Link>

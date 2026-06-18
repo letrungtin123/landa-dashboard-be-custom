@@ -18,7 +18,7 @@ export interface CustomUser {
   full_name: string;
   phone: string;
   avatar_url: string | null;
-  role: "superadmin" | "superuser" | "staff" | "learner";
+  role: "superadmin" | "superuser" | "staff" | "learner_plus" | "learner";
   is_active: boolean;
   tenant_id: string | null;
   tenant_name: string | null;

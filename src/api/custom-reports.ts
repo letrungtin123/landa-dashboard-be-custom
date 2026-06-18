@@ -179,3 +179,15 @@ export async function getAdminUserStudyTime(username: string): Promise<AdminUser
   });
   return data.data;
 }
+
+/** Danh sách groups cho filter report (dùng quyền report_summary) */
+export async function getReportGroups(): Promise<{ groups: Array<{ id: string; name: string; subgroup_count: number }>; total: number }> {
+  const { data } = await customApiClient.get<ApiResponse<{ groups: Array<{ id: string; name: string; subgroup_count: number }>; total: number }>>(`${BASE}/groups`);
+  return data.data;
+}
+
+/** Danh sách subgroups trong 1 group cho filter report */
+export async function getReportSubGroups(groupId: string): Promise<{ subgroups: Array<{ id: string; name: string; team_count: number }>; total: number }> {
+  const { data } = await customApiClient.get<ApiResponse<{ subgroups: Array<{ id: string; name: string; team_count: number }>; total: number }>>(`${BASE}/groups/${groupId}/subgroups`);
+  return data.data;
+}

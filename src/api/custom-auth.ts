@@ -21,6 +21,7 @@ export interface CustomLoginResponse {
   permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
+  member_groups?: { id: string; name: string }[];
 }
 
 /** Thông tin user từ backend */
@@ -31,7 +32,7 @@ export interface CustomUserInfo {
   full_name: string;
   phone: string;
   avatar_url: string | null;
-  role: "learner" | "staff" | "superuser" | "superadmin";
+  role: "learner" | "learner_plus" | "staff" | "superuser" | "superadmin";
   tenant_id: string | null;
   tenant_name: string | null;
 }
@@ -42,6 +43,7 @@ export interface CustomMeResponse {
   permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
+  member_groups?: { id: string; name: string }[];
 }
 
 /**

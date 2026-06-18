@@ -93,7 +93,7 @@ export default function LoginPage() {
       await login(values.email, values.password);
 
       toast.success('Đăng nhập thành công');
-      navigate('/library');
+      navigate('/');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Đăng nhập thất bại.';
       const shouldShowRawError = msg.includes('learner') || msg.includes('quyền truy cập');
@@ -127,7 +127,7 @@ export default function LoginPage() {
       });
       await setSession(session);
       toast.success('Đăng nhập SSO thành công');
-      navigate('/library');
+      navigate('/');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Đăng nhập SSO thất bại.';
       if (!msg.includes('huy')) {

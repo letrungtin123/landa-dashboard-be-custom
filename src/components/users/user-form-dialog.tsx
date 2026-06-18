@@ -29,7 +29,7 @@ const createUserSchema = z.object({
   full_name: z.string().optional().default(''),
   phone: z.string().optional().default(''),
   password: z.string().min(6, 'Tối thiểu 6 ký tự'),
-  role: z.enum(['superadmin', 'superuser', 'staff', 'learner']),
+  role: z.enum(['superadmin', 'superuser', 'staff', 'learner_plus', 'learner']),
   is_active: z.string().transform(function toBool(v) { return v === 'true'; }),
   tenant_id: z.string().optional(),
 });
@@ -40,7 +40,7 @@ const updateUserSchema = z.object({
   full_name: z.string().optional().default(''),
   phone: z.string().optional().default(''),
   password: z.string().optional().or(z.literal('')),
-  role: z.enum(['superadmin', 'superuser', 'staff', 'learner']),
+  role: z.enum(['superadmin', 'superuser', 'staff', 'learner_plus', 'learner']),
   is_active: z.string().transform(function toBool(v) { return v === 'true'; }),
 });
 
@@ -287,6 +287,11 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                                 </SelectItem>
                               </>
                             )}
+                            <SelectItem value="learner_plus">
+                              <span className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Learner+
+                              </span>
+                            </SelectItem>
                             <SelectItem value="learner">
                               <span className="flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Learner
@@ -322,7 +327,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                 </div>
 
                 {/* Warning: changing learner role removes from teams */}
-                {isEditing && user?.role === 'learner' && watchedRole !== 'learner' && (
+                {isEditing && (user?.role === 'learner' || user?.role === 'learner_plus') && watchedRole !== 'learner' && watchedRole !== 'learner_plus' && (
                   <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                     <div className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
@@ -332,7 +337,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                 )}
 
                 {/* Warning: changing staff/superuser role to learner removes from permission groups + teams */}
-                {isEditing && (user?.role === 'staff' || user?.role === 'superuser') && watchedRole === 'learner' && (
+                {isEditing && (user?.role === 'staff' || user?.role === 'superuser') && (watchedRole === 'learner' || watchedRole === 'learner_plus') && (
                   <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
                     <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
                     <div className="text-xs text-red-800 dark:text-red-300 leading-relaxed">

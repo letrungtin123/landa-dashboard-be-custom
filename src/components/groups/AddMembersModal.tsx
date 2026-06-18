@@ -32,7 +32,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
 
   const { data, isFetching } = useQuery({
     queryKey: ['users-for-group', debouncedSearch, page],
-    queryFn: () => fetchUsers({ page, page_size: 20, search: debouncedSearch, role: 'learner' }),
+    queryFn: () => fetchUsers({ page, page_size: 20, search: debouncedSearch, role: 'learner,learner_plus' }),
     enabled: open,
     staleTime: 0,
   });

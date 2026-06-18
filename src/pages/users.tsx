@@ -33,6 +33,7 @@ const ROLE_COLORS: Record<string, string> = {
   superuser: 'text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20',
   staff: 'text-blue-600 dark:text-blue-500 bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20',
   learner: 'text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20',
+  learner_plus: 'text-teal-600 dark:text-teal-500 bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/20',
 };
 
 export default function UsersPage() {
@@ -158,6 +159,7 @@ export default function UsersPage() {
               { value: 'superuser', label: 'Superuser' },
               { value: 'staff', label: 'Staff' },
               { value: 'learner', label: 'Learner' },
+              { value: 'learner_plus', label: 'Learner+' },
             ],
           },
           {
@@ -268,7 +270,7 @@ export default function UsersPage() {
                             <ShieldCheck className="h-3 w-3" />
                             {u.permission_group_name}
                           </span>
-                        ) : (u.role === 'staff' || u.role === 'superuser') ? (
+                        ) : (u.role === 'staff' || u.role === 'superuser' || u.role === 'learner_plus') ? (
                           <span className="text-[11px] text-muted-foreground/40 italic">Chưa gán</span>
                         ) : (
                           <span className="text-muted-foreground/40">—</span>
@@ -292,7 +294,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
-                          {(u.role === 'learner' || u.role === 'staff') && (
+                          {(u.role === 'learner' || u.role === 'learner_plus' || u.role === 'staff') && (
                             <Button variant="ghost" size="icon" onClick={function viewDetail() { setSelectedLearner(u.username); }}
                               className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors rounded-md" title="Xem chi tiết">
                               <Eye className="h-3.5 w-3.5" />

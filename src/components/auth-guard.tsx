@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/utils/store';
+import { SmartRedirect } from '@/components/smart-redirect';
 
 interface AuthGuardProps {
   requireAuth: boolean;
@@ -10,7 +11,7 @@ interface AuthGuardProps {
  * AuthGuard — Route protection cho React Router.
  *
  * - requireAuth=true: phải đăng nhập → redirect /login nếu chưa
- * - requireAuth=false: phải CHƯA đăng nhập → redirect /library nếu đã login
+ * - requireAuth=false: phải CHƯA đăng nhập → redirect module đầu tiên có quyền
  */
 export function AuthGuard({ requireAuth }: AuthGuardProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -40,7 +41,7 @@ export function AuthGuard({ requireAuth }: AuthGuardProps) {
   }
 
   if (!requireAuth && isAuthenticated) {
-    return <Navigate to="/library" replace />;
+    return <SmartRedirect />;
   }
 
   return <Outlet />;

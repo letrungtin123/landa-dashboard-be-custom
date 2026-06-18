@@ -9,8 +9,9 @@ import {
   getReportChart,
   getReportTopCourses,
   getReportLearners,
+  getReportGroups,
+  getReportSubGroups,
 } from '@/api/custom-reports';
-import { getOrgGroups, getSubGroups } from '@/api/custom-groups';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -579,39 +580,35 @@ export default function ReportSummaryPage() {
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const isSuperadmin = user?.role === 'superadmin' || user?.role === 'superuser';
   const isStaff = user?.role === 'staff';
-  const isLearnerPlus = user?.role === 'staff';
+  const isLearnerPlus = user?.role === 'learner_plus';
   const canViewReport = isSuperadmin || isStaff || isLearnerPlus;
 
-  // learner_plus: auto-set group từ membership, không fetch all groups
-  const learnerPlusGroupId = user?.memberGroupIds?.[0];
+  // learner_plus: lấy danh sách groups từ auth store (BE trả về qua member_groups)
+  const learnerPlusMemberGroups = isLearnerPlus && user?.memberGroupIds
+    ? user.memberGroupIds.map((id, i) => ({ id, name: user.memberGroupNames?.[i] || `Group ${id}` }))
+    : [];
+  const hasNoGroups = isLearnerPlus && learnerPlusMemberGroups.length === 0;
 
   const { data: groupsData } = useQuery({
-    queryKey: ['admin-groups-list', activeTenantId],
-    queryFn: () => getOrgGroups({ page_size: 100 }),
-    enabled: isSuperadmin || isStaff,
+    queryKey: ['report-groups-list', activeTenantId],
+    queryFn: () => getReportGroups(),
+    enabled: canViewReport && !hasNoGroups,
   });
 
   // Fetch subgroups when a group is selected
   const { data: subGroupsData } = useQuery({
-    queryKey: ['admin-subgroups-list', selectedGroupId, activeTenantId],
-    queryFn: () => getSubGroups(selectedGroupId as string),
-    enabled: (isSuperadmin || isStaff) && selectedGroupId !== 'all',
+    queryKey: ['report-subgroups-list', selectedGroupId, activeTenantId],
+    queryFn: () => getReportSubGroups(selectedGroupId as string),
+    enabled: canViewReport && selectedGroupId !== 'all',
   });
 
-  // learner_plus groups data giả lập từ auth store
-  const learnerPlusGroups = isLearnerPlus && user?.memberGroupIds
-    ? user.memberGroupIds.map((id, i) => ({ id, name: user.memberGroupNames?.[i] || `Group ${id}` }))
-    : [];
-
-  // Nếu learner_plus, auto-set selectedGroupId
-  const effectiveDefaultGroupId = isLearnerPlus ? (learnerPlusGroupId || 'all') : 'all';
-
-  // Override selectedGroupId nếu learner_plus chưa set (dùng useEffect tránh setState trong render)
+  // learner_plus: auto-set selectedGroupId vào group đầu tiên
   useEffect(() => {
-    if (isLearnerPlus && selectedGroupId === 'all' && learnerPlusGroupId) {
-      setSelectedGroupId(learnerPlusGroupId);
+    if (isLearnerPlus && selectedGroupId === 'all') {
+      const firstGroup = groupsData?.groups?.[0] || learnerPlusMemberGroups[0];
+      if (firstGroup) setSelectedGroupId(firstGroup.id);
     }
-  }, [isLearnerPlus, selectedGroupId, learnerPlusGroupId]);
+  }, [isLearnerPlus, selectedGroupId, groupsData?.groups?.length, learnerPlusMemberGroups.length]);
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['report-summary', selectedMonth, selectedYear, selectedGroupId, selectedSubGroupId, activeTenantId],
@@ -621,7 +618,8 @@ export default function ReportSummaryPage() {
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId
     }),
-    enabled: canViewReport && (isSuperadmin || isStaff || selectedGroupId !== 'all'),
+    // learner_plus phải có group được chọn (auto-set hoặc manual)
+    enabled: canViewReport && !hasNoGroups && (isSuperadmin || isStaff || selectedGroupId !== 'all'),
   });
 
   const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
@@ -635,7 +633,7 @@ export default function ReportSummaryPage() {
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId
     }),
-    enabled: canViewReport && (isSuperadmin || isStaff || selectedGroupId !== 'all'),
+    enabled: canViewReport && !hasNoGroups && (isSuperadmin || isStaff || selectedGroupId !== 'all'),
   });
 
   const handleExport = async () => {
@@ -664,6 +662,21 @@ export default function ReportSummaryPage() {
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
             Bạn không có quyền cần thiết để xem phân tích hệ thống.
             Chỉ quản trị viên cấp cao (superuser) hoặc người dùng Learner Plus mới có thể truy cập báo cáo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasNoGroups) {
+    return (
+      <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-12 text-center mt-12 backdrop-blur-sm">
+          <Users className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-amber-600 dark:text-amber-400 mb-2">Chưa thuộc nhóm nào</h2>
+          <p className="text-muted-foreground text-sm max-w-md mx-auto">
+            Bạn chưa được thêm vào nhóm/phòng ban/team nào trong hệ thống.
+            Vui lòng liên hệ quản trị viên để được thêm vào nhóm phù hợp.
           </p>
         </div>
       </div>
@@ -782,16 +795,14 @@ export default function ReportSummaryPage() {
             <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">
               <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="truncate max-w-[100px] sm:max-w-[120px]">
-                {isLearnerPlus
-                  ? (learnerPlusGroups.find(g => g.id === selectedGroupId)?.name || 'Nhóm của bạn')
-                  : selectedGroupId === 'all'
-                    ? 'Tất cả các doanh nghiệp'
-                    : groupsData?.groups.find(g => g.id === selectedGroupId)?.name || 'Đang tải...'}
+                {selectedGroupId === 'all'
+                  ? 'Tất cả các doanh nghiệp'
+                  : groupsData?.groups.find(g => g.id === selectedGroupId)?.name || 'Đang tải...'}
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[200px] max-h-[300px] overflow-y-auto rounded-lg custom-scrollbar">
-              {/* Superadmin / Staff: hiện 'Tất cả' + all groups */}
+              {/* Staff/Superadmin: option 'Tất cả' */}
               {(isSuperadmin || isStaff) && (
                 <DropdownMenuItem
                   onClick={() => { setSelectedGroupId('all'); setSelectedSubGroupId('all'); }}
@@ -801,22 +812,11 @@ export default function ReportSummaryPage() {
                   <div className={`w-1.5 h-1.5 rounded-full transition-colors ${selectedGroupId === 'all' ? 'bg-foreground' : 'bg-transparent'}`} />
                 </DropdownMenuItem>
               )}
-              {/* Superadmin / Staff: list all groups from API */}
-              {(isSuperadmin || isStaff) && groupsData?.groups.map(g => (
+              {/* All roles: list groups from report API (BE auto-filter cho learner_plus) */}
+              {groupsData?.groups.map(g => (
                 <DropdownMenuItem
                   key={g.id}
                   onClick={() => { setSelectedGroupId(g.id); setSelectedSubGroupId('all'); }}
-                  className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${selectedGroupId === g.id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
-                >
-                  <span className="truncate">{g.name}</span>
-                  <div className={`w-1.5 h-1.5 rounded-full transition-colors ${selectedGroupId === g.id ? 'bg-foreground' : 'bg-transparent'}`} />
-                </DropdownMenuItem>
-              ))}
-              {/* Learner Plus: chỉ hiện groups của user */}
-              {isLearnerPlus && learnerPlusGroups.map(g => (
-                <DropdownMenuItem
-                  key={g.id}
-                  onClick={() => setSelectedGroupId(g.id)}
                   className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${selectedGroupId === g.id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
                 >
                   <span className="truncate">{g.name}</span>
@@ -827,7 +827,7 @@ export default function ReportSummaryPage() {
           </DropdownMenu>
 
           {/* SubGroup Filter — chỉ hiện khi đã chọn Group */}
-          {selectedGroupId !== 'all' && (isSuperadmin || isStaff) && (
+          {selectedGroupId !== 'all' && canViewReport && (
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">
                 <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -971,7 +971,7 @@ export default function ReportSummaryPage() {
           <TopCoursesWidget month={selectedMonth} year={selectedYear} groupId={selectedGroupId} subgroupId={selectedSubGroupId} />
         </motion.div>
 
-        {groupsData && groupsData.groups.length > 0 && (
+        {((groupsData && groupsData.groups.length > 0) || (isLearnerPlus && learnerPlusMemberGroups.length > 0)) && (
           <motion.div variants={cardVariant}>
             <GroupEnrollmentsWidget
               year={selectedYear}

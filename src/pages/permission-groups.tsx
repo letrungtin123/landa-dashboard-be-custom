@@ -250,10 +250,10 @@ export default function PermissionGroupsPage() {
   async function loadStaffForAdd(searchTerm = "") {
     setMemberLoading(true);
     try {
-      const result = await fetchUsers({ page: 1, page_size: 100, role: "staff", search: searchTerm || undefined });
-      // Show all staff — those already in THIS group will be hidden; those in OTHER groups will be disabled
+      const result = await fetchUsers({ page: 1, page_size: 100, role: "staff,learner_plus", search: searchTerm || undefined });
+      // Show all staff/learner_plus — those already in THIS group will be hidden; those in OTHER groups will be disabled
       setMemberResults(result.data);
-    } catch { toast.error("Lỗi tải danh sách staff"); }
+    } catch { toast.error("Lỗi tải danh sách người dùng"); }
     finally { setMemberLoading(false); }
   }
 
@@ -781,14 +781,14 @@ export default function PermissionGroupsPage() {
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" /> Thêm thành viên
             </DialogTitle>
-            <DialogDescription>Chọn staff để thêm vào nhóm "{detail?.name}"</DialogDescription>
+            <DialogDescription>Chọn staff hoặc learner+ để thêm vào nhóm "{detail?.name}"</DialogDescription>
           </DialogHeader>
 
           {/* Info: 1 group per user rule */}
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
             <Shield className="h-3.5 w-3.5 text-blue-500 mt-0.5 shrink-0" />
             <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
-              Mỗi staff chỉ được gán vào <span className="font-semibold">1 nhóm quyền duy nhất</span>. Staff đã có nhóm sẽ không thể chọn.
+              Mỗi người dùng chỉ được gán vào <span className="font-semibold">1 nhóm quyền duy nhất</span>. Người đã có nhóm sẽ không thể chọn.
             </p>
           </div>
 

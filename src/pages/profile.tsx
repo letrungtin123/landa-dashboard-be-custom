@@ -28,9 +28,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ── Maps (giống FE-5173) ──
 const ROLE_LABEL: Record<string, string> = {
   superadmin: 'Super Admin',
-  admin: 'Quản trị viên',
-  staff: 'Nhân viên',
-  learner_plus: 'Quản lý nhóm',
+  superuser: 'Tenant Admin',
+  staff: 'Staff',
+  learner_plus: 'Learner Plus',
+  learner: 'Learner',
 };
 const GENDER_MAP: Record<string, string> = { male: 'Nam', female: 'Nữ', other: 'Khác' };
 const COUNTRY_MAP: Record<string, string> = { VN: 'Việt Nam', US: 'Hoa Kỳ', JP: 'Nhật Bản', KR: 'Hàn Quốc', GB: 'Anh', OTHER: 'Khác' };
@@ -106,6 +107,7 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   // ── Password modal state ──
   const [showPwModal, setShowPwModal] = useState(false);
@@ -296,8 +298,8 @@ export default function ProfilePage() {
               <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 -mt-14">
                 {/* Avatar */}
                 <button
-                  onClick={() => avatarInputRef.current?.click()}
-                  className="relative w-28 h-28 rounded-full border-4 border-card bg-muted shadow-xl flex items-center justify-center overflow-hidden group shrink-0"
+                  onClick={() => setShowAvatarModal(true)}
+                  className="relative w-28 h-28 rounded-full border-4 border-card bg-muted shadow-xl flex items-center justify-center overflow-hidden group shrink-0 cursor-pointer"
                 >
                   {avatarSrc ? (
                     <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
@@ -305,7 +307,7 @@ export default function ProfilePage() {
                     <span className="text-4xl font-bold text-primary">{user?.name?.[0]?.toUpperCase() || 'U'}</span>
                   )}
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera className="h-5 w-5 text-white" />
+                    <Eye className="h-5 w-5 text-white" />
                   </div>
                 </button>
                 {/* Info */}
@@ -323,7 +325,9 @@ export default function ProfilePage() {
                             ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400'
                             : user?.role === 'staff'
                               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                              : ''
+                              : user?.role === 'learner_plus'
+                                ? 'border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                                : 'border-slate-500/40 bg-slate-500/10 text-slate-600 dark:text-slate-400'
                       }`}
                     >
                       <Shield className="w-3 h-3 mr-1" />{ROLE_LABEL[user?.role || ''] || user?.role}
@@ -429,6 +433,53 @@ export default function ProfilePage() {
             )}
           </motion.div>
         </motion.div>
+
+        {/* ═══ AVATAR LIGHTBOX MODAL ═══ */}
+        <AnimatePresence>
+          {showAvatarModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAvatarModal(false)}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                className="relative flex flex-col items-center gap-5 p-6 max-w-sm w-full mx-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Close button */}
+                <button
+                  onClick={() => setShowAvatarModal(false)}
+                  className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-card border border-border shadow-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+
+                {/* Enlarged avatar */}
+                <div className="w-56 h-56 rounded-2xl border-4 border-card bg-muted shadow-2xl overflow-hidden">
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
+                      <span className="text-7xl font-bold text-primary">{user?.name?.[0]?.toUpperCase() || 'U'}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Change photo button */}
+                <Button
+                  variant="outline"
+                  className="rounded-xl h-10 px-6 text-sm font-medium bg-card border-border shadow-lg hover:bg-muted"
+                  onClick={() => { avatarInputRef.current?.click(); setShowAvatarModal(false); }}
+                >
+                  <Camera className="mr-2 h-4 w-4" /> Đổi ảnh đại diện
+                </Button>
+
+                {/* Upload limit note */}
+                <p className="text-xs text-muted-foreground/70 text-center">
+                  Chấp nhận JPG, PNG, WebP · Tối đa 1MB
+                </p>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* ═══ PASSWORD MODAL ═══ */}
         <AnimatePresence>
