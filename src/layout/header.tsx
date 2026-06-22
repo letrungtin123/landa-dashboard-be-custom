@@ -92,7 +92,7 @@ export function Header() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mt-1 rounded-lg">
               <DropdownMenuLabel className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tenant</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tổ chức</span>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -150,7 +150,7 @@ export function Header() {
               onClick={() => navigate('/profile')}
             >
               <User className="mr-2 h-4 w-4 text-muted-foreground" />
-              Profile
+              Hồ sơ cá nhân
             </DropdownMenuItem>
             {branding.learnerUrl && (
               <DropdownMenuItem
@@ -168,7 +168,7 @@ export function Header() {
                 }}
               >
                 <GraduationCap className="mr-2 h-4 w-4" />
-                E-learning
+                Trang học viên
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -177,7 +177,7 @@ export function Header() {
               onClick={handleLogout}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Log out
+              Đăng xuất
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

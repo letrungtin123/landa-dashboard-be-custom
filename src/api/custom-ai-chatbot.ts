@@ -265,6 +265,7 @@ export interface BotPersona {
   template_prompt: string;
   template_avatar_url: string | null;
   template_fullbody_url: string | null;
+  is_lesson_author_persona?: boolean;
 }
 
 export async function fetchBotPersonas(botId: string): Promise<BotPersona[]> {

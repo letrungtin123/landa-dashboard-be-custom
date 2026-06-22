@@ -4,11 +4,14 @@
 // Header has fullscreen toggle
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
+  BookOpenCheck, CheckCircle2, AtSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,25 +23,83 @@ import { useAuthStore } from '@/utils/store';
 import {
   fetchActiveBot, fetchConversations, createConversation,
   deleteConversation, fetchMessages, sendMessageStream,
+  fetchLessonAuthorSettings, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
-  type PaginatedMessages,
+  type LessonAuthorProposalEvent, type LessonAuthorSettings,
+  type OutlineMention,
 } from '@/api/custom-chat';
 import { fetchBotPersonas, type BotPersona } from '@/api/custom-ai-chatbot';
+import {
+  getCourseOutlineIndex,
+  type CourseIndexResponse,
+  type CourseIndexSection,
+} from '@/api/custom-course-authoring';
 
 // ── Types ──
-type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat';
+type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
+type ChatSurface = 'admin' | 'lesson_author';
+type OutlineMentionOption = OutlineMention & { label: string; depth: number };
+
+function normalizeMentionText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function getMentionTypeLabel(blockType: string): string {
+  if (blockType === 'chapter') return 'Section';
+  if (blockType === 'sequential') return 'Subsection';
+  if (blockType === 'vertical') return 'Unit';
+  return 'Component';
+}
+
+function getOutlineChildren(node: CourseIndexSection): CourseIndexSection[] {
+  return node.children || node.child_info?.children || [];
+}
+
+function flattenOutlineMentions(
+  node: CourseIndexSection,
+  parents: string[] = [],
+  depth = 0,
+): OutlineMentionOption[] {
+  const name = node.display_name || '(Không tên)';
+  const isCourseRoot = node.block_type === 'course';
+  const pathParts = isCourseRoot ? parents : [...parents, name];
+  const children = getOutlineChildren(node);
+  const current: OutlineMentionOption[] = isCourseRoot ? [] : [{
+    block_id: node.id,
+    block_type: node.block_type,
+    display_name: name,
+    path: pathParts.join(' / '),
+    label: getMentionTypeLabel(node.block_type),
+    depth,
+  }];
+
+  return [
+    ...current,
+    ...children.flatMap(child => flattenOutlineMentions(child, pathParts, depth + 1)),
+  ];
+}
 
 // ── Main Component ──
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [surface, setSurface] = useState<ChatSurface>('admin');
   const [state, setState] = useState<WidgetState>('loading');
   const [activeBot, setActiveBot] = useState<ActiveBot | null>(null);
+  const [lessonSettings, setLessonSettings] = useState<LessonAuthorSettings | null>(null);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [personas, setPersonas] = useState<BotPersona[]>([]);
   const [currentConv, setCurrentConv] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [proposalEvent, setProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
+  const [applyingProposal, setApplyingProposal] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [outlineMentionOptions, setOutlineMentionOptions] = useState<OutlineMentionOption[]>([]);
+  const [selectedMentions, setSelectedMentions] = useState<OutlineMentionOption[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -60,6 +121,12 @@ export default function ChatWidget() {
   const user = useAuthStore(s => s.user);
   const permissions = useAuthStore(s => s.permissions);
   const hasPermission = user?.role === 'superadmin' || (permissions as any)?.ai_chatbot?.can_view;
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const courseMatch = location.pathname.match(/^\/courses\/(.+)\/edit\/?$/);
+  const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
+  const isCourseOutline = Boolean(courseId);
+  const isLessonAuthor = surface === 'lesson_author';
 
   // ── Pre-load bot avatar on mount (for FAB) ──
   useEffect(() => {
@@ -70,15 +137,77 @@ export default function ChatWidget() {
   }, [hasPermission]);
 
   // ── Load full data when widget opens ──
-  const loadActiveBot = useCallback(async () => {
-    setState('loading');
+  const resetChatState = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setCurrentConv(null);
+    setMessages([]);
+    setInputValue('');
+    setSelectedMentions([]);
+    setStreamText('');
+    setStreaming(false);
+    setHasMore(false);
+    setNextCursor(null);
+    setProposalEvent(null);
+  }, []);
+
+  const loadOutlineMentions = useCallback(async () => {
+    if (!courseId) {
+      setOutlineMentionOptions([]);
+      return;
+    }
+
     try {
-      const bot = await fetchActiveBot();
+      const cacheKey = ['course-outline-index', courseId] as const;
+      const cached = queryClient.getQueryData<CourseIndexResponse>(cacheKey);
+      const outline = cached ?? await getCourseOutlineIndex(courseId);
+      setOutlineMentionOptions(flattenOutlineMentions(outline.course_structure));
+    } catch {
+      setOutlineMentionOptions([]);
+    }
+  }, [courseId, queryClient]);
+
+  const loadActiveBot = useCallback(async (nextSurface: ChatSurface = surface) => {
+    setState('loading');
+    setLoadingConvs(false);
+    try {
+      if (nextSurface === 'lesson_author') {
+        if (!courseId) {
+          setSurface('admin');
+          return;
+        }
+
+        const settings = await fetchLessonAuthorSettings();
+        setLessonSettings(settings);
+        setActiveBot(settings.active_bot);
+
+        const personaMismatch = Boolean(
+          settings.active_bot &&
+          settings.active_persona &&
+          settings.active_persona.bot_id !== settings.active_bot.bot_id,
+        );
+
+        if (!settings.active_bot || !settings.active_kb || !settings.active_persona || personaMismatch) {
+          setConversations([]);
+          setState('config-warning');
+          return;
+        }
+
+        setLoadingConvs(true);
+        const convs = await fetchConversations({ target: 'lesson_author', courseId });
+        setConversations(convs);
+        setLoadingConvs(false);
+        setState('conversations');
+        return;
+      }
+
+      setLessonSettings(null);
+      const bot = await fetchActiveBot('admin');
       setActiveBot(bot);
       if (!bot) { setState('no-bot'); return; }
 
       setLoadingConvs(true);
-      const convs = await fetchConversations();
+      const convs = await fetchConversations({ target: 'admin' });
       setConversations(convs);
       setLoadingConvs(false);
 
@@ -90,13 +219,31 @@ export default function ChatWidget() {
         setState('conversations');
       }
     } catch {
+      setLoadingConvs(false);
       setState('no-bot');
     }
-  }, []);
+  }, [courseId, surface]);
 
   useEffect(() => {
     if (open) loadActiveBot();
   }, [open, loadActiveBot]);
+
+  useEffect(() => {
+    if (open && isLessonAuthor && courseId) {
+      void loadOutlineMentions();
+    } else if (!isLessonAuthor) {
+      setOutlineMentionOptions([]);
+      setSelectedMentions([]);
+    }
+  }, [courseId, isLessonAuthor, loadOutlineMentions, open]);
+
+  useEffect(() => {
+    if (!isCourseOutline && isLessonAuthor) {
+      setSurface('admin');
+      resetChatState();
+      if (open) loadActiveBot('admin');
+    }
+  }, [isCourseOutline, isLessonAuthor, loadActiveBot, open, resetChatState]);
 
   // ── FAB pointer drag ──
   const onFabPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -151,12 +298,21 @@ export default function ChatWidget() {
   }, []);
 
   // ── Create conversation ──
-  const handleCreateConversation = async (personaId: string) => {
+  const handleCreateConversation = async (personaId?: string) => {
     try {
-      const conv = await createConversation(personaId);
+      const activePersonaId = isLessonAuthor ? lessonSettings?.active_persona?.persona_id : personaId;
+      if (!activePersonaId) {
+        toast.error('Chua cau hinh nhan cach chuyen gia bai hoc');
+        return;
+      }
+      const conv = await createConversation(activePersonaId, {
+        target: isLessonAuthor ? 'lesson_author' : 'admin',
+        courseId: isLessonAuthor ? courseId : undefined,
+      });
       setConversations(prev => [conv, ...prev]);
       setCurrentConv(conv);
       setMessages([]);
+      setProposalEvent(null);
       setState('chat');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || err.message);
@@ -211,6 +367,10 @@ export default function ChatWidget() {
   const handleNewConvFromList = async () => {
     if (!activeBot) return;
     if (conversations.length >= 10) { toast.error('Tối đa 10 cuộc hội thoại'); return; }
+    if (isLessonAuthor) {
+      await handleCreateConversation();
+      return;
+    }
     try {
       const p = await fetchBotPersonas(activeBot.bot_id);
       setPersonas(p);
@@ -222,19 +382,29 @@ export default function ChatWidget() {
   const handleSend = () => {
     if (!currentConv || !inputValue.trim() || streaming) return;
     const content = inputValue.trim();
+    const outgoingMentions: OutlineMention[] = isLessonAuthor
+      ? selectedMentions.map(({ block_id, block_type, display_name, path }) => ({
+        block_id,
+        block_type,
+        display_name,
+        path,
+      }))
+      : [];
     setInputValue('');
+    setSelectedMentions([]);
 
     const userMsg: ChatMessage = {
       id: 'temp-' + Date.now(),
       conversation_id: currentConv.id,
       role: 'user',
       content,
-      metadata: {},
+      metadata: outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {},
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamText('');
+    setProposalEvent(null);
     streamAccRef.current = '';
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
 
@@ -264,10 +434,29 @@ export default function ChatWidget() {
         setStreaming(false);
       },
       (message) => {
+        const partial = streamAccRef.current.trim();
+        if (isLessonAuthor) {
+          const assistantMsg: ChatMessage = {
+            id: 'err-' + Date.now(),
+            conversation_id: currentConv.id,
+            role: 'assistant',
+            content: partial ? `${partial}\n\n${message}` : message,
+            metadata: { kind: 'lesson_author_stream_error' },
+            created_at: new Date().toISOString(),
+          };
+          setMessages(msgs => [...msgs, assistantMsg]);
+        }
         toast.error(message);
         setStreaming(false);
         setStreamText('');
         streamAccRef.current = '';
+      },
+      {
+        target: isLessonAuthor ? 'lesson_author' : 'admin',
+        courseId: isLessonAuthor ? courseId : undefined,
+        mode: isLessonAuthor ? 'auto' : 'chat',
+        outline_mentions: outgoingMentions,
+        onProposal: isLessonAuthor ? setProposalEvent : undefined,
       },
     );
   };
@@ -284,8 +473,35 @@ export default function ChatWidget() {
     setMessages([]);
     setHasMore(false);
     setNextCursor(null);
+    setProposalEvent(null);
     setState('conversations');
-    fetchConversations().then(setConversations).catch(() => {});
+    fetchConversations({
+      target: isLessonAuthor ? 'lesson_author' : 'admin',
+      courseId: isLessonAuthor ? courseId : undefined,
+    }).then(setConversations).catch(() => {});
+  };
+
+  const handleSwitchLessonAuthor = async () => {
+    if (!isCourseOutline || !courseId) return;
+    const nextSurface: ChatSurface = isLessonAuthor ? 'admin' : 'lesson_author';
+    setSurface(nextSurface);
+    resetChatState();
+    if (open) await loadActiveBot(nextSurface);
+  };
+
+  const handleApplyProposal = async () => {
+    if (!proposalEvent || !courseId || applyingProposal) return;
+    setApplyingProposal(true);
+    try {
+      const result = await applyLessonAuthorJob(proposalEvent.job_id);
+      toast.success(`Da tao/cap nhat ${result.created_count} block`);
+      setProposalEvent(null);
+      queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Khong ap dung duoc proposal');
+    } finally {
+      setApplyingProposal(false);
+    }
   };
 
   if (!hasPermission) return null;
@@ -294,7 +510,14 @@ export default function ChatWidget() {
     ? 'fixed inset-4 z-[9998] rounded-2xl'
     : 'fixed bottom-6 right-6 z-[9998] w-[420px] h-[600px] rounded-2xl';
 
-  const botAvatarSrc = activeBot?.bot_avatar_url ? storageUrl(activeBot.bot_avatar_url) : null;
+  const activeAvatarUrl = isLessonAuthor
+    ? (lessonSettings?.active_persona?.persona_avatar_url || activeBot?.bot_avatar_url)
+    : activeBot?.bot_avatar_url;
+  const botAvatarSrc = activeAvatarUrl ? storageUrl(activeAvatarUrl) : null;
+  const headerTitle = isLessonAuthor ? 'Chuyên gia bài học' : (activeBot?.bot_name || 'AI Assistant');
+  const headerSubtitle = isLessonAuthor
+    ? (lessonSettings?.active_kb?.kb_name || 'Lesson author')
+    : (streaming ? 'Đang trả lời...' : 'Online');
 
   return (
     <>
@@ -344,13 +567,23 @@ export default function ChatWidget() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{activeBot?.bot_name || 'AI Assistant'}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {streaming ? '✍️ Đang trả lời...' : '🟢 Online'}
-                  </p>
+                  <p className="text-sm font-semibold truncate">{headerTitle}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{headerSubtitle}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {isCourseOutline && (
+                  <Button
+                    variant={isLessonAuthor ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-8 gap-1.5 px-2 text-xs"
+                    onClick={handleSwitchLessonAuthor}
+                    title="Chuyên gia bài học"
+                  >
+                    <BookOpenCheck className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Chuyên gia</span>
+                  </Button>
+                )}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} title={fullscreen ? 'Thu nhỏ' : 'Phóng to'}>
                   {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button>
@@ -364,6 +597,9 @@ export default function ChatWidget() {
             <div className="flex-1 min-h-0 flex flex-col">
               {state === 'loading' && <LoadingState />}
               {state === 'no-bot' && <NoBotState />}
+              {state === 'config-warning' && (
+                <LessonAuthorWarning settings={lessonSettings} />
+              )}
               {state === 'persona-picker' && (
                 <PersonaPicker
                   personas={personas}
@@ -393,8 +629,15 @@ export default function ChatWidget() {
                   onInputChange={setInputValue}
                   onSend={handleSend}
                   onKeyDown={handleKeyDown}
+                  isLessonAuthor={isLessonAuthor}
+                  outlineMentionOptions={outlineMentionOptions}
+                  selectedMentions={selectedMentions}
+                  onSelectedMentionsChange={setSelectedMentions}
                   scrollRef={scrollRef}
                   inputRef={inputRef}
+                  proposalEvent={proposalEvent}
+                  applyingProposal={applyingProposal}
+                  onApplyProposal={handleApplyProposal}
                 />
               )}
             </div>
@@ -465,6 +708,48 @@ function NoBotState() {
       </div>
       <p className="text-sm text-muted-foreground">Chưa có bot nào được kích hoạt cho trang này.</p>
       <p className="text-xs text-muted-foreground/60">Vào AI Chatbot → Triển khai → Chọn bot cho FE Admin.</p>
+    </div>
+  );
+}
+
+function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | null }) {
+  const missing: string[] = [];
+  if (!settings?.active_bot) missing.push('Chatbot chuyên gia bài học');
+  if (!settings?.active_kb) missing.push('KB chuyên gia bài học');
+  if (!settings?.active_persona) missing.push('Mascot nhân cách chuyên gia bài học');
+  if (
+    settings?.active_bot &&
+    settings?.active_persona &&
+    settings.active_persona.bot_id !== settings.active_bot.bot_id
+  ) {
+    missing.push('Mascot chuyên gia không thuộc chatbot đang active');
+  }
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center">
+        <AlertTriangle className="h-8 w-8 text-amber-600" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold">Chưa đủ cấu hình chuyên gia bài học</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Cần cấu hình đủ bot, KB và mascot chuyên gia trước khi chat trong course outline.
+        </p>
+      </div>
+      <div className="w-full max-w-xs rounded-lg border bg-muted/30 p-3 text-left">
+        <p className="text-[11px] font-medium text-muted-foreground mb-2">Đang thiếu</p>
+        <div className="space-y-1">
+          {missing.map(item => (
+            <div key={item} className="flex items-center gap-2 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground max-w-xs">
+        Vào AI Chatbot → Triển khai để chọn bot/KB, rồi vào tab Nhân cách của bot để bật cờ chuyên gia bài học.
+      </p>
     </div>
   );
 }
@@ -574,6 +859,11 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
               <div key={i} className="p-3 rounded-lg border"><Skeleton className="h-4 w-2/3 mb-2" /><Skeleton className="h-3 w-full" /></div>
             ))}
           </div>
+        ) : conversations.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-muted-foreground">
+            <MessageCircle className="h-8 w-8 opacity-30" />
+            <p className="text-xs">Chưa có hội thoại nào</p>
+          </div>
         ) : (
           <div className="space-y-1.5">
             {conversations.map((conv, i) => (
@@ -618,7 +908,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, scrollRef, inputRef }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -630,17 +920,128 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onInputChange: (v: string) => void;
   onSend: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  isLessonAuthor?: boolean;
+  outlineMentionOptions?: OutlineMentionOption[];
+  selectedMentions?: OutlineMentionOption[];
+  onSelectedMentionsChange?: (mentions: OutlineMentionOption[]) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  proposalEvent?: LessonAuthorProposalEvent | null;
+  applyingProposal?: boolean;
+  onApplyProposal?: () => void;
 }) {
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const selectedMentionList = selectedMentions ?? [];
+
+  const mentionMatches = useMemo(() => {
+    if (!isLessonAuthor || mentionQuery === null) return [];
+    const query = normalizeMentionText(mentionQuery);
+    const selectedIds = new Set(selectedMentionList.map(mention => mention.block_id));
+    return (outlineMentionOptions ?? [])
+      .filter(option => !selectedIds.has(option.block_id))
+      .filter(option => {
+        if (!query) return true;
+        return normalizeMentionText(`${option.display_name} ${option.path} ${option.block_type} ${option.label}`).includes(query);
+      })
+      .slice(0, 8);
+  }, [isLessonAuthor, mentionQuery, outlineMentionOptions, selectedMentionList]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (isNearBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages.length, streamText, scrollRef]);
+  }, [messages.length, proposalEvent?.job_id, streamText, scrollRef]);
 
   useEffect(() => { if (!loading) inputRef.current?.focus(); }, [loading, inputRef]);
+  useEffect(() => { setActiveMentionIndex(0); }, [mentionQuery]);
+
+  const updateMentionState = (value: string, caret: number) => {
+    if (!isLessonAuthor) return;
+    const prefix = value.slice(0, caret);
+    const atIndex = prefix.lastIndexOf('@');
+    if (atIndex < 0 || (atIndex > 0 && !/\s/.test(prefix[atIndex - 1]))) {
+      setMentionQuery(null);
+      setMentionStart(null);
+      return;
+    }
+
+    const query = prefix.slice(atIndex + 1);
+    if (query.includes('\n') || query.length > 80) {
+      setMentionQuery(null);
+      setMentionStart(null);
+      return;
+    }
+
+    setMentionQuery(query);
+    setMentionStart(atIndex);
+  };
+
+  const closeMentionPicker = () => {
+    setMentionQuery(null);
+    setMentionStart(null);
+    setActiveMentionIndex(0);
+  };
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = event.target.value;
+    onInputChange(value);
+    updateMentionState(value, event.target.selectionStart ?? value.length);
+  };
+
+  const handleSelectMention = (mention: OutlineMentionOption) => {
+    const textarea = inputRef.current;
+    const caret = textarea?.selectionStart ?? inputValue.length;
+    const start = mentionStart ?? caret;
+    const mentionText = `@${mention.display_name} `;
+    const nextValue = `${inputValue.slice(0, start)}${mentionText}${inputValue.slice(caret)}`;
+
+    onInputChange(nextValue);
+    if (!selectedMentionList.some(item => item.block_id === mention.block_id)) {
+      onSelectedMentionsChange?.([...selectedMentionList, mention]);
+    }
+    closeMentionPicker();
+
+    requestAnimationFrame(() => {
+      const nextCaret = start + mentionText.length;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  const handleRemoveMention = (blockId: string) => {
+    onSelectedMentionsChange?.(selectedMentionList.filter(mention => mention.block_id !== blockId));
+  };
+
+  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionMatches.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveMentionIndex(index => (index + 1) % mentionMatches.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveMentionIndex(index => (index - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        handleSelectMention(mentionMatches[activeMentionIndex] ?? mentionMatches[0]);
+        return;
+      }
+    }
+
+    if (mentionQuery !== null && event.key === 'Escape') {
+      event.preventDefault();
+      closeMentionPicker();
+      return;
+    }
+
+    onKeyDown(event);
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -691,23 +1092,85 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 </div>
               </div>
             )}
+            {proposalEvent && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold">Proposal sẵn sàng</p>
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-3">{proposalEvent.proposal.summary}</p>
+                <Button size="sm" className="w-full gap-2" onClick={onApplyProposal} disabled={applyingProposal || !onApplyProposal}>
+                  {applyingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Áp dụng vào outline
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>
 
       <div className="border-t px-3 py-2.5 bg-background/50">
+        {isLessonAuthor && selectedMentionList.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {selectedMentionList.map(mention => (
+              <Badge key={mention.block_id} variant="secondary" className="gap-1 max-w-full rounded-md px-2 py-1 text-[11px]">
+                <AtSign className="h-3 w-3 shrink-0" />
+                <span className="truncate max-w-[240px]">{mention.display_name}</span>
+                <button
+                  type="button"
+                  className="ml-0.5 rounded-sm opacity-70 hover:opacity-100"
+                  onClick={() => handleRemoveMention(mention.block_id)}
+                  aria-label={`Bỏ chọn ${mention.display_name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={inputValue}
-            onChange={e => onInputChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Nhập tin nhắn..."
-            disabled={streaming}
-            rows={1}
-            className="flex-1 resize-none rounded-xl border bg-muted/30 px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all disabled:opacity-50 max-h-24"
-            style={{ minHeight: '40px' }}
-          />
+          <div className="relative flex-1">
+            {isLessonAuthor && mentionQuery !== null && (
+              <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
+                {mentionMatches.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Không có mục phù hợp trong outline.</div>
+                ) : (
+                  mentionMatches.map((mention, index) => (
+                    <button
+                      key={mention.block_id}
+                      type="button"
+                      className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                        index === activeMentionIndex ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                      }`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        handleSelectMention(mention);
+                      }}
+                    >
+                      <AtSign className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold">{mention.display_name}</span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {mention.label} · {mention.path}
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+            <textarea
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleTextareaKeyDown}
+              placeholder={isLessonAuthor ? 'Nhập tin nhắn... gõ @ để chọn phần trong outline' : 'Nhập tin nhắn...'}
+              disabled={streaming}
+              rows={1}
+              className="w-full resize-none rounded-xl border bg-muted/30 px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all disabled:opacity-50 max-h-24"
+              style={{ minHeight: '40px' }}
+            />
+          </div>
           <Button
             size="icon"
             className="h-10 w-10 rounded-xl shrink-0"

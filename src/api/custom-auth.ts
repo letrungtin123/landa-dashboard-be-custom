@@ -54,6 +54,7 @@ export async function customLoginApi(username: string, password: string): Promis
     username,
     password,
     client_app: "admin",
+    origin: window.location.origin,
   });
   return data.data;
 }

@@ -35,49 +35,49 @@ interface NavGroup {
 // === Flat navigation config — each former subtab is now an independent module ===
 const NAV_GROUPS: NavGroup[] = [
   {
-    group: 'Overview',
+    group: 'Tổng quan',
     items: [
-      // { title: 'Dashboard', url: '/dashboard', module: 'dashboard', fallbackIcon: 'LayoutDashboard' },
+      // { title: 'Bảng điều khiển', url: '/dashboard', module: 'dashboard', fallbackIcon: 'LayoutDashboard' },
     ],
   },
   {
-    group: 'Content',
+    group: 'Nội dung',
     items: [
-      { title: 'Library', url: '/library', module: 'library', fallbackIcon: 'Library' },
-      { title: 'Courses', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
-      { title: 'Course Categories', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
+      { title: 'Thư viện', url: '/library', module: 'library', fallbackIcon: 'Library' },
+      { title: 'Khóa học', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
+      { title: 'Danh mục khóa học', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
       { title: 'AI Chatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
     ],
   },
   {
-    group: 'User',
+    group: 'Người dùng',
     items: [
-      { title: 'Users', url: '/accounts', module: 'account', fallbackIcon: 'Users' },
-      { title: 'Groups', url: '/groups', module: 'groups', fallbackIcon: 'FolderTree' },
-      { title: 'Permission Groups', url: '/permission-groups', module: 'permission_groups', fallbackIcon: 'ShieldCheck' },
-      { title: 'Audit Logs', url: '/audit-logs', module: 'audit_log', fallbackIcon: 'ScrollText' },
+      { title: 'Người dùng', url: '/accounts', module: 'account', fallbackIcon: 'Users' },
+      { title: 'Nhóm', url: '/groups', module: 'groups', fallbackIcon: 'FolderTree' },
+      { title: 'Nhóm quyền', url: '/permission-groups', module: 'permission_groups', fallbackIcon: 'ShieldCheck' },
+      { title: 'Nhật ký hoạt động', url: '/audit-logs', module: 'audit_log', fallbackIcon: 'ScrollText' },
     ],
   },
   {
-    group: 'Analytics',
+    group: 'Phân tích',
     items: [
-      { title: 'Report Summary', url: '/report-summary', module: 'report_summary', fallbackIcon: 'BarChart3' },
+      { title: 'Báo cáo tổng hợp', url: '/report-summary', module: 'report_summary', fallbackIcon: 'BarChart3' },
     ],
   },
   {
-    group: 'Support',
+    group: 'Hỗ trợ',
     items: [
-      { title: 'Help Docs', url: '/help-docs', module: 'help_docs', fallbackIcon: 'BookOpen' },
+      { title: 'Tài liệu hướng dẫn', url: '/help-docs', module: 'help_docs', fallbackIcon: 'BookOpen' },
     ],
   },
   {
-    group: 'System',
+    group: 'Hệ thống',
     items: [
-      { title: 'Tenant Management', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
-      { title: 'Branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
-      { title: 'System Prompts', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
-      { title: 'Badges', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
-      { title: 'SSO Management', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },
+      { title: 'Quản lý Tenant', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
+      { title: 'Thương hiệu', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
+      { title: 'Prompt hệ thống', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
+      { title: 'Huy hiệu', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
+      { title: 'Quản lý SSO', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },
     ],
   }
 ];
@@ -214,7 +214,7 @@ export function AppSidebar() {
                     {user?.name || 'Admin User'}
                   </span>
                   <span className="text-[11px] font-medium text-sidebar-foreground/40 truncate leading-tight mt-0.5">
-                    {user?.role === 'superadmin' ? 'Super Administrator' : user?.role === 'superuser' ? 'Tenant Admin' : user?.role === 'staff' ? 'Staff' : user?.role === 'learner_plus' ? 'Learner Plus' : 'Learner'}
+                    {user?.role === 'superadmin' ? 'Quản trị viên hệ thống' : user?.role === 'superuser' ? 'Quản trị viên' : user?.role === 'staff' ? 'Nhân viên' : user?.role === 'learner_plus' ? 'Học viên nâng cao' : 'Học viên'}
                   </span>
                 </div>
               </Link>

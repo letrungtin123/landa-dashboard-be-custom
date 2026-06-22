@@ -6,48 +6,57 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Rocket, Bot, Loader2 } from "lucide-react";
+import { Rocket, Bot, Loader2, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { fetchBots, type Chatbot } from "@/api/custom-ai-chatbot";
+import { fetchBots, fetchKnowledgebases, type Chatbot, type Knowledgebase } from "@/api/custom-ai-chatbot";
 import {
   fetchAssignments, assignBot, unassignBot,
-  type BotAssignment,
+  fetchLessonAuthorSettings, assignLessonAuthorKb, unassignLessonAuthorKb,
+  type BotAssignment, type ChatTarget, type LessonAuthorSettings,
 } from "@/api/custom-chat";
 import { storageUrl } from "@/utils/storage-url";
 
 const TARGETS = [
   { key: "admin" as const, label: "FE Admin (Dashboard)", desc: "Bot trò chuyện trên trang quản trị" },
   { key: "learner" as const, label: "FE Learner (Học viên)", desc: "Bot trò chuyện trên trang học viên" },
+  { key: "lesson_author" as const, label: "Chuyen gia tao bai hoc", desc: "Bot trong widget course editor, dung KB active rieng" },
 ];
 
 export function DeploySection() {
   const [assignments, setAssignments] = useState<BotAssignment[]>([]);
   const [bots, setBots] = useState<Chatbot[]>([]);
+  const [kbs, setKbs] = useState<Knowledgebase[]>([]);
+  const [lessonSettings, setLessonSettings] = useState<LessonAuthorSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [togglingTarget, setTogglingTarget] = useState<string | null>(null);
   const [selectingTarget, setSelectingTarget] = useState<string | null>(null);
+  const [selectingKb, setSelectingKb] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [assignData, botData] = await Promise.all([
+      const [assignData, botData, kbData, settingsData] = await Promise.all([
         fetchAssignments(),
         fetchBots({ page: 1, page_size: 100 }),
+        fetchKnowledgebases({ page: 1, page_size: 100 }),
+        fetchLessonAuthorSettings(),
       ]);
       setAssignments(assignData);
       setBots(botData.data);
+      setKbs(kbData.data);
+      setLessonSettings(settingsData);
     } catch { toast.error("Lỗi tải dữ liệu triển khai"); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  async function handleToggle(target: string, botId: string, checked: boolean) {
+  async function handleToggle(target: ChatTarget, botId: string, checked: boolean) {
     setTogglingTarget(target);
     try {
       if (checked) {
@@ -62,7 +71,7 @@ export function DeploySection() {
     finally { setTogglingTarget(null); }
   }
 
-  async function handleSelectBot(target: string, botId: string) {
+  async function handleSelectBot(target: ChatTarget, botId: string) {
     setSelectingTarget(target);
     try {
       await assignBot(target, botId);
@@ -70,6 +79,26 @@ export function DeploySection() {
       loadData();
     } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
     finally { setSelectingTarget(null); }
+  }
+
+  async function handleSelectKb(kbId: string) {
+    setSelectingKb(true);
+    try {
+      await assignLessonAuthorKb(kbId);
+      toast.success("Da gan KB lesson author");
+      loadData();
+    } catch (err: any) { toast.error(err?.response?.data?.message || "Loi"); }
+    finally { setSelectingKb(false); }
+  }
+
+  async function handleClearKb() {
+    setSelectingKb(true);
+    try {
+      await unassignLessonAuthorKb();
+      toast.success("Da bo gan KB lesson author");
+      loadData();
+    } catch (err: any) { toast.error(err?.response?.data?.message || "Loi"); }
+    finally { setSelectingKb(false); }
   }
 
   if (loading) {
@@ -93,7 +122,7 @@ export function DeploySection() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {TARGETS.map(({ key, label, desc }) => {
           const current = assignments.find(a => a.target === key);
           const isToggling = togglingTarget === key;
@@ -171,6 +200,62 @@ export function DeploySection() {
                       )}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+
+              {key === "lesson_author" && (
+                <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-medium">
+                      <Database className="h-3.5 w-3.5 text-primary" />
+                      KB active
+                    </div>
+                    {lessonSettings?.active_kb && (
+                      <button
+                        type="button"
+                        disabled={selectingKb}
+                        onClick={handleClearKb}
+                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
+                      >
+                        Bo gan
+                      </button>
+                    )}
+                  </div>
+                  <Select
+                    value={lessonSettings?.active_kb?.kb_id ?? ""}
+                    onValueChange={handleSelectKb}
+                    disabled={selectingKb}
+                  >
+                    <SelectTrigger className="w-full h-9">
+                      {selectingKb ? (
+                        <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Dang gan...</span>
+                      ) : (
+                        <SelectValue placeholder="Chon KB..." />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kbs.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">Chua co KB nao.</div>
+                      ) : (
+                        kbs.map(kb => (
+                          <SelectItem key={kb.id} value={kb.id}>
+                            <span className="flex items-center gap-2">
+                              <Database className="h-4 w-4 text-muted-foreground" />
+                              {kb.name}
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {lessonSettings?.active_kb && (
+                    <div className="flex flex-wrap gap-1 text-[10px]">
+                      <Badge variant="outline">{lessonSettings.active_kb.document_count} docs</Badge>
+                      <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} learned</Badge>
+                      {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} learning</Badge>}
+                      {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} error</Badge>}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
