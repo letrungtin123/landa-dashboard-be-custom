@@ -113,7 +113,11 @@ export default function BadgesPage() {
                     }}
                     transition={{ type: "spring", stiffness: 300, damping: 24 }}
                   >
-                    <BadgeAdminCard badge={b} onToggle={toggleBadge} />
+                    <BadgeAdminCard tenantId={activeTenantId} badge={b} onToggle={toggleBadge} onImageUploaded={() => {
+                      // Reload badges to get new image URLs
+                      if (!activeTenantId) return;
+                      badgesApi.getTenantBadges(activeTenantId).then(result => setBadges(result.data)).catch(() => {});
+                    }} />
                   </motion.div>
                 ))}
               </AnimatePresence>

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCourseOutlineIndex } from '@/api/custom-course-authoring';
+import { getCourseOutlineIndex, type CourseIndexSection } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { Skeleton } from '@/components/ui/skeleton';
 import OutlineTree from '@/components/course-editor/OutlineTree';
@@ -13,6 +13,44 @@ import { renameBlock } from '@/api/custom-course-authoring';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';
+
+type FocusCourseBlockEventDetail = {
+  courseId?: string;
+  mention?: {
+    block_id?: string;
+    block_type?: string;
+    display_name?: string;
+    unit_id?: string | null;
+  };
+};
+
+function getSectionChildren(node: CourseIndexSection): CourseIndexSection[] {
+  return node.children || node.child_info?.children || [];
+}
+
+function findBlockPath(
+  node: CourseIndexSection,
+  blockId: string,
+  path: CourseIndexSection[] = [],
+): CourseIndexSection[] | null {
+  const nextPath = [...path, node];
+  if (node.id === blockId) return nextPath;
+
+  for (const child of getSectionChildren(node)) {
+    const childPath = findBlockPath(child, blockId, nextPath);
+    if (childPath) return childPath;
+  }
+
+  return null;
+}
+
+function findNearestUnit(path: CourseIndexSection[]): CourseIndexSection | null {
+  return [...path].reverse().find(node => node.block_type === 'vertical') ?? null;
+}
+
+function isComponentBlock(node: CourseIndexSection): boolean {
+  return !['course', 'chapter', 'sequential', 'vertical'].includes(node.block_type);
+}
 
 // ─────────────────────────────────────────────
 // Course Root Header (Renamable)
@@ -76,6 +114,8 @@ export default function CourseEditorPage() {
   const { courseId } = useParams<{ courseId: string }>();
   useHeaderInfo('Chỉnh sửa khóa học');
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+  const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: outline, isLoading, isError } = useQuery({
@@ -86,6 +126,58 @@ export default function CourseEditorPage() {
   });
 
   const courseStructure = outline?.course_structure;
+
+  useEffect(() => {
+    const handleFocusCourseBlock = (event: Event) => {
+      const detail = (event as CustomEvent<FocusCourseBlockEventDetail>).detail;
+      if (!courseId || detail?.courseId !== courseId || !courseStructure) return;
+
+      const blockId = detail.mention?.block_id;
+      if (!blockId) return;
+
+      const path = findBlockPath(courseStructure, blockId);
+      if (!path) {
+        toast.error('Không tìm thấy phần được chọn trong outline hiện tại');
+        return;
+      }
+
+      const target = path[path.length - 1];
+      const nearestUnit = findNearestUnit(path);
+      const targetIsComponent = isComponentBlock(target);
+
+      if (target.block_type === 'vertical') {
+        setSelectedUnit(target.id);
+        setFocusedBlockId(target.id);
+        setFocusedComponentId(null);
+      } else if (targetIsComponent && nearestUnit) {
+        setSelectedUnit(nearestUnit.id);
+        setFocusedBlockId(nearestUnit.id);
+        setFocusedComponentId(target.id);
+      } else {
+        setSelectedUnit(null);
+        setFocusedBlockId(target.id);
+        setFocusedComponentId(null);
+      }
+
+      toast.success(`Đã mở ${target.display_name || 'mục đã chọn'}`);
+    };
+
+    window.addEventListener('landa:focus-course-block', handleFocusCourseBlock);
+    return () => window.removeEventListener('landa:focus-course-block', handleFocusCourseBlock);
+  }, [courseId, courseStructure]);
+
+  useEffect(() => {
+    const handleCourseOutlineUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ courseId?: string }>).detail;
+      if (!courseId || detail?.courseId !== courseId) return;
+      const queryKey = ['course-outline-index', courseId] as const;
+      void queryClient.invalidateQueries({ queryKey, exact: true })
+        .then(() => queryClient.refetchQueries({ queryKey, exact: true, type: 'active' }));
+    };
+
+    window.addEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
+    return () => window.removeEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
+  }, [courseId, queryClient]);
 
   if (isLoading) {
     return (
@@ -150,6 +242,7 @@ export default function CourseEditorPage() {
                 courseId={courseId as string}
                 onSelectUnit={(unitId) => setSelectedUnit(unitId)}
                 selectedUnitId={selectedUnit}
+                focusedBlockId={focusedBlockId}
               />
             </div>
           </SheetContent>
@@ -173,6 +266,7 @@ export default function CourseEditorPage() {
             courseId={courseId as string}
             onSelectUnit={(unitId) => setSelectedUnit(unitId)}
             selectedUnitId={selectedUnit}
+            focusedBlockId={focusedBlockId}
           />
         </div>
       </div>
@@ -185,6 +279,7 @@ export default function CourseEditorPage() {
               key={selectedUnit}
               unitId={selectedUnit}
               courseId={courseId as string}
+              focusComponentId={focusedComponentId}
               onContentChange={() => {
                 queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
               }}

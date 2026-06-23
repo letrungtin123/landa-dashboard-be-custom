@@ -218,9 +218,10 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
 
 // ─── UnitEditor (main) ────────────────────────────────────────────────────────
 
-export default function UnitEditor({ unitId, courseId, onContentChange }: {
+export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange }: {
   unitId: string;
   courseId?: string;
+  focusComponentId?: string | null;
   onContentChange: () => void;
 }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -237,6 +238,19 @@ export default function UnitEditor({ unitId, courseId, onContentChange }: {
   // ── Drag-and-drop state cho component ordering ──
   const [localChildren, setLocalChildren] = useState<ChildBlock[]>(children);
   useEffect(() => { setLocalChildren(children); }, [children]);
+  useEffect(() => {
+    if (!focusComponentId || localChildren.length === 0) return;
+    const targetExists = localChildren.some(child => (child.id || child.block_id) === focusComponentId);
+    if (!targetExists) return;
+
+    const timeout = window.setTimeout(() => {
+      document
+        .getElementById(`course-component-${focusComponentId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+
+    return () => window.clearTimeout(timeout);
+  }, [focusComponentId, localChildren]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -315,6 +329,7 @@ export default function UnitEditor({ unitId, courseId, onContentChange }: {
                 key={child.id || child.block_id}
                 block={child}
                 courseId={courseId}
+                isFocused={focusComponentId === (child.id || child.block_id)}
                 onDelete={() => { refetch(); onContentChange(); }}
                 onSaved={() => { refetch(); onContentChange(); }}
               />
@@ -387,9 +402,10 @@ export default function UnitEditor({ unitId, courseId, onContentChange }: {
 
 // ─── ComponentCard ────────────────────────────────────────────────────────────
 
-function ComponentCard({ block, courseId, onDelete, onSaved }: {
+function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
   block: ChildBlock;
   courseId?: string;
+  isFocused?: boolean;
   onDelete: () => void;
   onSaved: () => void;
 }) {
@@ -437,9 +453,12 @@ function ComponentCard({ block, courseId, onDelete, onSaved }: {
 
   return (
     <div
+      id={`course-component-${blockId}`}
       ref={setNodeRef}
       style={sortableStyle}
-      className={`border border-border rounded-xl bg-card shadow-sm hover:shadow-md transition-shadow group ${isDragging ? 'shadow-lg ring-2 ring-primary/20' : ''}`}
+      className={`border border-border rounded-xl bg-card shadow-sm hover:shadow-md transition-shadow group ${
+        isFocused ? 'ring-2 ring-primary/50 border-primary/50' : ''
+      } ${isDragging ? 'shadow-lg ring-2 ring-primary/20' : ''}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between bg-muted/30 px-4 py-2.5 border-b border-border">

@@ -39,6 +39,7 @@ import {
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
 type ChatSurface = 'admin' | 'lesson_author';
 type OutlineMentionOption = OutlineMention & { label: string; depth: number };
+type OutlineAncestor = { id: string; block_type: string };
 
 function normalizeMentionText(value: string): string {
   return value
@@ -55,6 +56,10 @@ function getMentionTypeLabel(blockType: string): string {
   return 'Component';
 }
 
+function isStructuralBlock(blockType: string): boolean {
+  return blockType === 'course' || blockType === 'chapter' || blockType === 'sequential' || blockType === 'vertical';
+}
+
 function getOutlineChildren(node: CourseIndexSection): CourseIndexSection[] {
   return node.children || node.child_info?.children || [];
 }
@@ -63,24 +68,72 @@ function flattenOutlineMentions(
   node: CourseIndexSection,
   parents: string[] = [],
   depth = 0,
+  ancestors: OutlineAncestor[] = [],
 ): OutlineMentionOption[] {
   const name = node.display_name || '(Không tên)';
   const isCourseRoot = node.block_type === 'course';
   const pathParts = isCourseRoot ? parents : [...parents, name];
   const children = getOutlineChildren(node);
+  const currentAncestors = isCourseRoot
+    ? ancestors
+    : [...ancestors, { id: node.id, block_type: node.block_type }];
+  const verticalAncestor = [...currentAncestors].reverse().find(item => item.block_type === 'vertical');
   const current: OutlineMentionOption[] = isCourseRoot ? [] : [{
     block_id: node.id,
     block_type: node.block_type,
     display_name: name,
     path: pathParts.join(' / '),
+    unit_id: node.block_type === 'vertical' ? node.id : verticalAncestor?.id ?? null,
+    ancestor_ids: ancestors.map(item => item.id),
+    ancestor_types: ancestors.map(item => item.block_type),
     label: getMentionTypeLabel(node.block_type),
     depth,
   }];
 
   return [
     ...current,
-    ...children.flatMap(child => flattenOutlineMentions(child, pathParts, depth + 1)),
+    ...children.flatMap(child => flattenOutlineMentions(child, pathParts, depth + 1, currentAncestors)),
   ];
+}
+
+function getMessageOutlineMentions(metadata: unknown): OutlineMention[] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
+  const mentions = (metadata as { outline_mentions?: unknown }).outline_mentions;
+  if (!Array.isArray(mentions)) return [];
+  return mentions
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .map(item => ({
+      block_id: typeof item.block_id === 'string' ? item.block_id : '',
+      block_type: typeof item.block_type === 'string' ? item.block_type : 'unknown',
+      display_name: typeof item.display_name === 'string' ? item.display_name : 'Không tên',
+      path: typeof item.path === 'string' ? item.path : '',
+      unit_id: typeof item.unit_id === 'string' ? item.unit_id : null,
+      ancestor_ids: Array.isArray(item.ancestor_ids) ? item.ancestor_ids.filter((id): id is string => typeof id === 'string') : [],
+      ancestor_types: Array.isArray(item.ancestor_types) ? item.ancestor_types.filter((type): type is string => typeof type === 'string') : [],
+    }))
+    .filter(item => item.block_id);
+}
+
+function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorProposalEvent | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const metadata = messages[index].metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+
+    const record = metadata as Record<string, unknown>;
+    if (record.kind !== 'lesson_author_proposal') continue;
+    if (record.lesson_author_job_status !== 'proposed') continue;
+
+    const jobId = typeof record.lesson_author_job_id === 'string' ? record.lesson_author_job_id : '';
+    const proposal = record.lesson_author_proposal;
+    if (!jobId || !proposal || typeof proposal !== 'object' || Array.isArray(proposal)) continue;
+
+    return {
+      type: 'proposal',
+      job_id: jobId,
+      proposal: proposal as LessonAuthorProposalEvent['proposal'],
+    };
+  }
+  return null;
 }
 
 // ── Main Component ──
@@ -151,7 +204,7 @@ export default function ChatWidget() {
     setProposalEvent(null);
   }, []);
 
-  const loadOutlineMentions = useCallback(async () => {
+  const loadOutlineMentions = useCallback(async (force = false) => {
     if (!courseId) {
       setOutlineMentionOptions([]);
       return;
@@ -159,8 +212,16 @@ export default function ChatWidget() {
 
     try {
       const cacheKey = ['course-outline-index', courseId] as const;
-      const cached = queryClient.getQueryData<CourseIndexResponse>(cacheKey);
-      const outline = cached ?? await getCourseOutlineIndex(courseId);
+      const cached = force ? undefined : queryClient.getQueryData<CourseIndexResponse>(cacheKey);
+      const outline = cached ?? await queryClient.fetchQuery({
+        queryKey: cacheKey,
+        queryFn: () => getCourseOutlineIndex(courseId),
+        staleTime: force ? 0 : 30_000,
+      });
+      if (!outline?.course_structure) {
+        setOutlineMentionOptions([]);
+        return;
+      }
       setOutlineMentionOptions(flattenOutlineMentions(outline.course_structure));
     } catch {
       setOutlineMentionOptions([]);
@@ -312,6 +373,7 @@ export default function ChatWidget() {
       setConversations(prev => [conv, ...prev]);
       setCurrentConv(conv);
       setMessages([]);
+      setSelectedMentions([]);
       setProposalEvent(null);
       setState('chat');
     } catch (err: any) {
@@ -322,11 +384,13 @@ export default function ChatWidget() {
   // ── Open existing conversation ──
   const handleOpenConversation = async (conv: ChatConversation) => {
     setCurrentConv(conv);
+    setSelectedMentions([]);
     setLoadingMessages(true);
     setState('chat');
     try {
       const result = await fetchMessages(conv.id);
       setMessages(result.messages);
+      setProposalEvent(getLatestPendingProposalEvent(result.messages));
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
     } catch { toast.error('Không tải được tin nhắn'); }
@@ -339,6 +403,8 @@ export default function ChatWidget() {
     setLoadingMore(true);
     try {
       const result = await fetchMessages(currentConv.id, nextCursor);
+      const pendingProposal = getLatestPendingProposalEvent(result.messages);
+      if (!proposalEvent && pendingProposal) setProposalEvent(pendingProposal);
       setMessages(prev => [...result.messages, ...prev]);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
@@ -383,11 +449,14 @@ export default function ChatWidget() {
     if (!currentConv || !inputValue.trim() || streaming) return;
     const content = inputValue.trim();
     const outgoingMentions: OutlineMention[] = isLessonAuthor
-      ? selectedMentions.map(({ block_id, block_type, display_name, path }) => ({
+      ? selectedMentions.map(({ block_id, block_type, display_name, path, unit_id, ancestor_ids, ancestor_types }) => ({
         block_id,
         block_type,
         display_name,
         path,
+        unit_id,
+        ancestor_ids,
+        ancestor_types,
       }))
       : [];
     setInputValue('');
@@ -471,6 +540,7 @@ export default function ChatWidget() {
     setStreamText('');
     setCurrentConv(null);
     setMessages([]);
+    setSelectedMentions([]);
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
@@ -494,15 +564,33 @@ export default function ChatWidget() {
     setApplyingProposal(true);
     try {
       const result = await applyLessonAuthorJob(proposalEvent.job_id);
-      toast.success(`Da tao/cap nhat ${result.created_count} block`);
+      toast.success(`Đã tạo ${result.created_count} block, cập nhật ${result.updated_count} block`);
       setProposalEvent(null);
-      queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+      const queryKey = ['course-outline-index', courseId] as const;
+      await queryClient.invalidateQueries({ queryKey, exact: true });
+      await queryClient.refetchQueries({ queryKey, exact: true, type: 'active' });
+      await loadOutlineMentions(true);
+      window.dispatchEvent(new CustomEvent('landa:course-outline-updated', {
+        detail: {
+          courseId,
+          jobId: proposalEvent.job_id,
+          createdBlockIds: result.created_block_ids,
+          updatedBlockIds: result.updated_block_ids,
+        },
+      }));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Khong ap dung duoc proposal');
+      toast.error(err?.response?.data?.message || 'Không áp dụng được đề xuất');
     } finally {
       setApplyingProposal(false);
     }
   };
+
+  const handleMentionClick = useCallback((mention: OutlineMention) => {
+    if (!courseId) return;
+    window.dispatchEvent(new CustomEvent('landa:focus-course-block', {
+      detail: { courseId, mention },
+    }));
+  }, [courseId]);
 
   if (!hasPermission) return null;
 
@@ -633,6 +721,7 @@ export default function ChatWidget() {
                   outlineMentionOptions={outlineMentionOptions}
                   selectedMentions={selectedMentions}
                   onSelectedMentionsChange={setSelectedMentions}
+                  onMentionClick={handleMentionClick}
                   scrollRef={scrollRef}
                   inputRef={inputRef}
                   proposalEvent={proposalEvent}
@@ -908,7 +997,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -924,6 +1013,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   outlineMentionOptions?: OutlineMentionOption[];
   selectedMentions?: OutlineMentionOption[];
   onSelectedMentionsChange?: (mentions: OutlineMentionOption[]) => void;
+  onMentionClick?: (mention: OutlineMention) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   proposalEvent?: LessonAuthorProposalEvent | null;
@@ -995,8 +1085,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     const textarea = inputRef.current;
     const caret = textarea?.selectionStart ?? inputValue.length;
     const start = mentionStart ?? caret;
-    const mentionText = `@${mention.display_name} `;
-    const nextValue = `${inputValue.slice(0, start)}${mentionText}${inputValue.slice(caret)}`;
+    const before = inputValue.slice(0, start);
+    const after = inputValue.slice(caret);
+    const needsSpace = before.length > 0 && after.length > 0 && !/\s$/.test(before) && !/^\s/.test(after);
+    const nextValue = `${before}${needsSpace ? ' ' : ''}${after}`.replace(/[ \t]{2,}/g, ' ');
 
     onInputChange(nextValue);
     if (!selectedMentionList.some(item => item.block_id === mention.block_id)) {
@@ -1005,7 +1097,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     closeMentionPicker();
 
     requestAnimationFrame(() => {
-      const nextCaret = start + mentionText.length;
+      const nextCaret = Math.min(start + (needsSpace ? 1 : 0), nextValue.length);
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(nextCaret, nextCaret);
     });
@@ -1071,7 +1163,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               </div>
             )}
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble key={msg.id} message={msg} onMentionClick={onMentionClick} />
             ))}
             {streaming && streamText && (
               <div className="flex justify-start">
@@ -1110,24 +1202,6 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
       </div>
 
       <div className="border-t px-3 py-2.5 bg-background/50">
-        {isLessonAuthor && selectedMentionList.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {selectedMentionList.map(mention => (
-              <Badge key={mention.block_id} variant="secondary" className="gap-1 max-w-full rounded-md px-2 py-1 text-[11px]">
-                <AtSign className="h-3 w-3 shrink-0" />
-                <span className="truncate max-w-[240px]">{mention.display_name}</span>
-                <button
-                  type="button"
-                  className="ml-0.5 rounded-sm opacity-70 hover:opacity-100"
-                  onClick={() => handleRemoveMention(mention.block_id)}
-                  aria-label={`Bỏ chọn ${mention.display_name}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
         <div className="flex items-end gap-2">
           <div className="relative flex-1">
             {isLessonAuthor && mentionQuery !== null && (
@@ -1159,17 +1233,28 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 )}
               </div>
             )}
-            <textarea
-              ref={inputRef}
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={handleTextareaKeyDown}
-              placeholder={isLessonAuthor ? 'Nhập tin nhắn... gõ @ để chọn phần trong outline' : 'Nhập tin nhắn...'}
-              disabled={streaming}
-              rows={1}
-              className="w-full resize-none rounded-xl border bg-muted/30 px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all disabled:opacity-50 max-h-24"
-              style={{ minHeight: '40px' }}
-            />
+            <div className="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 px-2.5 py-1.5 transition-all focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/20">
+              {isLessonAuthor && selectedMentionList.map(mention => (
+                <MentionBadge
+                  key={mention.block_id}
+                  mention={mention}
+                  onClick={() => onMentionClick?.(mention)}
+                  onRemove={() => handleRemoveMention(mention.block_id)}
+                  compact
+                />
+              ))}
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleTextareaKeyDown}
+                placeholder={selectedMentionList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn phần trong outline...' : 'Nhập tin nhắn...'}
+                disabled={streaming}
+                rows={1}
+                className="min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
+                style={{ minHeight: '28px' }}
+              />
+            </div>
           </div>
           <Button
             size="icon"
@@ -1185,8 +1270,61 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = false }: {
+  mention: OutlineMention;
+  onClick?: () => void;
+  onRemove?: () => void;
+  compact?: boolean;
+  inverted?: boolean;
+}) {
+  const label = getMentionTypeLabel(mention.block_type);
+  return (
+    <Badge
+      variant="secondary"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={`max-w-full gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${
+        compact ? 'h-7' : ''
+      } ${
+        onClick ? 'cursor-pointer' : ''
+      } ${
+        inverted
+          ? 'border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/20'
+          : 'border-primary/15 bg-primary/10 text-primary hover:bg-primary/15'
+      }`}
+      title={mention.path || mention.display_name}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      <AtSign className="h-3 w-3 shrink-0" />
+      <span className="shrink-0 opacity-75">{label}</span>
+      <span className="truncate max-w-[180px]">{mention.display_name}</span>
+      {onRemove && (
+        <button
+          type="button"
+          className="ml-0.5 rounded-sm opacity-70 hover:opacity-100"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          aria-label={`Bỏ chọn ${mention.display_name}`}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </Badge>
+  );
+}
+
+function MessageBubble({ message, onMentionClick }: { message: ChatMessage; onMentionClick?: (mention: OutlineMention) => void }) {
   const isUser = message.role === 'user';
+  const mentions = getMessageOutlineMentions(message.metadata);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -1200,7 +1338,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : 'bg-muted/50 rounded-bl-md'
         }`}
       >
-        {message.content}
+        {mentions.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {mentions.map(mention => (
+              <MentionBadge
+                key={mention.block_id}
+                mention={mention}
+                inverted={isUser}
+                onClick={onMentionClick ? () => onMentionClick(mention) : undefined}
+              />
+            ))}
+          </div>
+        )}
+        {message.content && <div>{message.content}</div>}
       </div>
     </motion.div>
   );

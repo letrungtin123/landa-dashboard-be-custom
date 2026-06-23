@@ -1,3 +1,9 @@
+// ═══════════════════════════════════════════════════════════════
+// @deprecated — Hardcoded badge images (fallback only)
+// Badge images are now stored in Supabase Storage and served
+// dynamically via API (card_image_url / icon_image_url).
+// These static imports are kept as fallback during transition.
+// ═══════════════════════════════════════════════════════════════
 import ManhGhepHoanHaoCard from "@/assets/badgesCard/ManhGhepHoanHaoCard.png";
 import ChienBinhOnboardingCard from "@/assets/badgesCard/ChienBinhOnboardingCard.png";
 import NguoiNamGiuGiaTriCard from "@/assets/badgesCard/NguoiNamGiuGiaTriCard.png";

@@ -1,22 +1,68 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, X, Upload, Loader2 } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { BADGE_CARD_IMAGES, BADGE_ICONS } from "@/data/badgeImages";
-import type { BadgeSetting } from "@/api/custom-badges";
+import { storageUrl } from "@/utils/storage-url";
+import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
+import { toast } from "sonner";
 
 interface BadgeAdminCardProps {
+  tenantId: string;
   badge: BadgeSetting;
   onToggle: (badgeId: string) => void;
+  onImageUploaded?: () => void;
 }
 
-export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
+export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: BadgeAdminCardProps) {
   const [showPreview, setShowPreview] = useState(false);
-  const imgSrc = BADGE_CARD_IMAGES[badge.id] || BADGE_CARD_IMAGES["onboarding_warrior"];
-  const iconSrc = BADGE_ICONS[badge.id] || BADGE_ICONS["onboarding_warrior"];
+  const [uploadingCard, setUploadingCard] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const cardInputRef = useRef<HTMLInputElement>(null);
+  const iconInputRef = useRef<HTMLInputElement>(null);
+
+  // Dynamic images from API, fallback to hardcoded static assets
+  const imgSrc = badge.card_image_url
+    ? storageUrl(badge.card_image_url)
+    : (BADGE_CARD_IMAGES[badge.id] || BADGE_CARD_IMAGES["onboarding_warrior"]);
+  const iconSrc = badge.icon_image_url
+    ? storageUrl(badge.icon_image_url)
+    : (BADGE_ICONS[badge.id] || BADGE_ICONS["onboarding_warrior"]);
   const isActive = badge.is_active;
+
+  async function handleCardUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCard(true);
+    try {
+      await badgesApi.uploadCardImage(tenantId, badge.id, file);
+      toast.success("Upload ảnh card thành công");
+      onImageUploaded?.();
+    } catch {
+      toast.error("Lỗi upload ảnh card");
+    } finally {
+      setUploadingCard(false);
+      if (cardInputRef.current) cardInputRef.current.value = "";
+    }
+  }
+
+  async function handleIconUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingIcon(true);
+    try {
+      await badgesApi.uploadIconImage(tenantId, badge.id, file);
+      toast.success("Upload ảnh icon thành công");
+      onImageUploaded?.();
+    } catch {
+      toast.error("Lỗi upload ảnh icon");
+    } finally {
+      setUploadingIcon(false);
+      if (iconInputRef.current) iconInputRef.current.value = "";
+    }
+  }
 
   return (
     <motion.div
@@ -55,6 +101,7 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
           <img 
             src={imgSrc} 
             alt="Card preview" 
+            loading="lazy"
             className={cn(
               "w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-105",
               badge.id === "omnipotent_master" && "scale-[1.06]"
@@ -78,6 +125,18 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
           <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-md py-2 translate-y-full group-hover/card:translate-y-0 transition-transform z-20">
             <p className="text-[12px] text-center font-bold text-white/90 tracking-widest">CARD</p>
           </div>
+
+          {/* Upload button for card */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cardInputRef.current?.click(); }}
+            disabled={uploadingCard}
+            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/card:opacity-100"
+            title="Upload ảnh card mới"
+          >
+            {uploadingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          </button>
+          <input ref={cardInputRef} type="file" accept="image/*" className="hidden" onChange={handleCardUpload} />
         </div>
 
         {/* Icon Preview */}
@@ -85,7 +144,8 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
           {isActive ? (
             <motion.img 
               src={iconSrc} 
-              alt="Icon preview" 
+              alt="Icon preview"
+              loading="lazy"
               className="w-32 h-32 object-contain filter drop-shadow-[0_0_25px_rgba(255,215,0,0.6)]"
               animate={{ 
                 y: [-6, 6, -6],
@@ -101,7 +161,8 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
           ) : (
             <img 
               src={iconSrc} 
-              alt="Icon preview" 
+              alt="Icon preview"
+              loading="lazy"
               className="w-32 h-32 object-contain filter drop-shadow-md transition-transform duration-500 group-hover/icon:scale-110 group-hover/icon:-translate-y-2" 
             />
           )}
@@ -120,6 +181,18 @@ export function BadgeAdminCard({ badge, onToggle }: BadgeAdminCardProps) {
           <div className="absolute inset-x-0 bottom-3 z-20">
             <p className="text-[12px] text-center font-semibold text-muted-foreground uppercase tracking-widest group-hover/icon:text-foreground transition-colors">ICON</p>
           </div>
+
+          {/* Upload button for icon */}
+          <button
+            type="button"
+            onClick={() => iconInputRef.current?.click()}
+            disabled={uploadingIcon}
+            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/icon:opacity-100"
+            title="Upload ảnh icon mới"
+          >
+            {uploadingIcon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          </button>
+          <input ref={iconInputRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
         </div>
       </div>
 

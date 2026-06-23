@@ -123,13 +123,18 @@ export interface OutlineMention {
   block_type: string;
   display_name: string;
   path: string;
+  unit_id?: string | null;
+  ancestor_ids?: string[];
+  ancestor_types?: string[];
 }
 
 export interface AppliedLessonAuthorJob {
   job_id: string;
   course_id: string;
   created_block_ids: string[];
+  updated_block_ids: string[];
   created_count: number;
+  updated_count: number;
 }
 
 // ── Bot Assignments ──

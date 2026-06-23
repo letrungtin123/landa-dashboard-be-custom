@@ -55,6 +55,7 @@ interface OutlineTreeProps {
   courseId: string;
   onSelectUnit: (unitId: string) => void;
   selectedUnitId: string | null;
+  focusedBlockId?: string | null;
 }
 
 function removeNodeFromOutline(node: CourseIndexSection, targetId: string): CourseIndexSection | null {
@@ -79,7 +80,13 @@ function removeNodeFromOutline(node: CourseIndexSection, targetId: string): Cour
   };
 }
 
-export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId }: OutlineTreeProps) {
+function nodeContainsId(node: CourseIndexSection, targetId: string): boolean {
+  if (node.id === targetId) return true;
+  const children = node.children || node.child_info?.children || [];
+  return children.some(child => nodeContainsId(child, targetId));
+}
+
+export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, focusedBlockId }: OutlineTreeProps) {
   const { data: outline, isLoading, isError, refetch } = useQuery({
     queryKey: ['course-outline-index', courseId],
     queryFn: () => getCourseOutlineIndex(courseId),
@@ -133,6 +140,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId }: 
             courseId={courseId}
             onSelectUnit={onSelectUnit}
             selectedUnitId={selectedUnitId}
+            focusedBlockId={focusedBlockId}
             onStructureChange={() => refetch()}
             onReorder={handleReorder}
           />
@@ -199,15 +207,19 @@ function SortableList({
 // Section Node
 // ─────────────────────────────────────────────
 
-function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, onStructureChange, onReorder }: {
+function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange, onReorder }: {
   node: CourseIndexSection;
   courseId: string;
   onSelectUnit: (id: string) => void;
   selectedUnitId: string | null;
+  focusedBlockId?: string | null;
   onStructureChange: () => void;
   onReorder: (parentId: string, childIds: string[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  React.useEffect(() => {
+    if (focusedBlockId && nodeContainsId(node, focusedBlockId)) setExpanded(true);
+  }, [focusedBlockId, node]);
 
   return (
     <div>
@@ -219,8 +231,9 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, onStructure
         expanded={expanded}
         onToggle={() => setExpanded(!expanded)}
         isSelectable={false}
-        isSelected={false}
+        isSelected={focusedBlockId === node.id}
         onStructureChange={onStructureChange}
+        isFocused={focusedBlockId === node.id}
       />
       {expanded && (
         <div className="ml-5 pl-2 border-l border-border/40 mt-0.5 space-y-0.5">
@@ -235,6 +248,7 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, onStructure
                 node={sub}
                 onSelectUnit={onSelectUnit}
                 selectedUnitId={selectedUnitId}
+                focusedBlockId={focusedBlockId}
                 onStructureChange={onStructureChange}
                 onReorder={onReorder}
               />
@@ -257,14 +271,18 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, onStructure
 // Subsection Node
 // ─────────────────────────────────────────────
 
-function SubsectionNode({ node, onSelectUnit, selectedUnitId, onStructureChange, onReorder }: {
+function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange, onReorder }: {
   node: CourseIndexSection;
   onSelectUnit: (id: string) => void;
   selectedUnitId: string | null;
+  focusedBlockId?: string | null;
   onStructureChange: () => void;
   onReorder: (parentId: string, childIds: string[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  React.useEffect(() => {
+    if (focusedBlockId && nodeContainsId(node, focusedBlockId)) setExpanded(true);
+  }, [focusedBlockId, node]);
 
   return (
     <div>
@@ -275,8 +293,9 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, onStructureChange,
         expanded={expanded}
         onToggle={() => setExpanded(!expanded)}
         isSelectable={false}
-        isSelected={false}
+        isSelected={focusedBlockId === node.id}
         onStructureChange={onStructureChange}
+        isFocused={focusedBlockId === node.id}
       />
       {expanded && (
         <div className="ml-5 pl-2 border-l border-border/40 mt-0.5 space-y-0.5">
@@ -289,7 +308,8 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, onStructureChange,
               <UnitNode
                 key={unit.id}
                 node={unit}
-                isSelected={selectedUnitId === unit.id}
+                isSelected={selectedUnitId === unit.id || focusedBlockId === unit.id}
+                isFocused={focusedBlockId === unit.id}
                 onSelect={() => onSelectUnit(unit.id)}
                 onStructureChange={onStructureChange}
               />
@@ -312,9 +332,10 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, onStructureChange,
 // Unit Node (leaf)
 // ─────────────────────────────────────────────
 
-function UnitNode({ node, isSelected, onSelect, onStructureChange }: {
+function UnitNode({ node, isSelected, isFocused, onSelect, onStructureChange }: {
   node: CourseIndexSection;
   isSelected: boolean;
+  isFocused?: boolean;
   onSelect: () => void;
   onStructureChange: () => void;
 }) {
@@ -328,6 +349,7 @@ function UnitNode({ node, isSelected, onSelect, onStructureChange }: {
       isSelectable
       isSelected={isSelected}
       onStructureChange={onStructureChange}
+      isFocused={isFocused}
     />
   );
 }
@@ -336,7 +358,7 @@ function UnitNode({ node, isSelected, onSelect, onStructureChange }: {
 // Generic Node Row
 // ─────────────────────────────────────────────
 
-function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable, isSelected, onStructureChange }: {
+function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable, isSelected, isFocused, onStructureChange }: {
   node: CourseIndexSection;
   courseId?: string;
   depth: number;
@@ -345,6 +367,7 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
   onToggle: () => void;
   isSelectable: boolean;
   isSelected: boolean;
+  isFocused?: boolean;
   onStructureChange: () => void;
 }) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -376,6 +399,7 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
       style={style}
       className={`flex items-center group gap-1 py-1.5 px-2 rounded-md cursor-pointer text-sm transition-colors select-none
         ${isSelected ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-muted/50 text-foreground/80'}
+        ${isFocused ? 'ring-2 ring-primary/40 bg-primary/10' : ''}
         ${isDragging ? 'shadow-lg bg-background border border-border/50 ring-2 ring-primary/20' : ''}`}
       onClick={isRenaming ? undefined : onToggle}
     >
