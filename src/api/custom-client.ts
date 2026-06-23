@@ -55,6 +55,11 @@ customApiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Bỏ qua logic refresh nếu là request login hoặc refresh (tránh việc refresh lỗi -> F5 trang khi user nhập sai pass)
+    if (originalRequest.url?.includes('/api/auth/login') || originalRequest.url?.includes('/api/auth/refresh')) {
+      return Promise.reject(error);
+    }
+
     // Tài khoản bị khóa bởi Admin → logout ngay, KHÔNG thử refresh
     const responseData = error.response?.data as Record<string, unknown> | undefined;
     if (responseData?.error === "account_disabled") {
