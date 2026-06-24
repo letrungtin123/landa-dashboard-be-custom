@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCourseOutlineIndex, type CourseIndexSection } from '@/api/custom-course-authoring';
@@ -116,6 +116,42 @@ export default function CourseEditorPage() {
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
+
+  // Sidebar resizer state
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      // Get the bounding rect of the sidebar to calculate relative mouse position correctly
+      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left || 0;
+      const newWidth = Math.max(200, Math.min(800, e.clientX - sidebarLeft));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizing]);
+
   const queryClient = useQueryClient();
 
   const { data: outline, isLoading, isError } = useQuery({
@@ -173,11 +209,16 @@ export default function CourseEditorPage() {
       const queryKey = ['course-outline-index', courseId] as const;
       void queryClient.invalidateQueries({ queryKey, exact: true })
         .then(() => queryClient.refetchQueries({ queryKey, exact: true, type: 'active' }));
+      if (selectedUnit) {
+        const unitChildrenKey = ['unit-children', selectedUnit] as const;
+        void queryClient.invalidateQueries({ queryKey: unitChildrenKey, exact: true })
+          .then(() => queryClient.refetchQueries({ queryKey: unitChildrenKey, exact: true, type: 'active' }));
+      }
     };
 
     window.addEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
     return () => window.removeEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
-  }, [courseId, queryClient]);
+  }, [courseId, queryClient, selectedUnit]);
 
   if (isLoading) {
     return (
@@ -250,8 +291,20 @@ export default function CourseEditorPage() {
       </div>
 
       {/* Desktop Sidebar: Outline Tree */}
-      <div className="hidden md:flex w-80 border-r border-border overflow-y-auto bg-muted/20 flex-col shrink-0">
-        <div className="p-4 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
+      <div 
+        ref={sidebarRef}
+        className="hidden md:flex border-r border-border overflow-y-auto bg-muted/20 flex-col shrink-0 relative transition-all duration-0"
+        style={{ width: sidebarWidth }}
+      >
+        {/* Resize Handle */}
+        <div 
+          className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-primary/20 flex items-center justify-center group z-50 select-none"
+          onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+        >
+          <div className={`w-0.5 h-8 bg-border group-hover:bg-primary rounded-full transition-colors ${isResizing ? 'bg-primary' : ''}`} />
+        </div>
+
+        <div className="p-4 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10 pr-6">
           <CourseRootHeader 
             id={courseStructure.id} 
             displayName={courseStructure.display_name} 

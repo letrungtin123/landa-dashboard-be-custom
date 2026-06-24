@@ -84,7 +84,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phòng ban</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
-          <Plus className="h-3.5 w-3.5" /> New
+          <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
       </div>
 

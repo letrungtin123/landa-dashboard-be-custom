@@ -128,6 +128,15 @@ export interface OutlineMention {
   ancestor_types?: string[];
 }
 
+export interface LessonAuthorSourceDocument {
+  document_id: string;
+  kb_id: string;
+  name: string;
+  type?: string;
+  status?: string;
+  source_info?: { name?: string; size?: number; extension?: string; mime_type?: string } | null;
+}
+
 export interface AppliedLessonAuthorJob {
   job_id: string;
   course_id: string;
@@ -257,6 +266,7 @@ export function sendMessageStream(
   options: ChatConversationOptions & {
     mode?: "chat" | "draft_lesson" | "auto";
     outline_mentions?: OutlineMention[];
+    source_documents?: LessonAuthorSourceDocument[];
     onProposal?: (event: LessonAuthorProposalEvent) => void;
   } = {},
 ): AbortController {
@@ -286,6 +296,7 @@ export function sendMessageStream(
           courseId: options.courseId,
           mode: options.mode,
           outline_mentions: options.outline_mentions,
+          source_documents: options.source_documents,
         }),
         signal: controller.signal,
       });

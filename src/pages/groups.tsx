@@ -49,20 +49,32 @@ export default function GroupsPage() {
       </div>
 
       {/* Breadcrumb indicator */}
-      <div className="px-6 py-2 border-b border-border/30 bg-muted/20 flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-        <span className={selectedGroupId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Tổ chức</span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
-        <span className={selectedSubGroupId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Phòng ban</span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
-        <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Team</span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
+      <div className="px-6 py-2 border-b border-border/30 bg-muted/20 flex flex-wrap items-center gap-2 text-xs text-muted-foreground shrink-0 overflow-x-auto whitespace-nowrap">
+        <button 
+          onClick={() => handleSelectGroup('')}
+          className={`hover:underline transition-colors ${selectedGroupId ? 'text-primary font-medium' : 'text-muted-foreground/50'}`}>
+          Tổ chức
+        </button>
+        <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
+        <button 
+          onClick={() => selectedGroupId && handleSelectSubGroup('')}
+          className={`hover:underline transition-colors ${selectedSubGroupId ? 'text-primary font-medium' : selectedGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
+          Phòng ban
+        </button>
+        <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
+        <button 
+          onClick={() => selectedSubGroupId && setSelectedTeamId('')}
+          className={`hover:underline transition-colors ${selectedTeamId ? 'text-primary font-medium' : selectedSubGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
+          Team
+        </button>
+        <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
         <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Chi tiết</span>
       </div>
 
       {/* 4-Panel Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* Panel 1 — Org Groups */}
-        <div className="w-60 shrink-0 flex flex-col overflow-hidden border-r border-border/40 bg-card/30">
+        <div className={`w-full md:w-60 shrink-0 flex-col overflow-hidden border-b md:border-b-0 md:border-r border-border/40 bg-card/30 ${selectedGroupId ? 'hidden md:flex' : 'flex flex-1 md:flex-none'}`}>
           <OrgGroupPanel
             selectedId={selectedGroupId}
             onSelect={handleSelectGroup}
@@ -70,7 +82,7 @@ export default function GroupsPage() {
         </div>
 
         {/* Panel 2 — Sub Groups */}
-        <div className="w-60 shrink-0 flex flex-col overflow-hidden border-r border-border/40 bg-card/20">
+        <div className={`w-full md:w-60 shrink-0 flex-col overflow-hidden border-b md:border-b-0 md:border-r border-border/40 bg-card/20 ${!selectedGroupId || selectedSubGroupId ? 'hidden md:flex' : 'flex flex-1 md:flex-none'}`}>
           {selectedGroupId ? (
             <SubGroupPanel
               groupId={selectedGroupId}
@@ -87,7 +99,7 @@ export default function GroupsPage() {
         </div>
 
         {/* Panel 3 — Teams */}
-        <div className="w-60 shrink-0 flex flex-col overflow-hidden border-r border-border/40 bg-card/10">
+        <div className={`w-full md:w-60 shrink-0 flex-col overflow-hidden border-b md:border-b-0 md:border-r border-border/40 bg-card/10 ${!selectedSubGroupId || selectedTeamId ? 'hidden md:flex' : 'flex flex-1 md:flex-none'}`}>
           {selectedSubGroupId ? (
             <TeamPanel
               subgroupId={selectedSubGroupId}
@@ -104,7 +116,7 @@ export default function GroupsPage() {
         </div>
 
         {/* Panel 4 — Detail (flex grow) */}
-        <div className="flex-1 overflow-hidden bg-background">
+        <div className={`flex-1 flex-col overflow-hidden bg-background ${!selectedTeamId ? 'hidden md:flex' : 'flex'}`}>
           {selectedTeamId ? (
             <TeamDetailPanel teamId={selectedTeamId} />
           ) : (

@@ -80,7 +80,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tổ Chức</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
-          <Plus className="h-3.5 w-3.5" /> New
+          <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
       </div>
 
@@ -119,8 +119,8 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
             key={g.id}
             onClick={() => onSelect(g.id)}
             className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors ${selectedId === g.id
-                ? 'bg-primary/10 text-primary'
-                : 'hover:bg-muted/40 text-foreground'
+              ? 'bg-primary/10 text-primary'
+              : 'hover:bg-muted/40 text-foreground'
               }`}
           >
             {editId === g.id ? (

@@ -59,6 +59,9 @@ export default defineConfig(({ mode }) => {
       strictPort: false,
       allowedHosts,
       proxy: proxyConfig,
+      watch: {
+        ignored: ['**/*.mp4', '**/*.mov', '**/*.avi'],
+      },
     },
 
     // ── Production build — giảm request cho Tunnelto ──

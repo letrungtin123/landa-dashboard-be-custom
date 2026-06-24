@@ -5,13 +5,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
-  BookOpenCheck, CheckCircle2, AtSign,
+  BookOpenCheck, CheckCircle2, AtSign, FileText, Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -26,9 +26,9 @@ import {
   fetchLessonAuthorSettings, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
-  type OutlineMention,
+  type OutlineMention, type LessonAuthorSourceDocument,
 } from '@/api/custom-chat';
-import { fetchBotPersonas, type BotPersona } from '@/api/custom-ai-chatbot';
+import { fetchBotPersonas, fetchDocuments, type BotPersona } from '@/api/custom-ai-chatbot';
 import {
   getCourseOutlineIndex,
   type CourseIndexResponse,
@@ -114,6 +114,29 @@ function getMessageOutlineMentions(metadata: unknown): OutlineMention[] {
     .filter(item => item.block_id);
 }
 
+function getMessageSourceDocuments(metadata: unknown): LessonAuthorSourceDocument[] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
+  const docs = (metadata as { source_documents?: unknown }).source_documents;
+  if (!Array.isArray(docs)) return [];
+  return docs
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .map(item => ({
+      document_id: typeof item.document_id === 'string'
+        ? item.document_id
+        : typeof item.id === 'string'
+          ? item.id
+          : '',
+      kb_id: typeof item.kb_id === 'string' ? item.kb_id : '',
+      name: typeof item.name === 'string' ? item.name : 'File KB',
+      type: typeof item.type === 'string' ? item.type : 'file',
+      status: typeof item.status === 'string' ? item.status : undefined,
+      source_info: item.source_info && typeof item.source_info === 'object' && !Array.isArray(item.source_info)
+        ? item.source_info as LessonAuthorSourceDocument['source_info']
+        : null,
+    }))
+    .filter(item => item.document_id);
+}
+
 function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorProposalEvent | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const metadata = messages[index].metadata;
@@ -153,6 +176,9 @@ export default function ChatWidget() {
   const [inputValue, setInputValue] = useState('');
   const [outlineMentionOptions, setOutlineMentionOptions] = useState<OutlineMentionOption[]>([]);
   const [selectedMentions, setSelectedMentions] = useState<OutlineMentionOption[]>([]);
+  const [sourceDocumentOptions, setSourceDocumentOptions] = useState<LessonAuthorSourceDocument[]>([]);
+  const [selectedSourceDocuments, setSelectedSourceDocuments] = useState<LessonAuthorSourceDocument[]>([]);
+  const [loadingSourceDocuments, setLoadingSourceDocuments] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -167,6 +193,15 @@ export default function ChatWidget() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior });
+      window.setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior }), 0);
+    });
+  }, []);
+
   // ── FAB drag ref ──
   const fabRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ sx: 0, sy: 0, sl: 0, st: 0, active: false, moved: false });
@@ -175,6 +210,7 @@ export default function ChatWidget() {
   const permissions = useAuthStore(s => s.permissions);
   const hasPermission = user?.role === 'superadmin' || (permissions as any)?.ai_chatbot?.can_view;
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const courseMatch = location.pathname.match(/^\/courses\/(.+)\/edit\/?$/);
   const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
@@ -197,6 +233,7 @@ export default function ChatWidget() {
     setMessages([]);
     setInputValue('');
     setSelectedMentions([]);
+    setSelectedSourceDocuments([]);
     setStreamText('');
     setStreaming(false);
     setHasMore(false);
@@ -295,8 +332,39 @@ export default function ChatWidget() {
     } else if (!isLessonAuthor) {
       setOutlineMentionOptions([]);
       setSelectedMentions([]);
+      setSelectedSourceDocuments([]);
     }
   }, [courseId, isLessonAuthor, loadOutlineMentions, open]);
+
+  const loadSourceDocuments = useCallback(async (search?: string) => {
+    if (!isLessonAuthor || !lessonSettings?.active_kb?.kb_id) {
+      setSourceDocumentOptions([]);
+      return;
+    }
+    setLoadingSourceDocuments(true);
+    try {
+      const result = await fetchDocuments(lessonSettings.active_kb.kb_id, {
+        page: 1,
+        page_size: 20,
+        type: 'file',
+        status: 'learned',
+        search: search?.trim() || undefined,
+      });
+      setSourceDocumentOptions(result.data.map(doc => ({
+        document_id: doc.id,
+        kb_id: doc.kb_id,
+        name: doc.name,
+        type: doc.type,
+        status: doc.status,
+        source_info: doc.source_info,
+      })));
+    } catch {
+      setSourceDocumentOptions([]);
+      toast.error('Không tải được danh sách file KB');
+    } finally {
+      setLoadingSourceDocuments(false);
+    }
+  }, [isLessonAuthor, lessonSettings?.active_kb?.kb_id]);
 
   useEffect(() => {
     if (!isCourseOutline && isLessonAuthor) {
@@ -374,6 +442,7 @@ export default function ChatWidget() {
       setCurrentConv(conv);
       setMessages([]);
       setSelectedMentions([]);
+      setSelectedSourceDocuments([]);
       setProposalEvent(null);
       setState('chat');
     } catch (err: any) {
@@ -385,6 +454,7 @@ export default function ChatWidget() {
   const handleOpenConversation = async (conv: ChatConversation) => {
     setCurrentConv(conv);
     setSelectedMentions([]);
+    setSelectedSourceDocuments([]);
     setLoadingMessages(true);
     setState('chat');
     try {
@@ -395,6 +465,7 @@ export default function ChatWidget() {
       setNextCursor(result.next_cursor);
     } catch { toast.error('Không tải được tin nhắn'); }
     setLoadingMessages(false);
+    scrollChatToBottom('auto');
   };
 
   // ── Load more messages ──
@@ -459,15 +530,29 @@ export default function ChatWidget() {
         ancestor_types,
       }))
       : [];
+    const outgoingSourceDocuments: LessonAuthorSourceDocument[] = isLessonAuthor
+      ? selectedSourceDocuments.map(({ document_id, kb_id, name, type, status, source_info }) => ({
+        document_id,
+        kb_id,
+        name,
+        type,
+        status,
+        source_info,
+      }))
+      : [];
     setInputValue('');
     setSelectedMentions([]);
+    setSelectedSourceDocuments([]);
 
     const userMsg: ChatMessage = {
       id: 'temp-' + Date.now(),
       conversation_id: currentConv.id,
       role: 'user',
       content,
-      metadata: outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {},
+      metadata: {
+        ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
+        ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
+      },
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMsg]);
@@ -525,6 +610,7 @@ export default function ChatWidget() {
         courseId: isLessonAuthor ? courseId : undefined,
         mode: isLessonAuthor ? 'auto' : 'chat',
         outline_mentions: outgoingMentions,
+        source_documents: outgoingSourceDocuments,
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
       },
     );
@@ -541,6 +627,7 @@ export default function ChatWidget() {
     setCurrentConv(null);
     setMessages([]);
     setSelectedMentions([]);
+    setSelectedSourceDocuments([]);
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
@@ -578,6 +665,12 @@ export default function ChatWidget() {
           updatedBlockIds: result.updated_block_ids,
         },
       }));
+      if (currentConv) {
+        const refreshed = await fetchMessages(currentConv.id);
+        setMessages(refreshed.messages);
+        setHasMore(refreshed.has_more);
+        setNextCursor(refreshed.next_cursor);
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Không áp dụng được đề xuất');
     } finally {
@@ -591,6 +684,11 @@ export default function ChatWidget() {
       detail: { courseId, mention },
     }));
   }, [courseId]);
+
+  const handleSourceDocumentClick = useCallback((doc: LessonAuthorSourceDocument) => {
+    if (!doc.kb_id) return;
+    navigate(`/ai-chatbot?tab=kb&kbId=${encodeURIComponent(doc.kb_id)}`);
+  }, [navigate]);
 
   if (!hasPermission) return null;
 
@@ -722,6 +820,12 @@ export default function ChatWidget() {
                   selectedMentions={selectedMentions}
                   onSelectedMentionsChange={setSelectedMentions}
                   onMentionClick={handleMentionClick}
+                  sourceDocumentOptions={sourceDocumentOptions}
+                  selectedSourceDocuments={selectedSourceDocuments}
+                  loadingSourceDocuments={loadingSourceDocuments}
+                  onLoadSourceDocuments={loadSourceDocuments}
+                  onSelectedSourceDocumentsChange={setSelectedSourceDocuments}
+                  onSourceDocumentClick={handleSourceDocumentClick}
                   scrollRef={scrollRef}
                   inputRef={inputRef}
                   proposalEvent={proposalEvent}
@@ -997,7 +1101,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -1014,6 +1118,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   selectedMentions?: OutlineMentionOption[];
   onSelectedMentionsChange?: (mentions: OutlineMentionOption[]) => void;
   onMentionClick?: (mention: OutlineMention) => void;
+  sourceDocumentOptions?: LessonAuthorSourceDocument[];
+  selectedSourceDocuments?: LessonAuthorSourceDocument[];
+  loadingSourceDocuments?: boolean;
+  onLoadSourceDocuments?: (search?: string) => void;
+  onSelectedSourceDocumentsChange?: (documents: LessonAuthorSourceDocument[]) => void;
+  onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   proposalEvent?: LessonAuthorProposalEvent | null;
@@ -1023,7 +1133,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState('');
   const selectedMentionList = selectedMentions ?? [];
+  const selectedSourceDocumentList = selectedSourceDocuments ?? [];
 
   const mentionMatches = useMemo(() => {
     if (!isLessonAuthor || mentionQuery === null) return [];
@@ -1047,6 +1160,11 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
 
   useEffect(() => { if (!loading) inputRef.current?.focus(); }, [loading, inputRef]);
   useEffect(() => { setActiveMentionIndex(0); }, [mentionQuery]);
+  useEffect(() => {
+    if (!sourcePickerOpen || !isLessonAuthor) return;
+    const timer = window.setTimeout(() => onLoadSourceDocuments?.(sourceSearch), 250);
+    return () => window.clearTimeout(timer);
+  }, [isLessonAuthor, onLoadSourceDocuments, sourcePickerOpen, sourceSearch]);
 
   const updateMentionState = (value: string, caret: number) => {
     if (!isLessonAuthor) return;
@@ -1107,6 +1225,25 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     onSelectedMentionsChange?.(selectedMentionList.filter(mention => mention.block_id !== blockId));
   };
 
+  const handleSelectSourceDocument = (doc: LessonAuthorSourceDocument) => {
+    if (selectedSourceDocumentList.some(item => item.document_id === doc.document_id)) {
+      setSourcePickerOpen(false);
+      return;
+    }
+    if (selectedSourceDocumentList.length >= 5) {
+      toast.error('Tối đa 5 file nguồn cho mỗi tin nhắn');
+      return;
+    }
+    onSelectedSourceDocumentsChange?.([...selectedSourceDocumentList, doc]);
+    setSourcePickerOpen(false);
+    setSourceSearch('');
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const handleRemoveSourceDocument = (documentId: string) => {
+    onSelectedSourceDocumentsChange?.(selectedSourceDocumentList.filter(doc => doc.document_id !== documentId));
+  };
+
   const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionQuery !== null && mentionMatches.length > 0) {
       if (event.key === 'ArrowDown') {
@@ -1163,7 +1300,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               </div>
             )}
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} onMentionClick={onMentionClick} />
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onMentionClick={onMentionClick}
+                onSourceDocumentClick={onSourceDocumentClick}
+              />
             ))}
             {streaming && streamText && (
               <div className="flex justify-start">
@@ -1203,6 +1345,71 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
 
       <div className="border-t px-3 py-2.5 bg-background/50">
         <div className="flex items-end gap-2">
+          {isLessonAuthor && (
+            <div className="relative shrink-0">
+              {sourcePickerOpen && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 overflow-hidden rounded-xl border bg-popover shadow-xl">
+                  <div className="border-b p-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={sourceSearch}
+                        onChange={event => setSourceSearch(event.target.value)}
+                        placeholder="Tìm file trong KB active..."
+                        className="h-8 w-full rounded-lg border bg-background pl-8 pr-2 text-xs outline-none focus:border-primary/40"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto p-1">
+                    {loadingSourceDocuments ? (
+                      <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Đang tải file...
+                      </div>
+                    ) : (sourceDocumentOptions ?? []).length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-muted-foreground">Không có file đã học phù hợp.</div>
+                    ) : (
+                      (sourceDocumentOptions ?? []).map(doc => {
+                        const selected = selectedSourceDocumentList.some(item => item.document_id === doc.document_id);
+                        return (
+                          <button
+                            key={doc.document_id}
+                            type="button"
+                            disabled={selected}
+                            className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                              selected ? 'cursor-default opacity-50' : 'hover:bg-muted'
+                            }`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              if (!selected) handleSelectSourceDocument(doc);
+                            }}
+                          >
+                            <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-semibold">{doc.name}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">File KB · Đã học</span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 rounded-xl"
+                disabled={streaming}
+                onClick={() => setSourcePickerOpen(open => !open)}
+                title="Chọn file KB làm nguồn"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           <div className="relative flex-1">
             {isLessonAuthor && mentionQuery !== null && (
               <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
@@ -1243,12 +1450,21 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   compact
                 />
               ))}
+              {isLessonAuthor && selectedSourceDocumentList.map(doc => (
+                <SourceDocumentBadge
+                  key={doc.document_id}
+                  doc={doc}
+                  onClick={() => onSourceDocumentClick?.(doc)}
+                  onRemove={() => handleRemoveSourceDocument(doc.document_id)}
+                  compact
+                />
+              ))}
               <textarea
                 ref={inputRef}
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleTextareaKeyDown}
-                placeholder={selectedMentionList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn phần trong outline...' : 'Nhập tin nhắn...'}
+                placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn outline, + để chọn file KB...' : 'Nhập tin nhắn...'}
                 disabled={streaming}
                 rows={1}
                 className="min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
@@ -1322,9 +1538,65 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
   );
 }
 
-function MessageBubble({ message, onMentionClick }: { message: ChatMessage; onMentionClick?: (mention: OutlineMention) => void }) {
+function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted = false }: {
+  doc: LessonAuthorSourceDocument;
+  onClick?: () => void;
+  onRemove?: () => void;
+  compact?: boolean;
+  inverted?: boolean;
+}) {
+  return (
+    <Badge
+      variant="secondary"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={`max-w-full gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${
+        compact ? 'h-7' : ''
+      } ${
+        onClick ? 'cursor-pointer' : ''
+      } ${
+        inverted
+          ? 'border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/20'
+          : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
+      }`}
+      title={doc.name}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      <FileText className="h-3 w-3 shrink-0" />
+      <span className="shrink-0 opacity-75">File</span>
+      <span className="truncate max-w-[180px]">{doc.name}</span>
+      {onRemove && (
+        <button
+          type="button"
+          className="ml-0.5 rounded-sm opacity-70 hover:opacity-100"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          aria-label={`Bỏ chọn ${doc.name}`}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </Badge>
+  );
+}
+
+function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
+  message: ChatMessage;
+  onMentionClick?: (mention: OutlineMention) => void;
+  onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
+}) {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
+  const sourceDocuments = getMessageSourceDocuments(message.metadata);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -1338,7 +1610,7 @@ function MessageBubble({ message, onMentionClick }: { message: ChatMessage; onMe
             : 'bg-muted/50 rounded-bl-md'
         }`}
       >
-        {mentions.length > 0 && (
+        {(mentions.length > 0 || sourceDocuments.length > 0) && (
           <div className="mb-1.5 flex flex-wrap gap-1">
             {mentions.map(mention => (
               <MentionBadge
@@ -1346,6 +1618,14 @@ function MessageBubble({ message, onMentionClick }: { message: ChatMessage; onMe
                 mention={mention}
                 inverted={isUser}
                 onClick={onMentionClick ? () => onMentionClick(mention) : undefined}
+              />
+            ))}
+            {sourceDocuments.map(doc => (
+              <SourceDocumentBadge
+                key={doc.document_id}
+                doc={doc}
+                inverted={isUser}
+                onClick={onSourceDocumentClick ? () => onSourceDocumentClick(doc) : undefined}
               />
             ))}
           </div>

@@ -220,6 +220,10 @@ export async function publishBlock(blockId: string): Promise<XBlockInfo> {
   return updateXBlock(blockId, { publish: 'make_public' });
 }
 
+export async function discardDraft(blockId: string): Promise<XBlockInfo> {
+  return updateXBlock(blockId, { publish: 'discard_changes' });
+}
+
 export async function deleteXBlock(blockId: string): Promise<void> {
   await customApiClient.delete(`${BASE}/blocks/${encodeURIComponent(blockId)}`);
 }

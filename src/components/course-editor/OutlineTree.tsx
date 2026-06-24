@@ -12,12 +12,13 @@ import {
   createBlock,
   deleteBlock,
   publishBlock,
+  discardDraft,
   renameBlock,
   reorderChildren,
 } from '@/api/custom-course-authoring';
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
-  MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen,
+  MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -500,6 +501,7 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSectionModal, setShowSectionModal] = useState(false);
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const queryClient = useQueryClient();
 
   const delMut = useMutation({
@@ -540,6 +542,16 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
     onError: () => toast.error('Publish thất bại'),
   });
 
+  const rollbackMut = useMutation({
+    mutationFn: () => discardDraft(node.id),
+    onSuccess: () => {
+      toast.success('Đã rollback về bản publish');
+      onStructureChange();
+      if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+    },
+    onError: () => toast.error('Rollback thất bại'),
+  });
+
   return (
     <>
       <DropdownMenu>
@@ -560,6 +572,11 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
           {(!node.published || node.has_changes) && (
             <DropdownMenuItem onClick={() => publishMut.mutate()}>
               <Globe className="h-3.5 w-3.5 mr-2" /> Publish
+            </DropdownMenuItem>
+          )}
+          {node.published && node.has_changes && (
+            <DropdownMenuItem onClick={() => setShowRollbackDialog(true)}>
+              <Undo2 className="h-3.5 w-3.5 mr-2" /> Rollback
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -586,6 +603,23 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
               onClick={() => delMut.mutate()}
             >
               Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rollback về bản publish</AlertDialogTitle>
+            <AlertDialogDescription>
+              Data draft của <span className="font-semibold text-foreground">"{node.display_name}"</span> sẽ bị revert về bản publish gần nhất. Các thay đổi chưa publish sẽ bị mất.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={() => rollbackMut.mutate()}>
+              Rollback
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -5,7 +5,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, reorderChildren,
+  getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, discardDraft, reorderChildren,
   deleteCourseAssetByStoragePath,
 } from '@/api/custom-course-authoring';
 import {
@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Trash2, GripVertical, Plus, Video, Type, HelpCircle,
-  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText
+  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
@@ -227,7 +227,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [subTypeSelector, setSubTypeSelector] = useState<ComponentType | null>(null);
 
-  const { data: unitChildren, isLoading, refetch } = useQuery({
+  const { data: unitChildren, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['unit-children', unitId],
     queryFn: () => getUnitChildren(unitId),
     staleTime: 10_000,
@@ -329,6 +329,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
                 key={child.id || child.block_id}
                 block={child}
                 courseId={courseId}
+                detailRefreshKey={dataUpdatedAt}
                 isFocused={focusComponentId === (child.id || child.block_id)}
                 onDelete={() => { refetch(); onContentChange(); }}
                 onSaved={() => { refetch(); onContentChange(); }}
@@ -402,9 +403,10 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
 
 // ─── ComponentCard ────────────────────────────────────────────────────────────
 
-function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
+function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete, onSaved }: {
   block: ChildBlock;
   courseId?: string;
+  detailRefreshKey?: number;
   isFocused?: boolean;
   onDelete: () => void;
   onSaved: () => void;
@@ -412,6 +414,7 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
   const blockId = block.id || block.block_id;
   const [isEditing, setIsEditing] = useState(false);
   const [blockData, setBlockData] = useState<any>(null);
+  const [detailVersion, setDetailVersion] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState(true);
 
   // ── dnd-kit sortable hook ──
@@ -426,18 +429,30 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
     setLoadingDetail(true);
     const detail = await fetchBlockDetail(block);
     setBlockData(detail);
+    setDetailVersion((version) => version + 1);
     setLoadingDetail(false);
-  }, [blockId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [block, blockId]);
 
-  // Fetch ngay khi mount
+  // Fetch lại khi unit-children refetch để data AI vừa apply hiện ngay trên card/form đang mở.
   useEffect(() => {
     loadDetail();
-  }, [loadDetail]);
+  }, [loadDetail, detailRefreshKey]);
 
   const delMut = useMutation({
     mutationFn: () => deleteXBlock(blockId),
     onSuccess: () => { toast.success('Đã xóa'); onDelete(); },
     onError: () => toast.error('Xóa thất bại'),
+  });
+
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const rollbackMut = useMutation({
+    mutationFn: () => discardDraft(blockId),
+    onSuccess: async () => {
+      toast.success('Đã rollback về bản publish');
+      await loadDetail();
+      onSaved();
+    },
+    onError: () => toast.error('Rollback thất bại'),
   });
 
   const handleSaved = useCallback(async () => {
@@ -450,6 +465,8 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
     await loadDetail();
     onSaved();
   }, [loadDetail, onSaved]);
+
+  const editFormKey = `${blockId}:${detailVersion}`;
 
   return (
     <div
@@ -487,6 +504,17 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
+          {block.has_changes && block.published && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+              title="Rollback về bản publish"
+              onClick={() => setShowRollbackDialog(true)}
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10">
@@ -511,6 +539,22 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <AlertDialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Rollback về bản publish</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Data draft của component <span className="font-semibold text-foreground">"{blockData?.display_name || block.display_name}"</span> sẽ bị revert về bản publish gần nhất.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                <AlertDialogAction onClick={() => rollbackMut.mutate()}>
+                  Rollback
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -530,7 +574,7 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
       {isEditing && block.block_type === 'la_diagram' && (
         <div className="fixed inset-0 z-[9999] bg-background w-screen h-screen overflow-hidden flex flex-col">
           <ComponentEditForm
-            key={blockId}
+            key={editFormKey}
             blockInfo={blockData}
             courseId={courseId}
             onSaved={handleSaved}
@@ -560,7 +604,7 @@ function ComponentCard({ block, courseId, isFocused, onDelete, onSaved }: {
               </div>
             ) : (
               <ComponentEditForm
-                key={blockId}
+                key={editFormKey}
                 blockInfo={blockData}
                 courseId={courseId}
                 onSaved={handleSaved}
