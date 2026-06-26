@@ -16,7 +16,7 @@ import { storageUrl } from '@/utils/storage-url';
 import {
   Palette, Upload, Trash2, Image as ImageIcon, AlertCircle,
   Loader2, Info, Monitor, Moon, Users, Layers, ImagePlus,
-  CheckCircle2, Sparkles, LayoutDashboard, Save, ArrowRight, Lightbulb, RotateCcw
+  CheckCircle2, Sparkles, LayoutDashboard, Save, ArrowRight, Lightbulb, RotateCcw, Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dialog';
 
 import heroImg from '@/assets/DasboardPage/hero-card-dashboard.png';
+import exploreHeroImg from '@/assets/DasboardPage/explore-hero-illustration.png';
 
 // ── Image slot config ──
 interface ImageSlot {
@@ -619,6 +620,9 @@ const DEFAULT_TIPS = [
 const DEFAULT_BADGE = "SKILLS";
 const DEFAULT_TITLE = "Khai phá tiềm năng từ kho tri thức đặc biệt";
 
+const DEFAULT_EXPLORE_BADGE = "COURSE";
+const DEFAULT_EXPLORE_TITLE = "Khám phá hành trình học tập của tôi";
+
 function DashboardContentSection() {
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const queryClient = useQueryClient();
@@ -638,6 +642,10 @@ function DashboardContentSection() {
   const [tip2Desc, setTip2Desc] = useState('');
   const [currentPreviewTip, setCurrentPreviewTip] = useState(0);
 
+  // Explore hero card state
+  const [exploreHeroBadge, setExploreHeroBadge] = useState('');
+  const [exploreHeroTitle, setExploreHeroTitle] = useState('');
+
   // Sync from server data
   useEffect(() => {
     if (data) {
@@ -648,6 +656,8 @@ function DashboardContentSection() {
       setTip1Desc(tips[0]?.desc || '');
       setTip2Title(tips[1]?.title || '');
       setTip2Desc(tips[1]?.desc || '');
+      setExploreHeroBadge(data.explore_hero_badge || '');
+      setExploreHeroTitle(data.explore_hero_title || '');
     }
   }, [data]);
 
@@ -663,35 +673,61 @@ function DashboardContentSection() {
   });
 
   const handleSave = () => {
-    // Validate all fields are filled
     const errors: string[] = [];
-    if (!heroBadge.trim()) errors.push('Badge');
-    if (!heroTitle.trim()) errors.push('Tiêu đề Hero Card');
-    if (!tip1Title.trim()) errors.push('Câu nói Trang 1');
-    if (!tip1Desc.trim()) errors.push('Tác giả Trang 1');
-    if (!tip2Title.trim()) errors.push('Câu nói Trang 2');
-    if (!tip2Desc.trim()) errors.push('Tác giả Trang 2');
+
+    // ── Scope 1: Hero Card Dashboard (badge + title) ──
+    const hasHeroBadge = !!heroBadge.trim();
+    const hasHeroTitle = !!heroTitle.trim();
+    if (hasHeroBadge || hasHeroTitle) {
+      if (!hasHeroBadge) errors.push('Badge (Hero Card Dashboard)');
+      if (!hasHeroTitle) errors.push('Tiêu đề (Hero Card Dashboard)');
+    }
+
+    // ── Scope 2: Tips (2 trang, mỗi trang cần đủ câu nói + tác giả) ──
+    const hasTip1 = !!(tip1Title.trim() || tip1Desc.trim());
+    const hasTip2 = !!(tip2Title.trim() || tip2Desc.trim());
+    if (hasTip1 || hasTip2) {
+      // Nếu nhập bất kỳ tip nào → cần đủ cả 2 trang
+      if (!tip1Title.trim()) errors.push('Câu nói Trang 1');
+      if (!tip1Desc.trim()) errors.push('Tác giả Trang 1');
+      if (!tip2Title.trim()) errors.push('Câu nói Trang 2');
+      if (!tip2Desc.trim()) errors.push('Tác giả Trang 2');
+    }
+
+    // ── Scope 3: Explore Hero Card (badge + title) ──
+    const hasExploreBadge = !!exploreHeroBadge.trim();
+    const hasExploreTitle = !!exploreHeroTitle.trim();
+    if (hasExploreBadge || hasExploreTitle) {
+      if (!hasExploreBadge) errors.push('Badge (Hero Card Explore)');
+      if (!hasExploreTitle) errors.push('Tiêu đề (Hero Card Explore)');
+    }
 
     if (errors.length > 0) {
       toast.error(`Vui lòng nhập đầy đủ: ${errors.join(', ')}`);
       return;
     }
 
-    const tips: Array<{ title: string; desc: string }> = [
-      { title: tip1Title.trim(), desc: tip1Desc.trim() },
-      { title: tip2Title.trim(), desc: tip2Desc.trim() },
-    ];
+    // Build payload — chỉ gửi data cho scope đã nhập, scope trống gửi null
+    const tips: Array<{ title: string; desc: string }> | null =
+      (hasTip1 || hasTip2)
+        ? [
+            { title: tip1Title.trim(), desc: tip1Desc.trim() },
+            { title: tip2Title.trim(), desc: tip2Desc.trim() },
+          ]
+        : null;
 
     saveMutation.mutate({
-      hero_badge: heroBadge.trim(),
-      hero_title: heroTitle.trim(),
+      hero_badge: hasHeroBadge ? heroBadge.trim() : null,
+      hero_title: hasHeroTitle ? heroTitle.trim() : null,
       tips,
+      explore_hero_badge: hasExploreBadge ? exploreHeroBadge.trim() : null,
+      explore_hero_title: hasExploreTitle ? exploreHeroTitle.trim() : null,
     });
   };
 
   const handleReset = () => {
     saveMutation.mutate(
-      { hero_badge: null, hero_title: null, tips: null },
+      { hero_badge: null, hero_title: null, tips: null, explore_hero_badge: null, explore_hero_title: null },
       {
         onSuccess: () => {
           setHeroBadge('');
@@ -701,6 +737,8 @@ function DashboardContentSection() {
           setTip2Title('');
           setTip2Desc('');
           setCurrentPreviewTip(0);
+          setExploreHeroBadge('');
+          setExploreHeroTitle('');
           queryClient.invalidateQueries({ queryKey: ['dashboard-content', activeTenantId] });
           toast.success('Đã reset về nội dung mặc định');
         },
@@ -721,6 +759,10 @@ function DashboardContentSection() {
   if (previewTips.length === 0) {
     previewTips.push(...DEFAULT_TIPS);
   }
+
+  // Explore preview data fallbacks
+  const previewExploreBadge = exploreHeroBadge.trim() || DEFAULT_EXPLORE_BADGE;
+  const previewExploreTitle = exploreHeroTitle.trim() || DEFAULT_EXPLORE_TITLE;
 
   // Reset preview tip index if it exceeds available tips
   useEffect(() => {
@@ -748,9 +790,9 @@ function DashboardContentSection() {
           <LayoutDashboard className="h-4.5 w-4.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">Nội dung Dashboard</h2>
+          <h2 className="text-base font-semibold tracking-tight">Nội dung trang Khám phá và Chương trình học</h2>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            Chỉnh sửa text Hero Card và Tips hiển thị trên trang Dashboard (FE). Để trống sẽ dùng nội dung mặc định.
+            Chỉnh sửa text Hero Card, Tips hiển thị trên trang Dashboard và Hero Card trang Explore (FE). Để trống sẽ dùng nội dung mặc định.
           </p>
         </div>
       </div>
@@ -984,6 +1026,105 @@ function DashboardContentSection() {
                     />
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* ── Explore Hero Card Section ── */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Hero Card — Trang Explore</h3>
+          </div>
+
+          {/* Form Fields */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="explore-hero-badge" className="text-xs font-semibold text-foreground">
+                Badge (ví dụ: COURSE, TRAINING)
+              </Label>
+              <Input
+                id="explore-hero-badge"
+                value={exploreHeroBadge}
+                onChange={(e) => setExploreHeroBadge(e.target.value)}
+                placeholder="COURSE"
+                maxLength={20}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="explore-hero-title" className="text-xs font-semibold text-foreground">
+                Tiêu đề
+              </Label>
+              <Textarea
+                id="explore-hero-title"
+                value={exploreHeroTitle}
+                onChange={(e) => setExploreHeroTitle(e.target.value)}
+                placeholder="Khám phá hành trình học tập của tôi..."
+                maxLength={200}
+                rows={2}
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="mt-6 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+            <div className="w-full max-w-[1000px]">
+              <div className="mb-4 flex items-center justify-center gap-2">
+                <Monitor className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Preview Hero Card Explore (Kích thước PC)</span>
+              </div>
+
+              <div
+                className="relative w-full overflow-hidden rounded-[32px] p-5 pb-3 md:p-6 flex flex-col justify-between min-h-[240px] md:min-h-[250px] lg:h-[270px]"
+                style={{
+                  border: '1.5px solid var(--primary)',
+                  backgroundColor: 'color-mix(in srgb, var(--primary) 4%, transparent)',
+                }}
+              >
+                <div className="relative z-10 flex flex-col flex-1 w-full justify-between">
+                  <div>
+                    {/* Badge */}
+                    <div
+                      className="mb-3 inline-flex w-fit whitespace-nowrap items-center justify-center h-[23px] rounded-[41px] px-3 py-1 text-[10px] font-bold uppercase tracking-widest font-['SF_Pro',_sans-serif]"
+                      style={{ backgroundColor: "#43FDD7", color: "#000" }}
+                    >
+                      {previewExploreBadge}
+                    </div>
+
+                    {/* Title */}
+                    <h1
+                      className="mb-4 max-w-[320px] text-[24px] lg:text-[26px] font-bold leading-[32px] text-foreground overflow-hidden"
+                      style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {previewExploreTitle}
+                    </h1>
+                  </div>
+
+                  {/* Search bar (preview only — non-functional) */}
+                  <div className="mt-auto flex w-full max-w-[340px] items-center gap-2.5 rounded-full border border-border bg-card px-5 py-2.5 shadow-sm">
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 text-[14px] font-normal leading-[18px] text-muted-foreground/60">
+                      Tìm khoá học...
+                    </span>
+                  </div>
+                </div>
+
+                {/* Illustration */}
+                <img
+                  src={exploreHeroImg}
+                  alt="Khám phá hành trình học tập"
+                  className="hidden md:block absolute right-0 bottom-0 h-full w-auto max-w-[400px] object-contain pointer-events-none select-none z-0 pr-3 mr-20"
+                />
               </div>
             </div>
           </div>

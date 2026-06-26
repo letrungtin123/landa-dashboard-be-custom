@@ -17,12 +17,16 @@ export interface DashboardContentData {
   hero_badge: string | null;
   hero_title: string | null;
   tips: DashboardContentTip[] | null;
+  explore_hero_badge: string | null;
+  explore_hero_title: string | null;
 }
 
 export interface UpsertDashboardContentPayload {
   hero_badge?: string | null;
   hero_title?: string | null;
   tips?: DashboardContentTip[] | null;
+  explore_hero_badge?: string | null;
+  explore_hero_title?: string | null;
 }
 
 /** Lấy dashboard content cho tenant hiện tại (auto-inject X-Tenant-Id) */
