@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
-import { HelpCircle, Check, Trash2, Plus, ImagePlus, Loader2, Video, X } from 'lucide-react';
+import { HelpCircle, Check, Trash2, Plus, ImagePlus, Loader2, Video, X, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
 import RichTextEditor from '../RichTextEditor';
-import { uploadCourseAsset } from '@/api/custom-course-authoring';
+import { uploadCourseAsset, deleteCourseAssetByStoragePath } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
+import { storageUrl } from '@/utils/storage-url';
 import ImageCarousel from '../ImageCarousel';
 import {
   extractYoutubeId,
@@ -282,6 +283,7 @@ interface ProblemEditorProps {
   onProblemMediaChange?: (v: ProblemMedia) => void;
   courseId?: string;
   selectedBoilerplate?: string;
+  onAutoSave?: () => void;
 }
 
 export default function ProblemEditor({
@@ -293,6 +295,7 @@ export default function ProblemEditor({
   onProblemMediaChange,
   courseId,
   selectedBoilerplate,
+  onAutoSave,
 }: ProblemEditorProps) {
   void selectedBoilerplate;
 
@@ -312,7 +315,9 @@ export default function ProblemEditor({
     };
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
   const media = normalizeProblemMedia(problemMedia);
   const [youtubeInput, setYoutubeInput] = useState(() => media.youtube_url || (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
   const youtubeId = extractYoutubeId(youtubeInput);
@@ -359,6 +364,58 @@ export default function ProblemEditor({
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleUploadVideo = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (!courseId) {
+      toast.error('Thiếu courseId, không thể upload video');
+      return;
+    }
+    const file = files[0];
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa 100MB.`);
+      return;
+    }
+    if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
+      toast.error('Định dạng không hỗ trợ. Chỉ chấp nhận MP4, WebM, MOV.');
+      return;
+    }
+    setVideoUploading(true);
+    try {
+      const result = await uploadCourseAsset(courseId, file);
+      const path = result?.storage_path || result?.url || '';
+      if (path) {
+        const nextMedia = {
+          ...media,
+          video_storage_path: path,
+          youtube_id: undefined,
+          youtube_url: undefined,
+        };
+        updateProblemMedia(nextMedia);
+        setYoutubeInput('');
+        toast.success('Upload video thành công');
+        onAutoSave?.();
+      }
+    } catch (err: any) {
+      toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const handleDeleteVideo = async () => {
+    let pendingDelete = false;
+    if (media.video_storage_path && courseId) {
+      try {
+        const result = await deleteCourseAssetByStoragePath(courseId, media.video_storage_path);
+        pendingDelete = !!result?.pending_delete;
+      } catch {}
+    }
+    updateProblemMedia({ ...media, video_storage_path: undefined });
+    toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
+    onAutoSave?.();
   };
 
   const handleRemoveImage = (idx: number) => {
@@ -468,22 +525,24 @@ export default function ProblemEditor({
           </p>
         </div>
 
-        <Field label="YouTube URL hoặc Video ID">
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Video className="h-4 w-4 text-muted-foreground" />
+        {!media.video_storage_path && (
+          <Field label="YouTube URL hoặc Video ID">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Video className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <input
+                className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
+                value={youtubeInput}
+                onChange={e => handleYoutubeChange(e.target.value)}
+                placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+              />
             </div>
-            <input
-              className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
-              value={youtubeInput}
-              onChange={e => handleYoutubeChange(e.target.value)}
-              placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
-            />
-          </div>
-          {youtubeInput && !youtubeId && (
-            <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
-          )}
-        </Field>
+            {youtubeInput && !youtubeId && (
+              <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
+            )}
+          </Field>
+        )}
 
         {youtubeId && (
           <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
@@ -496,6 +555,51 @@ export default function ProblemEditor({
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
+            />
+          </div>
+        )}
+
+        {/* Uploaded video preview */}
+        {media.video_storage_path && (
+          <div className="space-y-2">
+            <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
+              <video
+                key={media.video_storage_path}
+                src={storageUrl(media.video_storage_path)}
+                controls
+                className="w-full h-full object-contain"
+                preload="metadata"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5" onClick={handleDeleteVideo}>
+                <Trash2 className="h-3.5 w-3.5" /> Xóa video
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Video upload button (khi chưa có YouTube và chưa có uploaded video) */}
+        {!youtubeId && !media.video_storage_path && (
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="gap-2"
+              onClick={() => videoFileInputRef.current?.click()}
+              disabled={videoUploading}
+            >
+              {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Upload video
+            </Button>
+            <span className="text-xs text-muted-foreground">Tối đa 100MB • MP4, WebM, MOV</span>
+            <input
+              ref={videoFileInputRef}
+              type="file"
+              accept=".mp4,.webm,.mov"
+              className="hidden"
+              onChange={e => { handleUploadVideo(e.target.files); e.target.value = ''; }}
             />
           </div>
         )}

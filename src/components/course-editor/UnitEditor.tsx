@@ -64,6 +64,7 @@ import {
   htmlImageDisplaySrc,
   isUploadedStorageImageSrc,
   isTransientHtmlImageSrc,
+  storageUrl,
 } from '@/utils/storage-url';
 
 import { config } from '@/config/env';
@@ -434,7 +435,11 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   }, [block, blockId]);
 
   // Fetch lại khi unit-children refetch để data AI vừa apply hiện ngay trên card/form đang mở.
+  // QUAN TRỌNG: Skip refresh khi đang editing — tránh mất state chưa save (video upload, v.v.)
+  // React Query refetchOnWindowFocus sẽ trigger khi user switch tab → nếu không guard thì
+  // loadDetail() fetch data cũ → detailVersion thay đổi → form re-mount → mất hết dữ liệu.
   useEffect(() => {
+    if (isEditing) return; // ← Guard: không refresh khi form đang mở
     loadDetail();
   }, [loadDetail, detailRefreshKey]);
 
@@ -779,6 +784,37 @@ function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
 function ComponentPreview({ blockType, blockData }: { blockType: string; blockData: any }) {
   switch (blockType) {
     case 'video': {
+      // Check for uploaded video first
+      const videoStoragePath = blockData?.metadata?.video_storage_path || blockData?.data?.video_storage_path;
+      if (videoStoragePath) {
+        const videoSrc = storageUrl(videoStoragePath);
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-purple-500/10 text-purple-500">
+                <Video className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Uploaded Video</span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+              </div>
+            </div>
+            <div className="p-1 rounded-xl bg-gradient-to-br from-primary/10 via-secondary/5 to-primary/5 border border-primary/10 shadow-lg shadow-primary/5">
+              <div className="aspect-video w-full rounded-lg overflow-hidden bg-black shadow-inner">
+                <video
+                  key={videoStoragePath}
+                  src={videoSrc}
+                  controls
+                  className="w-full h-full object-contain"
+                  preload="metadata"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // YouTube fallback
       let ytId = blockData?.metadata?.youtube_id_1_0 || blockData?.data?.youtube_id_1_0;
 
       // Fallback extraction from XML data if it's stored in XML block
@@ -821,7 +857,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
           <div className="p-3 bg-background rounded-full shadow-sm">
             <Video className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <span className="text-sm font-medium">Video — hover để Edit cấu hình YouTube ID</span>
+          <span className="text-sm font-medium">Video — hover để Edit cấu hình</span>
         </div>
       );
     }
@@ -1496,7 +1532,6 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     const parsed = parseMaybeJson(raw);
     return parsed || { diagrams: [], start_diagram_id: '' };
   });
-
   const [faqItems, setFaqItems] = useState<FaqItem[]>(() => {
     const raw = blockInfo?.metadata?.faq_data || blockInfo?.faq_data;
     const parsed = parseMaybeJson(raw);
@@ -1518,20 +1553,35 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         const payloadMetadata = { display_name: displayName, ...metadata };
         if (payloadMetadata.start_time === "00:00:00" || payloadMetadata.start_time === "") delete payloadMetadata.start_time;
         if (payloadMetadata.end_time === "00:00:00" || payloadMetadata.end_time === "") delete payloadMetadata.end_time;
-        
+
+        const videoPath = payloadMetadata.video_storage_path || '';
         const ytId = payloadMetadata.youtube_id_1_0 || '';
-        const ytUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : '';
-        const payloadData = {
-          url: ytUrl,
-          video_url: ytUrl,
-          encoded_videos: {
-            youtube: { url: ytUrl }
-          }
-        };
+
+        let payloadData: any;
+        if (videoPath) {
+          // Uploaded video → store as fallback encoded video
+          payloadData = {
+            url: videoPath,
+            video_url: videoPath,
+            encoded_videos: {
+              fallback: { url: videoPath }
+            }
+          };
+        } else {
+          // YouTube mode
+          const ytUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : '';
+          payloadData = {
+            url: ytUrl,
+            video_url: ytUrl,
+            encoded_videos: {
+              youtube: { url: ytUrl }
+            }
+          };
+        }
         
         return updateXBlock(id, {
           metadata: payloadMetadata,
-          data: payloadData as any,
+          data: payloadData,
         });
       }
       if (category === 'html') {
@@ -1603,6 +1653,16 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     onError: (err: any) => toast.error('Lưu thất bại: ' + (err?.message || 'Unknown')),
   });
 
+  const [shouldAutoSave, setShouldAutoSave] = useState(false);
+  useEffect(() => {
+    if (shouldAutoSave) {
+      setShouldAutoSave(false);
+      saveMut.mutate();
+    }
+  }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, saveMut]);
+
+  const triggerAutoSave = () => setShouldAutoSave(true);
+
   const renderEditor = () => {
     switch (category) {
       case 'video':
@@ -1612,6 +1672,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onDisplayNameChange={setDisplayName}
             metadata={metadata}
             onMetadataChange={setMetadata}
+            courseId={courseId || ''}
+            onAutoSave={triggerAutoSave}
           />
         );
       case 'html':
@@ -1638,6 +1700,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
+            onAutoSave={triggerAutoSave}
           />
         );
       case 'la_crossword':
@@ -1652,6 +1715,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
+            onAutoSave={triggerAutoSave}
           />
         );
       case 'la_sortable':
@@ -1666,6 +1730,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
+            onAutoSave={triggerAutoSave}
           />
         );
       case 'la_diagram':

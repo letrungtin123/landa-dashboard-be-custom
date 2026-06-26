@@ -277,11 +277,12 @@ export async function deleteCourseAsset(courseId: string, assetId: string): Prom
   );
 }
 
-export async function deleteCourseAssetByStoragePath(courseId: string, storagePath: string): Promise<void> {
-  await customApiClient.post(
+export async function deleteCourseAssetByStoragePath(courseId: string, storagePath: string): Promise<any> {
+  const { data } = await customApiClient.post(
     `${BASE}/assets/${encodeURIComponent(courseId)}/delete-by-path`,
     { storage_path: storagePath },
   );
+  return (data as any).data || data;
 }
 
 export async function updateCourseAssetLock(courseId: string, assetId: string, locked: boolean): Promise<any> {

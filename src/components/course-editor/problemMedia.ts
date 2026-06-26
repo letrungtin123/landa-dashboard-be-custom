@@ -8,6 +8,7 @@ export interface ProblemMediaImage {
 export interface ProblemMedia {
   youtube_id?: string;
   youtube_url?: string;
+  video_storage_path?: string;
   images: ProblemMediaImage[];
 }
 
@@ -47,15 +48,19 @@ export function normalizeProblemMedia(raw: any): ProblemMedia {
     : [];
 
   const youtubeId = extractYoutubeId(raw?.youtube_id || raw?.youtube_url || raw?.video_url || '');
+  const videoStoragePath = typeof raw?.video_storage_path === 'string' && raw.video_storage_path.trim()
+    ? raw.video_storage_path.trim()
+    : undefined;
 
   return {
     ...(youtubeId ? { youtube_id: youtubeId, youtube_url: toYoutubeUrl(youtubeId) } : {}),
+    ...(videoStoragePath ? { video_storage_path: videoStoragePath } : {}),
     images,
   };
 }
 
 export function hasProblemMedia(media: ProblemMedia | null | undefined): boolean {
-  return !!(media?.youtube_id || media?.images?.length);
+  return !!(media?.youtube_id || media?.video_storage_path || media?.images?.length);
 }
 
 export function problemMediaForSave(raw: any): ProblemMedia | undefined {

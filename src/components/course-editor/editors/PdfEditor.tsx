@@ -59,8 +59,8 @@ export default function PdfEditor({
       return;
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('File quá lớn (tối đa 50MB)');
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('File quá lớn (tối đa 100MB)');
       return;
     }
 
@@ -166,7 +166,7 @@ export default function PdfEditor({
             </div>
             <div>
               <p className="text-sm font-semibold">Upload file PDF</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Tải lên từ máy tính (tối đa 50MB)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Tải lên từ máy tính (tối đa 100MB)</p>
             </div>
           </button>
         </div>
@@ -283,7 +283,7 @@ export default function PdfEditor({
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-semibold">Nhấn để chọn file PDF</p>
-                    <p className="text-xs text-muted-foreground mt-1">Hỗ trợ file .pdf, tối đa 50MB</p>
+                    <p className="text-xs text-muted-foreground mt-1">Hỗ trợ file .pdf, tối đa 100MB</p>
                   </div>
                 </>
               )}
