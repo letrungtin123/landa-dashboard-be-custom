@@ -52,8 +52,8 @@ export function Header() {
     // Set flag immediately so pages show blank instead of "Access Denied"
     startLogout();
     try {
-      // Xoá toàn bộ React Query cache (branding, users, courses, etc.)
-      qc.clear();
+      // Xoá React Query cache — GIỮ LẠI branding (public, không phải user-specific)
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'admin-branding' });
       navigate('/login');
       await new Promise(r => setTimeout(r, 500));
     } catch (error) {

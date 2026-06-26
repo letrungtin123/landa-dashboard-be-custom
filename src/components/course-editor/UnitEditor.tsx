@@ -955,7 +955,13 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       // Support both formats: metadata.crossword_data.words OR metadata.words
       const cd = parseMaybeJson(blockData?.metadata?.crossword_data || blockData?.crossword_data);
       const words = cd?.words || blockData?.metadata?.words || [];
-      return <CrosswordPreviewInteractive parsed={{ words, keyword_coordinates: cd?.keyword_coordinates || blockData?.metadata?.keyword_coordinates || [], grid_size: cd?.grid_size || blockData?.metadata?.grid_size || 10 }} />;
+      const cwMedia = normalizeProblemMedia(blockData?.metadata?.problem_media);
+      return (
+        <>
+          <ProblemMediaPreview media={cwMedia} />
+          <CrosswordPreviewInteractive parsed={{ words, keyword_coordinates: cd?.keyword_coordinates || blockData?.metadata?.keyword_coordinates || [], grid_size: cd?.grid_size || blockData?.metadata?.grid_size || 10 }} />
+        </>
+      );
     }
 
     case 'la_sortable': {
@@ -963,7 +969,13 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       const sd = parseMaybeJson(blockData?.metadata?.sortable_data || blockData?.sortable_data);
       const items = sd?.items || blockData?.metadata?.items || [];
       const qt = blockData?.metadata?.question_text || blockData?.question_text || sd?.question_text || '';
-      return <SortablePreviewInteractive parsed={{ items }} questionText={qt} />;
+      const soMedia = normalizeProblemMedia(blockData?.metadata?.problem_media);
+      return (
+        <>
+          <ProblemMediaPreview media={soMedia} />
+          <SortablePreviewInteractive parsed={{ items }} questionText={qt} />
+        </>
+      );
     }
     case 'la_diagram': {
       const parsed = parseMaybeJson(blockData?.metadata?.diagram_data || blockData?.diagram_data);
@@ -1551,16 +1563,20 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       }
       if (category === 'la_crossword') {
         const kwCoords = cwWords.map((_, idx) => ({ row: idx, col: cwKeywordCol }));
+        const cwMediaForSave = problemMediaForSave(metadata?.problem_media);
         return studioSubmit(id, {
           display_name: displayName,
           crossword_data: JSON.stringify({ words: cwWords, keyword_coordinates: kwCoords }),
+          ...(cwMediaForSave ? { problem_media: cwMediaForSave } : {}),
         });
       }
       if (category === 'la_sortable') {
+        const soMediaForSave = problemMediaForSave(metadata?.problem_media);
         return studioSubmit(id, {
           display_name: displayName,
           question_text: soQuestionText,
           sortable_data: JSON.stringify({ items: soItems }),
+          ...(soMediaForSave ? { problem_media: soMediaForSave } : {}),
         });
       }
       if (category === 'la_diagram') {
@@ -1633,6 +1649,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onWordsChange={setCwWords}
             keywordCol={cwKeywordCol}
             onKeywordColChange={setCwKeywordCol}
+            problemMedia={normalizeProblemMedia(metadata?.problem_media)}
+            onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
+            courseId={courseId || ''}
           />
         );
       case 'la_sortable':
@@ -1644,6 +1663,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onQuestionChange={setSoQuestionText}
             items={soItems}
             onItemsChange={setSoItems}
+            problemMedia={normalizeProblemMedia(metadata?.problem_media)}
+            onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
+            courseId={courseId || ''}
           />
         );
       case 'la_diagram':

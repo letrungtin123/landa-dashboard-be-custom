@@ -2,26 +2,34 @@
  * branding.tsx — Branding Management Page
  * Premium UI cho admin upload/xóa ảnh branding (FE + Admin Dashboard).
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
 import { PageHeader } from '@/components/shared/page-header';
 import { getBranding, uploadBrandingImage, deleteBrandingImage } from '@/api/custom-branding';
+import { getDashboardContent, updateDashboardContent } from '@/api/custom-dashboard-content';
+import type { UpsertDashboardContentPayload } from '@/api/custom-dashboard-content';
 import { storageUrl } from '@/utils/storage-url';
 import {
   Palette, Upload, Trash2, Image as ImageIcon, AlertCircle,
   Loader2, Info, Monitor, Moon, Users, Layers, ImagePlus,
-  CheckCircle2, Sparkles,
+  CheckCircle2, Sparkles, LayoutDashboard, Save, ArrowRight, Lightbulb, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
+
+import heroImg from '@/assets/DasboardPage/hero-card-dashboard.png';
 
 // ── Image slot config ──
 interface ImageSlot {
@@ -289,6 +297,9 @@ export default function BrandingPage() {
           uploadingKey={uploadMutation.isPending ? uploadMutation.variables?.imageKey || null : null}
           onPreview={setPreviewImage}
         />
+
+        {/* ── Dashboard Content Section ── */}
+        <DashboardContentSection />
 
         {/* ── Delete Confirmation Dialog ── */}
         <Dialog open={!!deletingKey} onOpenChange={() => setDeletingKey(null)}>
@@ -586,6 +597,427 @@ function ImageCard({
           e.target.value = '';
         }}
       />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Dashboard Content Section — Edit Hero Card + Tips text
+// ═══════════════════════════════════════════════════════════════
+
+const DEFAULT_TIPS = [
+  {
+    quote: "“Hãy là sự thay đổi mà bạn muốn thấy ở thế giới này”",
+    author: "Mahatma Gandhi"
+  },
+  {
+    quote: "“Cách tốt nhất để dự đoán tương lai là tự mình tạo ra nó”",
+    author: "Abraham Lincoln"
+  }
+];
+
+const DEFAULT_BADGE = "SKILLS";
+const DEFAULT_TITLE = "Khai phá tiềm năng từ kho tri thức đặc biệt";
+
+function DashboardContentSection() {
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-content', activeTenantId],
+    queryFn: getDashboardContent,
+    staleTime: 30_000,
+  });
+
+  // Local form state
+  const [heroBadge, setHeroBadge] = useState('');
+  const [heroTitle, setHeroTitle] = useState('');
+  const [tip1Title, setTip1Title] = useState('');
+  const [tip1Desc, setTip1Desc] = useState('');
+  const [tip2Title, setTip2Title] = useState('');
+  const [tip2Desc, setTip2Desc] = useState('');
+  const [currentPreviewTip, setCurrentPreviewTip] = useState(0);
+
+  // Sync from server data
+  useEffect(() => {
+    if (data) {
+      setHeroBadge(data.hero_badge || '');
+      setHeroTitle(data.hero_title || '');
+      const tips = data.tips || [];
+      setTip1Title(tips[0]?.title || '');
+      setTip1Desc(tips[0]?.desc || '');
+      setTip2Title(tips[1]?.title || '');
+      setTip2Desc(tips[1]?.desc || '');
+    }
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: UpsertDashboardContentPayload) => updateDashboardContent(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-content', activeTenantId] });
+      toast.success('Đã lưu nội dung Dashboard');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Lỗi lưu nội dung');
+    },
+  });
+
+  const handleSave = () => {
+    // Validate all fields are filled
+    const errors: string[] = [];
+    if (!heroBadge.trim()) errors.push('Badge');
+    if (!heroTitle.trim()) errors.push('Tiêu đề Hero Card');
+    if (!tip1Title.trim()) errors.push('Câu nói Trang 1');
+    if (!tip1Desc.trim()) errors.push('Tác giả Trang 1');
+    if (!tip2Title.trim()) errors.push('Câu nói Trang 2');
+    if (!tip2Desc.trim()) errors.push('Tác giả Trang 2');
+
+    if (errors.length > 0) {
+      toast.error(`Vui lòng nhập đầy đủ: ${errors.join(', ')}`);
+      return;
+    }
+
+    const tips: Array<{ title: string; desc: string }> = [
+      { title: tip1Title.trim(), desc: tip1Desc.trim() },
+      { title: tip2Title.trim(), desc: tip2Desc.trim() },
+    ];
+
+    saveMutation.mutate({
+      hero_badge: heroBadge.trim(),
+      hero_title: heroTitle.trim(),
+      tips,
+    });
+  };
+
+  const handleReset = () => {
+    saveMutation.mutate(
+      { hero_badge: null, hero_title: null, tips: null },
+      {
+        onSuccess: () => {
+          setHeroBadge('');
+          setHeroTitle('');
+          setTip1Title('');
+          setTip1Desc('');
+          setTip2Title('');
+          setTip2Desc('');
+          setCurrentPreviewTip(0);
+          queryClient.invalidateQueries({ queryKey: ['dashboard-content', activeTenantId] });
+          toast.success('Đã reset về nội dung mặc định');
+        },
+      },
+    );
+  };
+
+  // Preview data fallbacks
+  const previewBadge = heroBadge.trim() || DEFAULT_BADGE;
+  const previewTitle = heroTitle.trim() || DEFAULT_TITLE;
+  const previewTips = [];
+  if (tip1Title.trim() || tip1Desc.trim()) {
+    previewTips.push({ quote: tip1Title.trim(), author: tip1Desc.trim() });
+  }
+  if (tip2Title.trim() || tip2Desc.trim()) {
+    previewTips.push({ quote: tip2Title.trim(), author: tip2Desc.trim() });
+  }
+  if (previewTips.length === 0) {
+    previewTips.push(...DEFAULT_TIPS);
+  }
+
+  // Reset preview tip index if it exceeds available tips
+  useEffect(() => {
+    if (currentPreviewTip >= previewTips.length) {
+      setCurrentPreviewTip(0);
+    }
+  }, [previewTips.length, currentPreviewTip]);
+
+  const accent = accentMap.amber;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-48 rounded-2xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Section header */}
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-xl ${accent.iconBg} text-white shadow-sm`}>
+          <LayoutDashboard className="h-4.5 w-4.5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-semibold tracking-tight">Nội dung Dashboard</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+            Chỉnh sửa text Hero Card và Tips hiển thị trên trang Dashboard (FE). Để trống sẽ dùng nội dung mặc định.
+          </p>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-10">
+
+        {/* ── Hero Card Section ── */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Hero Card</h3>
+          </div>
+
+          {/* Form Fields */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="hero-badge" className="text-xs font-semibold text-foreground">
+                Badge (ví dụ: SKILLS, COURSE)
+              </Label>
+              <Input
+                id="hero-badge"
+                value={heroBadge}
+                onChange={(e) => setHeroBadge(e.target.value)}
+                placeholder="SKILLS"
+                maxLength={20}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="hero-title" className="text-xs font-semibold text-foreground">
+                Tiêu đề
+              </Label>
+              <Textarea
+                id="hero-title"
+                value={heroTitle}
+                onChange={(e) => setHeroTitle(e.target.value)}
+                placeholder="Khai phá tiềm năng từ kho tri thức đặc biệt..."
+                maxLength={200}
+                rows={2}
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="mt-6 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+            <div className="w-full max-w-[828px]">
+              <div className="mb-4 flex items-center justify-center gap-2">
+                <Monitor className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Preview Hero Card (Kích thước PC)</span>
+              </div>
+
+              <div
+                className="relative w-full overflow-hidden rounded-[32px] min-h-[220px] lg:h-[310px] shadow-sm flex flex-col justify-between p-6 md:p-8"
+                style={{
+                  border: '1.5px solid var(--primary)',
+                  backgroundColor: 'color-mix(in srgb, var(--primary) 4%, transparent)',
+                }}
+              >
+                <div className="relative z-10 w-[55%] md:w-[50%] lg:w-[60%]">
+                  <div
+                    className="mb-4 inline-flex w-fit whitespace-nowrap items-center justify-center h-[23px] rounded-[41px] px-3 py-1 text-[10px] font-bold uppercase tracking-widest font-['SF_Pro',_sans-serif]"
+                    style={{ backgroundColor: "#43FDD7", color: "#000" }}
+                  >
+                    {previewBadge}
+                  </div>
+                  <h3
+                    className="mb-4 text-[17px] md:text-[24px] lg:text-[26px] font-bold leading-[1.4] text-foreground md:leading-tight overflow-hidden"
+                    style={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                    }}
+                  >
+                    {previewTitle}
+                  </h3>
+                </div>
+
+                <div className="relative z-10 mt-auto inline-flex items-center text-sm font-semibold text-primary gap-1 w-fit cursor-pointer hover:underline">
+                  Bắt đầu ngay <ArrowRight className="w-4 h-4" />
+                </div>
+
+                {/* Image */}
+                <div className="absolute right-2 md:right-0 top-0 bottom-0 md:top-auto h-full w-[50%] md:w-[45%] lg:w-[40%] flex items-center md:items-end justify-end md:pr-8 md:py-6 pointer-events-none select-none z-0">
+                  <img
+                    src={heroImg}
+                    alt="Illustration"
+                    className="max-h-[85%] md:max-h-full h-[75%] md:h-full w-auto object-contain object-right md:object-right-bottom"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* ── Tips Section ── */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Tips (tối đa 2 trang)</h3>
+          </div>
+
+          <div className="flex flex-col xl:flex-row gap-8 xl:items-start">
+            {/* Form Fields */}
+            <div className="flex-1 space-y-4">
+              {/* Tip 1 */}
+              <div className="rounded-xl border border-border/60 p-5 space-y-4 bg-muted/10 shadow-sm">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 1</p>
+                <div className="space-y-2">
+                  <Label htmlFor="tip1-title" className="text-xs font-medium text-muted-foreground">
+                    Câu nói
+                  </Label>
+                  <Textarea
+                    id="tip1-title"
+                    value={tip1Title}
+                    onChange={(e) => setTip1Title(e.target.value)}
+                    placeholder={`\u201cH\u00e3y l\u00e0 s\u1ef1 thay \u0111\u1ed5i m\u00e0 b\u1ea1n mu\u1ed1n th\u1ea5y \u1edf th\u1ebf gi\u1edbi n\u00e0y\u201d`}
+                    maxLength={200}
+                    rows={2}
+                    className="resize-none bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tip1-desc" className="text-xs font-medium text-muted-foreground">
+                    Tác giả
+                  </Label>
+                  <Input
+                    id="tip1-desc"
+                    value={tip1Desc}
+                    onChange={(e) => setTip1Desc(e.target.value)}
+                    placeholder="Mahatma Gandhi"
+                    maxLength={100}
+                    className="h-9 bg-background"
+                  />
+                </div>
+              </div>
+
+              {/* Tip 2 */}
+              <div className="rounded-xl border border-border/60 p-5 space-y-4 bg-muted/10 shadow-sm">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 2</p>
+                <div className="space-y-2">
+                  <Label htmlFor="tip2-title" className="text-xs font-medium text-muted-foreground">
+                    Câu nói
+                  </Label>
+                  <Textarea
+                    id="tip2-title"
+                    value={tip2Title}
+                    onChange={(e) => setTip2Title(e.target.value)}
+                    placeholder={`\u201cC\u00e1ch t\u1ed1t nh\u1ea5t \u0111\u1ec3 d\u1ef1 \u0111o\u00e1n t\u01b0\u01a1ng lai l\u00e0 t\u1ef1 m\u00ecnh t\u1ea1o ra n\u00f3\u201d`}
+                    maxLength={200}
+                    rows={2}
+                    className="resize-none bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tip2-desc" className="text-xs font-medium text-muted-foreground">
+                    Tác giả
+                  </Label>
+                  <Input
+                    id="tip2-desc"
+                    value={tip2Desc}
+                    onChange={(e) => setTip2Desc(e.target.value)}
+                    placeholder="Abraham Lincoln"
+                    maxLength={100}
+                    className="h-9 bg-background"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="w-full xl:w-[320px] shrink-0 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+              <div className="mb-4 flex items-center justify-center gap-2 w-full">
+                <Monitor className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Preview Tips (Kích thước PC)</span>
+              </div>
+
+              <div
+                className="relative w-full max-w-[240px] shrink-0 rounded-[32px] p-6 flex flex-col shadow-sm mx-auto"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--primary) 4%, transparent)',
+                  height: '310px' // Same height as hero card on desktop in FE
+                }}
+              >
+                {/* Header */}
+                <div className="flex items-center gap-2 mb-6 text-foreground">
+                  <Lightbulb className="w-6 h-6" strokeWidth={2.2} />
+                  <h3 className="text-xl font-bold">Tips</h3>
+                </div>
+
+                {/* Content (Quote + Author) */}
+                <div className="relative flex-1">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={currentPreviewTip}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute inset-0 flex flex-col justify-start gap-4"
+                    >
+                      <p
+                        className="text-[17px] font-bold leading-[1.6] text-foreground overflow-hidden"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {previewTips[currentPreviewTip]?.quote}
+                      </p>
+                      <footer className="text-[15px] text-muted-foreground italic mt-0">
+                        {previewTips[currentPreviewTip]?.author}
+                      </footer>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                {/* Footer (Dots) */}
+                <div className="flex items-center gap-1.5 mt-auto pt-6 ml-1">
+                  {previewTips.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentPreviewTip(idx)}
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${currentPreviewTip === idx ? "bg-primary" : "bg-primary/20 hover:bg-primary/40"}`}
+                      aria-label={`Go to tip ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <Button
+            variant="outline"
+            onClick={handleReset}
+            disabled={saveMutation.isPending}
+            className="gap-2"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+            Reset mặc định
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            className="gap-2"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Lưu nội dung
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

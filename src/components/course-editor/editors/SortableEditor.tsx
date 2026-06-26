@@ -1,7 +1,17 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Plus, Trash2, GripVertical, ImagePlus, Loader2, Video, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
+import { uploadCourseAsset } from '@/api/custom-course-authoring';
+import { toast } from 'sonner';
+import ImageCarousel from '../ImageCarousel';
+import {
+  extractYoutubeId,
+  normalizeProblemMedia,
+  resolveProblemMediaImageUrl,
+  toYoutubeUrl,
+  type ProblemMedia,
+} from '../problemMedia';
 
 interface SortableItem {
   id: number;
@@ -15,18 +25,76 @@ interface SortableEditorProps {
   onQuestionChange: (v: string) => void;
   items: SortableItem[];
   onItemsChange: (items: SortableItem[]) => void;
+  problemMedia?: ProblemMedia;
+  onProblemMediaChange?: (v: ProblemMedia) => void;
+  courseId?: string;
 }
 
 export default function SortableEditor({
   displayName, onDisplayNameChange,
   questionText, onQuestionChange,
   items, onItemsChange,
+  problemMedia, onProblemMediaChange, courseId,
 }: SortableEditorProps) {
   const [nextId, setNextId] = useState(() => {
     const maxId = items.reduce((m, i) => Math.max(m, i.id), 0);
     return maxId + 1;
   });
   const [dragging, setDragging] = useState<number | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const media = normalizeProblemMedia(problemMedia);
+  const [youtubeInput, setYoutubeInput] = useState(() => media.youtube_url || (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
+  const youtubeId = extractYoutubeId(youtubeInput);
+
+  const updateProblemMedia = (next: ProblemMedia) => {
+    onProblemMediaChange?.(normalizeProblemMedia(next));
+  };
+
+  const handleYoutubeChange = (value: string) => {
+    setYoutubeInput(value);
+    const id = extractYoutubeId(value);
+    updateProblemMedia({
+      ...media,
+      youtube_id: id || undefined,
+      youtube_url: id ? toYoutubeUrl(id) : undefined,
+    });
+  };
+
+  const handleUploadImages = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (!courseId) {
+      toast.error('Thiếu courseId, không thể upload ảnh');
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded: { src: string; alt: string }[] = [];
+      for (const file of Array.from(files)) {
+        const result = await uploadCourseAsset(courseId, file);
+        const src = result?.url || result?.storage_path || '';
+        if (src) uploaded.push({ src, alt: file.name });
+      }
+      if (uploaded.length > 0) {
+        updateProblemMedia({ ...media, images: [...media.images, ...uploaded] });
+        toast.success(`Đã upload ${uploaded.length} ảnh`);
+      }
+    } catch (err: any) {
+      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = (idx: number) => {
+    updateProblemMedia({ ...media, images: media.images.filter((_, i) => i !== idx) });
+  };
+
+  const resolvedImages = media.images.map((img) => ({
+    ...img,
+    src: resolveProblemMediaImageUrl(img.src),
+  }));
 
   const addItem = () => {
     onItemsChange([...items, { id: nextId, text: '' }]);
@@ -67,6 +135,116 @@ export default function SortableEditor({
           onChange={e => onDisplayNameChange(e.target.value)}
         />
       </Field>
+
+      {/* ── Media minh họa ── */}
+      <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold">Media minh họa</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Video sẽ hiển thị trước ảnh và nằm ngay phía trên bài tập.
+          </p>
+        </div>
+
+        <Field label="YouTube URL hoặc Video ID">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Video className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <input
+              className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
+              value={youtubeInput}
+              onChange={e => handleYoutubeChange(e.target.value)}
+              placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+            />
+          </div>
+          {youtubeInput && !youtubeId && (
+            <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
+          )}
+        </Field>
+
+        {youtubeId && (
+          <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
+            <iframe
+              key={youtubeId}
+              width="100%"
+              height="100%"
+              src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
+              title="YouTube Preview"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="gap-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              Upload ảnh
+            </Button>
+            <span className="text-xs text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => {
+                handleUploadImages(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </div>
+
+          {resolvedImages.length === 1 && (
+            <div className="relative rounded-lg border border-border bg-background p-2">
+              <img
+                src={resolvedImages[0].src}
+                alt={resolvedImages[0].alt || 'Sortable image'}
+                className="max-h-[260px] w-full rounded-md object-contain"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 h-8 w-8 bg-background/80 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => handleRemoveImage(0)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {resolvedImages.length >= 2 && (
+            <div className="space-y-2">
+              <ImageCarousel images={resolvedImages} />
+              <div className="flex flex-wrap gap-2">
+                {media.images.map((img, idx) => (
+                  <Button
+                    key={`${img.src}-${idx}`}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 text-xs"
+                    onClick={() => handleRemoveImage(idx)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Xóa ảnh {idx + 1}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <Field label="Câu hỏi / Hướng dẫn">
         <textarea

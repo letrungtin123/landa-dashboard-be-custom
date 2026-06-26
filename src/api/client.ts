@@ -56,6 +56,7 @@ apiClient.interceptors.request.use(async (req) => {
 });
 
 // Response: 401 → refresh (shared singleton) → retry
+// KHÔNG có mutex riêng — ensureTokenRefresh() delegate tới store (mutex + cooldown).
 apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
@@ -76,7 +77,7 @@ apiClient.interceptors.response.use(
 
     originalRequest._retried = true;
 
-    // Dùng shared singleton → tránh race condition 2 clients cùng refresh
+    // Single source of truth: store.performTokenRefresh() có mutex + cooldown
     const success = await ensureTokenRefresh();
     if (success) {
       const store = await getAuthStore();

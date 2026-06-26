@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getDocuments, getAllCategories, uploadDocument, updateDocument, deleteDocument,
+  getDocuments, getAllCategories, uploadDocumentsBatch, updateDocument, deleteDocument,
   bulkDocumentAction, type Document, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';
@@ -152,7 +152,7 @@ export default function DocumentsTab() {
 
   // Upload
   const uploadMut = useMutation({
-    mutationFn: uploadDocument,
+    mutationFn: (files: File[]) => uploadDocumentsBatch(files),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
@@ -170,11 +170,9 @@ export default function DocumentsTab() {
     input.multiple = true;
     input.accept = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.mp4,.jpg,.jpeg,.png';
     input.onchange = (e) => {
-      const files = (e.target as HTMLInputElement).files;
-      if (!files?.length) return;
-      const formData = new FormData();
-      for (let i = 0; i < files.length; i++) formData.append('file', files[i]);
-      uploadMut.mutate(formData);
+      const fileList = (e.target as HTMLInputElement).files;
+      if (!fileList?.length) return;
+      uploadMut.mutate(Array.from(fileList));
     };
     input.click();
   };

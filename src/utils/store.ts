@@ -113,6 +113,18 @@ function clearRefreshTimer(): void {
   if (refreshTimerId !== null) { clearTimeout(refreshTimerId); refreshTimerId = null; }
 }
 
+// ── Mutex — đảm bảo chỉ có 1 refresh request tại 1 thời điểm ──
+// Chống race condition khi visibilitychange, scheduleTokenRefresh, 401 interceptor
+// cùng trigger refresh đồng thời → token rotation revoke ALL tokens → forced logout.
+let refreshMutex: Promise<boolean> | null = null;
+
+// ── Cooldown — chống serial refresh sau khi mutex đã resolve ──
+// Khi refresh thành công, các caller (visibilitychange, timer, 401 interceptor)
+// fire tuần tự trong vài giây → mỗi caller tạo 1 request mới vì mutex đã clear.
+// Cooldown đảm bảo chỉ refresh 1 lần, caller tiếp theo dùng token đã refresh.
+let lastRefreshSuccessAt = 0;
+const REFRESH_COOLDOWN_MS = 5_000; // 5 giây
+
 /**
  * Map response từ custom backend thành User state.
  */
@@ -234,18 +246,35 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // ── Refresh token — rotation (token pair mới) ──
+      // Mutex: nếu đang có refresh in-flight → trả về promise hiện tại.
+      // Tránh race condition khi nhiều caller (visibilitychange, 401 interceptor,
+      // scheduleTokenRefresh) cùng trigger → token rotation revoke ALL.
       performTokenRefresh: async (): Promise<boolean> => {
+        // Mutex: nếu đang có refresh in-flight → trả về promise hiện tại
+        if (refreshMutex) return refreshMutex;
+
+        // Cooldown: nếu vừa refresh thành công trong 5s qua → skip
+        // Chống serial refresh khi nhiều caller fire tuần tự sau khi mutex clear.
+        if (Date.now() - lastRefreshSuccessAt < REFRESH_COOLDOWN_MS) {
+          return true;
+        }
+
         const { refreshToken: currentRefreshToken } = get();
         if (!currentRefreshToken) return false;
 
-        try {
-          const data = await customRefreshApi(currentRefreshToken);
-          set(mapLoginResponseToState(data));
-          get().scheduleTokenRefresh();
-          return true;
-        } catch {
-          return false;
-        }
+        refreshMutex = (async () => {
+          try {
+            const data = await customRefreshApi(currentRefreshToken);
+            set(mapLoginResponseToState(data));
+            lastRefreshSuccessAt = Date.now();
+            get().scheduleTokenRefresh();
+            return true;
+          } catch {
+            return false;
+          }
+        })().finally(() => { refreshMutex = null; });
+
+        return refreshMutex;
       },
 
       // ── Schedule auto-refresh trước khi token hết hạn ──
@@ -299,28 +328,33 @@ export const useAuthStore = create<AuthState>()(
 // ── Wake-up refresh: khi user quay lại tab sau sleep/hibernate ──
 // setTimeout bị đóng băng khi máy sleep → token hết hạn mà không được refresh.
 // Listener này check và refresh proactively khi tab trở lại visible.
-let isRefreshingOnWake = false;
+//
+// CHỈ dùng visibilitychange (không dùng focus) vì cả 2 events fire gần như
+// đồng thời khi user quay lại tab → race condition → token rotation revoke ALL.
+// Debounce 300ms để chống duplicate nếu visibilitychange fire nhiều lần.
+let wakeUpTimer: ReturnType<typeof setTimeout> | null = null;
 
 function handleWakeUp() {
-  if (isRefreshingOnWake) return;
-  const state = useAuthStore.getState();
-  if (!state.isAuthenticated || !state.tokenExpiresAt) return;
+  if (wakeUpTimer) clearTimeout(wakeUpTimer);
+  wakeUpTimer = setTimeout(() => {
+    wakeUpTimer = null;
+    const state = useAuthStore.getState();
+    if (!state.isAuthenticated || !state.tokenExpiresAt) return;
 
-  const now = Date.now();
-  const buffer = config.tokenRefreshBufferMs || 300_000;
+    const now = Date.now();
+    const buffer = config.tokenRefreshBufferMs || 300_000;
 
-  // Token đã hết hạn hoặc sắp hết hạn → refresh ngay
-  if (now >= state.tokenExpiresAt - buffer) {
-    isRefreshingOnWake = true;
-    state.performTokenRefresh()
-      .then((ok) => {
-        if (!ok) state.logout();
-      })
-      .finally(() => { isRefreshingOnWake = false; });
-  } else {
-    // Token còn hạn → re-schedule timer (timer cũ có thể đã bị kill)
-    state.scheduleTokenRefresh();
-  }
+    // Token đã hết hạn hoặc sắp hết hạn → refresh ngay (qua mutex)
+    if (now >= state.tokenExpiresAt - buffer) {
+      state.performTokenRefresh()
+        .then((ok) => {
+          if (!ok) state.logout();
+        });
+    } else {
+      // Token còn hạn → re-schedule timer (timer cũ có thể đã bị kill)
+      state.scheduleTokenRefresh();
+    }
+  }, 300);
 }
 
 // visibilitychange: khi user switch tab hoặc mở lại từ taskbar
@@ -329,6 +363,3 @@ document.addEventListener('visibilitychange', () => {
     handleWakeUp();
   }
 });
-
-// focus: backup — khi browser window nhận focus (bao gồm wake from sleep)
-window.addEventListener('focus', handleWakeUp);

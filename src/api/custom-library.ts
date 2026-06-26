@@ -79,12 +79,31 @@ export async function getDocuments(params: { page?: number; page_size?: number; 
 }
 
 export async function uploadDocument(formData: FormData) {
-  const { data } = await customApiClient.post<ApiResponse<Document>>(
+  const { data } = await customApiClient.post<ApiResponse<{ uploaded: number; failed: number; documents: Document[]; errors: string[] }>>(
     "/api/library/documents/upload",
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   );
-  return { success: true, created: 1, document: data.data, errors: [] as string[] };
+  return { success: true, created: data.data.uploaded, errors: data.data.errors ?? [] };
+}
+
+const BATCH_SIZE = 20;
+
+/** Upload files in batches of 20 — production-ready for large uploads */
+export async function uploadDocumentsBatch(files: File[]): Promise<{ created: number; errors: string[] }> {
+  let totalCreated = 0;
+  const allErrors: string[] = [];
+
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+    const formData = new FormData();
+    batch.forEach(f => formData.append('files', f));
+    const result = await uploadDocument(formData);
+    totalCreated += result.created;
+    allErrors.push(...result.errors);
+  }
+
+  return { created: totalCreated, errors: allErrors };
 }
 
 export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; category_id?: string | null }) {

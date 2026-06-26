@@ -71,7 +71,7 @@ customApiClient.interceptors.response.use(
 
     originalRequest._retried = true;
 
-    // Dùng shared singleton → tránh race condition 2 clients cùng refresh
+    // Single source of truth: store.performTokenRefresh() có mutex + cooldown
     const success = await ensureTokenRefresh();
     if (success) {
       const store = await getAuthStore();

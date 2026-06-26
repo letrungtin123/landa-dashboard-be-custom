@@ -21,7 +21,7 @@ function checkOttOnLoad(): string | null {
 const pendingOtt = checkOttOnLoad();
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setLoading, setSession, isAuthenticated, tokenExpiresAt, scheduleTokenRefresh } = useAuthStore();
+  const { setLoading, setSession } = useAuthStore();
   const exchanged = useRef(false);
 
   useEffect(() => {
@@ -39,11 +39,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
     } else if (!pendingOtt) {
       // Normal flow: rehydrate từ encrypted storage
+      // Không gọi scheduleTokenRefresh() ở đây — onRehydrateStorage trong store ĐÃ lo.
+      // Duplicate schedule → double refresh → race condition.
       setLoading(false);
-
-      if (isAuthenticated && tokenExpiresAt && Date.now() < tokenExpiresAt) {
-        scheduleTokenRefresh();
-      }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
