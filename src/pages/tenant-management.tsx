@@ -5,6 +5,8 @@ import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, 
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
 import { getIconComponent } from "@/utils/icon-map";
+import { useAuthStore } from "@/utils/store";
+import { useTenantStore } from "@/utils/tenant-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +21,28 @@ import {
 
 import {
   fetchTenants, createTenant, updateTenant, deleteTenant,
-  fetchTenantModules, updateTenantModules,
+  fetchTenantModules, updateTenantModules, fetchTenantRoleLabels, updateTenantRoleLabels,
   type Tenant, type TenantModule,
 } from "@/api/custom-tenants";
+import {
+  DEFAULT_ROLE_LABELS,
+  SYSTEM_ROLE_KEYS,
+  normalizeRoleLabels,
+  type RoleLabelMap,
+  type UserRole,
+} from "@/utils/role-labels";
+
+const ROLE_LABEL_FIELD_LABELS: Record<UserRole, string> = {
+  superadmin: "Super Admin",
+  superuser: "Superuser",
+  staff: "Staff",
+  learner: "Learner",
+  learner_plus: "Learner+",
+};
+
+function hasAnyRoleLabel(labels: RoleLabelMap): boolean {
+  return SYSTEM_ROLE_KEYS.some(role => !!labels[role]?.trim());
+}
 
 export default function TenantManagementPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -46,8 +67,12 @@ export default function TenantManagementPage() {
   const [formMaxUsers, setFormMaxUsers] = useState<string>("");
   const [formMaxCourses, setFormMaxCourses] = useState<string>("");
   const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
+  const [formRoleLabels, setFormRoleLabels] = useState<RoleLabelMap>({});
+  const [formRoleLabelsHadSaved, setFormRoleLabelsHadSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const refreshRoleLabels = useAuthStore((s) => s.refreshRoleLabels);
 
   const loadTenants = useCallback(async function loadTenants() {
     setLoading(true);
@@ -90,6 +115,46 @@ export default function TenantManagementPage() {
     return true;
   }
 
+  function resetForm() {
+    setFormName("");
+    setFormSlug("");
+    setFormDomainLearner("");
+    setFormDomainAdmin("");
+    setFormMaxUsers("");
+    setFormMaxCourses("");
+    setFormGeminiApiKey("");
+    setFormRoleLabels({});
+    setFormRoleLabelsHadSaved(false);
+    setShowApiKey(false);
+  }
+
+  function setRoleLabel(role: UserRole, value: string) {
+    setFormRoleLabels(prev => ({ ...prev, [role]: value }));
+  }
+
+  async function openEditTenant(tenant: Tenant) {
+    setFormName(tenant.name);
+    setFormSlug(tenant.slug);
+    setFormDomainLearner(tenant.domain_learner || "");
+    setFormDomainAdmin(tenant.domain_admin || "");
+    setFormMaxUsers(tenant.max_users !== null ? String(tenant.max_users) : "");
+    setFormMaxCourses(tenant.max_courses !== null ? String(tenant.max_courses) : "");
+    const existingKey = (tenant.settings?.gemini_api_key as string) || "";
+    setFormGeminiApiKey(existingKey);
+    setShowApiKey(false);
+    setFormRoleLabels({});
+    setFormRoleLabelsHadSaved(false);
+    setEditTenant(tenant);
+
+    try {
+      const labels = normalizeRoleLabels(await fetchTenantRoleLabels(tenant.id));
+      setFormRoleLabels(labels);
+      setFormRoleLabelsHadSaved(hasAnyRoleLabel(labels));
+    } catch {
+      toast.error("Không thể tải tên hiển thị vai trò");
+    }
+  }
+
   // ── Create ──
   async function handleCreate() {
     if (!validateForm()) return;
@@ -97,7 +162,7 @@ export default function TenantManagementPage() {
     try {
       const settings: Record<string, unknown> = {};
       if (formGeminiApiKey.trim()) settings.gemini_api_key = formGeminiApiKey.trim();
-      await createTenant({
+      const tenant = await createTenant({
         name: formName,
         slug: formSlug,
         domain_learner: formDomainLearner.trim().replace(/\/+$/, '') || null,
@@ -106,9 +171,13 @@ export default function TenantManagementPage() {
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         settings: Object.keys(settings).length > 0 ? settings : undefined,
       });
+      const labels = normalizeRoleLabels(formRoleLabels);
+      if (hasAnyRoleLabel(labels)) {
+        await updateTenantRoleLabels(tenant.id, labels);
+      }
       toast.success("Tạo tenant thành công");
       setShowCreate(false);
-      setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses(""); setFormGeminiApiKey("");
+      resetForm();
       loadTenants();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Lỗi tạo tenant");
@@ -134,6 +203,13 @@ export default function TenantManagementPage() {
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         settings: updSettings,
       });
+      const labels = normalizeRoleLabels(formRoleLabels);
+      if (hasAnyRoleLabel(labels) || formRoleLabelsHadSaved) {
+        await updateTenantRoleLabels(editTenant.id, labels);
+      }
+      if (editTenant.id === activeTenantId) {
+        await refreshRoleLabels();
+      }
       toast.success("Cập nhật thành công");
       setEditTenant(null);
       loadTenants();
@@ -203,7 +279,7 @@ export default function TenantManagementPage() {
         title="Quản lý Tenant"
         description={`Quản lý tổ chức/đơn vị trong hệ thống (${total})`}
         actions={
-          <Button onClick={function open() { setFormName(""); setFormSlug(""); setFormDomainLearner(""); setFormDomainAdmin(""); setFormMaxUsers(""); setFormMaxCourses(""); setFormGeminiApiKey(""); setShowApiKey(false); setShowCreate(true); }} className="gap-2">
+          <Button onClick={function open() { resetForm(); setShowCreate(true); }} className="gap-2">
             <Plus className="h-4 w-4" /> Tạo Tenant
           </Button>
         }
@@ -304,17 +380,7 @@ export default function TenantManagementPage() {
                           <Button variant="ghost" size="icon" onClick={function click() { openModules(t); }} title="Modules">
                             <Settings2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={function click() {
-                            setFormName(t.name); setFormSlug(t.slug);
-                            setFormDomainLearner(t.domain_learner || "");
-                            setFormDomainAdmin(t.domain_admin || "");
-                            setFormMaxUsers(t.max_users !== null ? String(t.max_users) : "");
-                            setFormMaxCourses(t.max_courses !== null ? String(t.max_courses) : "");
-                            const existingKey = (t.settings?.gemini_api_key as string) || "";
-                            setFormGeminiApiKey(existingKey);
-                            setShowApiKey(false);
-                            setEditTenant(t);
-                          }} title="Sửa">
+                          <Button variant="ghost" size="icon" onClick={function click() { openEditTenant(t); }} title="Sửa">
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={function click() { setDeletingId(t.id); }} title="Xóa">
@@ -419,6 +485,30 @@ export default function TenantManagementPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">API key Google Gemini cho AI Chatbot. Lấy từ Google AI Studio.</p>
+            </div>
+            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+              <div className="flex items-start gap-2">
+                <Layers className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <div>
+                  <label className="text-sm font-medium">Tên hiển thị vai trò</label>
+                  <p className="text-xs text-muted-foreground">Để trống để dùng tên mặc định hiện tại trên hệ thống.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SYSTEM_ROLE_KEYS.map(function renderRoleInput(role) {
+                  return (
+                    <div key={role} className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">{ROLE_LABEL_FIELD_LABELS[role]}</label>
+                      <Input
+                        maxLength={64}
+                        value={formRoleLabels[role] || ""}
+                        onChange={function onChange(e) { setRoleLabel(role, e.target.value); }}
+                        placeholder={DEFAULT_ROLE_LABELS[role]}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
           <DialogFooter className="px-6 py-4 border-t bg-muted/10 shrink-0">

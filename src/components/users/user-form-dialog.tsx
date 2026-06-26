@@ -21,6 +21,7 @@ import { createUser, updateUser, type CustomUser } from '@/api/custom-users';
 import { fetchTenants, getUserTenants, setUserTenants, type Tenant } from '@/api/custom-tenants';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
+import { getRoleLabel } from '@/utils/role-labels';
 
 // ── Schemas ──
 const createUserSchema = z.object({
@@ -53,6 +54,7 @@ type UserFormProps = {
 
 export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserFormProps) {
   const currentUser = useAuthStore(function getUser(s) { return s.user; });
+  const roleLabels = useAuthStore(function getRoleLabels(s) { return s.roleLabels; });
   const isSuperadmin = currentUser?.role === 'superadmin';
   const isSuperuser = currentUser?.role === 'superuser';
   const isEditing = !!user;
@@ -269,7 +271,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                             {isSuperadmin && (
                               <SelectItem value="superadmin">
                                 <span className="flex items-center gap-2">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Super Admin
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {getRoleLabel('superadmin', roleLabels, 'Super Admin')}
                                 </span>
                               </SelectItem>
                             )}
@@ -277,24 +279,24 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                               <>
                                 <SelectItem value="superuser">
                                   <span className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Superuser
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {getRoleLabel('superuser', roleLabels, 'Superuser')}
                                   </span>
                                 </SelectItem>
                                 <SelectItem value="staff">
                                   <span className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Staff
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {getRoleLabel('staff', roleLabels, 'Staff')}
                                   </span>
                                 </SelectItem>
                               </>
                             )}
                             <SelectItem value="learner_plus">
                               <span className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Learner+
+                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> {getRoleLabel('learner_plus', roleLabels, 'Learner+')}
                               </span>
                             </SelectItem>
                             <SelectItem value="learner">
                               <span className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Learner
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {getRoleLabel('learner', roleLabels, 'Learner')}
                               </span>
                             </SelectItem>
                           </SelectContent>

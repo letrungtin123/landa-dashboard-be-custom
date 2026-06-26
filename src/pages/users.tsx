@@ -22,6 +22,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { fetchUsers, updateUser, deleteUser, type CustomUser } from '@/api/custom-users';
 import { toast } from 'sonner';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
+import { getRoleLabel } from '@/utils/role-labels';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
@@ -51,6 +52,7 @@ export default function UsersPage() {
   const [selectedLearner, setSelectedLearner] = useState<string | null>(null);
 
   const currentUser = useAuthStore(function getUser(s) { return s.user; });
+  const roleLabels = useAuthStore(function getRoleLabels(s) { return s.roleLabels; });
   const isLoggingOut = useAuthStore(function getLogout(s) { return s.isLoggingOut; });
   const queryClient = useQueryClient();
 
@@ -155,11 +157,11 @@ export default function UsersPage() {
             key: 'role',
             placeholder: 'Vai trò',
             options: [
-              ...(isSuperadmin ? [{ value: 'superadmin', label: 'Super Admin' }] : []),
-              { value: 'superuser', label: 'Superuser' },
-              { value: 'staff', label: 'Staff' },
-              { value: 'learner', label: 'Learner' },
-              { value: 'learner_plus', label: 'Learner+' },
+              ...(isSuperadmin ? [{ value: 'superadmin', label: getRoleLabel('superadmin', roleLabels, 'Super Admin') }] : []),
+              { value: 'superuser', label: getRoleLabel('superuser', roleLabels, 'Superuser') },
+              { value: 'staff', label: getRoleLabel('staff', roleLabels, 'Staff') },
+              { value: 'learner', label: getRoleLabel('learner', roleLabels, 'Learner') },
+              { value: 'learner_plus', label: getRoleLabel('learner_plus', roleLabels, 'Learner+') },
             ],
           },
           {
@@ -261,7 +263,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell>
                         <span className={`text-[11px] font-mono font-medium px-2.5 py-1 rounded-md border ${ROLE_COLORS[u.role] || ROLE_COLORS.learner}`}>
-                          {u.role}
+                          {getRoleLabel(u.role, roleLabels, u.role)}
                         </span>
                       </TableCell>
                       <TableCell>

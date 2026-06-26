@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/utils/store';
+import { getRoleLabel } from '@/utils/role-labels';
 import { customApiClient } from '@/api/custom-client';
 import { storageUrl } from '@/utils/storage-url';
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +92,7 @@ function FormSelect({ label, icon: Icon, value, onChange, options, placeholder }
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
+  const roleLabels = useAuthStore((s) => s.roleLabels);
   const updateUser = useAuthStore((s) => s.updateUser);
 
   // ── Profile state ──
@@ -330,7 +332,7 @@ export default function ProfilePage() {
                                 : 'border-slate-500/40 bg-slate-500/10 text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      <Shield className="w-3 h-3 mr-1" />{ROLE_LABEL[user?.role || ''] || user?.role}
+                      <Shield className="w-3 h-3 mr-1" />{getRoleLabel(user?.role, roleLabels, ROLE_LABEL[user?.role || ''] || user?.role)}
                     </Badge>
                   </div>
                 </div>

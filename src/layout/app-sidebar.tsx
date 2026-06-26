@@ -4,6 +4,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/utils/store';
 import { useBranding } from '@/hooks/useBranding';
+import { getRoleLabel } from '@/utils/role-labels';
 
 import { getIconComponent } from '@/utils/icon-map';
 import {
@@ -87,6 +88,7 @@ export function AppSidebar() {
   const { theme } = useTheme();
   const { branding, isLoading: brandingLoading } = useBranding();
   const user = useAuthStore((state) => state.user);
+  const roleLabels = useAuthStore((state) => state.roleLabels);
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [moduleIcons, setModuleIcons] = useState<Record<string, string>>({});
 
@@ -112,7 +114,7 @@ export function AppSidebar() {
     if (user.role === 'superadmin') return true;
 
     // Các module dành riêng cho superadmin
-    if (item.module === 'superadmin_only') return false;
+    if (item.module === 'tenant_management' || item.module === 'superadmin_only') return false;
 
     // Kiểm tra module có được bật cho tenant không
     if (tenantModules.length > 0 && !tenantModules.includes(item.module)) {
@@ -214,7 +216,11 @@ export function AppSidebar() {
                     {user?.name || 'Admin User'}
                   </span>
                   <span className="text-[11px] font-medium text-sidebar-foreground/40 truncate leading-tight mt-0.5">
-                    {user?.role === 'superadmin' ? 'Quản trị viên hệ thống' : user?.role === 'superuser' ? 'Quản trị viên' : user?.role === 'staff' ? 'Nhân viên' : user?.role === 'learner_plus' ? 'Học viên nâng cao' : 'Học viên'}
+                    {getRoleLabel(
+                      user?.role,
+                      roleLabels,
+                      user?.role === 'superadmin' ? 'Quản trị viên hệ thống' : user?.role === 'superuser' ? 'Quản trị viên' : user?.role === 'staff' ? 'Nhân viên' : user?.role === 'learner_plus' ? 'Học viên nâng cao' : 'Học viên',
+                    )}
                   </span>
                 </div>
               </Link>

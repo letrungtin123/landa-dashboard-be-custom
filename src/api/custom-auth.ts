@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { customApiClient } from "./custom-client";
+import type { RoleLabelMap } from "@/utils/role-labels";
 
 /** Response format chuẩn từ custom backend */
 interface ApiResponse<T> {
@@ -21,6 +22,7 @@ export interface CustomLoginResponse {
   permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
+  role_labels?: RoleLabelMap;
   member_groups?: { id: string; name: string }[];
 }
 
@@ -43,6 +45,7 @@ export interface CustomMeResponse {
   permissions: Record<string, { can_view: boolean; can_add: boolean; can_edit: boolean; can_delete: boolean }>;
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
+  role_labels?: RoleLabelMap;
   member_groups?: { id: string; name: string }[];
 }
 
@@ -64,17 +67,22 @@ export async function customLoginApi(username: string, password: string): Promis
  * QUAN TRỌNG: Dùng axios trực tiếp, KHÔNG dùng customApiClient.
  * customApiClient interceptor gắn expired Bearer token → BE reject 401 → vòng lặp.
  */
-export async function customRefreshApi(refreshToken: string): Promise<CustomLoginResponse> {
+export async function customRefreshApi(refreshToken: string, tenantId?: string | null): Promise<CustomLoginResponse> {
   const axios = (await import("axios")).default;
   const { config } = await import("@/config/env");
   const baseURL = config.customApiUrl;
 
   const { data } = await axios.post<ApiResponse<CustomLoginResponse>>(
     `${baseURL}/api/auth/refresh`,
-    { refresh_token: refreshToken },
+    { refresh_token: refreshToken, ...(tenantId ? { tenant_id: tenantId } : {}) },
     { headers: { "Content-Type": "application/json" }, timeout: 10_000 }
   );
   return data.data;
+}
+
+export async function customGetRoleLabelsApi(): Promise<RoleLabelMap> {
+  const { data } = await customApiClient.get<ApiResponse<{ role_labels: RoleLabelMap }>>("/api/auth/role-labels");
+  return data.data.role_labels || {};
 }
 
 /**

@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { customApiClient } from "./custom-client";
+import type { RoleLabelMap } from "@/utils/role-labels";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -105,4 +106,17 @@ export async function setUserTenants(userId: string, tenantIds: string[]): Promi
 export async function fetchTenantQuota(tenantId: string): Promise<TenantQuotaUsage> {
   const { data } = await customApiClient.get<ApiResponse<TenantQuotaUsage>>(`/api/tenants/${tenantId}/quota`);
   return data.data;
+}
+
+export async function fetchTenantRoleLabels(tenantId: string): Promise<RoleLabelMap> {
+  const { data } = await customApiClient.get<ApiResponse<{ labels: RoleLabelMap }>>(`/api/tenants/${tenantId}/role-labels`);
+  return data.data.labels || {};
+}
+
+export async function updateTenantRoleLabels(tenantId: string, labels: RoleLabelMap): Promise<RoleLabelMap> {
+  const { data } = await customApiClient.put<ApiResponse<{ labels: RoleLabelMap }>>(
+    `/api/tenants/${tenantId}/role-labels`,
+    { labels },
+  );
+  return data.data.labels || {};
 }

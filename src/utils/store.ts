@@ -11,10 +11,12 @@ import { storageUrl } from '@/utils/storage-url';
 import {
   customLoginApi,
   customRefreshApi,
+  customGetRoleLabelsApi,
   customLogoutApi,
   type CustomLoginResponse,
 } from '@/api/custom-auth';
 import { config } from '@/config/env';
+import { normalizeRoleLabels, type RoleLabelMap } from '@/utils/role-labels';
 
 // ── Encrypted storage (giữ nguyên logic cũ) ──
 const STORAGE_KEY = 'admin-auth-v2';
@@ -89,6 +91,7 @@ interface AuthState {
   permissions: PermissionsMap;
   tenantModules: string[];
   managedTenants: { id: string; name: string }[];
+  roleLabels: RoleLabelMap;
   isAuthenticated: boolean;
   isLoading: boolean;
   isLoggingOut: boolean;
@@ -103,6 +106,8 @@ interface AuthState {
   performTokenRefresh: () => Promise<boolean>;
   scheduleTokenRefresh: () => void;
   updateUser: (data: Partial<User>) => void;
+  setRoleLabels: (labels: RoleLabelMap) => void;
+  refreshRoleLabels: () => Promise<void>;
   setLoading: (loading: boolean) => void;
   setPermissions: (permissions: PermissionsMap) => void;
   hasPermission: (moduleCode: string, action: 'can_view' | 'can_add' | 'can_edit' | 'can_delete') => boolean;
@@ -151,6 +156,7 @@ function mapLoginResponseToState(data: CustomLoginResponse) {
     permissions: data.permissions,
     tenantModules: data.tenant_modules,
     managedTenants: data.managed_tenants || [],
+    roleLabels: normalizeRoleLabels(data.role_labels),
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
     tokenExpiresAt: Date.now() + data.expires_in * 1000,
@@ -165,6 +171,7 @@ export const useAuthStore = create<AuthState>()(
       permissions: {},
       tenantModules: [],
       managedTenants: [],
+      roleLabels: {},
       isAuthenticated: false,
       isLoading: false,
       isLoggingOut: false,
@@ -185,6 +192,7 @@ export const useAuthStore = create<AuthState>()(
           try {
             const { useTenantStore } = await import('@/utils/tenant-store');
             await useTenantStore.getState().fetchTenants();
+            await get().refreshRoleLabels();
           } catch { /* ignore - tenant fetch is non-critical */ }
         }
       },
@@ -214,6 +222,7 @@ export const useAuthStore = create<AuthState>()(
           permissions: {},
           tenantModules: [],
           managedTenants: [],
+          roleLabels: {},
           isLoggingOut: false,
         });
 
@@ -229,6 +238,16 @@ export const useAuthStore = create<AuthState>()(
       })),
 
       setPermissions: (permissions) => set({ permissions }),
+      setRoleLabels: (labels) => set({ roleLabels: normalizeRoleLabels(labels) }),
+
+      refreshRoleLabels: async () => {
+        try {
+          const labels = await customGetRoleLabelsApi();
+          set({ roleLabels: normalizeRoleLabels(labels) });
+        } catch {
+          set({ roleLabels: {} });
+        }
+      },
 
       // ── Permission check — sử dụng ma trận từ backend ──
       hasPermission: (moduleCode, action) => {
@@ -264,7 +283,12 @@ export const useAuthStore = create<AuthState>()(
 
         refreshMutex = (async () => {
           try {
-            const data = await customRefreshApi(currentRefreshToken);
+            let activeTenantId: string | null = null;
+            try {
+              const { useTenantStore } = await import('@/utils/tenant-store');
+              activeTenantId = useTenantStore.getState().activeTenantId;
+            } catch { /* ignore */ }
+            const data = await customRefreshApi(currentRefreshToken, activeTenantId);
             set(mapLoginResponseToState(data));
             lastRefreshSuccessAt = Date.now();
             get().scheduleTokenRefresh();
@@ -309,6 +333,7 @@ export const useAuthStore = create<AuthState>()(
         permissions: state.permissions,
         tenantModules: state.tenantModules,
         managedTenants: state.managedTenants,
+        roleLabels: state.roleLabels,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.isAuthenticated && state?.tokenExpiresAt) {

@@ -13,6 +13,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { useHeaderInfo } from '@/utils/header-store';
+import { getRoleLabel } from '@/utils/role-labels';
 // Removed useDashboardStats import
 
 const userGrowthData = [
@@ -69,6 +70,7 @@ const TOOLTIP_STYLE = {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
+  const roleLabels = useAuthStore((s) => s.roleLabels);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
   const canView = hasPermission('dashboard', 'can_view');
@@ -132,7 +134,7 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent className="p-4 pt-0 flex items-end">
                     <div className="text-lg font-mono font-bold uppercase tracking-wider text-foreground bg-background border border-border px-3 py-1 rounded-md shadow-sm">
-                      {user?.role || '...'}
+                      {getRoleLabel(user?.role, roleLabels, user?.role || '...')}
                     </div>
                   </CardContent>
                 </Card>

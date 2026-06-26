@@ -30,6 +30,10 @@ export function ModuleGuard({ module, children }: ModuleGuardProps) {
 
   if (!user) return <NotFoundPage />;
 
+  if ((module === 'tenant_management' || module === 'superadmin_only') && user.role !== 'superadmin') {
+    return <NotFoundPage />;
+  }
+
   // superadmin bypasses all module restrictions
   if (user.role === 'superadmin') return <>{children}</>;
 
