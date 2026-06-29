@@ -88,9 +88,22 @@ export interface StudyTimeEntry {
   minutes: number;
 }
 
+export type StudyTimeGranularity = 'day' | 'month' | 'year';
+
+export interface StudyTimeMeta {
+  from: string;
+  to: string;
+  granularity: StudyTimeGranularity;
+  requested_granularity: StudyTimeGranularity;
+  default_weekly: boolean;
+  point_count: number;
+  reduced_granularity: boolean;
+}
+
 export interface AdminUserStudyTimeResponse {
   username: string;
   entries: StudyTimeEntry[];
+  meta?: StudyTimeMeta;
 }
 
 // ── API Functions ──
@@ -173,9 +186,12 @@ export async function getAdminUserBadges(username: string): Promise<AdminUserBad
   return data.data;
 }
 
-export async function getAdminUserStudyTime(username: string): Promise<AdminUserStudyTimeResponse> {
+export async function getAdminUserStudyTime(
+  username: string,
+  params?: { from?: string; to?: string; granularity?: StudyTimeGranularity },
+): Promise<AdminUserStudyTimeResponse> {
   const { data } = await customApiClient.get<ApiResponse<AdminUserStudyTimeResponse>>(`${BASE}/user-study-time`, {
-    params: { username },
+    params: { username, ...params },
   });
   return data.data;
 }

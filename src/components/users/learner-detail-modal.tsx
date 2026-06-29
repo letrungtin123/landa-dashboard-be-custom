@@ -3,7 +3,7 @@
  * Dùng ở: report-summary.tsx, users.tsx
  * Hiển thị chi tiết khóa học + badges + weekly momentum của 1 learner.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import {
@@ -14,9 +14,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Users, AlertTriangle, Award, BarChart3, RefreshCcw,
+  Users, AlertTriangle, Award, BarChart3, RefreshCcw, Filter, RotateCcw, Check,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid,
@@ -26,6 +27,7 @@ import {
   getAdminUserBadges,
   getAdminUserStudyTime,
   type LearnerDetailResult,
+  type StudyTimeGranularity,
 } from '@/api/custom-reports';
 
 // ── Badge Icons (đồng bộ với FE-5173 BadgeIcon.tsx) ──
@@ -57,6 +59,88 @@ const BADGE_IMAGE_MAP: Record<string, { src: string; name: string }> = {
   system_explorer: { src: badgeNhaThamHiem, name: 'Nhà Thám Hiểm Hệ Thống' },
 };
 
+type MomentumFilterMode = 'week' | 'day' | 'month' | 'year' | 'custom';
+
+interface MomentumFilterState {
+  mode: MomentumFilterMode;
+  date: string;
+  month: string;
+  year: string;
+  from: string;
+  to: string;
+}
+
+const toIsoDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const addDaysLocal = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const getCurrentWeekRange = () => {
+  const today = new Date();
+  const day = today.getDay();
+  const mondayOffset = (day + 6) % 7;
+  const monday = addDaysLocal(today, -mondayOffset);
+  return { from: toIsoDate(monday), to: toIsoDate(addDaysLocal(monday, 6)) };
+};
+
+const createDefaultMomentumFilter = (): MomentumFilterState => {
+  const now = new Date();
+  const week = getCurrentWeekRange();
+  return {
+    mode: 'week',
+    date: toIsoDate(now),
+    month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+    year: String(now.getFullYear()),
+    from: week.from,
+    to: week.to,
+  };
+};
+
+const countDaysInRange = (from: string, to: string) => {
+  const start = new Date(`${from}T00:00:00`).getTime();
+  const end = new Date(`${to}T00:00:00`).getTime();
+  return Math.max(1, Math.floor((end - start) / 86400000) + 1);
+};
+
+const pickGranularityForRange = (from: string, to: string): StudyTimeGranularity => {
+  const days = countDaysInRange(from, to);
+  if (days <= 370) return 'day';
+  if (days <= 3650) return 'month';
+  return 'year';
+};
+
+const getMonthRange = (month: string) => {
+  const [year, monthIndex] = month.split('-').map(Number);
+  const start = new Date(year, monthIndex - 1, 1);
+  const end = new Date(year, monthIndex, 0);
+  return { from: toIsoDate(start), to: toIsoDate(end) };
+};
+
+const buildStudyTimeParams = (filter: MomentumFilterState) => {
+  if (filter.mode === 'week') return undefined;
+  if (filter.mode === 'day') return { from: filter.date, to: filter.date, granularity: 'day' as const };
+  if (filter.mode === 'month') return { ...getMonthRange(filter.month), granularity: 'day' as const };
+  if (filter.mode === 'year') return { from: `${filter.year}-01-01`, to: `${filter.year}-12-31`, granularity: 'month' as const };
+  const from = filter.from <= filter.to ? filter.from : filter.to;
+  const to = filter.from <= filter.to ? filter.to : filter.from;
+  return { from, to, granularity: pickGranularityForRange(from, to) };
+};
+
+const formatBucketLabel = (date: string, granularity: StudyTimeGranularity = 'day') => {
+  const [year, month, day] = date.split('-');
+  if (granularity === 'year') return year;
+  if (granularity === 'month') return `${month}/${year}`;
+  return `${day}/${month}`;
+};
+
 interface Props {
   username: string | null;
   isOpen: boolean;
@@ -66,7 +150,12 @@ interface Props {
 export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [momentumFilter, setMomentumFilter] = useState<MomentumFilterState>(() => createDefaultMomentumFilter());
   const observerTarget = useRef<HTMLDivElement>(null);
+
+  const studyTimeParams = useMemo(() => buildStudyTimeParams(momentumFilter), [momentumFilter]);
+  const isDefaultWeekly = !studyTimeParams;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -121,22 +210,121 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
   });
 
   const { data: studyTimeData } = useQuery({
-    queryKey: ['admin-user-study-time', username],
-    queryFn: () => getAdminUserStudyTime(username!),
+    queryKey: ['admin-user-study-time', username, studyTimeParams],
+    queryFn: () => getAdminUserStudyTime(username!, studyTimeParams),
     enabled: !!username && isOpen,
   });
 
   const studyChartData = (studyTimeData?.entries || []).map((e) => {
-    const d = new Date(e.date);
-    // Format dd/MM giống FE 5173 (ví dụ: 02/06)
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const granularity = studyTimeData?.meta?.granularity || studyTimeParams?.granularity || 'day';
     return {
-      name: `${dd}/${mm}`,
+      name: formatBucketLabel(e.date, granularity),
       hours: Number((e.minutes / 60).toFixed(1)),
       rawMinutes: e.minutes,
     };
   });
+  const totalStudyMinutes = (studyTimeData?.entries || []).reduce((sum, e) => sum + e.minutes, 0);
+
+  const resetMomentumFilter = () => {
+    setMomentumFilter(createDefaultMomentumFilter());
+    setFilterOpen(false);
+  };
+
+  const fmtTime = (m: number) => {
+    if (m < 60) return `${m} phút`;
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return r > 0 ? `${h} tiếng ${r} phút` : `${h} tiếng`;
+  };
+
+  const renderMomentumFilterPanel = () => (
+    <div className="absolute right-3 top-11 z-30 w-[calc(100%-1.5rem)] rounded-xl border border-white/20 bg-[#071827]/95 p-3 shadow-2xl backdrop-blur sm:w-[360px]">
+      <div className="mb-3 grid grid-cols-2 gap-1 sm:grid-cols-5">
+        {[
+          ['week', '7 ngày'],
+          ['day', 'Ngày'],
+          ['month', 'Tháng'],
+          ['year', 'Năm'],
+          ['custom', 'Từ - đến'],
+        ].map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setMomentumFilter((current) => ({ ...current, mode: mode as MomentumFilterMode }))}
+            className={`h-8 rounded-md px-2 text-[11px] font-semibold transition ${momentumFilter.mode === mode ? 'bg-[#45FFCA] text-[#071827]' : 'bg-white/10 text-white/80 hover:bg-white/15'
+              }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {momentumFilter.mode === 'day' && (
+        <Input
+          type="date"
+          value={momentumFilter.date}
+          onChange={(e) => setMomentumFilter((current) => ({ ...current, date: e.target.value }))}
+          className="h-9 border-white/15 bg-white/10 text-sm text-white"
+        />
+      )}
+      {momentumFilter.mode === 'month' && (
+        <Input
+          type="month"
+          value={momentumFilter.month}
+          onChange={(e) => setMomentumFilter((current) => ({ ...current, month: e.target.value }))}
+          className="h-9 border-white/15 bg-white/10 text-sm text-white"
+        />
+      )}
+      {momentumFilter.mode === 'year' && (
+        <Input
+          type="number"
+          min="2000"
+          max="2100"
+          value={momentumFilter.year}
+          onChange={(e) => setMomentumFilter((current) => ({ ...current, year: e.target.value }))}
+          className="h-9 border-white/15 bg-white/10 text-sm text-white"
+        />
+      )}
+      {momentumFilter.mode === 'custom' && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Input
+            type="date"
+            value={momentumFilter.from}
+            onChange={(e) => setMomentumFilter((current) => ({ ...current, from: e.target.value }))}
+            className="h-9 border-white/15 bg-white/10 text-sm text-white"
+          />
+          <Input
+            type="date"
+            value={momentumFilter.to}
+            onChange={(e) => setMomentumFilter((current) => ({ ...current, to: e.target.value }))}
+            className="h-9 border-white/15 bg-white/10 text-sm text-white"
+          />
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={resetMomentumFilter}
+          className="h-8 px-2 text-white hover:bg-white/10 hover:text-white"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Reset
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => setFilterOpen(false)}
+          className="h-8 bg-[#45FFCA] px-3 text-[#071827] hover:bg-[#45FFCA]/90"
+        >
+          <Check className="h-3.5 w-3.5" />
+          Apply
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -250,23 +438,27 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
               {/* Weekly Momentum Chart — giống FE 5173 WelcomeBanner */}
               <div className="rounded-xl border border-border bg-gradient-to-br from-primary to-primary/80 p-3 sm:p-4 shadow-sm text-white min-w-0 overflow-hidden relative">
                 <div className="flex items-center justify-between mb-1">
-                  <div>
+                  <div className="min-w-0 pr-2">
                     <h4 className="text-xs sm:text-sm font-bold flex items-center gap-2">
                       <BarChart3 className="h-4 w-4 text-white/80 shrink-0" />
                       Weekly Momentum
                     </h4>
                     {studyTimeData && (() => {
+                      if (!isDefaultWeekly) {
+                        const meta = studyTimeData.meta;
+                        const from = meta?.from || studyTimeParams?.from || momentumFilter.from;
+                        const to = meta?.to || studyTimeParams?.to || momentumFilter.to;
+                        const granularity = meta?.granularity || studyTimeParams?.granularity || 'day';
+                        const bucket = granularity === 'day' ? 'ngày' : granularity === 'month' ? 'tháng' : 'năm';
+                        return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
+                          {from === to ? from : `${from} → ${to}`} theo {bucket}: <span className="text-[#45FFCA] font-semibold">{fmtTime(totalStudyMinutes)}</span>
+                        </p>;
+                      }
                       const todayMins = studyChartData[studyChartData.length - 1]?.rawMinutes || 0;
                       const pastDays = studyChartData.slice(0, -1).filter(d => d.rawMinutes > 0);
                       const avgMins = pastDays.length > 0
                         ? Math.round(pastDays.reduce((a, d) => a + d.rawMinutes, 0) / pastDays.length)
                         : 0;
-                      const fmtTime = (m: number) => {
-                        if (m < 60) return `${m} phút`;
-                        const h = Math.floor(m / 60);
-                        const r = m % 60;
-                        return r > 0 ? `${h} tiếng ${r} phút` : `${h} tiếng`;
-                      };
                       if (todayMins === 0) {
                         return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">Hôm nay chưa bắt đầu học.</p>;
                       }
@@ -282,8 +474,18 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                       </p>;
                     })()}
                   </div>
-                  <span className="text-[9px] sm:text-[10px] font-medium text-white/60 whitespace-nowrap self-start">Tuần hiện tại</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setFilterOpen((open) => !open)}
+                    className="h-7 shrink-0 rounded-full bg-white/10 px-2 text-[10px] font-semibold text-white hover:bg-white/15 hover:text-white"
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                    Bộ lọc
+                  </Button>
                 </div>
+                {filterOpen && renderMomentumFilterPanel()}
                 {!studyTimeData ? (
                   <Skeleton className="h-[130px] sm:h-[150px] w-full rounded-lg opacity-30" />
                 ) : (
@@ -312,7 +514,7 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                           tickLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
                           tick={{ fill: 'rgba(255,255,255,0.85)', fontSize: 10 }}
                           tickMargin={8}
-                          interval={0}
+                          interval="preserveStartEnd"
                         />
                         <YAxis
                           axisLine={{ stroke: 'rgba(255,255,255,0.3)', strokeWidth: 1 }}
@@ -436,20 +638,18 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                                 />
                               </svg>
                               <span
-                                className={`absolute text-[9px] font-black tabular-nums ${
-                                  course.is_completed ? 'text-primary' : 'text-muted-foreground'
-                                }`}
+                                className={`absolute text-[9px] font-black tabular-nums ${course.is_completed ? 'text-primary' : 'text-muted-foreground'
+                                  }`}
                               >
                                 {Math.round(course.progress || 0)}
                               </span>
                             </div>
                           </div>
                           <span
-                            className={`hidden sm:inline-block w-[75px] text-center text-[9px] font-bold uppercase tracking-tighter px-1.5 py-1 rounded-full ${
-                              course.is_completed
+                            className={`hidden sm:inline-block w-[75px] text-center text-[9px] font-bold uppercase tracking-tighter px-1.5 py-1 rounded-full ${course.is_completed
                                 ? 'bg-primary/10 text-primary'
                                 : 'bg-muted text-muted-foreground'
-                            }`}
+                              }`}
                           >
                             {course.is_completed ? 'Hoàn thành' : 'Đang học'}
                           </span>
