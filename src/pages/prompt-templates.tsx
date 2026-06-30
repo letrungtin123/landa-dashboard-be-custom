@@ -6,8 +6,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Drama, Plus, Trash2, Pencil, Loader2, Camera, Power, Bot,
-  Save, Image,
+  Drama, Plus, Trash2, Pencil, Loader2, Camera, Bot,
+  Save, Image, Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +53,7 @@ export default function PromptTemplatesPage() {
   const [formDesc, setFormDesc] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
   const [formActive, setFormActive] = useState(false);
+  const [formLessonAuthor, setFormLessonAuthor] = useState(false);
 
   // Image upload refs
   const [uploadingAvatar, setUploadingAvatar] = useState<string | null>(null);
@@ -73,12 +74,17 @@ export default function PromptTemplatesPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   function openCreate() {
-    setFormName(""); setFormDesc(""); setFormPrompt(""); setFormActive(false);
+    setFormName(""); setFormDesc(""); setFormPrompt(""); setFormActive(false); setFormLessonAuthor(false);
     setEditTpl(null); setShowForm(true);
   }
   function openEdit(tpl: PromptTemplate) {
-    setFormName(tpl.name); setFormDesc(tpl.description); setFormPrompt(tpl.prompt); setFormActive(tpl.is_active);
+    setFormName(tpl.name); setFormDesc(tpl.description); setFormPrompt(tpl.prompt); setFormActive(tpl.is_active); setFormLessonAuthor(tpl.is_lesson_author);
     setEditTpl(tpl); setShowForm(true);
+  }
+
+  function handleFormLessonAuthorChange(checked: boolean) {
+    setFormLessonAuthor(checked);
+    if (checked) setFormActive(false);
   }
 
   async function handleSave() {
@@ -87,10 +93,22 @@ export default function PromptTemplatesPage() {
     setSaving(true);
     try {
       if (editTpl) {
-        await updateTemplate(editTpl.id, { name: formName, description: formDesc, prompt: formPrompt, is_active: formActive });
+        await updateTemplate(editTpl.id, {
+          name: formName,
+          description: formDesc,
+          prompt: formPrompt,
+          is_active: formLessonAuthor ? false : formActive,
+          is_lesson_author: formLessonAuthor,
+        });
         toast.success("Cập nhật thành công");
       } else {
-        await createTemplate({ name: formName, description: formDesc, prompt: formPrompt, is_active: formActive });
+        await createTemplate({
+          name: formName,
+          description: formDesc,
+          prompt: formPrompt,
+          is_active: formLessonAuthor ? false : formActive,
+          is_lesson_author: formLessonAuthor,
+        });
         toast.success("Tạo thành công");
       }
       setShowForm(false); loadData();
@@ -105,9 +123,21 @@ export default function PromptTemplatesPage() {
   }
 
   async function handleToggleActive(tpl: PromptTemplate) {
+    if (tpl.is_lesson_author) {
+      toast.error("Mascot chuyên gia bài học không hiển thị trong AI Chatbot");
+      return;
+    }
     try {
       await updateTemplate(tpl.id, { is_active: !tpl.is_active });
       toast.success(tpl.is_active ? "Đã tắt" : "Đã bật");
+      loadData();
+    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+  }
+
+  async function handleToggleLessonAuthor(tpl: PromptTemplate) {
+    try {
+      await updateTemplate(tpl.id, { is_lesson_author: !tpl.is_lesson_author });
+      toast.success(tpl.is_lesson_author ? "Đã tắt chuyên gia bài học" : "Đã chọn chuyên gia bài học");
       loadData();
     } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
   }
@@ -130,6 +160,7 @@ export default function PromptTemplatesPage() {
 
   const templates = result?.templates || [];
   const activeCount = result?.activeCount || 0;
+  const lessonAuthorTemplate = templates.find(tpl => tpl.is_lesson_author);
 
   return (
     <div className="p-6 space-y-6">
@@ -139,6 +170,10 @@ export default function PromptTemplatesPage() {
       <div className="flex items-center justify-between">
         <PageHeader icon={Drama} title="System Prompts" description="Quản lý nhân cách (mascot) mặc định cho chatbot" />
         <div className="flex items-center gap-3">
+          <Badge variant={lessonAuthorTemplate ? "default" : "outline"} className="text-sm px-3 py-1 gap-1.5">
+            <Flag className="h-3.5 w-3.5" />
+            {lessonAuthorTemplate ? "Đã chọn chuyên gia" : "Chưa chọn chuyên gia"}
+          </Badge>
           <Badge variant={activeCount >= 6 ? "destructive" : "secondary"} className="text-sm px-3 py-1">
             {activeCount}/6 đang bật
           </Badge>
@@ -218,7 +253,14 @@ export default function PromptTemplatesPage() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold truncate">{tpl.name}</h4>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h4 className="font-semibold truncate">{tpl.name}</h4>
+                        {tpl.is_lesson_author && (
+                          <Badge className="shrink-0 bg-amber-500/15 text-amber-700 border-amber-500/30 gap-1 text-[10px]">
+                            <Flag className="h-3 w-3" /> Chuyên gia
+                          </Badge>
+                        )}
+                      </div>
                       {tpl.description && <p className="text-xs text-muted-foreground truncate">{tpl.description}</p>}
                     </div>
 
@@ -243,15 +285,32 @@ export default function PromptTemplatesPage() {
                       <Switch
                         checked={tpl.is_active}
                         onCheckedChange={() => handleToggleActive(tpl)}
-                        disabled={!tpl.is_active && activeCount >= 6}
+                        disabled={tpl.is_lesson_author || (!tpl.is_active && activeCount >= 6)}
                       />
                       <span className={`text-xs font-medium ${tpl.is_active ? "text-emerald-600" : "text-muted-foreground"}`}>
                         {tpl.is_active ? "Đang bật" : "Đã tắt"}
                       </span>
                     </div>
-                    {!tpl.is_active && activeCount >= 6 && (
+                    {tpl.is_lesson_author ? (
+                      <span className="text-xs text-amber-600">Dùng riêng cho chuyên gia</span>
+                    ) : !tpl.is_active && activeCount >= 6 && (
                       <span className="text-xs text-destructive">Đã đủ 6/6</span>
                     )}
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-xs font-medium">
+                        <Flag className="h-3.5 w-3.5 text-amber-600" />
+                        Chuyên gia bài học
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Chỉ superadmin chọn, mỗi thời điểm tối đa 1 mascot.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={tpl.is_lesson_author}
+                      onCheckedChange={() => handleToggleLessonAuthor(tpl)}
+                    />
                   </div>
                 </div>
               </motion.div>
@@ -288,8 +347,20 @@ export default function PromptTemplatesPage() {
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={formActive} onCheckedChange={setFormActive}
-                disabled={!editTpl?.is_active && !formActive && activeCount >= 6} />
-              <label className="text-sm">Bật ngay {!editTpl?.is_active && activeCount >= 6 && "(đã đủ 6/6)"}</label>
+                disabled={formLessonAuthor || (!editTpl?.is_active && !formActive && activeCount >= 6)} />
+              <label className="text-sm">Bật mascot thường {!editTpl?.is_active && activeCount >= 6 && !formLessonAuthor && "(đã đủ 6/6)"}</label>
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Flag className="h-4 w-4 text-amber-600" />
+                  Chuyên gia bài học
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Mascot này sẽ được widget course outline sử dụng. Chỉ có 1 mascot chuyên gia được active.
+                </p>
+              </div>
+              <Switch checked={formLessonAuthor} onCheckedChange={handleFormLessonAuthorChange} />
             </div>
           </div>
           <DialogFooter>

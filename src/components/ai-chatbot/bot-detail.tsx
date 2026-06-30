@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Bot, Brain, Camera, Loader2, Save, Settings,
   Drama, RotateCcw, Pencil, Plus, Trash2, X, Sparkles, MoreHorizontal,
-  Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,10 +37,6 @@ import {
   fetchActiveTemplates,
   type PromptTemplate,
 } from "@/api/custom-prompt-templates";
-import {
-  assignLessonAuthorPersona,
-  unassignLessonAuthorPersona,
-} from "@/api/custom-chat";
 import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
 // ── Mascot palette ──
@@ -90,7 +85,6 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [togglingLessonAuthorPersonaId, setTogglingLessonAuthorPersonaId] = useState<string | null>(null);
 
   // ── Edit persona modal ──
   const [editingPersona, setEditingPersona] = useState<BotPersona | null>(null);
@@ -195,24 +189,6 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
     try { await removeBotPersona(botId, confirmRemoveId); toast.success("Đã xoá nhân cách"); setConfirmRemoveId(null); loadPersonas(); }
     catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
     finally { setRemovingId(null); }
-  }
-
-  async function handleToggleLessonAuthorPersona(persona: BotPersona) {
-    setTogglingLessonAuthorPersonaId(persona.id);
-    try {
-      if (persona.is_lesson_author_persona) {
-        await unassignLessonAuthorPersona();
-        toast.success("Đã tắt chuyên gia bài học");
-      } else {
-        await assignLessonAuthorPersona(botId, persona.id);
-        toast.success("Đã bật chuyên gia bài học");
-      }
-      loadPersonas();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Lỗi");
-    } finally {
-      setTogglingLessonAuthorPersonaId(null);
-    }
   }
 
   async function openAddModal() {
@@ -436,21 +412,6 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                           {effectiveDesc && (
                             <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{effectiveDesc}</p>
                           )}
-                          <Button
-                            type="button"
-                            variant={p.is_lesson_author_persona ? "default" : "outline"}
-                            size="sm"
-                            className="w-full h-7 gap-1 text-[11px]"
-                            disabled={togglingLessonAuthorPersonaId === p.id}
-                            onClick={() => handleToggleLessonAuthorPersona(p)}
-                          >
-                            {togglingLessonAuthorPersonaId === p.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Flag className="h-3.5 w-3.5" />
-                            )}
-                            {p.is_lesson_author_persona ? "Đang là chuyên gia" : "Bật chuyên gia"}
-                          </Button>
                         </div>
                       </motion.div>
                     );

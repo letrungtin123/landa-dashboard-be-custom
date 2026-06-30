@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
-  BookOpenCheck, CheckCircle2, AtSign, FileText, Search,
+  BookOpenCheck, CheckCircle2, AtSign, FileText, Search, Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -34,6 +34,7 @@ import {
   type CourseIndexResponse,
   type CourseIndexSection,
 } from '@/api/custom-course-authoring';
+import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
 
 // ── Types ──
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
@@ -173,6 +174,11 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [proposalEvent, setProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
   const [applyingProposal, setApplyingProposal] = useState(false);
+  const [mindmapOpen, setMindmapOpen] = useState(false);
+  const [mindmapOutline, setMindmapOutline] = useState<CourseIndexResponse | null>(null);
+  const [mindmapProposalEvent, setMindmapProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
+  const [mindmapLoading, setMindmapLoading] = useState(false);
+  const [mindmapError, setMindmapError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [outlineMentionOptions, setOutlineMentionOptions] = useState<OutlineMentionOption[]>([]);
   const [selectedMentions, setSelectedMentions] = useState<OutlineMentionOption[]>([]);
@@ -226,6 +232,14 @@ export default function ChatWidget() {
   }, [hasPermission]);
 
   // ── Load full data when widget opens ──
+  const resetMindmapState = useCallback(() => {
+    setMindmapOpen(false);
+    setMindmapOutline(null);
+    setMindmapProposalEvent(null);
+    setMindmapLoading(false);
+    setMindmapError(null);
+  }, []);
+
   const resetChatState = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -239,7 +253,8 @@ export default function ChatWidget() {
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
-  }, []);
+    resetMindmapState();
+  }, [resetMindmapState]);
 
   const loadOutlineMentions = useCallback(async (force = false) => {
     if (!courseId) {
@@ -431,7 +446,7 @@ export default function ChatWidget() {
     try {
       const activePersonaId = isLessonAuthor ? lessonSettings?.active_persona?.persona_id : personaId;
       if (!activePersonaId) {
-        toast.error('Chua cau hinh nhan cach chuyen gia bai hoc');
+        toast.error('Chưa cấu hình nhân cách chuyên gia bài học');
         return;
       }
       const conv = await createConversation(activePersonaId, {
@@ -444,6 +459,7 @@ export default function ChatWidget() {
       setSelectedMentions([]);
       setSelectedSourceDocuments([]);
       setProposalEvent(null);
+      resetMindmapState();
       setState('chat');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || err.message);
@@ -452,6 +468,7 @@ export default function ChatWidget() {
 
   // ── Open existing conversation ──
   const handleOpenConversation = async (conv: ChatConversation) => {
+    resetMindmapState();
     setCurrentConv(conv);
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
@@ -559,6 +576,7 @@ export default function ChatWidget() {
     setStreaming(true);
     setStreamText('');
     setProposalEvent(null);
+    resetMindmapState();
     streamAccRef.current = '';
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
 
@@ -631,6 +649,7 @@ export default function ChatWidget() {
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
+    resetMindmapState();
     setState('conversations');
     fetchConversations({
       target: isLessonAuthor ? 'lesson_author' : 'admin',
@@ -646,6 +665,36 @@ export default function ChatWidget() {
     if (open) await loadActiveBot(nextSurface);
   };
 
+  const handleOpenMindmap = async () => {
+    if (!proposalEvent) {
+      toast.error('Chưa có kế hoạch bài học để xem mindmap');
+      return;
+    }
+    if (!courseId) {
+      toast.error('Không xác định được khóa học hiện tại');
+      return;
+    }
+
+    setMindmapProposalEvent(proposalEvent);
+    setMindmapOpen(true);
+    setMindmapLoading(true);
+    setMindmapError(null);
+
+    try {
+      const queryKey = ['course-outline-index', courseId] as const;
+      const outline = await queryClient.fetchQuery({
+        queryKey,
+        queryFn: () => getCourseOutlineIndex(courseId),
+        staleTime: 0,
+      });
+      setMindmapOutline(outline);
+    } catch {
+      setMindmapError('Không tải được outline hiện tại. Vui lòng thử lại.');
+    } finally {
+      setMindmapLoading(false);
+    }
+  };
+
   const handleApplyProposal = async () => {
     if (!proposalEvent || !courseId || applyingProposal) return;
     setApplyingProposal(true);
@@ -653,6 +702,7 @@ export default function ChatWidget() {
       const result = await applyLessonAuthorJob(proposalEvent.job_id);
       toast.success(`Đã tạo ${result.created_count} block, cập nhật ${result.updated_count} block`);
       setProposalEvent(null);
+      resetMindmapState();
       const queryKey = ['course-outline-index', courseId] as const;
       await queryClient.invalidateQueries({ queryKey, exact: true });
       await queryClient.refetchQueries({ queryKey, exact: true, type: 'active' });
@@ -831,6 +881,7 @@ export default function ChatWidget() {
                   proposalEvent={proposalEvent}
                   applyingProposal={applyingProposal}
                   onApplyProposal={handleApplyProposal}
+                  onOpenMindmap={handleOpenMindmap}
                 />
               )}
             </div>
@@ -839,6 +890,15 @@ export default function ChatWidget() {
       </AnimatePresence>
 
       {/* ═══════ Delete Confirmation Modal ═══════ */}
+      <LessonAuthorMindmapModal
+        open={mindmapOpen}
+        onOpenChange={setMindmapOpen}
+        outline={mindmapOutline}
+        proposalEvent={mindmapProposalEvent}
+        loading={mindmapLoading}
+        error={mindmapError}
+      />
+
       <AnimatePresence>
         {confirmDeleteId && (
           <motion.div
@@ -941,7 +1001,7 @@ function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | nu
         </div>
       </div>
       <p className="text-[11px] text-muted-foreground max-w-xs">
-        Vào AI Chatbot → Triển khai để chọn bot/KB, rồi vào tab Nhân cách của bot để bật cờ chuyên gia bài học.
+        Vào Prompt hệ thống để chọn mascot chuyên gia, rồi vào AI Chatbot → Triển khai để chọn bot và KB.
       </p>
     </div>
   );
@@ -1101,7 +1161,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -1129,6 +1189,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   proposalEvent?: LessonAuthorProposalEvent | null;
   applyingProposal?: boolean;
   onApplyProposal?: () => void;
+  onOpenMindmap?: () => void;
 }) {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
@@ -1327,16 +1388,46 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               </div>
             )}
             {proposalEvent && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-semibold">Proposal sẵn sàng</p>
+              <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">Plan bài học sẵn sàng</p>
+                      <p className="text-[11px] text-muted-foreground">Xem mindmap trước khi áp dụng vào outline</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 rounded-md text-[10px]">
+                    Chờ duyệt
+                  </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-3">{proposalEvent.proposal.summary}</p>
-                <Button size="sm" className="w-full gap-2" onClick={onApplyProposal} disabled={applyingProposal || !onApplyProposal}>
-                  {applyingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Áp dụng vào outline
-                </Button>
+                <p className="mt-3 rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground line-clamp-4">
+                  {proposalEvent.proposal.summary}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={onOpenMindmap}
+                    disabled={!onOpenMindmap}
+                  >
+                    <Network className="h-4 w-4" />
+                    Mindmap
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={onApplyProposal}
+                    disabled={applyingProposal || !onApplyProposal}
+                  >
+                    {applyingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    Áp dụng
+                  </Button>
+                </div>
               </div>
             )}
           </>

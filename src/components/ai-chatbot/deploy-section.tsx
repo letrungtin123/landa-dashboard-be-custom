@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Rocket, Bot, Loader2, Database } from "lucide-react";
+import { Rocket, Bot, Loader2, Database, Drama, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,7 +24,7 @@ import { storageUrl } from "@/utils/storage-url";
 const TARGETS = [
   { key: "admin" as const, label: "FE Admin (Dashboard)", desc: "Bot trò chuyện trên trang quản trị" },
   { key: "learner" as const, label: "FE Learner (Học viên)", desc: "Bot trò chuyện trên trang học viên" },
-  { key: "lesson_author" as const, label: "Chuyen gia tao bai hoc", desc: "Bot trong widget course editor, dung KB active rieng" },
+  { key: "lesson_author" as const, label: "Chuyên gia tạo bài học", desc: "Bot trong widget course editor, dùng KB active riêng" },
 ];
 
 export function DeploySection() {
@@ -85,9 +85,9 @@ export function DeploySection() {
     setSelectingKb(true);
     try {
       await assignLessonAuthorKb(kbId);
-      toast.success("Da gan KB lesson author");
+      toast.success("Đã gán KB chuyên gia bài học");
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Loi"); }
+    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
     finally { setSelectingKb(false); }
   }
 
@@ -95,9 +95,9 @@ export function DeploySection() {
     setSelectingKb(true);
     try {
       await unassignLessonAuthorKb();
-      toast.success("Da bo gan KB lesson author");
+      toast.success("Đã bỏ gán KB chuyên gia bài học");
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Loi"); }
+    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
     finally { setSelectingKb(false); }
   }
 
@@ -204,59 +204,87 @@ export function DeploySection() {
               )}
 
               {key === "lesson_author" && (
-                <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs font-medium">
-                      <Database className="h-3.5 w-3.5 text-primary" />
-                      KB active
+                <>
+                  <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-medium">
+                        <Database className="h-3.5 w-3.5 text-primary" />
+                        KB active
+                      </div>
+                      {lessonSettings?.active_kb && (
+                        <button
+                          type="button"
+                          disabled={selectingKb}
+                          onClick={handleClearKb}
+                          className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
+                        >
+                          Bỏ gán
+                        </button>
+                      )}
                     </div>
+                    <Select
+                      value={lessonSettings?.active_kb?.kb_id ?? ""}
+                      onValueChange={handleSelectKb}
+                      disabled={selectingKb}
+                    >
+                      <SelectTrigger className="w-full h-9">
+                        {selectingKb ? (
+                          <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Đang gán...</span>
+                        ) : (
+                          <SelectValue placeholder="Chọn KB..." />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kbs.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">Chưa có KB nào.</div>
+                        ) : (
+                          kbs.map(kb => (
+                            <SelectItem key={kb.id} value={kb.id}>
+                              <span className="flex items-center gap-2">
+                                <Database className="h-4 w-4 text-muted-foreground" />
+                                {kb.name}
+                              </span>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                     {lessonSettings?.active_kb && (
-                      <button
-                        type="button"
-                        disabled={selectingKb}
-                        onClick={handleClearKb}
-                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
-                      >
-                        Bo gan
-                      </button>
+                      <div className="flex flex-wrap gap-1 text-[10px]">
+                        <Badge variant="outline">{lessonSettings.active_kb.document_count} docs</Badge>
+                        <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} learned</Badge>
+                        {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} learning</Badge>}
+                        {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} error</Badge>}
+                      </div>
                     )}
                   </div>
-                  <Select
-                    value={lessonSettings?.active_kb?.kb_id ?? ""}
-                    onValueChange={handleSelectKb}
-                    disabled={selectingKb}
-                  >
-                    <SelectTrigger className="w-full h-9">
-                      {selectingKb ? (
-                        <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Dang gan...</span>
-                      ) : (
-                        <SelectValue placeholder="Chon KB..." />
-                      )}
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kbs.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-muted-foreground">Chua co KB nao.</div>
-                      ) : (
-                        kbs.map(kb => (
-                          <SelectItem key={kb.id} value={kb.id}>
-                            <span className="flex items-center gap-2">
-                              <Database className="h-4 w-4 text-muted-foreground" />
-                              {kb.name}
-                            </span>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {lessonSettings?.active_kb && (
-                    <div className="flex flex-wrap gap-1 text-[10px]">
-                      <Badge variant="outline">{lessonSettings.active_kb.document_count} docs</Badge>
-                      <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} learned</Badge>
-                      {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} learning</Badge>}
-                      {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} error</Badge>}
+                  <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-medium">
+                      <Drama className="h-3.5 w-3.5 text-amber-600" />
+                      Nhân cách chuyên gia
                     </div>
-                  )}
-                </div>
+                    {lessonSettings?.active_persona ? (
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full overflow-hidden bg-muted border flex items-center justify-center shrink-0">
+                          {lessonSettings.active_persona.persona_avatar_url ? (
+                            <img src={storageUrl(lessonSettings.active_persona.persona_avatar_url)} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <Drama className="h-4 w-4 text-amber-600" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{lessonSettings.active_persona.persona_name}</p>
+                          <p className="text-[11px] text-muted-foreground">Lấy từ Prompt hệ thống</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-[11px] text-amber-700">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        Superadmin chưa chọn mascot chuyên gia bài học trong Prompt hệ thống.
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </motion.div>
           );

@@ -18,6 +18,7 @@ export interface PromptTemplate {
   avatar_url: string | null;
   fullbody_url: string | null;
   is_active: boolean;
+  is_lesson_author: boolean;
   sort_order: number;
   created_by: string | null;
   created_at: string;
@@ -52,6 +53,7 @@ export async function createTemplate(input: {
   description?: string;
   prompt: string;
   is_active?: boolean;
+  is_lesson_author?: boolean;
   sort_order?: number;
 }): Promise<PromptTemplate> {
   const { data } = await customApiClient.post<ApiResponse<PromptTemplate>>('/api/prompt-templates', input);
@@ -63,6 +65,7 @@ export async function updateTemplate(id: string, input: {
   description?: string;
   prompt?: string;
   is_active?: boolean;
+  is_lesson_author?: boolean;
   sort_order?: number;
 }): Promise<PromptTemplate> {
   const { data } = await customApiClient.put<ApiResponse<PromptTemplate>>(`/api/prompt-templates/${id}`, input);

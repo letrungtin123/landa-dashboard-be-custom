@@ -92,9 +92,19 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export type LessonAuthorComponentType = 'html' | 'problem' | 'la_faq' | 'la_sortable' | 'la_crossword' | 'la_diagram' | string;
+
+export interface LessonAuthorComponentProposal {
+  type: LessonAuthorComponentType;
+  title: string;
+  data?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
 export interface LessonAuthorUnitProposal {
   title: string;
-  html: string;
+  html?: string;
+  components?: LessonAuthorComponentProposal[];
 }
 
 export interface LessonAuthorLessonProposal {
@@ -172,14 +182,6 @@ export async function assignLessonAuthorKb(kb_id: string): Promise<void> {
 
 export async function unassignLessonAuthorKb(): Promise<void> {
   await customApiClient.delete("/api/ai-chatbot/lesson-author/kb-assignment");
-}
-
-export async function assignLessonAuthorPersona(bot_id: string, persona_id: string): Promise<void> {
-  await customApiClient.put("/api/ai-chatbot/lesson-author/persona-assignment", { bot_id, persona_id });
-}
-
-export async function unassignLessonAuthorPersona(): Promise<void> {
-  await customApiClient.delete("/api/ai-chatbot/lesson-author/persona-assignment");
 }
 
 export async function applyLessonAuthorJob(jobId: string): Promise<AppliedLessonAuthorJob> {
