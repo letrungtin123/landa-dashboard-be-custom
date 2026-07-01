@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   Background,
   Controls,
@@ -7,6 +7,7 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  ReactFlowProvider,
   useEdgesState,
   useNodesState,
   type Edge,
@@ -17,12 +18,14 @@ import '@xyflow/react/dist/style.css';
 import {
   AlertTriangle,
   BookOpenCheck,
+  ChevronDown,
+  ChevronRight,
   CircleDot,
   FileText,
   GitBranch,
   HelpCircle,
   Layers3,
-  Map,
+  Map as MapIcon,
   Network,
   RefreshCw,
   Shuffle,
@@ -68,6 +71,10 @@ interface MindmapFlowNodeData extends Record<string, unknown> {
   blockType: string;
   status: MindmapStatus;
   childCount: number;
+  collapsible: boolean;
+  expanded: boolean;
+  justRevealed: boolean;
+  revealDelayMs: number;
 }
 
 interface LessonAuthorMindmapModalProps {
@@ -153,7 +160,7 @@ function getComponentIcon(type: string) {
   if (type === 'la_crossword') return Layers3;
   if (type === 'la_diagram') return Network;
   if (type === 'chapter') return GitBranch;
-  if (type === 'sequential') return Map;
+  if (type === 'sequential') return MapIcon;
   if (type === 'vertical') return CircleDot;
   return FileText;
 }
@@ -231,23 +238,26 @@ function mergeComponent(parent: MindmapNode, component: LessonAuthorComponentPro
 
 function mergeProposal(root: MindmapNode, proposal: LessonAuthorProposal | null | undefined): MindmapNode {
   const next = cloneNode(root);
-  if (!proposal?.chapters?.length) return next;
+  const chapters = Array.isArray(proposal?.chapters) ? proposal.chapters : [];
+  if (chapters.length === 0) return next;
 
-  proposal.chapters.forEach((chapter, chapterIndex) => {
+  chapters.forEach((chapter, chapterIndex) => {
     const chapterTitle = chapter.title || `Section ${chapterIndex + 1}`;
     const chapterNode = findChildByTitle(next, chapterTitle, 'chapter')
       ?? makePlannedNode(`planned-chapter-${chapterIndex}`, chapterTitle, 'chapter');
     if (!next.children.includes(chapterNode)) next.children.push(chapterNode);
     else markPlannedUpdate(chapterNode);
 
-    chapter.lessons?.forEach((lesson, lessonIndex) => {
+    const lessons = Array.isArray(chapter.lessons) ? chapter.lessons : [];
+    lessons.forEach((lesson, lessonIndex) => {
       const lessonTitle = lesson.title || `Subsection ${lessonIndex + 1}`;
       const lessonNode = findChildByTitle(chapterNode, lessonTitle, 'sequential')
         ?? makePlannedNode(`planned-lesson-${chapterIndex}-${lessonIndex}`, lessonTitle, 'sequential');
       if (!chapterNode.children.includes(lessonNode)) chapterNode.children.push(lessonNode);
       else markPlannedUpdate(lessonNode);
 
-      lesson.units?.forEach((unit, unitIndex) => {
+      const units = Array.isArray(lesson.units) ? lesson.units : [];
+      units.forEach((unit, unitIndex) => {
         const unitTitle = unit.title || `Unit ${unitIndex + 1}`;
         const unitNode = findChildByTitle(lessonNode, unitTitle, 'vertical')
           ?? makePlannedNode(`planned-unit-${chapterIndex}-${lessonIndex}-${unitIndex}`, unitTitle, 'vertical');
@@ -298,20 +308,25 @@ function getDescendantCount(node: MindmapNode): number {
   return node.children.reduce((total, child) => total + 1 + getDescendantCount(child), 0);
 }
 
-function toFlow(root: MindmapNode): { nodes: Node<MindmapFlowNodeData>[]; edges: Edge[] } {
+function toFlow(
+  root: MindmapNode,
+  expandedNodeIds: Set<string>,
+  revealParentId: string | null,
+): { nodes: Node<MindmapFlowNodeData>[]; edges: Edge[] } {
   const nodes: Node<MindmapFlowNodeData>[] = [];
   const edges: Edge[] = [];
   let leafIndex = 0;
   const depthGap = 310;
   const rowGap = 120;
 
-  const placeNode = (node: MindmapNode, depth: number, parentId?: string): number => {
+  const placeNode = (node: MindmapNode, depth: number, parentId?: string, siblingIndex = 0): number => {
+    const visibleChildren = expandedNodeIds.has(node.id) ? node.children : [];
     let y: number;
-    if (node.children.length === 0) {
+    if (visibleChildren.length === 0) {
       y = leafIndex * rowGap;
       leafIndex += 1;
     } else {
-      const childYs = node.children.map(child => placeNode(child, depth + 1, node.id));
+      const childYs = visibleChildren.map((child, index) => placeNode(child, depth + 1, node.id, index));
       y = (Math.min(...childYs) + Math.max(...childYs)) / 2;
     }
 
@@ -325,6 +340,10 @@ function toFlow(root: MindmapNode): { nodes: Node<MindmapFlowNodeData>[]; edges:
         blockType: node.blockType,
         status: node.status,
         childCount: node.children.length,
+        collapsible: node.children.length > 0,
+        expanded: expandedNodeIds.has(node.id),
+        justRevealed: parentId === revealParentId,
+        revealDelayMs: parentId === revealParentId ? siblingIndex * 70 : 0,
       },
     });
 
@@ -368,6 +387,32 @@ function toFlow(root: MindmapNode): { nodes: Node<MindmapFlowNodeData>[]; edges:
   return { nodes, edges };
 }
 
+function buildDescendantMap(root: MindmapNode): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const walk = (node: MindmapNode): string[] => {
+    const descendants = node.children.flatMap(child => [child.id, ...walk(child)]);
+    map.set(node.id, descendants);
+    return descendants;
+  };
+  walk(root);
+  return map;
+}
+
+function initialExpandedNodeIds(root: MindmapNode): Set<string> {
+  return new Set([root.id]);
+}
+
+function withoutNodeAndDescendants(
+  expandedNodeIds: Set<string>,
+  nodeId: string,
+  descendantsById: Map<string, string[]>,
+): Set<string> {
+  const next = new Set(expandedNodeIds);
+  next.delete(nodeId);
+  descendantsById.get(nodeId)?.forEach(descendantId => next.delete(descendantId));
+  return next;
+}
+
 export function LessonAuthorMindmapModal({
   open,
   onOpenChange,
@@ -376,6 +421,26 @@ export function LessonAuthorMindmapModal({
   loading = false,
   error = null,
 }: LessonAuthorMindmapModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && (
+        <LessonAuthorMindmapContent
+          outline={outline}
+          proposalEvent={proposalEvent}
+          loading={loading}
+          error={error}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function LessonAuthorMindmapContent({
+  outline,
+  proposalEvent,
+  loading = false,
+  error = null,
+}: Omit<LessonAuthorMindmapModalProps, 'open' | 'onOpenChange'>) {
   const root = useMemo(() => {
     const baseRoot = outline?.course_structure
       ? outlineToMindmapNode(outline.course_structure)
@@ -385,23 +450,69 @@ export function LessonAuthorMindmapModal({
 
   const stats = useMemo(() => countStats(root), [root]);
   const totalNodes = useMemo(() => getDescendantCount(root) + 1, [root]);
-  const flow = useMemo(() => toFlow(root), [root]);
+  const descendantsById = useMemo(() => buildDescendantMap(root), [root]);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => initialExpandedNodeIds(root));
+  const [revealParentId, setRevealParentId] = useState<string | null>(null);
+  const flow = useMemo(() => toFlow(root, expandedNodeIds, revealParentId), [expandedNodeIds, revealParentId, root]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<MindmapFlowNodeData>>(flow.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flow.edges);
+  const dragGuardRef = useRef({ dragging: false, lastDragEndedAt: 0 });
+  const expansionTimerRef = useRef<number | null>(null);
   const jobSuffix = proposalEvent?.job_id ? proposalEvent.job_id.slice(0, 8) : null;
+
+  useEffect(() => {
+    setExpandedNodeIds(initialExpandedNodeIds(root));
+    setRevealParentId(null);
+  }, [root]);
 
   useEffect(() => {
     setNodes(flow.nodes);
     setEdges(flow.edges);
   }, [flow, setEdges, setNodes]);
 
+  useEffect(() => () => {
+    if (expansionTimerRef.current) window.clearTimeout(expansionTimerRef.current);
+  }, []);
+
+  const handleNodeDragStart = useCallback(() => {
+    dragGuardRef.current.dragging = true;
+  }, []);
+
+  const handleNodeDragStop = useCallback(() => {
+    dragGuardRef.current.dragging = false;
+    dragGuardRef.current.lastDragEndedAt = Date.now();
+  }, []);
+
+  const handleNodeClick = useCallback((_event: ReactMouseEvent, node: Node<MindmapFlowNodeData>) => {
+    if (dragGuardRef.current.dragging || Date.now() - dragGuardRef.current.lastDragEndedAt < 180) return;
+    if (!node.data.collapsible) return;
+
+    if (expansionTimerRef.current) window.clearTimeout(expansionTimerRef.current);
+    const isExpanded = expandedNodeIds.has(node.id);
+
+    if (isExpanded) {
+      setRevealParentId(null);
+      setExpandedNodeIds(previous => withoutNodeAndDescendants(previous, node.id, descendantsById));
+      return;
+    }
+
+    setRevealParentId(null);
+    expansionTimerRef.current = window.setTimeout(() => {
+      setExpandedNodeIds(previous => {
+        const next = new Set(previous);
+        next.add(node.id);
+        return next;
+      });
+      setRevealParentId(node.id);
+    }, 120);
+  }, [descendantsById, expandedNodeIds]);
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        overlayClassName="z-[10040]"
-        className="z-[10050] flex h-[88vh] w-[calc(100vw-24px)] max-w-[1280px] grid-rows-none flex-col gap-0 overflow-hidden border-border/70 p-0 shadow-2xl sm:rounded-2xl"
-      >
-        <DialogHeader className="border-b bg-background/95 px-5 py-4 pr-12 backdrop-blur">
+    <DialogContent
+      overlayClassName="z-[10040]"
+      className="z-[10050] flex h-[88vh] w-[calc(100vw-24px)] max-w-[1280px] grid-rows-none flex-col gap-0 overflow-hidden border-border/70 p-0 shadow-2xl sm:rounded-2xl"
+    >
+      <DialogHeader className="border-b bg-background/95 px-5 py-4 pr-12 backdrop-blur">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
               <Network className="h-5 w-5" />
@@ -413,7 +524,7 @@ export function LessonAuthorMindmapModal({
               </DialogDescription>
             </div>
           </div>
-        </DialogHeader>
+      </DialogHeader>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 bg-muted/20 lg:grid-cols-[292px_minmax(0,1fr)]">
           <aside className="border-b bg-background/90 p-4 backdrop-blur lg:border-b-0 lg:border-r">
@@ -458,41 +569,45 @@ export function LessonAuthorMindmapModal({
               </div>
             ) : (
               <div className="h-full min-h-[520px] w-full">
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  nodeTypes={nodeTypes}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  fitView
-                  fitViewOptions={{ padding: 0.22, duration: 450 }}
-                  minZoom={0.25}
-                  maxZoom={1.6}
-                  nodesDraggable
-                  nodesConnectable={false}
-                  elementsSelectable
-                  proOptions={{ hideAttribution: true }}
-                  className="bg-background"
-                  style={{
-                    backgroundImage: 'radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.08), transparent 28%), linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.35))',
-                  }}
-                >
-                  <Controls showInteractive={false} className="!border !border-border !bg-background !shadow-lg" />
-                  <MiniMap
-                    pannable
-                    zoomable
-                    className="!border !border-border !bg-background/95 !shadow-lg"
-                    nodeStrokeWidth={3}
-                    nodeColor={(node) => edgeColor[(node.data?.status as MindmapStatus) ?? 'existing']}
-                  />
-                  <Background gap={18} size={1} color="hsl(var(--muted-foreground) / 0.18)" />
-                </ReactFlow>
+                <ReactFlowProvider>
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    nodeTypes={nodeTypes}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={handleNodeClick}
+                    onNodeDragStart={handleNodeDragStart}
+                    onNodeDragStop={handleNodeDragStop}
+                    fitView
+                    fitViewOptions={{ padding: 0.22, duration: 450 }}
+                    minZoom={0.25}
+                    maxZoom={1.6}
+                    nodesDraggable
+                    nodesConnectable={false}
+                    elementsSelectable
+                    proOptions={{ hideAttribution: true }}
+                    className="bg-background"
+                    style={{
+                      backgroundImage: 'radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.08), transparent 28%), linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.35))',
+                    }}
+                  >
+                    <Controls showInteractive={false} className="!border !border-border !bg-background !shadow-lg" />
+                    <MiniMap
+                      pannable
+                      zoomable
+                      className="!border !border-border !bg-background/95 !shadow-lg"
+                      nodeStrokeWidth={3}
+                      nodeColor={(node) => edgeColor[(node.data?.status as MindmapStatus) ?? 'existing']}
+                    />
+                    <Background gap={18} size={1} color="hsl(var(--muted-foreground) / 0.18)" />
+                  </ReactFlow>
+                </ReactFlowProvider>
               </div>
             )}
           </main>
         </div>
-      </DialogContent>
-    </Dialog>
+    </DialogContent>
   );
 }
 
@@ -535,7 +650,12 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
         nodeShellClassName[nodeData.status]
       } ${
         selected ? 'ring-2 ring-primary/35 shadow-xl' : 'hover:-translate-y-0.5 hover:shadow-xl'
+      } ${
+        nodeData.collapsible ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+      } ${
+        nodeData.justRevealed ? 'animate-in fade-in-0 slide-in-from-left-4 zoom-in-95 duration-500' : ''
       }`}
+      style={nodeData.justRevealed ? { animationDelay: `${nodeData.revealDelayMs}ms` } : undefined}
     >
       <Handle
         id="left"
@@ -567,12 +687,17 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
             <p className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-foreground">
               {nodeData.title}
             </p>
-            {nodeData.childCount > 0 && (
+            {nodeData.collapsible && (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {nodeData.childCount} mục con
+                {nodeData.expanded ? `${nodeData.childCount} mục đang mở` : `${nodeData.childCount} mục con`}
               </p>
             )}
           </div>
+          {nodeData.collapsible && (
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background/80 text-muted-foreground ring-1 ring-current/10 transition-colors group-hover:text-foreground">
+              {nodeData.expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </div>
+          )}
         </div>
       </div>
     </div>

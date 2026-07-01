@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ImagePlus, Loader2, Trash2 } from 'lucide-react';
+import { ImagePlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -9,6 +9,7 @@ import {
 } from '@/api/custom-course-authoring';
 import { htmlImageDisplaySrc, htmlImageStoragePath } from '@/utils/storage-url';
 import ImageCarousel from '../ImageCarousel';
+import CarouselImageOrder from '../CarouselImageOrder';
 import RichTextEditor from '../RichTextEditor';
 import {
   getHtmlMediaImages,
@@ -104,6 +105,19 @@ export default function HtmlEditor({
     }
   };
 
+  const handleMoveImage = (fromIndex: number, toIndex: number) => {
+    const nextImages = [...uploadedImages];
+    const [moved] = nextImages.splice(fromIndex, 1);
+    if (!moved) return;
+    nextImages.splice(toIndex, 0, moved);
+
+    persistImages(nextImages)
+      .then(() => toast.success('Đã cập nhật thứ tự ảnh'))
+      .catch((err: any) => {
+        toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+      });
+  };
+
   return (
     <div className="space-y-6">
       <Field label="Tên hiển thị">
@@ -161,36 +175,19 @@ export default function HtmlEditor({
                 </div>
               )}
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {uploadedImages.map((image) => (
-                  <div key={image.src} className="overflow-hidden rounded-lg border border-border bg-background shadow-sm">
-                    <div className="flex h-32 items-center justify-center bg-muted/30 p-2">
-                      <img
-                        src={htmlImageDisplaySrc(image.src)}
-                        alt={image.alt || 'Uploaded image'}
-                        className="max-h-full max-w-full rounded object-contain"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2 border-t border-border p-2">
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
-                        {image.alt || image.src.split('/').pop()}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteImage(image)}
-                        disabled={deletingPath === image.src}
-                        aria-label="Xóa ảnh upload"
-                      >
-                        {deletingPath === image.src
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <Trash2 className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <CarouselImageOrder
+                images={uploadedImages.map((image) => ({
+                  id: image.src,
+                  src: htmlImageDisplaySrc(image.src),
+                  alt: image.alt || image.src.split('/').pop(),
+                  isDeleting: deletingPath === image.src,
+                }))}
+                onMove={handleMoveImage}
+                onRemove={(idx) => {
+                  const image = uploadedImages[idx];
+                  if (image) handleDeleteImage(image);
+                }}
+              />
             </div>
           )}
         </div>

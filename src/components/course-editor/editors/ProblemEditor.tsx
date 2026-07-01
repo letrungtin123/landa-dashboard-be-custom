@@ -7,6 +7,7 @@ import { uploadCourseAsset, deleteCourseAssetByStoragePath } from '@/api/custom-
 import { toast } from 'sonner';
 import { storageUrl } from '@/utils/storage-url';
 import ImageCarousel from '../ImageCarousel';
+import CarouselImageOrder from '../CarouselImageOrder';
 import {
   extractYoutubeId,
   normalizeProblemMedia,
@@ -425,6 +426,17 @@ export default function ProblemEditor({
     });
   };
 
+  const handleMoveImage = (fromIndex: number, toIndex: number) => {
+    const nextImages = [...media.images];
+    const [moved] = nextImages.splice(fromIndex, 1);
+    if (!moved) return;
+    nextImages.splice(toIndex, 0, moved);
+    updateProblemMedia({
+      ...media,
+      images: nextImages,
+    });
+  };
+
   const resolvedImages = media.images.map((img) => ({
     ...img,
     src: resolveProblemMediaImageUrl(img.src),
@@ -653,21 +665,15 @@ export default function ProblemEditor({
           {resolvedImages.length >= 2 && (
             <div className="space-y-2">
               <ImageCarousel images={resolvedImages} />
-              <div className="flex flex-wrap gap-2">
-                {media.images.map((img, idx) => (
-                  <Button
-                    key={`${img.src}-${idx}`}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1 text-xs"
-                    onClick={() => handleRemoveImage(idx)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Xóa ảnh {idx + 1}
-                  </Button>
-                ))}
-              </div>
+              <CarouselImageOrder
+                images={resolvedImages.map((img, idx) => ({
+                  id: `${img.src}-${idx}`,
+                  src: img.src,
+                  alt: img.alt,
+                }))}
+                onMove={handleMoveImage}
+                onRemove={handleRemoveImage}
+              />
             </div>
           )}
         </div>

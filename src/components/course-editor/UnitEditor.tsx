@@ -441,7 +441,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   useEffect(() => {
     if (isEditing) return; // ← Guard: không refresh khi form đang mở
     loadDetail();
-  }, [loadDetail, detailRefreshKey]);
+  }, [isEditing, loadDetail, detailRefreshKey]);
 
   const delMut = useMutation({
     mutationFn: () => deleteXBlock(blockId),
@@ -466,10 +466,9 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     onSaved();
   }, [loadDetail, onSaved]);
 
-  const handleImmediateSaved = useCallback(async () => {
-    await loadDetail();
+  const handleImmediateSaved = useCallback(() => {
     onSaved();
-  }, [loadDetail, onSaved]);
+  }, [onSaved]);
 
   const editFormKey = `${blockId}:${detailVersion}`;
 
@@ -1545,7 +1544,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   );
 
   const saveMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (_options?: { keepOpen?: boolean }) => {
       const id = blockInfo?.id;
       if (!id) throw new Error('Block ID không hợp lệ');
 
@@ -1649,7 +1648,14 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       }
       return updateXBlock(id, { metadata: { display_name: displayName } });
     },
-    onSuccess: () => { toast.success('Đã lưu thành công!'); onSaved(); },
+    onSuccess: (_data, options) => {
+      toast.success('Đã lưu thành công!');
+      if (options?.keepOpen) {
+        onImmediateSaved?.();
+      } else {
+        onSaved();
+      }
+    },
     onError: (err: any) => toast.error('Lưu thất bại: ' + (err?.message || 'Unknown')),
   });
 
@@ -1657,7 +1663,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   useEffect(() => {
     if (shouldAutoSave) {
       setShouldAutoSave(false);
-      saveMut.mutate();
+      saveMut.mutate({ keepOpen: true });
     }
   }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, saveMut]);
 
@@ -1740,7 +1746,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onDisplayNameChange={setDisplayName}
             diagramData={diagramData}
             onDiagramDataChange={setDiagramData}
-            onSave={() => saveMut.mutate()}
+            onSave={() => saveMut.mutate({ keepOpen: false })}
             onCancel={onCancel}
             isSaving={saveMut.isPending}
           />
@@ -1790,7 +1796,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       {renderEditor()}
       <DialogFooter className="pt-5 border-t border-border">
         <Button
-          onClick={() => saveMut.mutate()}
+          onClick={() => saveMut.mutate({ keepOpen: false })}
           disabled={saveMut.isPending}
           className="gap-2 min-w-[130px]"
         >
