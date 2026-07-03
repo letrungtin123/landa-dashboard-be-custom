@@ -274,7 +274,7 @@ export function DeploySection() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{lessonSettings.active_persona.persona_name}</p>
-                          <p className="text-[11px] text-muted-foreground">Lấy từ Prompt hệ thống</p>
+                          {/* <p className="text-[11px] text-muted-foreground">Lấy từ Prompt hệ thống</p> */}
                         </div>
                       </div>
                     ) : (

@@ -79,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: 'Prompt hệ thống', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
       { title: 'Huy hiệu', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
       { title: 'Quản lý SSO', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },
+      { title: 'Demo QR Login', url: '/demo-login-settings', module: 'superadmin_only', fallbackIcon: 'QrCode' },
     ],
   }
 ];

@@ -40,6 +40,7 @@ import AiChatbotPage from '@/pages/ai-chatbot';
 import PromptTemplatesPage from '@/pages/prompt-templates';
 import BadgesPage from './pages/badges';
 import SsoManagementPage from '@/pages/sso-management';
+import DemoLoginSettingsPage from '@/pages/demo-login-settings';
 
 
 function AppRoutes() {
@@ -75,6 +76,7 @@ function AppRoutes() {
           <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
           <Route path="/badges" element={<ModuleGuard module="superadmin_only"><BadgesPage /></ModuleGuard>} />
           <Route path="/sso-management" element={<ModuleGuard module="superadmin_only"><SsoManagementPage /></ModuleGuard>} />
+          <Route path="/demo-login-settings" element={<ModuleGuard module="superadmin_only"><DemoLoginSettingsPage /></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />
