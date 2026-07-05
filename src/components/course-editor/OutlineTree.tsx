@@ -17,8 +17,15 @@ import {
   reorderChildren,
 } from '@/api/custom-course-authoring';
 import {
+  createCourseAssignment,
+  deleteCourseAssignment,
+  getCourseAssignments,
+  updateCourseAssignment,
+  type CourseAssignment,
+} from '@/api/custom-assignments';
+import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
-  MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2,
+  MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2, ClipboardList,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -153,6 +160,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
         label="Thêm Section"
         onStructureChange={() => refetch()}
       />
+      <AssignmentOutlineSection courseId={courseId} />
     </div>
   );
 }
@@ -641,6 +649,265 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 // ─────────────────────────────────────────────
 // Add Node Button (inline)
 // ─────────────────────────────────────────────
+
+function AssignmentOutlineSection({ courseId }: { courseId: string }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<CourseAssignment | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [deleting, setDeleting] = useState<CourseAssignment | null>(null);
+
+  const queryKey = ['course-assignments', courseId];
+  const { data = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: () => getCourseAssignments(courseId),
+    staleTime: 30_000,
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CourseAssignment> }) =>
+      updateCourseAssignment(id, payload),
+    onSuccess: () => {
+      toast.success('Đã cập nhật bài tập');
+      invalidate();
+    },
+    onError: () => toast.error('Cập nhật bài tập thất bại'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteCourseAssignment(id),
+    onSuccess: () => {
+      toast.success('Đã xóa bài tập');
+      setDeleting(null);
+      invalidate();
+    },
+    onError: () => toast.error('Xóa bài tập thất bại'),
+  });
+
+  return (
+    <div className="mt-3 border-t border-border/60 pt-3">
+      <div className="mb-1.5 flex items-center justify-between px-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <ClipboardList className="h-3.5 w-3.5" />
+          <span>Bài tập</span>
+        </div>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} title="Thêm bài tập">
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-1 px-2">
+          <div className="h-7 rounded-md bg-muted/50 animate-pulse" />
+          <div className="h-7 w-4/5 rounded-md bg-muted/40 animate-pulse" />
+        </div>
+      ) : data.length === 0 ? (
+        <button
+          onClick={() => setIsCreating(true)}
+          className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Thêm bài tập đầu tiên
+        </button>
+      ) : (
+        <div className="space-y-0.5">
+          {data.map((assignment) => (
+            <div
+              key={assignment.id}
+              className="group mx-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground/80 transition-colors hover:bg-muted/50"
+            >
+              <ClipboardList className="h-4 w-4 shrink-0 text-violet-500" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{assignment.title}</div>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>{assignment.submitted_count || 0} đã nộp</span>
+                  <span>{assignment.feedback_count || 0} feedback</span>
+                </div>
+              </div>
+              <span title={assignment.is_published ? 'Đang hiển thị' : 'Đang ẩn'}>
+                {assignment.is_published ? (
+                  <Globe className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <EyeOff className="h-3.5 w-3.5 text-slate-400" />
+                )}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100">
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onClick={() => setEditing(assignment)}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" /> Sửa bài tập
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => updateMut.mutate({
+                      id: assignment.id,
+                      payload: { is_published: !assignment.is_published },
+                    })}
+                  >
+                    {assignment.is_published ? <EyeOff className="mr-2 h-3.5 w-3.5" /> : <Globe className="mr-2 h-3.5 w-3.5" />}
+                    {assignment.is_published ? 'Ẩn bài tập' : 'Hiển thị bài tập'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => updateMut.mutate({
+                      id: assignment.id,
+                      payload: { allow_resubmission: !assignment.allow_resubmission },
+                    })}
+                  >
+                    <Undo2 className="mr-2 h-3.5 w-3.5" />
+                    {assignment.allow_resubmission ? 'Tắt nộp lại' : 'Cho phép nộp lại'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(assignment)}>
+                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Xóa
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AssignmentDialog
+        courseId={courseId}
+        assignment={editing}
+        open={isCreating || !!editing}
+        onClose={() => { setIsCreating(false); setEditing(null); }}
+        onSaved={() => {
+          setIsCreating(false);
+          setEditing(null);
+          invalidate();
+        }}
+      />
+
+      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa bài tập</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi outline và learner.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleting && deleteMut.mutate(deleting.id)}
+            >
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function AssignmentDialog({
+  courseId,
+  assignment,
+  open,
+  onClose,
+  onSaved,
+}: {
+  courseId: string;
+  assignment: CourseAssignment | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [question, setQuestion] = useState('');
+  const [isPublished, setIsPublished] = useState(true);
+  const [allowResubmission, setAllowResubmission] = useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setTitle(assignment?.title || '');
+    setQuestion(assignment?.question || '');
+    setIsPublished(assignment?.is_published ?? true);
+    setAllowResubmission(assignment?.allow_resubmission ?? false);
+  }, [assignment, open]);
+
+  const createMut = useMutation({
+    mutationFn: () => createCourseAssignment(courseId, {
+      title,
+      question,
+      is_published: isPublished,
+      allow_resubmission: allowResubmission,
+    }),
+    onSuccess: () => {
+      toast.success('Đã tạo bài tập');
+      onSaved();
+    },
+    onError: () => toast.error('Tạo bài tập thất bại'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: () => updateCourseAssignment(assignment!.id, {
+      title,
+      question,
+      is_published: isPublished,
+      allow_resubmission: allowResubmission,
+    }),
+    onSuccess: () => {
+      toast.success('Đã lưu bài tập');
+      onSaved();
+    },
+    onError: () => toast.error('Lưu bài tập thất bại'),
+  });
+
+  const pending = createMut.isPending || updateMut.isPending;
+  const canSave = title.trim().length > 0 && question.trim().length > 0 && !pending;
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{assignment ? 'Sửa bài tập' : 'Thêm bài tập'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Tiêu đề</label>
+            <input
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Bài tập cuối khóa"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Câu hỏi</label>
+            <textarea
+              className="min-h-[150px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Nhập yêu cầu bài tập cho learner..."
+            />
+          </div>
+          <div className="grid gap-3 rounded-lg border bg-muted/10 p-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm">Hiển thị cho learner</Label>
+              <Switch checked={isPublished} onCheckedChange={setIsPublished} />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm">Cho phép nộp lại</Label>
+              <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button disabled={!canSave} onClick={() => assignment ? updateMut.mutate() : createMut.mutate()}>
+            {pending ? 'Đang lưu...' : 'Lưu'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function AddNodeButton({ parentId, category, label, onStructureChange, small = false }: {
   parentId: string;

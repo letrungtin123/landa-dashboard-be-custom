@@ -42,6 +42,22 @@ export interface TenantModule {
   is_enabled: boolean;
 }
 
+export interface TenantSmtpConfig {
+  tenant_id: string;
+  is_enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  from_email: string;
+  from_name: string;
+  reply_to_email: string | null;
+  copy_to_sender: boolean;
+  copy_to_email: string | null;
+  has_password: boolean;
+  masked_username: string | null;
+}
+
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -119,4 +135,17 @@ export async function updateTenantRoleLabels(tenantId: string, labels: RoleLabel
     { labels },
   );
   return data.data.labels || {};
+}
+
+export async function fetchTenantSmtpConfig(tenantId: string): Promise<TenantSmtpConfig> {
+  const { data } = await customApiClient.get<ApiResponse<TenantSmtpConfig>>(`/api/tenants/${tenantId}/smtp`);
+  return data.data;
+}
+
+export async function updateTenantSmtpConfig(
+  tenantId: string,
+  input: Omit<TenantSmtpConfig, 'tenant_id' | 'has_password' | 'masked_username'> & { password?: string },
+): Promise<TenantSmtpConfig> {
+  const { data } = await customApiClient.put<ApiResponse<TenantSmtpConfig>>(`/api/tenants/${tenantId}/smtp`, input);
+  return data.data;
 }

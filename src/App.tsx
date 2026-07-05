@@ -30,6 +30,7 @@ import ReportSummaryPage from '@/pages/report-summary';
 import LibraryPage from '@/pages/library';
 import CoursesPage from '@/pages/courses';
 import CourseEditorPage from '@/pages/course-editor';
+import CourseAssignmentsPage from '@/pages/course-assignments';
 import GroupsPage from '@/pages/groups';
 import HelpDocsPage from '@/pages/help-docs';
 import CourseCategoriesPage from './pages/course-categories';
@@ -65,6 +66,7 @@ function AppRoutes() {
           <Route path="/report-summary" element={<ModuleGuard module="report_summary"><ReportSummaryPage /></ModuleGuard>} />
           <Route path="/library" element={<ModuleGuard module="library"><LibraryPage /></ModuleGuard>} />
           <Route path="/courses" element={<ModuleGuard module="courses"><CoursesPage /></ModuleGuard>} />
+          <Route path="/courses/:courseId/assignments" element={<ModuleGuard module="courses"><CourseAssignmentsPage /></ModuleGuard>} />
           <Route path="/courses/:courseId/edit" element={<ModuleGuard module="courses"><CourseEditorPage /></ModuleGuard>} />
           <Route path="/groups" element={<ModuleGuard module="groups"><GroupsPage /></ModuleGuard>} />
           <Route path="/course-categories" element={<ModuleGuard module="course_categories"><CourseCategoriesPage /></ModuleGuard>} />

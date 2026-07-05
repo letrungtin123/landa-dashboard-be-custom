@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon, FileText
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon, FileText, ClipboardList
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
@@ -510,6 +510,14 @@ export default function CoursesPage() {
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
+                              <DropdownMenuItem asChild className="gap-2">
+                                <Link to={`/courses/${course.id}/assignments`}>
+                                  <ClipboardList className="h-4 w-4 text-violet-600" />
+                                  Bài tập
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
                               <DropdownMenuItem onClick={() => triggerUpload(course.id)} disabled={uploadingCourseId === course.id} className="gap-2">
                                 {uploadingCourseId === course.id ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <ImagePlus className="h-4 w-4 text-indigo-600" />}
                                 Đổi ảnh đại diện
@@ -730,6 +738,17 @@ export default function CoursesPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Cấu hình hộp thoại</TooltipContent>
+                        </Tooltip>}
+
+                        {canEdit && <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link to={`/courses/${course.id}/assignments`}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-fuchsia-600 hover:text-fuchsia-700 hover:bg-fuchsia-50 dark:text-fuchsia-400 dark:hover:bg-fuchsia-950/30">
+                                <ClipboardList className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>Bài tập</TooltipContent>
                         </Tooltip>}
 
                         {canEdit && <Tooltip>

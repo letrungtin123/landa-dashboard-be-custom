@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
 import { getIconComponent } from "@/utils/icon-map";
@@ -22,6 +22,7 @@ import {
 import {
   fetchTenants, createTenant, updateTenant, deleteTenant,
   fetchTenantModules, updateTenantModules, fetchTenantRoleLabels, updateTenantRoleLabels,
+  fetchTenantSmtpConfig, updateTenantSmtpConfig,
   type Tenant, type TenantModule,
 } from "@/api/custom-tenants";
 import {
@@ -58,6 +59,22 @@ export default function TenantManagementPage() {
   const [modulesTenant, setModulesTenant] = useState<Tenant | null>(null);
   const [modules, setModules] = useState<TenantModule[]>([]);
   const [modulesLoading, setModulesLoading] = useState(false);
+  const [smtpTenant, setSmtpTenant] = useState<Tenant | null>(null);
+  const [smtpLoading, setSmtpLoading] = useState(false);
+  const [smtpHasPassword, setSmtpHasPassword] = useState(false);
+  const [smtpForm, setSmtpForm] = useState({
+    is_enabled: false,
+    host: "smtp.gmail.com",
+    port: "587",
+    secure: false,
+    username: "",
+    password: "",
+    from_email: "",
+    from_name: "",
+    reply_to_email: "",
+    copy_to_sender: true,
+    copy_to_email: "",
+  });
 
   // Form states
   const [formName, setFormName] = useState("");
@@ -271,6 +288,68 @@ export default function TenantManagementPage() {
     finally { setSaving(false); }
   }
 
+  async function openSmtp(tenant: Tenant) {
+    setSmtpTenant(tenant);
+    setSmtpLoading(true);
+    try {
+      const config = await fetchTenantSmtpConfig(tenant.id);
+      setSmtpHasPassword(config.has_password);
+      setSmtpForm({
+        is_enabled: config.is_enabled,
+        host: config.host || "smtp.gmail.com",
+        port: String(config.port || 587),
+        secure: config.secure,
+        username: config.username || "",
+        password: "",
+        from_email: config.from_email || config.username || "",
+        from_name: config.from_name || tenant.name,
+        reply_to_email: config.reply_to_email || "",
+        copy_to_sender: config.copy_to_sender,
+        copy_to_email: config.copy_to_email || config.username || "",
+      });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Không thể tải cấu hình SMTP");
+    } finally {
+      setSmtpLoading(false);
+    }
+  }
+
+  function setSmtpField(key: keyof typeof smtpForm, value: string | boolean) {
+    setSmtpForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  async function saveSmtp() {
+    if (!smtpTenant) return;
+    const port = parseInt(smtpForm.port, 10);
+    if (!smtpForm.host.trim() || !smtpForm.username.trim() || !smtpForm.from_email.trim() || !port) {
+      toast.error("Điền đầy đủ host, port, username và email gửi");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateTenantSmtpConfig(smtpTenant.id, {
+        is_enabled: smtpForm.is_enabled,
+        host: smtpForm.host.trim(),
+        port,
+        secure: smtpForm.secure,
+        username: smtpForm.username.trim(),
+        password: smtpForm.password.trim() || undefined,
+        from_email: smtpForm.from_email.trim(),
+        from_name: smtpForm.from_name.trim(),
+        reply_to_email: smtpForm.reply_to_email.trim() || null,
+        copy_to_sender: smtpForm.copy_to_sender,
+        copy_to_email: smtpForm.copy_to_email.trim() || null,
+      });
+      toast.success("Đã lưu SMTP");
+      setSmtpTenant(null);
+      setSmtpForm(prev => ({ ...prev, password: "" }));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Lưu SMTP thất bại");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -379,6 +458,9 @@ export default function TenantManagementPage() {
                         <div className="flex gap-1 justify-end">
                           <Button variant="ghost" size="icon" onClick={function click() { openModules(t); }} title="Modules">
                             <Settings2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={function click() { openSmtp(t); }} title="SMTP">
+                            <Mail className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={function click() { openEditTenant(t); }} title="Sửa">
                             <Pencil className="h-4 w-4" />
@@ -531,6 +613,105 @@ export default function TenantManagementPage() {
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
             <Button variant="destructive" onClick={handleDelete}>Xóa</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* SMTP Dialog */}
+      <Dialog open={!!smtpTenant} onOpenChange={function close() { setSmtpTenant(null); }}>
+        <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              SMTP Tenant
+            </DialogTitle>
+            <DialogDescription>
+              Cấu hình email feedback cho <strong>{smtpTenant?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          {smtpLoading ? (
+            <div className="space-y-3 py-4">
+              <div className="h-9 rounded-md bg-muted/50 animate-pulse" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="h-9 rounded-md bg-muted/40 animate-pulse" />
+                <div className="h-9 rounded-md bg-muted/40 animate-pulse" />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">Bật SMTP</div>
+                  <div className="text-xs text-muted-foreground">Feedback sẽ gửi email cho learner và bản copy</div>
+                </div>
+                <Switch checked={smtpForm.is_enabled} onCheckedChange={function change(v) { setSmtpField("is_enabled", v); }} />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Host</label>
+                  <Input value={smtpForm.host} onChange={function change(e) { setSmtpField("host", e.target.value); }} placeholder="smtp.gmail.com" />
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Port</label>
+                    <Input type="number" value={smtpForm.port} onChange={function change(e) { setSmtpField("port", e.target.value); }} placeholder="587" />
+                  </div>
+                  <div className="flex items-end pb-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch checked={smtpForm.secure} onCheckedChange={function change(v) { setSmtpField("secure", v); }} />
+                      SSL
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Username</label>
+                  <Input value={smtpForm.username} onChange={function change(e) { setSmtpField("username", e.target.value); }} placeholder="admin@company.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Password/App password</label>
+                  <Input
+                    type="password"
+                    value={smtpForm.password}
+                    onChange={function change(e) { setSmtpField("password", e.target.value); }}
+                    placeholder={smtpHasPassword ? "Để trống để giữ password cũ" : "Nhập app password"}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">From email</label>
+                  <Input value={smtpForm.from_email} onChange={function change(e) { setSmtpField("from_email", e.target.value); }} placeholder="admin@company.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">From name</label>
+                  <Input value={smtpForm.from_name} onChange={function change(e) { setSmtpField("from_name", e.target.value); }} placeholder="Landa LMS" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Reply-to</label>
+                  <Input value={smtpForm.reply_to_email} onChange={function change(e) { setSmtpField("reply_to_email", e.target.value); }} placeholder="support@company.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Email nhận bản copy</label>
+                  <Input value={smtpForm.copy_to_email} onChange={function change(e) { setSmtpField("copy_to_email", e.target.value); }} placeholder="admin@company.com" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">Gửi bản copy về account doanh nghiệp</div>
+                  <div className="text-xs text-muted-foreground">Nếu để trống email copy, hệ thống dùng username SMTP</div>
+                </div>
+                <Switch checked={smtpForm.copy_to_sender} onCheckedChange={function change(v) { setSmtpField("copy_to_sender", v); }} />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
+            <Button onClick={saveSmtp} disabled={saving || smtpLoading}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Lưu SMTP
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
