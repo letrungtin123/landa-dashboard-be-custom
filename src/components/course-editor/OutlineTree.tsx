@@ -66,6 +66,7 @@ interface OutlineTreeProps {
   onSelectUnit: (unitId: string) => void;
   selectedUnitId: string | null;
   focusedBlockId?: string | null;
+  onStructureChange?: () => void;
 }
 
 function removeNodeFromOutline(node: CourseIndexSection, targetId: string): CourseIndexSection | null {
@@ -96,12 +97,17 @@ function nodeContainsId(node: CourseIndexSection, targetId: string): boolean {
   return children.some(child => nodeContainsId(child, targetId));
 }
 
-export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, focusedBlockId }: OutlineTreeProps) {
+export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange }: OutlineTreeProps) {
   const { data: outline, isLoading, isError, refetch } = useQuery({
     queryKey: ['course-outline-index', courseId],
     queryFn: () => getCourseOutlineIndex(courseId),
     staleTime: 30_000,
   });
+
+  const notifyStructureChange = React.useCallback(() => {
+    void refetch();
+    onStructureChange?.();
+  }, [onStructureChange, refetch]);
 
   const reorderMut = useMutation({
     mutationFn: ({ parentId, childIds }: { parentId: string; childIds: string[] }) => reorderChildren(parentId, childIds),
@@ -151,7 +157,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
             onSelectUnit={onSelectUnit}
             selectedUnitId={selectedUnitId}
             focusedBlockId={focusedBlockId}
-            onStructureChange={() => refetch()}
+            onStructureChange={notifyStructureChange}
             onReorder={handleReorder}
           />
         ))}
@@ -160,7 +166,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
         parentId={structure.id}
         category="chapter"
         label="Thêm Section"
-        onStructureChange={() => refetch()}
+        onStructureChange={notifyStructureChange}
       />
       <AssignmentOutlineSection courseId={courseId} />
     </div>
@@ -558,6 +564,7 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
       toast.success('Đã rollback về bản publish');
       onStructureChange();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+      if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
     },
     onError: () => toast.error('Rollback thất bại'),
   });

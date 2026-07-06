@@ -75,6 +75,17 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
 
   const assets = data?.assets || [];
   const totalCount = data?.totalCount || 0;
+  const selectableAssets = assets;
+  const selectedAssets = assets.filter(asset => selectedIds.includes(asset.id));
+  const selectedEditableAssets = selectedAssets.filter(asset => !asset.is_outline_media);
+  const protectedSelectionCount = selectedAssets.length - selectedEditableAssets.length;
+  const canSelectAll = selectableAssets.length > 0 && selectedIds.length === selectableAssets.length;
+
+  const notifyProtectedSkip = () => {
+    if (protectedSelectionCount > 0) {
+      toast.warning(`Đã bỏ qua ${protectedSelectionCount} tệp đang dùng trong cây bài học.`);
+    }
+  };
 
   // Upload Mutation
   const uploadMut = useMutation({
@@ -142,14 +153,27 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
 
   const toggleOne = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    return;
+    const asset = assets.find(item => item.id === id);
+    if (asset?.is_outline_media) {
+      toast.warning('Tệp đang dùng trong cây bài học nên không thể chọn để thao tác hàng loạt.');
+      return;
+    }
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   const toggleAll = () => {
-    if (selectedIds.length === assets.length) setSelectedIds([]);
-    else setSelectedIds(assets.map(a => a.id));
+    if (selectedIds.length === selectableAssets.length) setSelectedIds([]);
+    else setSelectedIds(selectableAssets.map(a => a.id));
   };
 
   const handleBulkDelete = async () => {
+    const selectedIds = selectedEditableAssets.map(asset => asset.id);
+    if (selectedIds.length === 0) {
+      toast.warning('Không có tệp nào có thể xoá trong lựa chọn hiện tại.');
+      return;
+    }
+    notifyProtectedSkip();
     if (!confirm(`Bạn có chắc muốn xóa ${selectedIds.length} file đã chọn?`)) return;
     setIsBulkOperating(true);
     try {
@@ -165,6 +189,12 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
   };
 
   const handleBulkLock = async (locked: boolean) => {
+    const selectedIds = selectedEditableAssets.map(asset => asset.id);
+    if (selectedIds.length === 0) {
+      toast.warning('Không có tệp nào có thể cập nhật quyền truy cập.');
+      return;
+    }
+    notifyProtectedSkip();
     setIsBulkOperating(true);
     try {
       await Promise.all(selectedIds.map(id => updateCourseAssetLock(courseId, id, locked)));
@@ -202,8 +232,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
           <DialogHeader className="px-8 py-6 border-b border-border/40 shrink-0 bg-muted/20">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <DialogTitle className="text-2xl font-semibold tracking-tight text-foreground">Files & Uploads</DialogTitle>
-                <p className="text-sm text-muted-foreground">Showing {assets.length} of {totalCount} assets</p>
+                <DialogTitle className="text-2xl font-semibold tracking-tight text-foreground">Tệp & Tải lên</DialogTitle>
+                <p className="text-sm text-muted-foreground">Đang hiển thị {assets.length} / {totalCount} tệp</p>
               </div>
               <div className="flex gap-3">
                 {canEdit && <Button
@@ -213,7 +243,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                   className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm font-medium px-5 rounded-full transition-all"
                 >
                   {uploadMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Upload New File
+                  Tải tệp mới
                 </Button>}
               </div>
             </div>
@@ -226,16 +256,17 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                   <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
                     <TableHead className="w-12 text-center">
                       <Checkbox
-                        checked={assets.length > 0 && selectedIds.length === assets.length}
+                        checked={canSelectAll}
                         onCheckedChange={toggleAll}
+                        disabled={selectableAssets.length === 0}
                         className="rounded-[4px]"
                       />
                     </TableHead>
-                    <TableHead className="w-[100px] text-center font-medium">Preview</TableHead>
-                    <TableHead className="font-medium">File name</TableHead>
-                    <TableHead className="w-[120px] font-medium text-right">Size</TableHead>
-                    <TableHead className="w-[100px] text-center font-medium">Access</TableHead>
-                    <TableHead className="w-[120px] text-center font-medium">Reference</TableHead>
+                    <TableHead className="w-[100px] text-center font-medium">Xem trước</TableHead>
+                    <TableHead className="font-medium">Tên tệp</TableHead>
+                    <TableHead className="w-[120px] font-medium text-right">Dung lượng</TableHead>
+                    <TableHead className="w-[100px] text-center font-medium">Truy cập</TableHead>
+                    <TableHead className="w-[120px] text-center font-medium">Tham khảo</TableHead>
                     <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -254,7 +285,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                     ))
                   ) : assets.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="h-48 text-center text-muted-foreground">
                         <div className="flex flex-col items-center justify-center gap-3">
                           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
                             <File className="w-6 h-6 text-muted-foreground/50" />
@@ -271,6 +302,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                           <Checkbox
                             checked={selectedIds.includes(asset.id)}
                             onCheckedChange={() => toggleOne(asset.id)}
+                            disabled={false}
+                            title={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể xoá hoặc chuyển riêng tư.' : undefined}
                             className="rounded-[4px] border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                           />
                         </TableCell>
@@ -295,6 +328,17 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                             <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
                               <span className="font-medium text-muted-foreground/80">{asset.date_added}</span>
                             </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {asset.is_outline_media ? (
+                                <span className="inline-flex w-fit items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-300">
+                                  Đang dùng trong bài học
+                                </span>
+                              ) : (
+                                <span className="inline-flex w-fit items-center rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                  Tệp upload trực tiếp
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-right align-middle font-medium text-muted-foreground/90 text-sm">
@@ -304,11 +348,11 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                           <div className="flex justify-center">
                             {asset.is_locked ?? asset.locked ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
-                                <Lock className="w-3.5 h-3.5" /> Locked
+                                <Lock className="w-3.5 h-3.5" /> Đã khóa
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-muted-foreground bg-muted/50">
-                                <Unlock className="w-3.5 h-3.5 opacity-70" /> Public
+                                <Unlock className="w-3.5 h-3.5 opacity-70" /> Công khai
                               </span>
                             )}
                           </div>
@@ -318,6 +362,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                             {canEdit ? (
                               <Checkbox
                                 checked={asset.is_reference || false}
+                                disabled={false}
+                                title={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể chuyển riêng tư.' : undefined}
                                 onCheckedChange={(checked) => refMut.mutate({ assetIds: [asset.id], isReference: !!checked })}
                                 className="rounded-[4px] data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
                               />
@@ -342,13 +388,24 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                                 <Download className="w-4 h-4 mr-2.5 text-muted-foreground" />
                                 <span className="font-medium">Tải xuống</span>
                               </DropdownMenuItem>
-                              {canEdit && <DropdownMenuItem onClick={() => lockMut.mutate({ assetId: asset.id, locked: !(asset.is_locked ?? asset.locked) })} className="cursor-pointer py-2 px-3">
+                              {canEdit && <DropdownMenuItem
+                                disabled={asset.is_outline_media}
+                                onClick={() => {
+                                  if (asset.is_outline_media) return;
+                                  lockMut.mutate({ assetId: asset.id, locked: !(asset.is_locked ?? asset.locked) });
+                                }}
+                                className="cursor-pointer py-2 px-3"
+                              >
                                 {asset.is_locked ?? asset.locked ? <Unlock className="w-4 h-4 mr-2.5 text-muted-foreground" /> : <Lock className="w-4 h-4 mr-2.5 text-amber-500" />}
                                 <span className="font-medium">{asset.is_locked ?? asset.locked ? 'Mở khóa file' : 'Khóa file'}</span>
                               </DropdownMenuItem>}
                               {canDelete && <DropdownMenuItem
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer py-2 px-3"
-                                onClick={() => deleteMut.mutate(asset.id)}
+                                disabled={asset.is_outline_media}
+                                onClick={() => {
+                                  if (asset.is_outline_media) return;
+                                  deleteMut.mutate(asset.id);
+                                }}
                               >
                                 <Trash2 className="w-4 h-4 mr-2.5" />
                                 <span className="font-medium">Xóa file</span>

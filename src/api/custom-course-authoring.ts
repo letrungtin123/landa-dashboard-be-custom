@@ -77,6 +77,7 @@ export interface CourseAsset {
   display_name: string;
   content_type: string;
   date_added: string;
+  storage_path?: string;
   url: string;
   external_url?: string;
   portable_url?: string;
@@ -85,6 +86,8 @@ export interface CourseAsset {
   locked?: boolean;
   is_locked?: boolean;
   is_reference?: boolean;
+  is_outline_media?: boolean;
+  outline_reference_count?: number;
   file_size?: number;
 }
 

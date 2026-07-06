@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { FileText, ExternalLink, Upload, Link2, Loader2, CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
-import { uploadCourseAsset, deleteCourseAsset } from '@/api/custom-course-authoring';
+import { deleteCourseAsset, deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
 
@@ -12,6 +12,7 @@ interface PdfEditorProps {
   pdfUrl: string;
   onPdfUrlChange: (v: string) => void;
   courseId?: string;
+  onAutoSave?: (nextPdfUrl: string) => void | Promise<void>;
 }
 
 type InputMode = 'link' | 'upload';
@@ -24,6 +25,7 @@ export default function PdfEditor({
   displayName, onDisplayNameChange,
   pdfUrl, onPdfUrlChange,
   courseId,
+  onAutoSave,
 }: PdfEditorProps) {
   // Detect mode dựa vào URL hiện tại
   const isAssetUrl = pdfUrl.includes('/asset-v1:') || pdfUrl.includes('/c4x/');
@@ -73,11 +75,21 @@ export default function PdfEditor({
     try {
       const result = await uploadCourseAsset(courseId, file);
       // Studio trả về asset URL dạng: /asset-v1:Org+Course+Run+type@asset+block@filename.pdf
-      const assetUrl = result?.asset?.url || result?.url || '';
+      const assetUrl = result?.asset?.url || result?.url || result?.storage_path || '';
       if (assetUrl) {
+        const previousPdfUrl = pdfUrl;
+        const previousFileName = uploadedFileName;
         onPdfUrlChange(assetUrl);
         setUploadedFileName(file.name);
-        toast.success(`Đã upload: ${file.name}`);
+        try {
+          await onAutoSave?.(assetUrl);
+          toast.success(`Đã upload và lưu draft: ${file.name}`);
+        } catch (saveErr) {
+          await deleteCourseAssetByStoragePath(courseId, assetUrl).catch(() => {});
+          onPdfUrlChange(previousPdfUrl);
+          setUploadedFileName(previousFileName);
+          throw saveErr;
+        }
       } else {
         toast.error('Upload thành công nhưng không nhận được URL');
       }
@@ -107,6 +119,7 @@ export default function PdfEditor({
     }
     onPdfUrlChange('');
     setUploadedFileName('');
+    onAutoSave?.('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 

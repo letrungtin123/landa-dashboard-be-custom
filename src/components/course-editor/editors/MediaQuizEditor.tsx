@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -264,15 +264,29 @@ export default function MediaQuizEditor({
   const videoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null);
   const quiz = normalizeMediaQuizData(data);
+  const quizRef = useRef<MediaQuizData>(quiz);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    quizRef.current = quiz;
+  }, [quiz]);
   const [showQuestionTypeChooser, setShowQuestionTypeChooser] = useState(() => isUnconfiguredQuiz(quiz));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const validationError = getMediaQuizValidationError(quiz);
   const choosingFirstQuestion = showQuestionTypeChooser && isUnconfiguredQuiz(quiz);
 
   const updateQuiz = (updater: (prev: MediaQuizData) => MediaQuizData, autosave = false) => {
-    const next = normalizeMediaQuizData(updater(quiz), quiz.mode);
+    const current = quizRef.current;
+    const next = normalizeMediaQuizData(updater(current), current.mode);
+    quizRef.current = next;
     onDataChange(next);
-    if (autosave) onAutoSave?.(next);
+    if (autosave) void persistQuizDraft(next);
+  };
+  const persistQuizDraft = (nextQuiz: MediaQuizData) => {
+    const run = saveQueueRef.current.then(async () => {
+      await onAutoSave?.(nextQuiz);
+    });
+    saveQueueRef.current = run.catch(() => {});
+    return run;
   };
 
   const updateQuestion = (questionId: string, updater: (q: MediaQuizQuestion) => MediaQuizQuestion) => {
@@ -316,10 +330,11 @@ export default function MediaQuizEditor({
       const result = await uploadCourseAsset(courseId, file);
       const path = result?.storage_path || result?.url || '';
       if (!path) throw new Error('Phản hồi tải lên không có đường dẫn lưu trữ.');
+      const currentQuiz = quizRef.current;
 
       const nextQuiz = normalizeMediaQuizData({
-        ...quiz,
-        questions: quiz.questions.map(question => question.id === questionId
+        ...currentQuiz,
+        questions: currentQuiz.questions.map(question => question.id === questionId
           ? {
             ...question,
             media: {
@@ -329,17 +344,19 @@ export default function MediaQuizEditor({
             },
           }
           : question),
-      }, quiz.mode);
+      }, currentQuiz.mode);
 
+      quizRef.current = nextQuiz;
       onDataChange(nextQuiz);
       try {
-        await onAutoSave?.(nextQuiz);
+        await persistQuizDraft(nextQuiz);
       } catch (saveErr) {
         try { await deleteCourseAssetByStoragePath(courseId, path); } catch { }
-        onDataChange(quiz);
+        quizRef.current = currentQuiz;
+        onDataChange(currentQuiz);
         throw saveErr;
       }
-      toast.success('Đã tải media lên.');
+      toast.success('Đã tải media lên và lưu draft.');
     } catch (err: any) {
       toast.error('Tải lên thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
     } finally {
@@ -347,28 +364,49 @@ export default function MediaQuizEditor({
     }
   };
 
-  const handleRemoveMedia = (questionId: string) => {
+  const handleRemoveMedia = async (questionId: string) => {
+    const currentQuiz = quizRef.current;
     const nextQuiz = normalizeMediaQuizData({
-      ...quiz,
-      questions: quiz.questions.map(item => item.id === questionId ? { ...item, media: null } : item),
-    }, quiz.mode);
+      ...currentQuiz,
+      questions: currentQuiz.questions.map(item => item.id === questionId ? { ...item, media: null } : item),
+    }, currentQuiz.mode);
 
+    quizRef.current = nextQuiz;
     onDataChange(nextQuiz);
+    try {
+      await persistQuizDraft(nextQuiz);
+      toast.success('Đã xóa media và lưu draft.');
+    } catch (err: any) {
+      quizRef.current = currentQuiz;
+      onDataChange(currentQuiz);
+      toast.error('Xóa media thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+    }
   };
 
   const handleAddQuestion = () => {
     setShowQuestionTypeChooser(true);
   };
 
-  const handleRemoveQuestion = (questionId: string) => {
-    if (quiz.questions.length <= 1) {
+  const handleRemoveQuestion = async (questionId: string) => {
+    const currentQuiz = quizRef.current;
+    if (currentQuiz.questions.length <= 1) {
       toast.error('Câu hỏi kèm media cần ít nhất một câu hỏi.');
       return;
     }
-    updateQuiz(prev => ({
-      ...prev,
-      questions: prev.questions.filter(question => question.id !== questionId),
-    }));
+    const nextQuiz = normalizeMediaQuizData({
+      ...currentQuiz,
+      questions: currentQuiz.questions.filter(question => question.id !== questionId),
+    }, currentQuiz.mode);
+    quizRef.current = nextQuiz;
+    onDataChange(nextQuiz);
+    try {
+      await persistQuizDraft(nextQuiz);
+      toast.success('Đã xóa câu hỏi và lưu draft.');
+    } catch (err: any) {
+      quizRef.current = currentQuiz;
+      onDataChange(currentQuiz);
+      toast.error('Xóa câu hỏi thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+    }
   };
 
   const handleQuestionDragEnd = (event: DragEndEvent) => {

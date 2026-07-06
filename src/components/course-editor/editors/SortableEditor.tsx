@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, GripVertical, ImagePlus, Loader2, Video, X, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
@@ -30,7 +30,7 @@ interface SortableEditorProps {
   problemMedia?: ProblemMedia;
   onProblemMediaChange?: (v: ProblemMedia) => void;
   courseId?: string;
-  onAutoSave?: () => void;
+  onAutoSave?: (nextMedia: ProblemMedia) => void | Promise<void>;
 }
 
 export default function SortableEditor({
@@ -53,11 +53,25 @@ export default function SortableEditor({
   const [uploading, setUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const media = normalizeProblemMedia(problemMedia);
+  const mediaRef = useRef<ProblemMedia>(media);
+  const mediaSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    mediaRef.current = media;
+  }, [media]);
   const [youtubeInput, setYoutubeInput] = useState(() => media.youtube_url || (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
   const youtubeId = extractYoutubeId(youtubeInput);
 
   const updateProblemMedia = (next: ProblemMedia) => {
-    onProblemMediaChange?.(normalizeProblemMedia(next));
+    const normalized = normalizeProblemMedia(next);
+    mediaRef.current = normalized;
+    onProblemMediaChange?.(normalized);
+  };
+  const persistMediaDraft = (nextMedia: ProblemMedia) => {
+    const run = mediaSaveQueueRef.current.then(async () => {
+      await onAutoSave?.(nextMedia);
+    });
+    mediaSaveQueueRef.current = run.catch(() => {});
+    return run;
   };
 
   const handleYoutubeChange = (value: string) => {
@@ -77,17 +91,29 @@ export default function SortableEditor({
       return;
     }
     setUploading(true);
+    const uploadedPaths: string[] = [];
     try {
       const uploaded: { src: string; alt: string }[] = [];
       for (const file of Array.from(files)) {
         const result = await uploadCourseAsset(courseId, file);
         const src = result?.url || result?.storage_path || '';
-        if (src) uploaded.push({ src, alt: file.name });
+        if (src) {
+          uploaded.push({ src, alt: file.name });
+          uploadedPaths.push(src);
+        }
       }
       if (uploaded.length > 0) {
-        updateProblemMedia({ ...media, images: [...media.images, ...uploaded] });
-        toast.success(`Đã upload ${uploaded.length} ảnh`);
-        onAutoSave?.();
+        const currentMedia = mediaRef.current;
+        const nextMedia = { ...currentMedia, images: [...currentMedia.images, ...uploaded] };
+        updateProblemMedia(nextMedia);
+        try {
+          await persistMediaDraft(nextMedia);
+          toast.success(`Đã upload ${uploaded.length} ảnh và lưu draft`);
+        } catch (saveErr) {
+          await Promise.allSettled(uploadedPaths.map(path => deleteCourseAssetByStoragePath(courseId, path)));
+          updateProblemMedia(currentMedia);
+          throw saveErr;
+        }
       }
     } catch (err: any) {
       toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
@@ -112,10 +138,18 @@ export default function SortableEditor({
       const result = await uploadCourseAsset(courseId, file);
       const path = result?.storage_path || result?.url || '';
       if (path) {
-        updateProblemMedia({ ...media, video_storage_path: path, youtube_id: undefined, youtube_url: undefined });
+        const previousMedia = mediaRef.current;
+        const nextMedia = { ...previousMedia, video_storage_path: path, youtube_id: undefined, youtube_url: undefined };
+        updateProblemMedia(nextMedia);
         setYoutubeInput('');
-        toast.success('Upload video thành công');
-        onAutoSave?.();
+        try {
+          await persistMediaDraft(nextMedia);
+          toast.success('Upload video thành công và đã lưu draft');
+        } catch (saveErr) {
+          await deleteCourseAssetByStoragePath(courseId, path).catch(() => {});
+          updateProblemMedia(previousMedia);
+          throw saveErr;
+        }
       }
     } catch (err: any) {
       toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
@@ -123,28 +157,58 @@ export default function SortableEditor({
   };
 
   const handleDeleteVideo = async () => {
+    const currentMedia = mediaRef.current;
+    const videoPath = currentMedia.video_storage_path;
+    if (!videoPath) return;
+    const nextMedia = { ...currentMedia, video_storage_path: undefined };
+    updateProblemMedia(nextMedia);
     let pendingDelete = false;
-    if (media.video_storage_path && courseId) {
+    try {
+      await persistMediaDraft(nextMedia);
+    } catch (err: any) {
+      updateProblemMedia(currentMedia);
+      toast.error('Lưu thay đổi media thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      return;
+    }
+    if (courseId) {
       try {
-        const result = await deleteCourseAssetByStoragePath(courseId, media.video_storage_path);
+        const result = await deleteCourseAssetByStoragePath(courseId, videoPath);
         pendingDelete = !!result?.pending_delete;
       } catch {}
     }
-    updateProblemMedia({ ...media, video_storage_path: undefined });
     toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
-    onAutoSave?.();
   };
 
-  const handleRemoveImage = (idx: number) => {
-    updateProblemMedia({ ...media, images: media.images.filter((_, i) => i !== idx) });
+  const handleRemoveImage = async (idx: number) => {
+    const currentMedia = mediaRef.current;
+    const removedImage = currentMedia.images[idx];
+    if (!removedImage) return;
+    const nextMedia = { ...currentMedia, images: currentMedia.images.filter((_, i) => i !== idx) };
+    updateProblemMedia(nextMedia);
+    try {
+      await persistMediaDraft(nextMedia);
+      if (courseId) await deleteCourseAssetByStoragePath(courseId, removedImage.src).catch(() => {});
+      toast.success('Đã xóa ảnh và lưu draft');
+    } catch (err: any) {
+      updateProblemMedia(currentMedia);
+      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+    }
   };
 
-  const handleMoveImage = (fromIndex: number, toIndex: number) => {
-    const nextImages = [...media.images];
+  const handleMoveImage = async (fromIndex: number, toIndex: number) => {
+    const currentMedia = mediaRef.current;
+    const nextImages = [...currentMedia.images];
     const [moved] = nextImages.splice(fromIndex, 1);
     if (!moved) return;
     nextImages.splice(toIndex, 0, moved);
-    updateProblemMedia({ ...media, images: nextImages });
+    const nextMedia = { ...currentMedia, images: nextImages };
+    updateProblemMedia(nextMedia);
+    try {
+      await persistMediaDraft(nextMedia);
+    } catch (err: any) {
+      updateProblemMedia(currentMedia);
+      toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+    }
   };
 
   const resolvedImages = media.images.map((img) => ({

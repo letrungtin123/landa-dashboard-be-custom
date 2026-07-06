@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -48,14 +48,29 @@ export default function HtmlEditor({
 
   const uploadedImages = React.useMemo(() => getHtmlMediaImages(metadata), [metadata]);
   const carouselImages = React.useMemo(() => htmlMediaCarouselImages(uploadedImages), [uploadedImages]);
+  const metadataRef = useRef<Record<string, any>>(metadata);
+  const uploadedImagesRef = useRef<HtmlMediaImage[]>(uploadedImages);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    metadataRef.current = metadata;
+  }, [metadata]);
+  useEffect(() => {
+    uploadedImagesRef.current = uploadedImages;
+  }, [uploadedImages]);
 
   const persistImages = React.useCallback(async (nextImages: HtmlMediaImage[]) => {
     if (!blockId) throw new Error('Block ID không hợp lệ');
-    const nextMetadata = htmlMediaMetadata(metadata, nextImages);
-    await updateXBlock(blockId, { metadata: nextMetadata });
+    const nextMetadata = htmlMediaMetadata(metadataRef.current, nextImages);
+    const run = saveQueueRef.current.then(async () => {
+      await updateXBlock(blockId, { metadata: nextMetadata });
+    });
+    saveQueueRef.current = run.catch(() => {});
+    await run;
+    metadataRef.current = nextMetadata;
+    uploadedImagesRef.current = nextImages;
     onMetadataChange(nextMetadata);
     onImmediateSaved?.();
-  }, [blockId, metadata, onImmediateSaved, onMetadataChange]);
+  }, [blockId, onImmediateSaved, onMetadataChange]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
@@ -67,11 +82,12 @@ export default function HtmlEditor({
       uploadedPath = htmlImageStoragePath(result?.url) || '';
       if (!uploadedPath) throw new Error('Upload response không có storage path');
 
-      const exists = uploadedImages.some((image) => image.src === uploadedPath);
+      const currentImages = uploadedImagesRef.current;
+      const exists = currentImages.some((image) => image.src === uploadedPath);
       const nextImages = exists
-        ? uploadedImages
+        ? currentImages
         : [
-            ...uploadedImages,
+            ...currentImages,
             {
               src: uploadedPath,
               alt: file.name,
@@ -94,7 +110,8 @@ export default function HtmlEditor({
   const handleDeleteImage = async (image: HtmlMediaImage) => {
     setDeletingPath(image.src);
     try {
-      const nextImages = uploadedImages.filter((item) => item.src !== image.src);
+      const currentImages = uploadedImagesRef.current;
+      const nextImages = currentImages.filter((item) => item.src !== image.src);
       await persistImages(nextImages);
       await deleteCourseAssetByStoragePath(courseId, image.src);
       toast.success('Đã xóa ảnh');
@@ -106,7 +123,7 @@ export default function HtmlEditor({
   };
 
   const handleMoveImage = (fromIndex: number, toIndex: number) => {
-    const nextImages = [...uploadedImages];
+    const nextImages = [...uploadedImagesRef.current];
     const [moved] = nextImages.splice(fromIndex, 1);
     if (!moved) return;
     nextImages.splice(toIndex, 0, moved);

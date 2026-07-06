@@ -255,10 +255,11 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
 
 // ─── UnitEditor (main) ────────────────────────────────────────────────────────
 
-export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange }: {
+export default function UnitEditor({ unitId, courseId, focusComponentId, externalRefreshKey = 0, onContentChange }: {
   unitId: string;
   courseId?: string;
   focusComponentId?: string | null;
+  externalRefreshKey?: number;
   onContentChange: () => void;
 }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -366,7 +367,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
                 key={child.id || child.block_id}
                 block={child}
                 courseId={courseId}
-                detailRefreshKey={dataUpdatedAt}
+                detailRefreshKey={`${dataUpdatedAt}:${externalRefreshKey}`}
                 isFocused={focusComponentId === (child.id || child.block_id)}
                 onDelete={() => { refetch(); onContentChange(); }}
                 onSaved={() => { refetch(); onContentChange(); }}
@@ -443,12 +444,13 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
 function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete, onSaved }: {
   block: ChildBlock;
   courseId?: string;
-  detailRefreshKey?: number;
+  detailRefreshKey?: string | number;
   isFocused?: boolean;
   onDelete: () => void;
   onSaved: () => void;
 }) {
   const blockId = block.id || block.block_id;
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [blockData, setBlockData] = useState<any>(null);
   const [detailVersion, setDetailVersion] = useState(0);
@@ -491,6 +493,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     onSuccess: async () => {
       toast.success('Đã rollback về bản publish');
       await loadDetail();
+      if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
       onSaved();
     },
     onError: () => toast.error('Rollback thất bại'),
@@ -776,14 +779,37 @@ function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
     ...img,
     src: resolveProblemMediaImageUrl(img.src),
   }));
+  const uploadedVideoSrc = normalized.video_storage_path
+    ? storageUrl(normalized.video_storage_path)
+    : '';
 
   return (
     <div className="space-y-3">
-      {normalized.youtube_id && (
+      {uploadedVideoSrc && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground tracking-wide uppercase">
+            <Video className="h-4 w-4 text-purple-500" />
+            <span>Video đã tải lên</span>
+          </div>
+          <div className="rounded-xl border border-primary/10 bg-gradient-to-br from-primary/10 via-secondary/5 to-primary/5 p-1 shadow-lg shadow-primary/5">
+            <div className="aspect-video w-full overflow-hidden rounded-lg bg-black shadow-inner">
+              <video
+                key={normalized.video_storage_path}
+                src={uploadedVideoSrc}
+                controls
+                className="h-full w-full object-contain"
+                preload="metadata"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!uploadedVideoSrc && normalized.youtube_id && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground tracking-wide uppercase">
             <Video className="h-4 w-4 text-red-500" />
-            <span>YouTube Video</span>
+            <span>Video YouTube</span>
           </div>
           <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
             <iframe
@@ -2134,10 +2160,14 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   const savedMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
   const currentMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
   const mediaQuizSaveInFlightRef = useRef(0);
+  const metadataRef = useRef<any>(metadata);
 
   useEffect(() => {
     currentMediaQuizDataRef.current = mediaQuizData;
   }, [mediaQuizData]);
+  useEffect(() => {
+    metadataRef.current = metadata;
+  }, [metadata]);
 
   useEffect(() => {
     if (category !== 'la_media_quiz') return;
@@ -2158,12 +2188,20 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   }, [category, courseId]);
 
   const saveMut = useMutation({
-    mutationFn: async (options?: { keepOpen?: boolean; mediaQuizData?: MediaQuizData }) => {
+    mutationFn: async (options?: {
+      keepOpen?: boolean;
+      mediaQuizData?: MediaQuizData;
+      metadataOverride?: any;
+      pdfUrlOverride?: string;
+      silent?: boolean;
+    }) => {
       const id = blockInfo?.id;
       if (!id) throw new Error('Block ID không hợp lệ');
+      const effectiveMetadata = options?.metadataOverride ?? metadata;
+      const effectivePdfUrl = options?.pdfUrlOverride ?? pdfUrl;
 
       if (category === 'video') {
-        const payloadMetadata = { display_name: displayName, ...metadata };
+        const payloadMetadata = { display_name: displayName, ...effectiveMetadata };
         if (payloadMetadata.start_time === "00:00:00" || payloadMetadata.start_time === "") delete payloadMetadata.start_time;
         if (payloadMetadata.end_time === "00:00:00" || payloadMetadata.end_time === "") delete payloadMetadata.end_time;
 
@@ -2199,7 +2237,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       }
       if (category === 'html') {
         const updated = await updateXBlock(id, {
-          metadata: { ...metadata, display_name: displayName },
+          metadata: { ...effectiveMetadata, display_name: displayName },
           data: htmlContent,
         });
         const removedPaths = removedUploadedHtmlImagePaths(initialHtmlContent, htmlContent);
@@ -2214,8 +2252,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         return updated;
       }
       if (category === 'problem') {
-        const payloadMetadata = { ...metadata, display_name: displayName };
-        const mediaForSave = problemMediaForSave(metadata?.problem_media);
+        const payloadMetadata = { ...effectiveMetadata, display_name: displayName };
+        const mediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
         if (mediaForSave) payloadMetadata.problem_media = mediaForSave;
         else delete payloadMetadata.problem_media;
 
@@ -2235,7 +2273,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         mediaQuizSaveInFlightRef.current += 1;
         try {
           const updated = await updateXBlock(id, {
-            metadata: { ...metadata, display_name: displayName, media_quiz_mode: mediaQuizMode },
+            metadata: { ...effectiveMetadata, display_name: displayName, media_quiz_mode: mediaQuizMode },
             data: payloadData,
           });
 
@@ -2258,7 +2296,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       }
       if (category === 'la_crossword') {
         const kwCoords = cwWords.map((_, idx) => ({ row: idx, col: cwKeywordCol }));
-        const cwMediaForSave = problemMediaForSave(metadata?.problem_media);
+        const cwMediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
         return studioSubmit(id, {
           display_name: displayName,
           crossword_data: JSON.stringify({ words: cwWords, keyword_coordinates: kwCoords }),
@@ -2266,7 +2304,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         });
       }
       if (category === 'la_sortable') {
-        const soMediaForSave = problemMediaForSave(metadata?.problem_media);
+        const soMediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
         return studioSubmit(id, {
           display_name: displayName,
           question_text: soQuestionText,
@@ -2289,20 +2327,22 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       if (category === 'la_pdf') {
         return studioSubmit(id, {
           display_name: displayName,
-          pdf_url: pdfUrl,
+          pdf_url: effectivePdfUrl,
         });
       }
       return updateXBlock(id, { metadata: { display_name: displayName } });
     },
     onSuccess: (_data, options) => {
-      toast.success('Đã lưu thành công!');
+      if (!options?.silent) toast.success('Đã lưu thành công!');
       if (options?.keepOpen) {
         onImmediateSaved?.();
       } else {
         onSaved();
       }
     },
-    onError: (err: any) => toast.error('Lưu thất bại: ' + (err?.message || 'Lỗi không rõ')),
+    onError: (err: any, options) => {
+      if (!options?.silent) toast.error('Lưu thất bại: ' + (err?.message || 'Lỗi không rõ'));
+    },
   });
 
   const [shouldAutoSave, setShouldAutoSave] = useState(false);
@@ -2314,6 +2354,79 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, mediaQuizData, saveMut]);
 
   const triggerAutoSave = () => setShouldAutoSave(true);
+  const buildVideoPayload = (nextMetadata: any) => {
+    const payloadMetadata = { display_name: displayName, ...nextMetadata };
+    if (payloadMetadata.start_time === "00:00:00" || payloadMetadata.start_time === "") delete payloadMetadata.start_time;
+    if (payloadMetadata.end_time === "00:00:00" || payloadMetadata.end_time === "") delete payloadMetadata.end_time;
+
+    const videoPath = payloadMetadata.video_storage_path || '';
+    const ytId = payloadMetadata.youtube_id_1_0 || '';
+    const payloadData = videoPath
+      ? {
+          url: videoPath,
+          video_url: videoPath,
+          encoded_videos: { fallback: { url: videoPath } },
+        }
+      : {
+          url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
+          video_url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
+          encoded_videos: { youtube: { url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '' } },
+        };
+
+    return { metadata: payloadMetadata, data: payloadData };
+  };
+
+  const autoSaveMetadataDraft = async (nextMetadata: any) => {
+    const id = blockInfo?.id;
+    if (!id) throw new Error('Block ID không hợp lệ');
+    metadataRef.current = nextMetadata;
+    setMetadata(nextMetadata);
+    if (category === 'video') {
+      await updateXBlock(id, buildVideoPayload(nextMetadata));
+    } else {
+      await updateXBlock(id, { metadata: { ...nextMetadata, display_name: displayName } });
+    }
+    onImmediateSaved?.();
+  };
+  const autoSaveProblemMediaDraft = async (nextMedia: ProblemMedia) => {
+    const normalized = normalizeProblemMedia(nextMedia);
+    const nextMetadata = { ...metadataRef.current };
+    if (hasProblemMedia(normalized)) nextMetadata.problem_media = normalized;
+    else delete nextMetadata.problem_media;
+    await autoSaveMetadataDraft(nextMetadata);
+  };
+  const autoSaveMediaQuizDraft = async (nextData?: MediaQuizData) => {
+    const id = blockInfo?.id;
+    if (!id) throw new Error('Block ID không hợp lệ');
+    const payloadData = normalizeMediaQuizData(nextData ?? mediaQuizData);
+    const validationError = getMediaQuizValidationError(payloadData);
+    if (validationError) throw new Error(validationError);
+    const hasSingle = payloadData.questions.some((question: any) => question.mode !== 'multiple_select');
+    const hasMultiple = payloadData.questions.some((question: any) => question.mode === 'multiple_select');
+    const mediaQuizMode = hasSingle && hasMultiple ? 'mixed' : payloadData.mode;
+    const removedPaths = removedMediaQuizStoragePaths(savedMediaQuizDataRef.current, payloadData);
+
+    await updateXBlock(id, {
+      metadata: { ...metadataRef.current, display_name: displayName, media_quiz_mode: mediaQuizMode },
+      data: payloadData,
+    });
+
+    savedMediaQuizDataRef.current = payloadData;
+    currentMediaQuizDataRef.current = payloadData;
+    setMediaQuizData(payloadData);
+    onImmediateSaved?.();
+    if (removedPaths.length > 0) {
+      await cleanupCourseMediaQuizAssets(courseId, removedPaths);
+    }
+  };
+
+  const autoSavePdfDraft = async (nextPdfUrl: string) => {
+    const id = blockInfo?.id;
+    if (!id) throw new Error('Block ID không hợp lệ');
+    setPdfUrl(nextPdfUrl);
+    await studioSubmit(id, { display_name: displayName, pdf_url: nextPdfUrl });
+    onImmediateSaved?.();
+  };
 
   const renderEditor = () => {
     switch (category) {
@@ -2325,7 +2438,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             metadata={metadata}
             onMetadataChange={setMetadata}
             courseId={courseId || ''}
-            onAutoSave={triggerAutoSave}
+            onAutoSave={autoSaveMetadataDraft}
           />
         );
       case 'html':
@@ -2352,7 +2465,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
-            onAutoSave={triggerAutoSave}
+            onAutoSave={autoSaveProblemMediaDraft}
           />
         );
       case 'la_media_quiz':
@@ -2363,7 +2476,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             data={mediaQuizData}
             onDataChange={(next) => setMediaQuizData(next)}
             courseId={courseId || ''}
-            onAutoSave={(next) => saveMut.mutateAsync({ keepOpen: true, mediaQuizData: next })}
+            onAutoSave={autoSaveMediaQuizDraft}
           />
         );
       case 'la_crossword':
@@ -2378,7 +2491,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
-            onAutoSave={triggerAutoSave}
+            onAutoSave={autoSaveProblemMediaDraft}
           />
         );
       case 'la_sortable':
@@ -2393,7 +2506,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             problemMedia={normalizeProblemMedia(metadata?.problem_media)}
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
-            onAutoSave={triggerAutoSave}
+            onAutoSave={autoSaveProblemMediaDraft}
           />
         );
       case 'la_diagram':
@@ -2425,6 +2538,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             pdfUrl={pdfUrl}
             onPdfUrlChange={setPdfUrl}
             courseId={courseId}
+            onAutoSave={autoSavePdfDraft}
           />
         );
       default:

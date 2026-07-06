@@ -116,6 +116,7 @@ export default function CourseEditorPage() {
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
+  const [unitEditorRefreshKey, setUnitEditorRefreshKey] = useState(0);
 
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(320);
@@ -163,6 +164,20 @@ export default function CourseEditorPage() {
 
   const courseStructure = outline?.course_structure;
 
+  const handleStructureChange = useCallback(() => {
+    if (!courseId) return;
+    const outlineKey = ['course-outline-index', courseId] as const;
+    void queryClient.invalidateQueries({ queryKey: outlineKey, exact: true })
+      .then(() => queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' }));
+
+    if (selectedUnit) {
+      const unitChildrenKey = ['unit-children', selectedUnit] as const;
+      void queryClient.invalidateQueries({ queryKey: unitChildrenKey, exact: true })
+        .then(() => queryClient.refetchQueries({ queryKey: unitChildrenKey, exact: true, type: 'active' }));
+      setUnitEditorRefreshKey((value) => value + 1);
+    }
+  }, [courseId, queryClient, selectedUnit]);
+
   useEffect(() => {
     const handleFocusCourseBlock = (event: Event) => {
       const detail = (event as CustomEvent<FocusCourseBlockEventDetail>).detail;
@@ -206,19 +221,12 @@ export default function CourseEditorPage() {
     const handleCourseOutlineUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ courseId?: string }>).detail;
       if (!courseId || detail?.courseId !== courseId) return;
-      const queryKey = ['course-outline-index', courseId] as const;
-      void queryClient.invalidateQueries({ queryKey, exact: true })
-        .then(() => queryClient.refetchQueries({ queryKey, exact: true, type: 'active' }));
-      if (selectedUnit) {
-        const unitChildrenKey = ['unit-children', selectedUnit] as const;
-        void queryClient.invalidateQueries({ queryKey: unitChildrenKey, exact: true })
-          .then(() => queryClient.refetchQueries({ queryKey: unitChildrenKey, exact: true, type: 'active' }));
-      }
+      handleStructureChange();
     };
 
     window.addEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
     return () => window.removeEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
-  }, [courseId, queryClient, selectedUnit]);
+  }, [courseId, handleStructureChange]);
 
   if (isLoading) {
     return (
@@ -259,7 +267,7 @@ export default function CourseEditorPage() {
           <CourseRootHeader 
             id={courseStructure.id} 
             displayName={courseStructure.display_name} 
-            onStructureChange={() => queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] })}
+            onStructureChange={handleStructureChange}
           />
         </div>
         <Sheet>
@@ -274,7 +282,7 @@ export default function CourseEditorPage() {
           <CourseRootHeader 
             id={courseStructure.id} 
             displayName={courseStructure.display_name} 
-            onStructureChange={() => queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] })}
+            onStructureChange={handleStructureChange}
           />
               <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate opacity-60">{courseId}</p>
             </div>
@@ -284,6 +292,7 @@ export default function CourseEditorPage() {
                 onSelectUnit={(unitId) => setSelectedUnit(unitId)}
                 selectedUnitId={selectedUnit}
                 focusedBlockId={focusedBlockId}
+                onStructureChange={handleStructureChange}
               />
             </div>
           </SheetContent>
@@ -308,7 +317,7 @@ export default function CourseEditorPage() {
           <CourseRootHeader 
             id={courseStructure.id} 
             displayName={courseStructure.display_name} 
-            onStructureChange={() => queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] })}
+            onStructureChange={handleStructureChange}
           />
           <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate opacity-60">
             {courseId}
@@ -320,6 +329,7 @@ export default function CourseEditorPage() {
             onSelectUnit={(unitId) => setSelectedUnit(unitId)}
             selectedUnitId={selectedUnit}
             focusedBlockId={focusedBlockId}
+            onStructureChange={handleStructureChange}
           />
         </div>
       </div>
@@ -333,8 +343,9 @@ export default function CourseEditorPage() {
               unitId={selectedUnit}
               courseId={courseId as string}
               focusComponentId={focusedComponentId}
+              externalRefreshKey={unitEditorRefreshKey}
               onContentChange={() => {
-                queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
+                handleStructureChange();
               }}
             />
           </div>

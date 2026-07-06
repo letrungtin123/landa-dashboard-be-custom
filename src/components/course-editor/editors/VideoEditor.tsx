@@ -1,8 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Video, Upload, Youtube, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { uploadCourseAsset } from '@/api/custom-course-authoring';
-import { deleteCourseAssetByStoragePath } from '@/api/custom-course-authoring';
+import { deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
 import { storageUrl } from '@/utils/storage-url';
 import { toast } from 'sonner';
 
@@ -18,7 +17,7 @@ interface VideoEditorProps {
   metadata: any;
   onMetadataChange: (m: any) => void;
   courseId: string;
-  onAutoSave?: () => void;
+  onAutoSave?: (nextMetadata: any) => void | Promise<void>;
 }
 
 function extractYoutubeId(input: string): string {
@@ -60,6 +59,18 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const metadataRef = useRef<any>(metadata);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    metadataRef.current = metadata;
+  }, [metadata]);
+  const persistMetadataDraft = (nextMetadata: any) => {
+    const run = saveQueueRef.current.then(async () => {
+      await onAutoSave?.(nextMetadata);
+    });
+    saveQueueRef.current = run.catch(() => {});
+    return run;
+  };
 
   const youtubeId = extractYoutubeId(inputValue);
 
@@ -120,14 +131,25 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
       const path = result?.storage_path || result?.url || '';
 
       if (path) {
-        setVideoPath(path);
-        onMetadataChange({
-          ...metadata,
+        const previousMetadata = metadataRef.current;
+        const previousPath = videoPath;
+        const nextMetadata = {
+          ...previousMetadata,
           video_storage_path: path,
           youtube_id_1_0: '', // Clear YouTube when uploading
-        });
-        toast.success('Upload video thành công');
-        onAutoSave?.();
+        };
+        setVideoPath(path);
+        metadataRef.current = nextMetadata;
+        onMetadataChange(nextMetadata);
+        try {
+          await persistMetadataDraft(nextMetadata);
+          toast.success('Upload video thành công và đã lưu draft');
+        } catch (saveErr) {
+          try { await deleteCourseAssetByStoragePath(courseId, path); } catch { /* ignore cleanup */ }
+          setVideoPath(previousPath);
+          onMetadataChange(previousMetadata);
+          throw saveErr;
+        }
       }
       setUploadProgress(100);
     } catch (err: any) {
@@ -140,23 +162,36 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
   };
 
   const handleDeleteVideo = async () => {
+    if (!videoPath) return;
+    const previousMetadata = metadataRef.current;
+    const previousPath = videoPath;
+    const nextMetadata = {
+      ...previousMetadata,
+      video_storage_path: undefined,
+    };
+    setVideoPath('');
+    setUploadProgress(0);
+    metadataRef.current = nextMetadata;
+    onMetadataChange(nextMetadata);
+    try {
+      await persistMetadataDraft(nextMetadata);
+    } catch (err: any) {
+      setVideoPath(previousPath);
+      metadataRef.current = previousMetadata;
+      onMetadataChange(previousMetadata);
+      toast.error('Lưu thay đổi video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      return;
+    }
     let pendingDelete = false;
-    if (videoPath && courseId) {
+    if (courseId) {
       try {
-        const result = await deleteCourseAssetByStoragePath(courseId, videoPath);
+        const result = await deleteCourseAssetByStoragePath(courseId, previousPath);
         pendingDelete = !!result?.pending_delete;
       } catch {
         // Ignore cleanup errors
       }
     }
-    setVideoPath('');
-    setUploadProgress(0);
-    onMetadataChange({
-      ...metadata,
-      video_storage_path: undefined,
-    });
     toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
-    onAutoSave?.();
   };
 
   const handleFileSelect = (files: FileList | null) => {
