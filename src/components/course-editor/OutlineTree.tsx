@@ -26,6 +26,7 @@ import {
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
   MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2, ClipboardList,
+  CalendarClock, Trophy, Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -56,6 +57,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles } from 'lucide-react';
 import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfig } from '@/api/custom-courses';
 
@@ -650,6 +652,65 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 // Add Node Button (inline)
 // ─────────────────────────────────────────────
 
+type TimePeriod = 'AM' | 'PM';
+
+const HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+
+function todayLocalDateInput(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function toDeadlineParts(value?: string | null): { date: string; hour: string; minute: string; period: TimePeriod } {
+  const fallback = { date: '', hour: '11', minute: '59', period: 'PM' as TimePeriod };
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour24 = date.getHours();
+  const period: TimePeriod = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return {
+    date: `${year}-${month}-${day}`,
+    hour: String(hour12).padStart(2, '0'),
+    minute: String(date.getMinutes()).padStart(2, '0'),
+    period,
+  };
+}
+
+function deadlinePartsToIso(dateValue: string, hourValue: string, minuteValue: string, period: TimePeriod): string | null {
+  if (!dateValue || !hourValue || !minuteValue) return null;
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const hour12 = Number(hourValue);
+  const minute = Number(minuteValue);
+  if (!year || !month || !day || !hour12 || Number.isNaN(minute)) return null;
+  const hour24 = period === 'AM'
+    ? (hour12 === 12 ? 0 : hour12)
+    : (hour12 === 12 ? 12 : hour12 + 12);
+  const date = new Date(year, month - 1, day, hour24, minute, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function isAssignmentExpired(assignment: CourseAssignment): boolean {
+  if (!assignment.deadline_enabled || !assignment.deadline_at) return false;
+  return new Date(assignment.deadline_at).getTime() <= Date.now();
+}
+
+function formatAssignmentDeadline(value?: string | null): string {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 function AssignmentOutlineSection({ courseId }: { courseId: string }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<CourseAssignment | null>(null);
@@ -715,17 +776,25 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           {data.map((assignment) => (
             <div
               key={assignment.id}
-              className="group mx-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground/80 transition-colors hover:bg-muted/50"
+              className="group mx-1 flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-sm text-foreground/80 transition-colors hover:bg-muted/50"
             >
-              <ClipboardList className="h-4 w-4 shrink-0 text-violet-500" />
-              <div className="min-w-0 flex-1">
+              <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" />
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="truncate text-sm font-medium">{assignment.title}</div>
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span>{assignment.submitted_count || 0} đã nộp</span>
-                  <span>{assignment.feedback_count || 0} feedback</span>
+                <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-4 text-muted-foreground">
+                  <span className="whitespace-nowrap">{assignment.submitted_count || 0} đã nộp</span>
+                  <span className="whitespace-nowrap">{assignment.feedback_count || 0} phản hồi</span>
+                  {assignment.deadline_enabled && assignment.deadline_at && (
+                    <span className={`whitespace-nowrap ${isAssignmentExpired(assignment) ? 'font-semibold text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>
+                      Hạn {formatAssignmentDeadline(assignment.deadline_at)}
+                    </span>
+                  )}
+                  {assignment.grading_enabled && (
+                    <span className="whitespace-nowrap font-semibold text-emerald-600 dark:text-emerald-400">Có điểm</span>
+                  )}
                 </div>
               </div>
-              <span title={assignment.is_published ? 'Đang hiển thị' : 'Đang ẩn'}>
+              <span className="mt-1 shrink-0" title={assignment.is_published ? 'Đang hiển thị' : 'Đang ẩn'}>
                 {assignment.is_published ? (
                   <Globe className="h-3.5 w-3.5 text-emerald-500" />
                 ) : (
@@ -734,7 +803,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
                     <MoreVertical className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -822,6 +891,12 @@ function AssignmentDialog({
   const [question, setQuestion] = useState('');
   const [isPublished, setIsPublished] = useState(true);
   const [allowResubmission, setAllowResubmission] = useState(false);
+  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
+  const [deadlineDate, setDeadlineDate] = useState('');
+  const [deadlineHour, setDeadlineHour] = useState('11');
+  const [deadlineMinute, setDeadlineMinute] = useState('59');
+  const [deadlinePeriod, setDeadlinePeriod] = useState<TimePeriod>('PM');
+  const [gradingEnabled, setGradingEnabled] = useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -829,7 +904,23 @@ function AssignmentDialog({
     setQuestion(assignment?.question || '');
     setIsPublished(assignment?.is_published ?? true);
     setAllowResubmission(assignment?.allow_resubmission ?? false);
+    setDeadlineEnabled(assignment?.deadline_enabled ?? false);
+    const deadlineParts = toDeadlineParts(assignment?.deadline_at);
+    setDeadlineDate(deadlineParts.date);
+    setDeadlineHour(deadlineParts.hour);
+    setDeadlineMinute(deadlineParts.minute);
+    setDeadlinePeriod(deadlineParts.period);
+    setGradingEnabled(assignment?.grading_enabled ?? false);
   }, [assignment, open]);
+
+  const deadlineIso = deadlineEnabled ? deadlinePartsToIso(deadlineDate, deadlineHour, deadlineMinute, deadlinePeriod) : null;
+
+  function handleDeadlineEnabledChange(nextEnabled: boolean) {
+    setDeadlineEnabled(nextEnabled);
+    if (nextEnabled && !deadlineDate) {
+      setDeadlineDate(todayLocalDateInput());
+    }
+  }
 
   const createMut = useMutation({
     mutationFn: () => createCourseAssignment(courseId, {
@@ -837,6 +928,9 @@ function AssignmentDialog({
       question,
       is_published: isPublished,
       allow_resubmission: allowResubmission,
+      deadline_enabled: deadlineEnabled,
+      deadline_at: deadlineIso,
+      grading_enabled: gradingEnabled,
     }),
     onSuccess: () => {
       toast.success('Đã tạo bài tập');
@@ -851,6 +945,8 @@ function AssignmentDialog({
       question,
       is_published: isPublished,
       allow_resubmission: allowResubmission,
+      deadline_enabled: deadlineEnabled,
+      deadline_at: deadlineIso,
     }),
     onSuccess: () => {
       toast.success('Đã lưu bài tập');
@@ -860,7 +956,7 @@ function AssignmentDialog({
   });
 
   const pending = createMut.isPending || updateMut.isPending;
-  const canSave = title.trim().length > 0 && question.trim().length > 0 && !pending;
+  const canSave = title.trim().length > 0 && question.trim().length > 0 && (!deadlineEnabled || !!deadlineIso) && !pending;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -887,7 +983,7 @@ function AssignmentDialog({
               placeholder="Nhập yêu cầu bài tập cho learner..."
             />
           </div>
-          <div className="grid gap-3 rounded-lg border bg-muted/10 p-3 sm:grid-cols-2">
+          <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
             <div className="flex items-center justify-between gap-3">
               <Label className="text-sm">Hiển thị cho learner</Label>
               <Switch checked={isPublished} onCheckedChange={setIsPublished} />
@@ -896,6 +992,87 @@ function AssignmentDialog({
               <Label className="text-sm">Cho phép nộp lại</Label>
               <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
             </div>
+            <div className="rounded-lg border bg-background/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="flex items-center gap-2 text-sm">
+                  <CalendarClock className="h-4 w-4 text-amber-500" />
+                  Bật hạn nộp
+                </Label>
+                <Switch checked={deadlineEnabled} onCheckedChange={handleDeadlineEnabledChange} />
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_82px_82px_90px]">
+                <div className="min-w-0">
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ngày</div>
+                  <input
+                    type="date"
+                    value={deadlineDate}
+                    onChange={(event) => setDeadlineDate(event.target.value)}
+                    disabled={!deadlineEnabled}
+                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Giờ</div>
+                  <Select value={deadlineHour} onValueChange={setDeadlineHour} disabled={!deadlineEnabled}>
+                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOUR_OPTIONS.map((hour) => (
+                        <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Phút</div>
+                  <Select value={deadlineMinute} onValueChange={setDeadlineMinute} disabled={!deadlineEnabled}>
+                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      {MINUTE_OPTIONS.map((minute) => (
+                        <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Buổi</div>
+                  <Select value={deadlinePeriod} onValueChange={(value) => setDeadlinePeriod(value as TimePeriod)} disabled={!deadlineEnabled}>
+                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {deadlineEnabled && !deadlineIso && (
+                <div className="mt-2 text-xs font-medium text-destructive">Vui lòng chọn thời hạn nộp bài.</div>
+              )}
+            </div>
+            {assignment ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                <Label className="flex min-w-0 items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">Chấm điểm từng học viên</span>
+                </Label>
+                <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  {assignment.grading_enabled ? 'Đang bật' : 'Đang tắt'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 p-3">
+                <Label className="flex items-center gap-2 text-sm">
+                  <Trophy className="h-4 w-4 text-emerald-500" />
+                  Chấm điểm từng học viên
+                </Label>
+                <Switch checked={gradingEnabled} onCheckedChange={setGradingEnabled} />
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>

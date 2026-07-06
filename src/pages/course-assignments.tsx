@@ -8,17 +8,18 @@ import {
   ClipboardList,
   Clock3,
   Download,
-  Eye,
   FileCheck2,
   FileText,
   Filter,
   GraduationCap,
+  History,
   Loader2,
   MessageSquareText,
   Paperclip,
   Search,
   Send,
   Sparkles,
+  Trophy,
   UploadCloud,
   UserRound,
   X,
@@ -39,7 +40,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -54,8 +54,10 @@ import { getRoleLabel } from '@/utils/role-labels';
 import { cn } from '@/utils/utils';
 import {
   getCourseAssignments,
+  getAssignmentFeedbackHistory,
   getCourseAssignmentSubmissions,
   sendAssignmentFeedback,
+  type AssignmentFeedbackHistory,
   type AssignmentFileMeta,
   type AssignmentSubmission,
 } from '@/api/custom-assignments';
@@ -90,12 +92,17 @@ function displayFeedbackBy(submission: AssignmentSubmission): string {
   return submission.feedback_by_name || submission.feedback_by_username || submission.feedback_by_email || '-';
 }
 
+function displayScore(submission: AssignmentSubmission): string {
+  if (!submission.grading_enabled) return 'Không chấm';
+  return typeof submission.score === 'number' ? `${submission.score}/100` : '-';
+}
+
 function statusBadge(status: AssignmentSubmission['status']) {
   if (status === 'feedback_given') {
     return (
       <Badge className="gap-1.5 border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        Đã feedback
+        Đã phản hồi
       </Badge>
     );
   }
@@ -128,7 +135,7 @@ async function downloadPrivateFile(file: AssignmentFileMeta) {
 }
 
 function FileList({ files, compact = false }: { files: AssignmentFileMeta[]; compact?: boolean }) {
-  if (!files.length) return <span className="text-xs text-muted-foreground">Không có file</span>;
+  if (!files.length) return <span className="text-xs text-muted-foreground">Không có tệp</span>;
   return (
     <div className={cn('flex flex-wrap gap-1.5', !compact && 'max-w-[260px]')}>
       {files.map((file) => (
@@ -137,7 +144,7 @@ function FileList({ files, compact = false }: { files: AssignmentFileMeta[]; com
           variant="outline"
           size="sm"
           className="h-8 max-w-[240px] justify-start gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs shadow-sm hover:border-primary/40 hover:bg-primary/5"
-          onClick={() => downloadPrivateFile(file).catch(() => toast.error('Không thể tải file'))}
+          onClick={() => downloadPrivateFile(file).catch(() => toast.error('Không thể tải tệp'))}
         >
           <Download className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">{file.original_name}</span>
@@ -178,6 +185,7 @@ export default function CourseAssignmentsPage() {
   const [assignmentFilter, setAssignmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [feedbackTarget, setFeedbackTarget] = useState<AssignmentSubmission | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<AssignmentSubmission | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
   const assignmentsQuery = useQuery({
@@ -234,7 +242,7 @@ export default function CourseAssignmentsPage() {
       >
         <StatTile icon={ClipboardList} label="Số bài tập" value={assignments.length} tone="primary" />
         <StatTile icon={FileCheck2} label="Lượt đã nộp" value={submittedCount} tone="muted" />
-        <StatTile icon={MessageSquareText} label="Đã feedback" value={feedbackCount} tone="success" />
+        <StatTile icon={MessageSquareText} label="Đã phản hồi" value={feedbackCount} tone="success" />
       </motion.div>
 
       <motion.div
@@ -276,7 +284,7 @@ export default function CourseAssignmentsPage() {
               <SelectItem value="all">Tất cả trạng thái</SelectItem>
               <SelectItem value="not_submitted">Chưa nộp</SelectItem>
               <SelectItem value="submitted">Đã nộp</SelectItem>
-              <SelectItem value="feedback_given">Đã feedback</SelectItem>
+              <SelectItem value="feedback_given">Đã phản hồi</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -288,39 +296,41 @@ export default function CourseAssignmentsPage() {
         transition={{ duration: 0.24, delay: 0.08 }}
         className="overflow-hidden rounded-xl border bg-card shadow-sm"
       >
-        <div className="hidden overflow-x-auto lg:block">
-          <Table>
+        <div className="hidden overflow-hidden lg:block">
+          <table className="w-full table-fixed caption-bottom text-sm">
+            <colgroup>
+              <col className="w-[21%]" />
+              <col className="w-[21%]" />
+              <col className="w-[14%]" />
+              <col className="w-[20%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <TableHeader className="bg-muted/30">
               <TableRow>
-                <TableHead className="min-w-[220px]">Học viên</TableHead>
-                <TableHead className="min-w-[120px]">Vai trò</TableHead>
-                <TableHead className="min-w-[260px]">Bài tập</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="min-w-[130px]">Đã nộp</TableHead>
-                <TableHead className="min-w-[140px]">Đã feedback</TableHead>
-                <TableHead className="min-w-[160px]">Feedback bởi</TableHead>
-                <TableHead className="min-w-[220px]">File nộp</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
+                <TableHead className="text-center">Học viên</TableHead>
+                <TableHead className="text-left">Bài tập</TableHead>
+                <TableHead className="text-left">Trạng thái</TableHead>
+                <TableHead className="text-left">Thời gian</TableHead>
+                <TableHead className="text-center">Tệp</TableHead>
+                <TableHead className="text-center">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {submissionsQuery.isLoading ? (
                 Array.from({ length: limit }).map((_, index) => (
                   <TableRow key={index}>
-                    <TableCell><Skeleton className="h-5 w-40" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-28" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-28" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                    <TableCell><Skeleton className="h-8 w-36" /></TableCell>
-                    <TableCell><Skeleton className="ml-auto h-8 w-24" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-10 w-full" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-10 w-full" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-8 w-full max-w-28" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-10 w-full" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-8 w-full max-w-28" /></TableCell>
+                    <TableCell className="overflow-hidden"><Skeleton className="mx-auto h-8 w-20" /></TableCell>
                   </TableRow>
                 ))
               ) : submissions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-36 text-center">
+                  <TableCell colSpan={6} className="h-36 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <ClipboardList className="h-8 w-8 opacity-30" />
                       <p className="text-sm">Chưa có học viên nộp bài</p>
@@ -329,53 +339,101 @@ export default function CourseAssignmentsPage() {
                 </TableRow>
               ) : submissions.map((submission) => (
                 <TableRow key={submission.id}>
-                  <TableCell>
-                    <div className="flex min-w-0 items-center gap-3">
+                  <TableCell className="min-w-0 overflow-hidden text-left">
+                    <div className="mx-auto flex w-full max-w-[220px] min-w-0 items-center gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <UserRound className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
                         <div className="truncate font-medium">{displayLearner(submission)}</div>
                         <div className="truncate text-xs text-muted-foreground">{submission.learner_email}</div>
+                        <Badge variant="outline" className="mt-1 h-5 max-w-full border-primary/20 bg-primary/5 px-1.5 text-[10px] leading-none text-primary">
+                          <span className="truncate">{getRoleLabel(submission.learner_role, roleLabels, 'Học viên')}</span>
+                        </Badge>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-                      {getRoleLabel(submission.learner_role, roleLabels, 'Học viên')}
-                    </Badge>
+                  <TableCell className="min-w-0 overflow-hidden text-left">
+                    <div className="w-full max-w-[220px] text-left">
+                      <div className="truncate font-medium">{submission.assignment_title}</div>
+                      <div className="truncate text-xs text-muted-foreground">{submission.course_name}</div>
+                    </div>
                   </TableCell>
-                  <TableCell className="max-w-[280px]">
-                    <div className="truncate font-medium">{submission.assignment_title}</div>
-                    <div className="truncate text-xs text-muted-foreground">{submission.course_name}</div>
+                  <TableCell className="min-w-0 overflow-hidden text-left">
+                    <div className="flex w-full max-w-[132px] min-w-0 flex-col items-start gap-1.5">
+                      {statusBadge(submission.status)}
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'h-6 max-w-full gap-1 px-2 text-[11px]',
+                          submission.grading_enabled
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
+                            : 'border-border bg-muted/30 text-muted-foreground',
+                        )}
+                      >
+                        <Trophy className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{displayScore(submission)}</span>
+                      </Badge>
+                    </div>
                   </TableCell>
-                  <TableCell>{statusBadge(submission.status)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{formatDate(submission.submitted_at)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{formatDate(submission.feedback_at)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{displayFeedbackBy(submission)}</TableCell>
-                  <TableCell><FileList files={submission.files} /></TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant={submission.status === 'submitted' ? 'default' : 'outline'}
-                      className="h-8 gap-1.5"
-                      disabled={submission.status === 'not_submitted'}
-                      onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
-                    >
-                      {submission.status === 'feedback_given' ? (
-                        <Eye className="h-3.5 w-3.5" />
-                      ) : submission.status === 'not_submitted' ? (
-                        <Clock3 className="h-3.5 w-3.5" />
-                      ) : (
-                        <MessageSquareText className="h-3.5 w-3.5" />
-                      )}
-                      {submission.status === 'feedback_given' ? 'Xem feedback' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Feedback'}
-                    </Button>
+                  <TableCell className="min-w-0 overflow-hidden text-left text-xs text-muted-foreground">
+                    <div className="w-full max-w-[180px] text-left">
+                      <div className="truncate"><span className="font-medium text-foreground">Nộp:</span> {formatDate(submission.submitted_at)}</div>
+                      <div className="truncate"><span className="font-medium text-foreground">Phản hồi:</span> {formatDate(submission.feedback_at)}</div>
+                      <div className="truncate"><span className="font-medium text-foreground">Bởi:</span> {displayFeedbackBy(submission)}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="min-w-0 overflow-hidden text-left">
+                    {submission.files.length > 0 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mx-auto h-8 w-full min-w-0 max-w-[220px] justify-start gap-1.5 px-2"
+                        onClick={() => downloadPrivateFile(submission.files[0]).catch(() => toast.error('Không thể tải tệp'))}
+                        title={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}
+                      >
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1 truncate text-left text-xs">{submission.files[0].original_name}</span>
+                        {submission.files.length > 1 && (
+                          <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">+{submission.files.length - 1}</span>
+                        )}
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="overflow-hidden text-center">
+                    <div className="flex justify-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8"
+                        disabled={submission.status === 'not_submitted'}
+                        onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
+                        title="Lịch sử phản hồi"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant={submission.status === 'submitted' ? 'default' : 'outline'}
+                        className="h-8 w-8"
+                        disabled={submission.status === 'not_submitted'}
+                        onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
+                        title={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
+                      >
+                        {submission.status === 'not_submitted' ? (
+                          <Clock3 className="h-3.5 w-3.5" />
+                        ) : (
+                          <MessageSquareText className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+          </table>
         </div>
 
         <div className="space-y-3 p-3 lg:hidden">
@@ -413,6 +471,18 @@ export default function CourseAssignmentsPage() {
                     <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
                       {getRoleLabel(submission.learner_role, roleLabels, 'Học viên')}
                     </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'gap-1.5',
+                        submission.grading_enabled
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
+                          : 'border-border bg-muted/30 text-muted-foreground',
+                      )}
+                    >
+                      <Trophy className="h-3.5 w-3.5" />
+                      {displayScore(submission)}
+                    </Badge>
                     <span className="text-xs text-muted-foreground">{formatDate(submission.submitted_at)}</span>
                   </div>
                   <div className="rounded-lg bg-muted/30 p-3">
@@ -421,32 +491,41 @@ export default function CourseAssignmentsPage() {
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
                     <div className="flex items-center justify-between gap-3">
-                      <span>Đã feedback</span>
+                      <span>Đã phản hồi</span>
                       <span className="text-right font-medium text-foreground">{formatDate(submission.feedback_at)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span>Feedback bởi</span>
+                      <span>Phản hồi bởi</span>
                       <span className="text-right font-medium text-foreground">{displayFeedbackBy(submission)}</span>
                     </div>
                   </div>
                   <div className="mt-3">
                     <FileList files={submission.files} compact />
                   </div>
-                  <Button
-                    variant={submission.status === 'submitted' ? 'default' : 'outline'}
-                    className="mt-4 w-full gap-1.5"
-                    disabled={submission.status === 'not_submitted'}
-                    onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
-                  >
-                    {submission.status === 'feedback_given' ? (
-                      <Eye className="h-4 w-4" />
-                    ) : submission.status === 'not_submitted' ? (
-                      <Clock3 className="h-4 w-4" />
-                    ) : (
-                      <MessageSquareText className="h-4 w-4" />
-                    )}
-                    {submission.status === 'feedback_given' ? 'Xem feedback' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Feedback'}
-                  </Button>
+                  <div className="mt-4 grid grid-cols-[44px_1fr] gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      disabled={submission.status === 'not_submitted'}
+                      onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
+                      title="Lịch sử phản hồi"
+                    >
+                      <History className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={submission.status === 'submitted' ? 'default' : 'outline'}
+                      className="w-full gap-1.5"
+                      disabled={submission.status === 'not_submitted'}
+                      onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
+                    >
+                      {submission.status === 'not_submitted' ? (
+                        <Clock3 className="h-4 w-4" />
+                      ) : (
+                        <MessageSquareText className="h-4 w-4" />
+                      )}
+                      {submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
+                    </Button>
+                  </div>
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -470,12 +549,125 @@ export default function CourseAssignmentsPage() {
         open={!!feedbackTarget}
         onClose={() => setFeedbackTarget(null)}
         onSaved={() => {
+          if (feedbackTarget?.id) {
+            queryClient.invalidateQueries({ queryKey: ['assignment-feedback-history', feedbackTarget.id] });
+          }
           setFeedbackTarget(null);
           queryClient.invalidateQueries({ queryKey: ['course-assignment-submissions', courseId] });
           queryClient.invalidateQueries({ queryKey: ['course-assignments', courseId] });
         }}
       />
+      <FeedbackHistoryDialog
+        submission={historyTarget}
+        open={!!historyTarget}
+        onClose={() => setHistoryTarget(null)}
+      />
     </div>
+  );
+}
+
+function displayHistoryFeedbackBy(item: AssignmentFeedbackHistory): string {
+  return item.feedback_by_name || item.feedback_by_username || item.feedback_by_email || '-';
+}
+
+function FeedbackHistoryDialog({
+  submission,
+  open,
+  onClose,
+}: {
+  submission: AssignmentSubmission | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const historyQuery = useQuery({
+    queryKey: ['assignment-feedback-history', submission?.id],
+    queryFn: () => getAssignmentFeedbackHistory(submission!.id),
+    enabled: open && !!submission?.id && submission.status !== 'not_submitted',
+    staleTime: 15_000,
+  });
+  const history = historyQuery.data || [];
+
+  if (!submission) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-hidden rounded-2xl p-0 sm:max-h-[92vh]">
+        <DialogHeader className="border-b bg-muted/20 px-4 py-4 sm:px-6">
+          <div className="flex items-start gap-3 pr-9">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <History className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <DialogTitle>Lịch sử phản hồi</DialogTitle>
+              <DialogDescription className="mt-1 truncate">
+                {displayLearner(submission)} · {submission.assignment_title}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="max-h-[calc(100dvh-8rem)] overflow-y-auto p-4 sm:max-h-[70vh] sm:p-6">
+          <div className="mb-4 rounded-xl border bg-card p-4 shadow-sm">
+            <div className="truncate text-sm font-semibold text-foreground">{submission.course_name}</div>
+            <div className="mt-1 truncate text-xs text-muted-foreground">{submission.learner_email}</div>
+          </div>
+
+          {historyQuery.isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 text-center text-muted-foreground">
+              <History className="mb-2 h-8 w-8 opacity-40" />
+              <div className="text-sm font-medium">Chưa có lịch sử phản hồi</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {history.map((item, index) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, delay: index * 0.02 }}
+                  className="rounded-xl border bg-card p-4 shadow-sm"
+                >
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          index === 0 && 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+                        )}
+                      >
+                        {index === 0 ? 'Mới nhất' : `Lần ${history.length - index}`}
+                      </Badge>
+                      {submission.grading_enabled && (
+                        <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                          <Trophy className="h-3 w-3" />
+                          {typeof item.score === 'number' ? `${item.score}/100` : '-'}
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatDate(item.feedback_at)}</span>
+                  </div>
+                  <div className="whitespace-pre-wrap rounded-lg bg-muted/20 p-3 text-sm leading-6 text-foreground">
+                    {item.feedback_text}
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">Bởi {displayHistoryFeedbackBy(item)}</div>
+                  {item.feedback_files.length > 0 && (
+                    <div className="mt-3">
+                      <FileList files={item.feedback_files} compact />
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -494,33 +686,38 @@ function FeedbackDialog({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [feedbackText, setFeedbackText] = useState('');
+  const [score, setScore] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const alreadyFeedback = submission?.status === 'feedback_given' || Boolean(submission?.feedback_at);
+  const hasFeedback = submission?.status === 'feedback_given' || Boolean(submission?.feedback_at);
 
   useEffect(() => {
-    setFeedbackText('');
+    setFeedbackText(submission?.feedback_text || '');
+    setScore(submission?.score !== null && submission?.score !== undefined ? String(submission.score) : '');
     setFiles([]);
-  }, [submission?.id]);
+  }, [submission?.id, submission?.feedback_text, submission?.score]);
 
   const feedbackMut = useMutation({
     mutationFn: () => sendAssignmentFeedback(submission!.id, {
       feedback_text: feedbackText,
+      score: submission!.grading_enabled ? Number(score) : undefined,
       feedback_files: files,
     }),
     onSuccess: () => {
-      toast.success('Đã gửi feedback');
+      toast.success('Đã gửi phản hồi');
       setFeedbackText('');
+      setScore('');
       setFiles([]);
       onSaved();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Gửi feedback thất bại'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Gửi phản hồi thất bại'),
   });
 
   if (!submission) return null;
-  const canSend = !alreadyFeedback && feedbackText.trim().length > 0 && !feedbackMut.isPending;
+  const numericScore = Number(score);
+  const scoreValid = !submission.grading_enabled || (score.trim() !== '' && Number.isInteger(numericScore) && numericScore >= 0 && numericScore <= 100);
+  const canSend = feedbackText.trim().length > 0 && scoreValid && !feedbackMut.isPending;
 
   function onPickFiles(event: ChangeEvent<HTMLInputElement>) {
-    if (alreadyFeedback) return;
     const next = Array.from(event.target.files || []).slice(0, MAX_FEEDBACK_FILES);
     setFiles(next);
     event.target.value = '';
@@ -542,21 +739,21 @@ function FeedbackDialog({
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <MessageSquareText className="h-5 w-5" />
                   </span>
-                  Feedback bài tập
+                  Phản hồi bài tập
                 </DialogTitle>
                 <DialogDescription className="mt-2">
                   {submission.course_name}
                 </DialogDescription>
               </div>
-              {alreadyFeedback ? (
+              {hasFeedback ? (
                 <Badge className="w-fit gap-1.5 border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Đã feedback
+                  Phản hồi lại
                 </Badge>
               ) : (
                 <Badge className="w-fit gap-1.5 border border-primary/20 bg-primary/10 px-3 py-1 text-primary">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Admin review
+                  Quản trị viên duyệt
                 </Badge>
               )}
             </div>
@@ -598,7 +795,7 @@ function FeedbackDialog({
                   <div className="mt-4">
                     <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       <Paperclip className="h-3.5 w-3.5" />
-                      File học viên
+                      Tệp học viên
                     </div>
                     <FileList files={submission.files} compact />
                   </div>
@@ -606,10 +803,37 @@ function FeedbackDialog({
               </section>
 
               <section className="space-y-4">
+                {submission.grading_enabled && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                        <Trophy className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">Điểm bài tập</div>
+                        <div className="text-xs text-muted-foreground">Thang điểm tối đa 100</div>
+                      </div>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={score}
+                      onChange={(event) => setScore(event.target.value)}
+                      placeholder="Nhập điểm 0-100"
+                      className="h-11 rounded-xl bg-background text-base font-semibold"
+                    />
+                    {!scoreValid && (
+                      <div className="mt-2 text-xs font-medium text-destructive">Điểm phải là số nguyên từ 0 đến 100.</div>
+                    )}
+                  </div>
+                )}
+
                 {submission.feedback_text && (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="font-semibold text-emerald-700 dark:text-emerald-300">Feedback hiện tại</div>
+                      <div className="font-semibold text-emerald-700 dark:text-emerald-300">Phản hồi hiện tại</div>
                       <span className="text-xs text-muted-foreground">{formatDate(submission.feedback_at)}</span>
                     </div>
                     <div className="whitespace-pre-wrap rounded-lg bg-background/70 p-3 text-foreground">{submission.feedback_text}</div>
@@ -622,27 +846,19 @@ function FeedbackDialog({
                   </div>
                 )}
 
-                {!alreadyFeedback && (
-                  <>
                 <div className="rounded-xl border bg-card p-4 shadow-sm">
-                  <label className="mb-2 block text-sm font-semibold">Lời nhận xét</label>
+                  <label className="mb-2 block text-sm font-semibold">{hasFeedback ? 'Phản hồi mới nhất' : 'Lời nhận xét'}</label>
                   <Textarea
                     value={feedbackText}
                     onChange={(event) => setFeedbackText(event.target.value)}
-                    disabled={alreadyFeedback}
-                    placeholder="Nhập feedback cho học viên..."
+                    placeholder="Nhập phản hồi cho học viên..."
                     className="min-h-[180px] resize-y rounded-xl"
                   />
-                  {alreadyFeedback && (
-                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
-                      Mỗi bài nộp chỉ được feedback một lần. Nội dung phía trên là bản feedback đã gửi cho học viên.
-                    </div>
-                  )}
                 </div>
 
                 <div className={cn(
                   'rounded-xl border border-dashed p-4 shadow-sm',
-                  alreadyFeedback ? 'border-border bg-muted/30' : 'border-primary/30 bg-primary/5',
+                  hasFeedback ? 'border-emerald-300/50 bg-emerald-50/40 dark:border-emerald-900/60 dark:bg-emerald-950/20' : 'border-primary/30 bg-primary/5',
                 )}>
                   <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={onPickFiles} />
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -651,18 +867,19 @@ function FeedbackDialog({
                         <UploadCloud className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-foreground">File đã nhận xét</div>
-                        <div className="text-xs text-muted-foreground">{files.length}/{MAX_FEEDBACK_FILES} file</div>
+                        <div className="text-sm font-semibold text-foreground">Tệp phản hồi mới</div>
+                        <div className="text-xs text-muted-foreground">
+                          {files.length}/{MAX_FEEDBACK_FILES} tệp{hasFeedback ? ' · không chọn tệp mới sẽ giữ tệp hiện tại' : ''}
+                        </div>
                       </div>
                     </div>
                     <Button
                       type="button"
-                      disabled={alreadyFeedback}
                       className="w-full gap-2 sm:w-auto"
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <UploadCloud className="h-4 w-4" />
-                      Upload file
+                      Tải tệp lên
                     </Button>
                   </div>
                   {files.length > 0 && (
@@ -676,7 +893,6 @@ function FeedbackDialog({
                           </div>
                           <button
                             type="button"
-                            disabled={alreadyFeedback}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => setFiles((current) => current.filter(item => item !== file))}
                           >
@@ -687,20 +903,16 @@ function FeedbackDialog({
                     </div>
                   )}
                 </div>
-                  </>
-                )}
               </section>
             </div>
           </div>
 
           <DialogFooter className="mx-0 mb-0 shrink-0 border-t bg-muted/30 px-3 pt-3 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:px-6 sm:pb-5 [&>button]:w-full sm:[&>button]:w-auto">
             <Button variant="outline" onClick={onClose}>Hủy</Button>
-            {!alreadyFeedback && (
             <Button disabled={!canSend} onClick={() => feedbackMut.mutate()} className="gap-2">
               {feedbackMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Gửi feedback
+              {hasFeedback ? 'Gửi phản hồi lại' : 'Gửi phản hồi'}
             </Button>
-            )}
           </DialogFooter>
         </motion.div>
       </DialogContent>

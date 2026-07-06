@@ -27,11 +27,11 @@ export function Pagination({
   onPageChange,
   onLimitChange,
   limitOptions = [5, 10, 20],
-  label = 'items',
+  label = 'bản ghi',
 }: PaginationProps) {
   if (total <= 0) return null;
 
-  // Smart page numbers: show first, last, and neighbors of current
+  // Hiển thị trang đầu, trang cuối và các trang gần trang hiện tại.
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
     .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1);
 
@@ -39,7 +39,7 @@ export function Pagination({
     <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-muted/20 gap-4 sm:gap-0" style={{ borderTop: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
       <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
         <div className="flex items-center gap-2">
-          <span>Rows:</span>
+          <span>Số dòng:</span>
           <Select
             value={limit.toString()}
             onValueChange={(v) => {
@@ -60,10 +60,10 @@ export function Pagination({
           </Select>
         </div>
         <div className="hidden sm:block">
-          Showing{' '}
-          <span className="text-foreground">{(page - 1) * limit + 1}</span> to{' '}
+          Hiển thị{' '}
+          <span className="text-foreground">{(page - 1) * limit + 1}</span> đến{' '}
           <span className="text-foreground">{Math.min(page * limit, total)}</span>{' '}
-          of <span className="text-foreground">{total}</span> {label}
+          trong tổng <span className="text-foreground">{total}</span> {label}
         </div>
       </div>
       <div className="flex items-center gap-2">
