@@ -27,6 +27,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
+  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -77,7 +78,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Thêm thành viên</DialogTitle>
+          <DialogTitle>Thêm thành viên vào {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

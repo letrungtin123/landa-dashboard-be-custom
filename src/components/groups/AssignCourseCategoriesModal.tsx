@@ -21,6 +21,7 @@ interface Props {
 export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
 
   const { data, isFetching } = useQuery({
     queryKey: ['course-categories-for-group'],
@@ -71,7 +72,7 @@ export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCatego
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân Danh Mục Khóa Học cho nhóm</DialogTitle>
+          <DialogTitle>Phân Danh Mục Khóa Học cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

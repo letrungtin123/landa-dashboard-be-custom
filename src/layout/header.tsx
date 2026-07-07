@@ -119,6 +119,19 @@ export function Header() {
           </DropdownMenu>
         )}
 
+        {/* ── Tenant badge (non-superadmin, read-only) ── */}
+        {!isSuperadmin && user && (
+          <div
+            className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 mr-1 bg-muted/50 border border-border/60 text-foreground cursor-default select-none"
+            aria-label={`Tenant hiện tại: ${user.tenant_name || 'Chưa có tenant'}`}
+          >
+            <Building2 className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-xs font-medium hidden sm:inline-block max-w-[140px] truncate">
+              {user.tenant_name || 'Chưa có tenant'}
+            </span>
+          </div>
+        )}
+
         <Button
           variant="ghost"
           size="icon"

@@ -38,13 +38,13 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createTeam(subgroupId, { name: newName.trim() }),
     onSuccess: () => {
-      toast.success('Đã tạo team');
+      toast.success('Đã tạo phòng ban');
       qc.invalidateQueries({ queryKey: ['teams', subgroupId] });
       qc.invalidateQueries({ queryKey: ['sub-groups'] }); // update team_count badge
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo team'),
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo phòng ban'),
   });
 
   const updateMutation = useMutation({
@@ -60,19 +60,19 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTeam(id),
     onSuccess: (_, id) => {
-      toast.success('Đã xóa team');
+      toast.success('Đã xóa phòng ban');
       qc.invalidateQueries({ queryKey: ['teams', subgroupId] });
       qc.invalidateQueries({ queryKey: ['sub-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error('Lỗi xóa team'),
+    onError: () => toast.error('Lỗi xóa phòng ban'),
   });
 
   const teams: Team[] = data?.teams ?? [];
 
   const handleDelete = (t: Team) => {
     confirmDialog({
-      title: 'Xóa Team',
+      title: 'Xóa Phòng ban',
       description: `Xóa "${t.name}" sẽ xóa toàn bộ thành viên và course đã phân.`,
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(t.id),
@@ -82,7 +82,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phòng ban</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
@@ -92,7 +92,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder="Tên team..."
+            placeholder="Tên phòng ban..."
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -119,7 +119,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
         ) : teams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có team nào</p>
+            <p className="text-xs text-muted-foreground">Chưa có phòng ban nào</p>
           </div>
         ) : teams.map(t => (
           <div

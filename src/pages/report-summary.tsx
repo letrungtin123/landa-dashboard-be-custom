@@ -316,10 +316,10 @@ function GroupEnrollmentsWidget({
             <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-indigo-500" />
               {selectedSubGroupId !== 'all'
-                ? 'Tổng lượt đăng ký theo Team'
+                ? 'Tổng lượt đăng ký theo Phòng ban'
                 : selectedGroupId !== 'all'
-                  ? 'Tổng lượt đăng ký theo SubGroup'
-                  : 'Tổng lượt đăng ký theo Group'}
+                  ? 'Tổng lượt đăng ký theo Chi nhánh'
+                  : 'Tổng lượt đăng ký theo Công ty'}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground">
               Xu hướng đăng ký theo tháng — Năm {year}
@@ -585,7 +585,7 @@ export default function ReportSummaryPage() {
 
   // learner_plus: lấy danh sách groups từ auth store (BE trả về qua member_groups)
   const learnerPlusMemberGroups = isLearnerPlus && user?.memberGroupIds
-    ? user.memberGroupIds.map((id, i) => ({ id, name: user.memberGroupNames?.[i] || `Group ${id}` }))
+    ? user.memberGroupIds.map((id, i) => ({ id, name: user.memberGroupNames?.[i] || `Công ty ${id}` }))
     : [];
   const hasNoGroups = isLearnerPlus && learnerPlusMemberGroups.length === 0;
 
@@ -640,7 +640,7 @@ export default function ReportSummaryPage() {
     setIsExporting(true);
     try {
       const groupName = selectedGroupId === 'all'
-        ? 'Tất cả'
+        ? 'Tất cả công ty'
         : (groupsData?.groups.find(g => g.id === selectedGroupId)?.name || String(selectedGroupId));
       await exportReportExcel({
         selectedYear,
@@ -673,10 +673,10 @@ export default function ReportSummaryPage() {
       <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-12 text-center mt-12 backdrop-blur-sm">
           <Users className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-amber-600 dark:text-amber-400 mb-2">Chưa thuộc nhóm nào</h2>
+          <h2 className="text-xl font-bold text-amber-600 dark:text-amber-400 mb-2">Chưa được gán Công ty/Chi nhánh/Phòng ban</h2>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Bạn chưa được thêm vào nhóm/phòng ban/team nào trong hệ thống.
-            Vui lòng liên hệ quản trị viên để được thêm vào nhóm phù hợp.
+            Bạn chưa được thêm vào Công ty/Chi nhánh/Phòng ban nào trong hệ thống.
+            Vui lòng liên hệ quản trị viên để được thêm vào đơn vị phù hợp.
           </p>
         </div>
       </div>
@@ -796,7 +796,7 @@ export default function ReportSummaryPage() {
               <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="truncate max-w-[100px] sm:max-w-[120px]">
                 {selectedGroupId === 'all'
-                  ? 'Tất cả các doanh nghiệp'
+                  ? 'Tất cả công ty'
                   : groupsData?.groups.find(g => g.id === selectedGroupId)?.name || 'Đang tải...'}
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
@@ -808,7 +808,7 @@ export default function ReportSummaryPage() {
                   onClick={() => { setSelectedGroupId('all'); setSelectedSubGroupId('all'); }}
                   className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${selectedGroupId === 'all' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
                 >
-                  Tất cả các doanh nghiệp
+                  Tất cả công ty
                   <div className={`w-1.5 h-1.5 rounded-full transition-colors ${selectedGroupId === 'all' ? 'bg-foreground' : 'bg-transparent'}`} />
                 </DropdownMenuItem>
               )}
@@ -833,7 +833,7 @@ export default function ReportSummaryPage() {
                 <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedSubGroupId === 'all'
-                    ? 'Tất cả phòng ban'
+                    ? 'Tất cả chi nhánh'
                     : subGroupsData?.subgroups.find(sg => sg.id === selectedSubGroupId)?.name || 'Đang tải...'}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
@@ -843,7 +843,7 @@ export default function ReportSummaryPage() {
                   onClick={() => setSelectedSubGroupId('all')}
                   className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${selectedSubGroupId === 'all' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
                 >
-                  Tất cả phòng ban
+                  Tất cả chi nhánh
                   <div className={`w-1.5 h-1.5 rounded-full transition-colors ${selectedSubGroupId === 'all' ? 'bg-foreground' : 'bg-transparent'}`} />
                 </DropdownMenuItem>
                 {subGroupsData?.subgroups.map(sg => (

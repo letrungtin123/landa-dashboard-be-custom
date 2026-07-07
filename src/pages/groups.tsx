@@ -44,28 +44,28 @@ export default function GroupsPage() {
         <PageHeader
           icon={FolderTree}
           title="Quản lý nhóm"
-          description="Tổ chức học viên theo nhóm và phân quyền xem khóa học"
+          description="Sắp xếp học viên theo Công ty → Chi nhánh → Phòng ban và phân quyền xem khóa học"
         />
       </div>
 
       {/* Breadcrumb indicator */}
       <div className="px-6 py-2 border-b border-border/30 bg-muted/20 flex flex-wrap items-center gap-2 text-xs text-muted-foreground shrink-0 overflow-x-auto whitespace-nowrap">
-        <button 
+        <button
           onClick={() => handleSelectGroup('')}
           className={`hover:underline transition-colors ${selectedGroupId ? 'text-primary font-medium' : 'text-muted-foreground/50'}`}>
-          Tổ chức
+          Công ty
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
-        <button 
+        <button
           onClick={() => selectedGroupId && handleSelectSubGroup('')}
           className={`hover:underline transition-colors ${selectedSubGroupId ? 'text-primary font-medium' : selectedGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
-          Phòng ban
+          Chi nhánh
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
-        <button 
+        <button
           onClick={() => selectedSubGroupId && setSelectedTeamId('')}
           className={`hover:underline transition-colors ${selectedTeamId ? 'text-primary font-medium' : selectedSubGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
-          Team
+          Phòng ban
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
         <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Chi tiết</span>
@@ -92,8 +92,8 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<Building2 className="h-7 w-7" />}
-              title="Phòng ban"
-              text="Chọn một tổ chức ở panel bên trái"
+              title="Chi nhánh"
+              text="Chọn một Công ty ở panel bên trái"
             />
           )}
         </div>
@@ -109,8 +109,8 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<Network className="h-7 w-7" />}
-              title="Team"
-              text={selectedGroupId ? 'Chọn một phòng ban' : ''}
+              title="Phòng ban"
+              text={selectedGroupId ? 'Chọn một Chi nhánh' : ''}
             />
           )}
         </div>
@@ -122,13 +122,13 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<MousePointerClick className="h-7 w-7" />}
-              title="Chi tiết Team"
+              title="Chi tiết Phòng ban"
               text={
                 selectedSubGroupId
-                  ? 'Chọn một team để xem chi tiết'
+                  ? 'Chọn một Phòng ban để xem chi tiết'
                   : selectedGroupId
-                    ? 'Chọn phòng ban → team'
-                    : 'Chọn tổ chức → phòng ban → team'
+                    ? 'Chọn Chi nhánh → Phòng ban'
+                    : 'Chọn Công ty → Chi nhánh → Phòng ban'
               }
               large
             />

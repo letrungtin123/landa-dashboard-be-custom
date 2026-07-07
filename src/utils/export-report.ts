@@ -205,7 +205,7 @@ export async function exportReportExcel(params: ExportParams) {
 
     toast.loading('Đang tạo và định dạng file Excel...', { id: toastId });
     const exportDate = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const metaSubtitle = `Nhóm: ${groupName} | Người xuất: ${exporterName} | Ngày xuất: ${exportDate}`;
+    const metaSubtitle = `Công ty: ${groupName} | Người xuất: ${exporterName} | Ngày xuất: ${exportDate}`;
 
     // ═══ SHEET 1: TỔNG QUAN THEO THÁNG ═══
     const COL1 = 6;

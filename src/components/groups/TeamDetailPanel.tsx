@@ -178,7 +178,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleRemoveMember = (id: string, username: string) => {
     confirmDialog({
       title: 'Xóa thành viên',
-      description: `Xóa "${username}" khỏi nhóm? User sẽ không còn thấy courses của nhóm này.`,
+      description: `Xóa "${username}" khỏi phòng ban? User sẽ không còn thấy courses của phòng ban này.`,
       variant: 'destructive',
       onConfirm: () => removeMemberMutation.mutate(id),
     });
@@ -196,7 +196,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRemoveMembers = () => {
     confirmDialog({
       title: 'Xóa nhiều thành viên',
-      description: `Xóa ${selectedMembers.length} thành viên khỏi nhóm?`,
+      description: `Xóa ${selectedMembers.length} thành viên khỏi phòng ban?`,
       variant: 'destructive',
       onConfirm: () => removeMultipleMembersMutation.mutate(selectedMembers),
     });
@@ -205,7 +205,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCourses = () => {
     confirmDialog({
       title: 'Thu hồi nhiều Course',
-      description: `Thu hồi ${selectedCourses.length} course khỏi nhóm?`,
+      description: `Thu hồi ${selectedCourses.length} course khỏi phòng ban?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCoursesMutation.mutate(selectedCourses),
     });
@@ -223,7 +223,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCategories = () => {
     confirmDialog({
       title: 'Thu hồi nhiều danh mục',
-      description: `Thu hồi ${selectedCategories.length} danh mục khỏi nhóm?`,
+      description: `Thu hồi ${selectedCategories.length} danh mục khỏi phòng ban?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCategoriesMutation.mutate(selectedCategories),
     });
@@ -241,7 +241,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCourseCategories = () => {
     confirmDialog({
       title: 'Thu hồi nhiều danh mục khóa học',
-      description: `Thu hồi ${selectedCourseCategories.length} danh mục khóa học khỏi nhóm?`,
+      description: `Thu hồi ${selectedCourseCategories.length} danh mục khóa học khỏi phòng ban?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCourseCategoriesMutation.mutate(selectedCourseCategories),
     });

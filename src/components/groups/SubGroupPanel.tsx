@@ -38,13 +38,13 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createSubGroup(groupId, { name: newName.trim() }),
     onSuccess: () => {
-      toast.success('Đã tạo nhóm');
+      toast.success('Đã tạo chi nhánh');
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       qc.invalidateQueries({ queryKey: ['org-groups'] }); // update subgroup_count badge
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo nhóm'),
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo chi nhánh'),
   });
 
   const updateMutation = useMutation({
@@ -60,20 +60,20 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSubGroup(id),
     onSuccess: (_, id) => {
-      toast.success('Đã xóa nhóm');
+      toast.success('Đã xóa chi nhánh');
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error('Lỗi xóa nhóm'),
+    onError: () => toast.error('Lỗi xóa chi nhánh'),
   });
 
   const subgroups: SubGroup[] = data?.subgroups ?? [];
 
   const handleDelete = (sg: SubGroup) => {
     confirmDialog({
-      title: 'Xóa Nhóm',
-      description: `Xóa "${sg.name}" sẽ xóa toàn bộ thành viên và course đã phân.`,
+      title: 'Xóa Chi nhánh',
+      description: `Xóa "${sg.name}" sẽ xóa toàn bộ phòng ban bên trong.`,
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(sg.id),
     });
@@ -82,7 +82,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phòng ban</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Chi nhánh</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
@@ -92,7 +92,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder="Tên phòng ban..."
+            placeholder="Tên chi nhánh..."
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -119,7 +119,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
         ) : subgroups.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có phòng ban nào</p>
+            <p className="text-xs text-muted-foreground">Chưa có chi nhánh nào</p>
           </div>
         ) : subgroups.map(sg => (
           <div
@@ -152,7 +152,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
                 <div className="flex items-center gap-1 shrink-0">
                   {sg.team_count > 0 && (
                     <span className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-mono">
-                      {sg.team_count} team
+                      {sg.team_count} phòng ban
                     </span>
                   )}
                 </div>

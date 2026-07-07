@@ -24,6 +24,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
+  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -75,7 +76,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân Course cho nhóm</DialogTitle>
+          <DialogTitle>Phân Course cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
