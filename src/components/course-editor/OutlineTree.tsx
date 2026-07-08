@@ -21,6 +21,8 @@ import {
   deleteCourseAssignment,
   getCourseAssignments,
   updateCourseAssignment,
+  type AssignmentDeadlineMode,
+  type AssignmentSubmissionUnlockMode,
   type CourseAssignment,
 } from '@/api/custom-assignments';
 import {
@@ -706,7 +708,7 @@ function deadlinePartsToIso(dateValue: string, hourValue: string, minuteValue: s
 }
 
 function isAssignmentExpired(assignment: CourseAssignment): boolean {
-  if (!assignment.deadline_enabled || !assignment.deadline_at) return false;
+  if (assignment.deadline_mode !== 'absolute' || !assignment.deadline_at) return false;
   return new Date(assignment.deadline_at).getTime() <= Date.now();
 }
 
@@ -716,6 +718,10 @@ function formatAssignmentDeadline(value?: string | null): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function assignmentUnlockModeLabel(mode?: AssignmentSubmissionUnlockMode): string {
+  return mode === 'anytime' ? 'Được nộp khi chưa học xong' : 'Học xong nội dung mới được nộp';
 }
 
 function AssignmentOutlineSection({ courseId }: { courseId: string }) {
@@ -791,11 +797,19 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                 <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-4 text-muted-foreground">
                   <span className="whitespace-nowrap">{assignment.submitted_count || 0} đã nộp</span>
                   <span className="whitespace-nowrap">{assignment.feedback_count || 0} phản hồi</span>
-                  {assignment.deadline_enabled && assignment.deadline_at && (
+                  {assignment.deadline_mode === 'absolute' && assignment.deadline_at && (
                     <span className={`whitespace-nowrap ${isAssignmentExpired(assignment) ? 'font-semibold text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>
                       Hạn {formatAssignmentDeadline(assignment.deadline_at)}
                     </span>
                   )}
+                  {assignment.deadline_mode === 'relative_to_enrollment' && assignment.deadline_after_days && (
+                    <span className="whitespace-nowrap text-amber-600 dark:text-amber-400">
+                      Hạn sau {assignment.deadline_after_days} ngày từ lúc ghi danh
+                    </span>
+                  )}
+                  <span className="whitespace-nowrap">
+                    {assignmentUnlockModeLabel(assignment.submission_unlock_mode)}
+                  </span>
                   {assignment.grading_enabled && (
                     <span className="whitespace-nowrap font-semibold text-emerald-600 dark:text-emerald-400">Có điểm</span>
                   )}
@@ -863,7 +877,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa bài tập</AlertDialogTitle>
             <AlertDialogDescription>
-              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi outline và learner.
+              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi outline và học viên.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -898,11 +912,13 @@ function AssignmentDialog({
   const [question, setQuestion] = useState('');
   const [isPublished, setIsPublished] = useState(true);
   const [allowResubmission, setAllowResubmission] = useState(false);
-  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
+  const [deadlineMode, setDeadlineMode] = useState<AssignmentDeadlineMode>('none');
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineHour, setDeadlineHour] = useState('11');
   const [deadlineMinute, setDeadlineMinute] = useState('59');
   const [deadlinePeriod, setDeadlinePeriod] = useState<TimePeriod>('PM');
+  const [deadlineAfterDays, setDeadlineAfterDays] = useState('7');
+  const [submissionUnlockMode, setSubmissionUnlockMode] = useState<AssignmentSubmissionUnlockMode>('after_content_complete');
   const [gradingEnabled, setGradingEnabled] = useState(false);
 
   React.useEffect(() => {
@@ -911,20 +927,24 @@ function AssignmentDialog({
     setQuestion(assignment?.question || '');
     setIsPublished(assignment?.is_published ?? true);
     setAllowResubmission(assignment?.allow_resubmission ?? false);
-    setDeadlineEnabled(assignment?.deadline_enabled ?? false);
+    setDeadlineMode(assignment?.deadline_mode || (assignment?.deadline_enabled ? 'absolute' : 'none'));
     const deadlineParts = toDeadlineParts(assignment?.deadline_at);
     setDeadlineDate(deadlineParts.date);
     setDeadlineHour(deadlineParts.hour);
     setDeadlineMinute(deadlineParts.minute);
     setDeadlinePeriod(deadlineParts.period);
+    setDeadlineAfterDays(String(assignment?.deadline_after_days || 7));
+    setSubmissionUnlockMode(assignment?.submission_unlock_mode || 'after_content_complete');
     setGradingEnabled(assignment?.grading_enabled ?? false);
   }, [assignment, open]);
 
-  const deadlineIso = deadlineEnabled ? deadlinePartsToIso(deadlineDate, deadlineHour, deadlineMinute, deadlinePeriod) : null;
+  const deadlineIso = deadlineMode === 'absolute' ? deadlinePartsToIso(deadlineDate, deadlineHour, deadlineMinute, deadlinePeriod) : null;
+  const deadlineAfterDaysNumber = Number(deadlineAfterDays);
+  const hasValidRelativeDeadline = Number.isInteger(deadlineAfterDaysNumber) && deadlineAfterDaysNumber >= 1 && deadlineAfterDaysNumber <= 3650;
 
-  function handleDeadlineEnabledChange(nextEnabled: boolean) {
-    setDeadlineEnabled(nextEnabled);
-    if (nextEnabled && !deadlineDate) {
+  function handleDeadlineModeChange(nextMode: AssignmentDeadlineMode) {
+    setDeadlineMode(nextMode);
+    if (nextMode === 'absolute' && !deadlineDate) {
       setDeadlineDate(todayLocalDateInput());
     }
   }
@@ -935,8 +955,11 @@ function AssignmentDialog({
       question,
       is_published: isPublished,
       allow_resubmission: allowResubmission,
-      deadline_enabled: deadlineEnabled,
+      deadline_enabled: deadlineMode !== 'none',
+      deadline_mode: deadlineMode,
       deadline_at: deadlineIso,
+      deadline_after_days: deadlineMode === 'relative_to_enrollment' ? deadlineAfterDaysNumber : null,
+      submission_unlock_mode: submissionUnlockMode,
       grading_enabled: gradingEnabled,
     }),
     onSuccess: () => {
@@ -952,8 +975,8 @@ function AssignmentDialog({
       question,
       is_published: isPublished,
       allow_resubmission: allowResubmission,
-      deadline_enabled: deadlineEnabled,
-      deadline_at: deadlineIso,
+      submission_unlock_mode: submissionUnlockMode,
+      ...(assignment?.deadline_mode === 'absolute' ? { deadline_at: deadlineIso } : {}),
     }),
     onSuccess: () => {
       toast.success('Đã lưu bài tập');
@@ -963,7 +986,10 @@ function AssignmentDialog({
   });
 
   const pending = createMut.isPending || updateMut.isPending;
-  const canSave = title.trim().length > 0 && question.trim().length > 0 && (!deadlineEnabled || !!deadlineIso) && !pending;
+  const deadlineValid = deadlineMode === 'none'
+    || (deadlineMode === 'absolute' && !!deadlineIso)
+    || (deadlineMode === 'relative_to_enrollment' && hasValidRelativeDeadline);
+  const canSave = title.trim().length > 0 && question.trim().length > 0 && deadlineValid && !pending;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -987,12 +1013,12 @@ function AssignmentDialog({
               className="min-h-[150px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Nhập yêu cầu bài tập cho learner..."
+              placeholder="Nhập yêu cầu bài tập cho học viên..."
             />
           </div>
           <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
             <div className="flex items-center justify-between gap-3">
-              <Label className="text-sm">Hiển thị cho learner</Label>
+              <Label className="text-sm">Hiển thị cho học viên</Label>
               <Switch checked={isPublished} onCheckedChange={setIsPublished} />
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -1000,12 +1026,33 @@ function AssignmentDialog({
               <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
             </div>
             <div className="rounded-lg border bg-background/60 p-3">
+              <div className="mb-2 text-sm font-medium">Điều kiện nộp bài</div>
+              <Select value={submissionUnlockMode} onValueChange={(value) => setSubmissionUnlockMode(value as AssignmentSubmissionUnlockMode)}>
+                <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="after_content_complete">Học xong nội dung mới được nộp</SelectItem>
+                  <SelectItem value="anytime">Được nộp khi chưa học xong</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg border bg-background/60 p-3">
               <div className="flex items-center justify-between gap-3">
                 <Label className="flex items-center gap-2 text-sm">
                   <CalendarClock className="h-4 w-4 text-amber-500" />
                   Bật hạn nộp
                 </Label>
-                <Switch checked={deadlineEnabled} onCheckedChange={handleDeadlineEnabledChange} />
+                <Select value={deadlineMode} onValueChange={(value) => handleDeadlineModeChange(value as AssignmentDeadlineMode)} disabled={!!assignment}>
+                  <SelectTrigger className="h-9 w-[220px] rounded-lg bg-background font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Không đặt hạn</SelectItem>
+                    <SelectItem value="absolute">Hạn cụ thể</SelectItem>
+                    <SelectItem value="relative_to_enrollment">Sau khi học viên ghi danh</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_82px_82px_90px]">
                 <div className="min-w-0">
@@ -1014,13 +1061,13 @@ function AssignmentDialog({
                     type="date"
                     value={deadlineDate}
                     onChange={(event) => setDeadlineDate(event.target.value)}
-                    disabled={!deadlineEnabled}
+                    disabled={deadlineMode !== 'absolute'}
                     className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
                   />
                 </div>
                 <div>
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Giờ</div>
-                  <Select value={deadlineHour} onValueChange={setDeadlineHour} disabled={!deadlineEnabled}>
+                  <Select value={deadlineHour} onValueChange={setDeadlineHour} disabled={deadlineMode !== 'absolute'}>
                     <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
                       <SelectValue />
                     </SelectTrigger>
@@ -1033,7 +1080,7 @@ function AssignmentDialog({
                 </div>
                 <div>
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Phút</div>
-                  <Select value={deadlineMinute} onValueChange={setDeadlineMinute} disabled={!deadlineEnabled}>
+                  <Select value={deadlineMinute} onValueChange={setDeadlineMinute} disabled={deadlineMode !== 'absolute'}>
                     <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
                       <SelectValue />
                     </SelectTrigger>
@@ -1046,7 +1093,7 @@ function AssignmentDialog({
                 </div>
                 <div>
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Buổi</div>
-                  <Select value={deadlinePeriod} onValueChange={(value) => setDeadlinePeriod(value as TimePeriod)} disabled={!deadlineEnabled}>
+                  <Select value={deadlinePeriod} onValueChange={(value) => setDeadlinePeriod(value as TimePeriod)} disabled={deadlineMode !== 'absolute'}>
                     <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
                       <SelectValue />
                     </SelectTrigger>
@@ -1057,7 +1104,30 @@ function AssignmentDialog({
                   </Select>
                 </div>
               </div>
-              {deadlineEnabled && !deadlineIso && (
+              {deadlineMode === 'relative_to_enrollment' && (
+                <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Số ngày kể từ lúc ghi danh</div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={deadlineAfterDays}
+                    onChange={(event) => setDeadlineAfterDays(event.target.value)}
+                    disabled={!!assignment}
+                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
+                  />
+                  {assignment ? (
+                    <div className="mt-2 text-xs font-medium text-muted-foreground">
+                      Không thể đổi số ngày hết hạn sau khi bài tập đã được tạo.
+                    </div>
+                  ) : !hasValidRelativeDeadline ? (
+                    <div className="mt-2 text-xs font-medium text-destructive">
+                      Vui lòng nhập số ngày từ 1 đến 3650.
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              {deadlineMode === 'absolute' && !deadlineIso && (
                 <div className="mt-2 text-xs font-medium text-destructive">Vui lòng chọn thời hạn nộp bài.</div>
               )}
             </div>

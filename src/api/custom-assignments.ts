@@ -7,6 +7,8 @@ interface ApiResponse<T> {
 }
 
 export type AssignmentStatus = 'not_submitted' | 'submitted' | 'feedback_given';
+export type AssignmentDeadlineMode = 'none' | 'absolute' | 'relative_to_enrollment';
+export type AssignmentSubmissionUnlockMode = 'after_content_complete' | 'anytime';
 
 export interface AssignmentFileMeta {
   id: string;
@@ -27,7 +29,10 @@ export interface CourseAssignment {
   is_published: boolean;
   allow_resubmission: boolean;
   deadline_enabled: boolean;
+  deadline_mode: AssignmentDeadlineMode;
   deadline_at: string | null;
+  deadline_after_days: number | null;
+  submission_unlock_mode: AssignmentSubmissionUnlockMode;
   grading_enabled: boolean;
   submitted_count?: number;
   feedback_count?: number;
@@ -55,7 +60,10 @@ export interface AssignmentSubmission {
   assignment_title: string;
   assignment_question: string;
   deadline_enabled: boolean;
+  deadline_mode: AssignmentDeadlineMode;
   deadline_at: string | null;
+  deadline_after_days: number | null;
+  submission_unlock_mode: AssignmentSubmissionUnlockMode;
   grading_enabled: boolean;
   learner_username: string;
   learner_name: string;
@@ -101,7 +109,10 @@ export async function createCourseAssignment(courseId: string, input: {
   is_published?: boolean;
   allow_resubmission?: boolean;
   deadline_enabled?: boolean;
+  deadline_mode?: AssignmentDeadlineMode;
   deadline_at?: string | null;
+  deadline_after_days?: number | null;
+  submission_unlock_mode?: AssignmentSubmissionUnlockMode;
   grading_enabled?: boolean;
 }): Promise<CourseAssignment> {
   const { data } = await customApiClient.post<ApiResponse<CourseAssignment>>(
@@ -117,7 +128,10 @@ export async function updateCourseAssignment(assignmentId: string, input: Partia
   is_published: boolean;
   allow_resubmission: boolean;
   deadline_enabled: boolean;
+  deadline_mode: AssignmentDeadlineMode;
   deadline_at: string | null;
+  deadline_after_days: number | null;
+  submission_unlock_mode: AssignmentSubmissionUnlockMode;
 }>): Promise<CourseAssignment> {
   const { data } = await customApiClient.patch<ApiResponse<CourseAssignment>>(
     `/api/assignments/${encodeURIComponent(assignmentId)}`,
