@@ -396,6 +396,7 @@ function renderPreviewSystemRows(rows: Array<{ label: string; value: string }>) 
 function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, tokens: string[], groupLabels?: GroupLabelMap | null) {
   if (key === "course_notification") {
     return renderPreviewSystemRows([
+      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
       { label: "Khóa học", value: previewTableValue("Tên khóa học", tokens) },
       { label: "Tiêu đề", value: previewTableValue("Tiêu đề thông báo", tokens) },
       { label: "Cổng học viên", value: previewTableValue("Domain học viên", tokens) },
@@ -404,6 +405,7 @@ function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, to
 
   if (key === "assignment_created") {
     return renderPreviewSystemRows([
+      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
       { label: "Khóa học", value: previewTableValue("Tên khóa học", tokens) },
       { label: "Bài tập", value: previewTableValue("Tên bài tập", tokens) },
       { label: "Thời hạn", value: previewTableValue("Hạn nộp", tokens) },
@@ -428,6 +430,7 @@ function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, to
     const labels = getGroupLabelSet(groupLabels);
     return `
       ${renderPreviewSystemRows([
+      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
       { label: labels.group, value: previewTableValue(`Tên ${labels.group}`, tokens) },
       { label: labels.subgroup, value: previewTableValue(`Tên ${labels.subgroup}`, tokens) },
       { label: labels.team, value: previewTableValue(`Tên ${labels.team}`, tokens) },
