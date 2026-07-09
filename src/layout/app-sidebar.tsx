@@ -76,6 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: 'Quản lý Tenant', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
       { title: 'Thương hiệu', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
+      { title: 'Mẫu email', url: '/email-templates', module: 'email_templates', fallbackIcon: 'MailCheck' },
       { title: 'Prompt hệ thống', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
       { title: 'Huy hiệu', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
       { title: 'Quản lý SSO', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },

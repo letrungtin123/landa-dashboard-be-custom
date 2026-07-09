@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, UsersRound, Building2, Settings2, Activity, Bot,
   ShieldCheck, FileText, FileSpreadsheet, MessageSquare, MessageCircle, Bell, BarChart3,
-  Mail, Globe, Lock, Key, Database,
+  Mail, MailCheck, Globe, Lock, Key, Database,
   Palette, Image, Video, Music, BookOpen,
   Calendar, Clock, Star, Heart, Zap,
   Blocks, Box, Briefcase, CreditCard, ShoppingCart,
@@ -33,7 +33,7 @@ import {
 export const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard, Users, UsersRound, Building2, Settings2, Activity, Bot,
   ShieldCheck, FileText, FileSpreadsheet, MessageSquare, MessageCircle, Bell, BarChart3,
-  Mail, Globe, Lock, Key, Database,
+  Mail, MailCheck, Globe, Lock, Key, Database,
   Palette, Image, Video, Music, BookOpen,
   Calendar, Clock, Star, Heart, Zap,
   Blocks, Box, Briefcase, CreditCard, ShoppingCart,

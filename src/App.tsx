@@ -37,6 +37,7 @@ import CourseCategoriesPage from './pages/course-categories';
 import TenantManagementPage from '@/pages/tenant-management';
 import PermissionGroupsPage from '@/pages/permission-groups';
 import BrandingPage from '@/pages/branding';
+import EmailTemplatesPage from '@/pages/email-templates';
 import AiChatbotPage from '@/pages/ai-chatbot';
 import PromptTemplatesPage from '@/pages/prompt-templates';
 import BadgesPage from './pages/badges';
@@ -74,6 +75,7 @@ function AppRoutes() {
           <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
           <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
           <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
+          <Route path="/email-templates" element={<ModuleGuard module="email_templates"><EmailTemplatesPage /></ModuleGuard>} />
           <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><AiChatbotPage /></ModuleGuard>} />
           <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
           <Route path="/badges" element={<ModuleGuard module="superadmin_only"><BadgesPage /></ModuleGuard>} />
