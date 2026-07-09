@@ -4,7 +4,8 @@ import { storageUrl } from '@/utils/storage-url';
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig } from '@/api/custom-courses';
+import { AnimatePresence, motion } from 'framer-motion';
+import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseNotificationSmtpStatus, getCourseNotificationHistory, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig, type CourseNotificationHistoryItem } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -19,11 +20,12 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
-  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon, FileText, ClipboardList
+  BookOpen, GraduationCap, Globe, Edit2, Plus, ImagePlus, Loader2, LayoutTemplate, ArrowRight, ArrowLeft, FolderOpen, Archive, ArchiveRestore, Settings2, Bell, Facebook, Instagram, MessageCircle, ChevronDown, Ban, Trash2, UserRound, Search, CheckCircle2, Mail, Phone, MoreHorizontal, Save, Sun, Moon, FileText, ClipboardList, Info, History, Send, Users, Clock3, AlertCircle
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
@@ -1538,73 +1540,417 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
 
 // ── Send Notification Dialog ──
 
+function formatNotificationDate(value: string | null | undefined): string {
+  if (!value) return 'Chưa có thời gian';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Chưa có thời gian';
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function emailStatusLabel(status: string | null | undefined): string {
+  if (status === 'done') return 'Đã gửi mail';
+  if (status === 'running') return 'Đang gửi tuần tự';
+  if (status === 'pending') return 'Chờ gửi tuần tự';
+  if (status === 'failed') return 'Lỗi email';
+  return 'Không gửi mail';
+}
+
 function SendNotificationDialog({ courseId, open, onClose }: { courseId: string; open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const historyLimit = 5;
+  const [activeTab, setActiveTab] = useState('compose');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [sendEmail, setSendEmail] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<CourseNotificationHistoryItem | null>(null);
+
+  const smtpQuery = useQuery({
+    queryKey: ['course-notification-smtp-status', activeTenantId],
+    queryFn: () => getCourseNotificationSmtpStatus(),
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const smtpStatus = smtpQuery.data;
+  const canSendEmail = Boolean(smtpStatus?.can_send_email);
+  const smtpWarning = smtpStatus?.reason || 'Tenant chưa cấu hình SMTP Google.';
+
+  const historyQuery = useQuery({
+    queryKey: ['course-notification-history', activeTenantId, courseId, historyPage, historyLimit],
+    queryFn: () => getCourseNotificationHistory(courseId, { page: historyPage, page_size: historyLimit }),
+    enabled: open && activeTab === 'history',
+  });
+  const historyItems = historyQuery.data?.data ?? [];
+  const historyTotal = historyQuery.data?.total ?? 0;
+  const totalPages = historyQuery.data?.totalPages ?? 1;
+
+  useEffect(() => {
+    if (!open) return;
+    setHistoryPage(1);
+    setSelectedHistoryItem(null);
+  }, [open, courseId]);
+
+  useEffect(() => {
+    if (!canSendEmail) setSendEmail(false);
+  }, [canSendEmail]);
+
+  useEffect(() => {
+    if (activeTab !== 'history') setSelectedHistoryItem(null);
+  }, [activeTab]);
+
+  const closeDialog = () => {
+    setTitle('');
+    setMessage('');
+    setSendEmail(false);
+    setActiveTab('compose');
+    setHistoryPage(1);
+    setSelectedHistoryItem(null);
+    onClose();
+  };
 
   const sendMut = useMutation({
-    mutationFn: () => sendCourseNotification(courseId, { title, message }),
+    mutationFn: () => sendCourseNotification(courseId, {
+      title: title.trim(),
+      message: message.trim(),
+      send_email: sendEmail && canSendEmail,
+    }),
     onSuccess: (data) => {
-      toast.success(`Đã gửi thông báo cho ${data.recipients} learner`);
+      const emailText = data.email_requested
+        ? (data.email_job_queued ? ' Email đang được gửi tuần tự qua SMTP.' : ' Không có email nào cần gửi.')
+        : '';
+      toast.success(`Đã gửi thông báo cho ${data.recipients} học viên.${emailText}`);
       setTitle('');
       setMessage('');
-      onClose();
+      setSendEmail(false);
+      setActiveTab('history');
+      setHistoryPage(1);
+      setSelectedHistoryItem(null);
+      queryClient.invalidateQueries({ queryKey: ['course-notification-history', activeTenantId, courseId] });
     },
     onError: (err: any) => {
-      const errMsg = err.response?.data?.error;
-      if (errMsg === 'No enrolled learners found') {
-        toast.error('Không tìm thấy học viên nào! Có thể do khóa học chưa có ai đăng ký hoặc các group được gán khóa học đang trống.');
-      } else {
-        toast.error(errMsg || 'Gửi thông báo thất bại');
-      }
+      const errMsg = err.response?.data?.error || err.response?.data?.message;
+      toast.error(errMsg || 'Gửi thông báo thất bại');
     },
   });
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-xl flex items-center gap-2">
-            <Bell className="h-5 w-5 text-amber-500" />
-            Gửi thông báo
-          </DialogTitle>
-          <p className="text-xs text-muted-foreground font-mono break-all">{courseId}</p>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Tiêu đề <span className="text-red-500">*</span></label>
-            <input
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-              placeholder="Tiêu đề thông báo..."
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Nội dung <span className="text-red-500">*</span></label>
-            <textarea
-              className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-              placeholder="Nội dung thông báo..."
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2 rounded-md">
-            ⚠️ Thông báo sẽ gửi cho learner đã <strong>đăng ký</strong> khóa học + <strong>thuộc team</strong> được phân quyền xem khóa học này.
-          </p>
+    <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
+      <DialogContent className="overflow-hidden p-0 sm:max-w-2xl">
+        <div className="border-b border-border bg-muted/30 px-5 py-4 sm:px-6">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="flex items-center gap-3 text-xl">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/12 text-amber-600 ring-1 ring-amber-500/20">
+                <Bell className="h-5 w-5" />
+              </span>
+              <span>Gửi thông báo khóa học</span>
+            </DialogTitle>
+            <p className="font-mono text-xs text-muted-foreground break-all">{courseId}</p>
+          </DialogHeader>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Hủy</Button>
-          <Button
-            onClick={() => sendMut.mutate()}
-            disabled={sendMut.isPending || !title.trim() || !message.trim()}
-            className="bg-amber-600 hover:bg-amber-700 text-white"
-          >
-            {sendMut.isPending ? 'Đang gửi...' : 'Gửi thông báo'}
-          </Button>
-        </DialogFooter>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-[520px] flex-col">
+          <div className="px-5 pt-4 sm:px-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="compose" className="gap-2">
+                <Send className="h-4 w-4" />
+                Gửi thông báo
+              </TabsTrigger>
+              <TabsTrigger value="history" className="gap-2">
+                <History className="h-4 w-4" />
+                Lịch sử
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <div className="flex-1 overflow-hidden px-5 pb-4 sm:px-6">
+            <AnimatePresence mode="wait">
+              {activeTab === 'compose' ? (
+                <TabsContent value="compose" forceMount asChild>
+                  <motion.div
+                    key="compose"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="mt-5 space-y-4"
+                  >
+                    <div className="grid gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-semibold">Tiêu đề <span className="text-red-500">*</span></label>
+                        <input
+                          className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm outline-none transition focus:border-primary/60 focus:ring-4 focus:ring-primary/10"
+                          placeholder="Nhập tiêu đề thông báo..."
+                          value={title}
+                          maxLength={180}
+                          onChange={e => setTitle(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-semibold">Nội dung <span className="text-red-500">*</span></label>
+                        <textarea
+                          className="flex min-h-[132px] w-full resize-none rounded-xl border border-input bg-background px-4 py-3 text-sm leading-6 outline-none transition focus:border-primary/60 focus:ring-4 focus:ring-primary/10"
+                          placeholder="Nhập nội dung thông báo..."
+                          value={message}
+                          maxLength={4000}
+                          onChange={e => setMessage(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-emerald-600" />
+                            <p className="text-sm font-semibold">Gửi thêm email SMTP</p>
+                            {!canSendEmail && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-red-500 text-white shadow-sm shadow-red-500/20">
+                                    <Info className="h-3.5 w-3.5" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[260px] border-red-500/20 bg-red-600 text-white">
+                                  {smtpWarning} Vui lòng cấu hình SMTP Google trước khi bật gửi email.
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                          {smtpQuery.isLoading ? (
+                            <Skeleton className="h-4 w-64" />
+                          ) : (
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {canSendEmail
+                                ? `SMTP đã sẵn sàng${smtpStatus?.from_email ? `: ${smtpStatus.from_email}` : ''}.`
+                                : smtpWarning}
+                            </p>
+                          )}
+                        </div>
+                        <Switch
+                          checked={sendEmail}
+                          disabled={!canSendEmail || smtpQuery.isLoading || sendMut.isPending}
+                          onCheckedChange={setSendEmail}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.07] p-4 text-sm leading-6 text-amber-900 dark:text-amber-200">
+                      <div className="flex gap-3">
+                        <Users className="mt-0.5 h-4 w-4 shrink-0" />
+                        <p>
+                          Thông báo sẽ gửi cho nhóm học viên được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                </TabsContent>
+              ) : (
+                <TabsContent value="history" forceMount asChild>
+                  <motion.div
+                    key="history"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="mt-5 flex h-[410px] flex-col"
+                  >
+                    {selectedHistoryItem ? (
+                      <motion.div
+                        key={selectedHistoryItem.id}
+                        initial={{ opacity: 0, x: 16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -12 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        className="flex min-h-0 flex-1 flex-col"
+                      >
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-2"
+                            onClick={() => setSelectedHistoryItem(null)}
+                          >
+                            <ArrowLeft className="h-4 w-4" />
+                            Quay lại
+                          </Button>
+                          <Badge variant="secondary" className="rounded-full">
+                            {formatNotificationDate(selectedHistoryItem.created_at)}
+                          </Badge>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-sm">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chi tiết thông báo</p>
+                              <h3 className="mt-2 text-xl font-bold leading-7 text-foreground">{selectedHistoryItem.title}</h3>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <Badge variant="secondary" className="gap-1.5 rounded-full">
+                                <Users className="h-3.5 w-3.5" />
+                                {selectedHistoryItem.recipient_count} học viên
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className={`gap-1.5 rounded-full ${selectedHistoryItem.metadata?.send_email === true || selectedHistoryItem.email_status ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                                {emailStatusLabel(selectedHistoryItem.email_status)}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm sm:grid-cols-2">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Người gửi</p>
+                              <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.sent_by_display_name || 'Không xác định'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Thời gian gửi</p>
+                              <p className="mt-1 font-semibold text-foreground">{formatNotificationDate(selectedHistoryItem.created_at)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Trạng thái email</p>
+                              <p className="mt-1 font-semibold text-foreground">{emailStatusLabel(selectedHistoryItem.email_status)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Email đã ghi nhận</p>
+                              <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.email_queued_count || 0}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nội dung</p>
+                            <div className="mt-2 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-sm leading-6 text-foreground">
+                              {selectedHistoryItem.message || 'Không có nội dung'}
+                            </div>
+                          </div>
+
+                          {selectedHistoryItem.email_last_error && (
+                            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/[0.07] p-4 text-sm leading-6 text-red-700 dark:text-red-300">
+                              <div className="flex gap-2">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                <span>{selectedHistoryItem.email_last_error}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    ) : historyQuery.isLoading ? (
+                      <div className="space-y-3">
+                        {Array.from({ length: 5 }).map((_, index) => (
+                          <div key={index} className="rounded-2xl border border-border p-4">
+                            <Skeleton className="h-5 w-2/3" />
+                            <Skeleton className="mt-3 h-4 w-full" />
+                            <Skeleton className="mt-2 h-4 w-1/2" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : historyItems.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 text-center">
+                        <Bell className="h-10 w-10 text-muted-foreground/40" />
+                        <p className="mt-3 text-sm font-semibold">Chưa có thông báo nào</p>
+                        <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                          Các thông báo đã gửi cho khóa học này sẽ xuất hiện tại đây.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                          {historyItems.map((item) => {
+                            const emailEnabled = item.metadata?.send_email === true || Boolean(item.email_status);
+                            return (
+                              <motion.button
+                                type="button"
+                                key={item.id}
+                                layout
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                onClick={() => setSelectedHistoryItem(item)}
+                                className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:border-primary/40 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                              >
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="min-w-0">
+                                    <p className="line-clamp-1 text-sm font-semibold text-foreground">{item.title}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.message || 'Không có nội dung'}</p>
+                                  </div>
+                                  <div className="flex shrink-0 flex-wrap gap-2">
+                                    <Badge variant="secondary" className="gap-1.5 rounded-full">
+                                      <Users className="h-3.5 w-3.5" />
+                                      {item.recipient_count} học viên
+                                    </Badge>
+                                    <Badge
+                                      variant="outline"
+                                      className={`gap-1.5 rounded-full ${emailEnabled ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}
+                                    >
+                                      <Mail className="h-3.5 w-3.5" />
+                                      {emailStatusLabel(item.email_status)}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Clock3 className="h-3.5 w-3.5" />
+                                    {formatNotificationDate(item.created_at)}
+                                  </span>
+                                  {item.sent_by_display_name && <span>Người gửi: {item.sent_by_display_name}</span>}
+                                  {item.email_queued_count > 0 && <span>{item.email_queued_count} email đã ghi nhận gửi</span>}
+                                  {item.email_last_error && (
+                                    <span className="inline-flex items-center gap-1.5 text-red-600">
+                                      <AlertCircle className="h-3.5 w-3.5" />
+                                      {item.email_last_error}
+                                    </span>
+                                  )}
+                                </div>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                        <div className="-mx-5 mt-4 overflow-hidden border-t border-border sm:-mx-6">
+                          <Pagination
+                            page={historyPage}
+                            limit={historyLimit}
+                            total={historyTotal}
+                            totalPages={totalPages}
+                            limitOptions={[5]}
+                            label="thông báo"
+                            onPageChange={(nextPage) => {
+                              setSelectedHistoryItem(null);
+                              setHistoryPage(nextPage);
+                            }}
+                            onLimitChange={() => {
+                              setSelectedHistoryItem(null);
+                              setHistoryPage(1);
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </motion.div>
+                </TabsContent>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <DialogFooter className="m-0 border-t border-border bg-muted/20 px-5 py-4 sm:px-6">
+            <Button variant="outline" onClick={closeDialog}>Đóng</Button>
+            {activeTab === 'compose' && (
+              <Button
+                onClick={() => sendMut.mutate()}
+                disabled={sendMut.isPending || !title.trim() || !message.trim()}
+                className="gap-2 bg-amber-600 text-white hover:bg-amber-700"
+              >
+                {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {sendMut.isPending ? 'Đang gửi...' : 'Gửi thông báo'}
+              </Button>
+            )}
+          </DialogFooter>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

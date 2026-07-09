@@ -32,6 +32,7 @@ export interface CourseAssignment {
   deadline_mode: AssignmentDeadlineMode;
   deadline_at: string | null;
   deadline_after_days: number | null;
+  attachment_file: AssignmentFileMeta | null;
   submission_unlock_mode: AssignmentSubmissionUnlockMode;
   grading_enabled: boolean;
   submitted_count?: number;
@@ -96,16 +97,9 @@ export interface PaginatedAssignments<T> {
   totalPages: number;
 }
 
-export async function getCourseAssignments(courseId: string): Promise<CourseAssignment[]> {
-  const { data } = await customApiClient.get<ApiResponse<CourseAssignment[]>>(
-    `/api/assignments/courses/${encodeURIComponent(courseId)}`,
-  );
-  return data.data;
-}
-
-export async function createCourseAssignment(courseId: string, input: {
-  title: string;
-  question: string;
+type AssignmentWriteInput = {
+  title?: string;
+  question?: string;
   is_published?: boolean;
   allow_resubmission?: boolean;
   deadline_enabled?: boolean;
@@ -114,28 +108,58 @@ export async function createCourseAssignment(courseId: string, input: {
   deadline_after_days?: number | null;
   submission_unlock_mode?: AssignmentSubmissionUnlockMode;
   grading_enabled?: boolean;
-}): Promise<CourseAssignment> {
-  const { data } = await customApiClient.post<ApiResponse<CourseAssignment>>(
+  attachment_file?: File | null;
+  remove_attachment?: boolean;
+};
+
+function buildAssignmentFormData(input: AssignmentWriteInput): FormData {
+  const form = new FormData();
+  const append = (key: keyof AssignmentWriteInput, value: unknown) => {
+    if (value === undefined || value === null) return;
+    form.append(key, String(value));
+  };
+
+  append('title', input.title);
+  append('question', input.question);
+  append('is_published', input.is_published);
+  append('allow_resubmission', input.allow_resubmission);
+  append('deadline_enabled', input.deadline_enabled);
+  append('deadline_mode', input.deadline_mode);
+  append('deadline_at', input.deadline_at);
+  append('deadline_after_days', input.deadline_after_days);
+  append('submission_unlock_mode', input.submission_unlock_mode);
+  append('grading_enabled', input.grading_enabled);
+  append('remove_attachment', input.remove_attachment);
+  if (input.attachment_file) form.append('attachment_file', input.attachment_file);
+  return form;
+}
+
+export async function getCourseAssignments(courseId: string): Promise<CourseAssignment[]> {
+  const { data } = await customApiClient.get<ApiResponse<CourseAssignment[]>>(
     `/api/assignments/courses/${encodeURIComponent(courseId)}`,
-    input,
   );
   return data.data;
 }
 
-export async function updateCourseAssignment(assignmentId: string, input: Partial<{
+export async function createCourseAssignment(courseId: string, input: AssignmentWriteInput & {
   title: string;
   question: string;
-  is_published: boolean;
-  allow_resubmission: boolean;
-  deadline_enabled: boolean;
-  deadline_mode: AssignmentDeadlineMode;
-  deadline_at: string | null;
-  deadline_after_days: number | null;
-  submission_unlock_mode: AssignmentSubmissionUnlockMode;
-}>): Promise<CourseAssignment> {
+}): Promise<CourseAssignment> {
+  const form = buildAssignmentFormData(input);
+  const { data } = await customApiClient.post<ApiResponse<CourseAssignment>>(
+    `/api/assignments/courses/${encodeURIComponent(courseId)}`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data.data;
+}
+
+export async function updateCourseAssignment(assignmentId: string, input: AssignmentWriteInput): Promise<CourseAssignment> {
+  const form = buildAssignmentFormData(input);
   const { data } = await customApiClient.patch<ApiResponse<CourseAssignment>>(
     `/api/assignments/${encodeURIComponent(assignmentId)}`,
-    input,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data.data;
 }

@@ -1,17 +1,19 @@
 import { useState, useCallback, useEffect } from 'react';
 import { storageUrl } from '@/utils/storage-url';
-import { Search, Loader2, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
+import { Search, Loader2, UserCheck, ChevronLeft, ChevronRight, Mail, Info } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useQuery } from '@tanstack/react-query';
 import { fetchUsers, type CustomUser } from '@/api/custom-users';
-import { addMembers, addTeamMembers } from '@/api/custom-groups';
+import { addMembers, addTeamMembers, getGroupNotificationSmtpStatus } from '@/api/custom-groups';
 
 interface Props {
   open: boolean;
@@ -25,9 +27,11 @@ interface Props {
 export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [sendEmail, setSendEmail] = useState(false);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
   const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
+  const isTeamTarget = Boolean(teamId);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -38,12 +42,36 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     staleTime: 0,
   });
 
+  const { data: smtpStatus, isFetching: isSmtpFetching, isError: isSmtpError } = useQuery({
+    queryKey: ['group-notification-smtp-status', open],
+    queryFn: getGroupNotificationSmtpStatus,
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const canSendEmail = isTeamTarget && Boolean(smtpStatus?.can_send_email);
+  const smtpDisabledReason = !isTeamTarget
+    ? 'Tính năng gửi email chỉ hỗ trợ khi thêm học viên vào phòng ban.'
+    : isSmtpError
+      ? 'Không kiểm tra được cấu hình SMTP Google của tenant.'
+      : smtpStatus?.reason || 'Tenant chưa cấu hình SMTP Google.';
+
+  useEffect(() => {
+    if (!open || !canSendEmail) setSendEmail(false);
+  }, [open, canSendEmail]);
+
   const mutation = useMutation({
-    mutationFn: () => teamId ? addTeamMembers(teamId, selected) : addMembers(sgId, selected),
+    mutationFn: () => teamId ? addTeamMembers(teamId, selected, { send_email: sendEmail && canSendEmail }) : addMembers(sgId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã thêm ${res.added} thành viên${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
+      const skippedText = res.skipped ? ` (${res.skipped} đã có hoặc không hợp lệ)` : '';
+      const emailText = res.email_requested
+        ? res.email_queued > 0
+          ? ` Đã xếp hàng ${res.email_queued} email.`
+          : ' Không có email nào được xếp hàng.'
+        : '';
+      toast.success(`Đã thêm ${res.added} học viên${skippedText}.${emailText}`);
       setSelected([]);
       setSearch('');
+      setSendEmail(false);
       onOpenChange(false);
       onSuccess();
     },
@@ -70,6 +98,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
   const handleClose = () => {
     setSearch('');
     setSelected([]);
+    setSendEmail(false);
     setPage(1);
     onOpenChange(false);
   };
@@ -85,7 +114,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Tìm user theo tên hoặc email..."
+            placeholder="Tìm học viên theo tên hoặc email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -107,7 +136,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
             </div>
           ) : users.length === 0 ? (
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-              Không tìm thấy user
+              Không tìm thấy học viên
             </div>
           ) : users.map(u => {
             const isExisting = existingMemberIds.includes(u.id);
@@ -151,10 +180,58 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
           </div>
           {selected.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Đã chọn <span className="font-semibold text-primary">{selected.length}</span> user
+              Đã chọn <span className="font-semibold text-primary">{selected.length}</span> học viên
             </p>
           )}
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }}
+          className="rounded-xl border border-border/80 bg-muted/20 p-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                <Mail className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">Gửi email cho học viên đã chọn</p>
+                  {!canSendEmail && !isSmtpFetching && (
+                    <TooltipProvider delayDuration={120}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300">
+                            <Info className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[280px] border-red-500/20 bg-red-600 text-white">
+                          {smtpDisabledReason}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Thông báo hệ thống luôn được tạo. Email sẽ được xếp hàng gửi tuần tự sau khi thêm thành viên thành công.
+                </p>
+              </div>
+            </div>
+            {isSmtpFetching ? (
+              <Skeleton className="mt-1 h-5 w-10 rounded-full" />
+            ) : (
+              <Switch
+                size="sm"
+                checked={sendEmail && canSendEmail}
+                disabled={!canSendEmail || mutation.isPending}
+                onCheckedChange={(checked) => setSendEmail(Boolean(checked) && canSendEmail)}
+                aria-label="Bật gửi email cho học viên đã chọn"
+              />
+            )}
+          </div>
+        </motion.div>
 
         <div className="flex items-center justify-center gap-3 mt-1">
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="h-7 w-7 p-0">

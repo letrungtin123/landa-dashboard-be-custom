@@ -21,14 +21,13 @@ import {
   deleteCourseAssignment,
   getCourseAssignments,
   updateCourseAssignment,
-  type AssignmentDeadlineMode,
   type AssignmentSubmissionUnlockMode,
   type CourseAssignment,
 } from '@/api/custom-assignments';
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
   MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2, ClipboardList,
-  CalendarClock, Trophy, Lock,
+  CalendarClock, Trophy, Lock, Paperclip,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -661,52 +660,6 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 // Add Node Button (inline)
 // ─────────────────────────────────────────────
 
-type TimePeriod = 'AM' | 'PM';
-
-const HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
-const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
-
-function todayLocalDateInput(): string {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function toDeadlineParts(value?: string | null): { date: string; hour: string; minute: string; period: TimePeriod } {
-  const fallback = { date: '', hour: '11', minute: '59', period: 'PM' as TimePeriod };
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hour24 = date.getHours();
-  const period: TimePeriod = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
-  return {
-    date: `${year}-${month}-${day}`,
-    hour: String(hour12).padStart(2, '0'),
-    minute: String(date.getMinutes()).padStart(2, '0'),
-    period,
-  };
-}
-
-function deadlinePartsToIso(dateValue: string, hourValue: string, minuteValue: string, period: TimePeriod): string | null {
-  if (!dateValue || !hourValue || !minuteValue) return null;
-  const [year, month, day] = dateValue.split('-').map(Number);
-  const hour12 = Number(hourValue);
-  const minute = Number(minuteValue);
-  if (!year || !month || !day || !hour12 || Number.isNaN(minute)) return null;
-  const hour24 = period === 'AM'
-    ? (hour12 === 12 ? 0 : hour12)
-    : (hour12 === 12 ? 12 : hour12 + 12);
-  const date = new Date(year, month - 1, day, hour24, minute, 0, 0);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
 function isAssignmentExpired(assignment: CourseAssignment): boolean {
   if (assignment.deadline_mode !== 'absolute' || !assignment.deadline_at) return false;
   return new Date(assignment.deadline_at).getTime() <= Date.now();
@@ -724,6 +677,21 @@ function assignmentUnlockModeLabel(mode?: AssignmentSubmissionUnlockMode): strin
   return mode === 'anytime' ? 'Được nộp khi chưa học xong' : 'Học xong nội dung mới được nộp';
 }
 
+const MAX_ASSIGNMENT_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
+type AssignmentUpdatePayload = Parameters<typeof updateCourseAssignment>[1];
+
+function formatAssignmentFileSize(value?: number): string {
+  if (!value) return '0 KB';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size >= 10 || index === 0 ? Math.round(size) : size.toFixed(1)} ${units[index]}`;
+}
+
 function AssignmentOutlineSection({ courseId }: { courseId: string }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<CourseAssignment | null>(null);
@@ -736,11 +704,12 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
     queryFn: () => getCourseAssignments(courseId),
     staleTime: 30_000,
   });
+  const hasAssignment = data.length > 0;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<CourseAssignment> }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: AssignmentUpdatePayload }) =>
       updateCourseAssignment(id, payload),
     onSuccess: () => {
       toast.success('Đã cập nhật bài tập');
@@ -766,7 +735,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           <ClipboardList className="h-3.5 w-3.5" />
           <span>Bài tập</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} title="Thêm bài tập">
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} disabled={hasAssignment} title={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -804,14 +773,23 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                   )}
                   {assignment.deadline_mode === 'relative_to_enrollment' && assignment.deadline_after_days && (
                     <span className="whitespace-nowrap text-amber-600 dark:text-amber-400">
-                      Hạn sau {assignment.deadline_after_days} ngày từ lúc ghi danh
+                      Hạn sau {assignment.deadline_after_days} ngày
                     </span>
+                  )}
+                  {assignment.deadline_mode === 'none' && (
+                    <span className="whitespace-nowrap text-muted-foreground">Không có thời hạn</span>
                   )}
                   <span className="whitespace-nowrap">
                     {assignmentUnlockModeLabel(assignment.submission_unlock_mode)}
                   </span>
                   {assignment.grading_enabled && (
                     <span className="whitespace-nowrap font-semibold text-emerald-600 dark:text-emerald-400">Có điểm</span>
+                  )}
+                  {assignment.attachment_file && (
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                      <Paperclip className="h-3 w-3" />
+                      Có tệp đính kèm
+                    </span>
                   )}
                 </div>
               </div>
@@ -895,6 +873,8 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
   );
 }
 
+type AssignmentFormDeadlineMode = 'none' | 'relative_to_enrollment';
+
 function AssignmentDialog({
   courseId,
   assignment,
@@ -912,41 +892,53 @@ function AssignmentDialog({
   const [question, setQuestion] = useState('');
   const [isPublished, setIsPublished] = useState(true);
   const [allowResubmission, setAllowResubmission] = useState(false);
-  const [deadlineMode, setDeadlineMode] = useState<AssignmentDeadlineMode>('none');
-  const [deadlineDate, setDeadlineDate] = useState('');
-  const [deadlineHour, setDeadlineHour] = useState('11');
-  const [deadlineMinute, setDeadlineMinute] = useState('59');
-  const [deadlinePeriod, setDeadlinePeriod] = useState<TimePeriod>('PM');
+  const [deadlineMode, setDeadlineMode] = useState<AssignmentFormDeadlineMode>('relative_to_enrollment');
   const [deadlineAfterDays, setDeadlineAfterDays] = useState('7');
   const [submissionUnlockMode, setSubmissionUnlockMode] = useState<AssignmentSubmissionUnlockMode>('after_content_complete');
   const [gradingEnabled, setGradingEnabled] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [removeAttachment, setRemoveAttachment] = useState(false);
+  const attachmentInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (!open) return;
+    const nextDeadlineMode: AssignmentFormDeadlineMode = assignment?.deadline_mode === 'none'
+      ? 'none'
+      : 'relative_to_enrollment';
     setTitle(assignment?.title || '');
     setQuestion(assignment?.question || '');
     setIsPublished(assignment?.is_published ?? true);
     setAllowResubmission(assignment?.allow_resubmission ?? false);
-    setDeadlineMode(assignment?.deadline_mode || (assignment?.deadline_enabled ? 'absolute' : 'none'));
-    const deadlineParts = toDeadlineParts(assignment?.deadline_at);
-    setDeadlineDate(deadlineParts.date);
-    setDeadlineHour(deadlineParts.hour);
-    setDeadlineMinute(deadlineParts.minute);
-    setDeadlinePeriod(deadlineParts.period);
+    setDeadlineMode(nextDeadlineMode);
     setDeadlineAfterDays(String(assignment?.deadline_after_days || 7));
     setSubmissionUnlockMode(assignment?.submission_unlock_mode || 'after_content_complete');
     setGradingEnabled(assignment?.grading_enabled ?? false);
+    setAttachmentFile(null);
+    setRemoveAttachment(false);
   }, [assignment, open]);
 
-  const deadlineIso = deadlineMode === 'absolute' ? deadlinePartsToIso(deadlineDate, deadlineHour, deadlineMinute, deadlinePeriod) : null;
   const deadlineAfterDaysNumber = Number(deadlineAfterDays);
-  const hasValidRelativeDeadline = Number.isInteger(deadlineAfterDaysNumber) && deadlineAfterDaysNumber >= 1 && deadlineAfterDaysNumber <= 3650;
+  const hasValidRelativeDeadline = Number.isInteger(deadlineAfterDaysNumber)
+    && deadlineAfterDaysNumber >= 1
+    && deadlineAfterDaysNumber <= 3650;
+  const existingAttachment = !removeAttachment ? assignment?.attachment_file : null;
+  const isRelativeDeadline = deadlineMode === 'relative_to_enrollment';
 
-  function handleDeadlineModeChange(nextMode: AssignmentDeadlineMode) {
-    setDeadlineMode(nextMode);
-    if (nextMode === 'absolute' && !deadlineDate) {
-      setDeadlineDate(todayLocalDateInput());
+  function handleAttachmentChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_ASSIGNMENT_ATTACHMENT_SIZE_BYTES) {
+      toast.error('File đính kèm không được vượt quá 25MB');
+      return;
     }
+    setAttachmentFile(file);
+    setRemoveAttachment(false);
+  }
+
+  function clearAttachment() {
+    setAttachmentFile(null);
+    if (assignment?.attachment_file) setRemoveAttachment(true);
   }
 
   const createMut = useMutation({
@@ -955,18 +947,18 @@ function AssignmentDialog({
       question,
       is_published: isPublished,
       allow_resubmission: allowResubmission,
-      deadline_enabled: deadlineMode !== 'none',
+      deadline_enabled: isRelativeDeadline,
       deadline_mode: deadlineMode,
-      deadline_at: deadlineIso,
-      deadline_after_days: deadlineMode === 'relative_to_enrollment' ? deadlineAfterDaysNumber : null,
+      deadline_after_days: isRelativeDeadline ? deadlineAfterDaysNumber : null,
       submission_unlock_mode: submissionUnlockMode,
       grading_enabled: gradingEnabled,
+      attachment_file: attachmentFile,
     }),
     onSuccess: () => {
       toast.success('Đã tạo bài tập');
       onSaved();
     },
-    onError: () => toast.error('Tạo bài tập thất bại'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Tạo bài tập thất bại'),
   });
 
   const updateMut = useMutation({
@@ -976,183 +968,200 @@ function AssignmentDialog({
       is_published: isPublished,
       allow_resubmission: allowResubmission,
       submission_unlock_mode: submissionUnlockMode,
-      ...(assignment?.deadline_mode === 'absolute' ? { deadline_at: deadlineIso } : {}),
+      attachment_file: attachmentFile,
+      remove_attachment: removeAttachment || undefined,
     }),
     onSuccess: () => {
       toast.success('Đã lưu bài tập');
       onSaved();
     },
-    onError: () => toast.error('Lưu bài tập thất bại'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Lưu bài tập thất bại'),
   });
 
   const pending = createMut.isPending || updateMut.isPending;
-  const deadlineValid = deadlineMode === 'none'
-    || (deadlineMode === 'absolute' && !!deadlineIso)
-    || (deadlineMode === 'relative_to_enrollment' && hasValidRelativeDeadline);
+  const deadlineValid = assignment ? true : !isRelativeDeadline || hasValidRelativeDeadline;
   const canSave = title.trim().length > 0 && question.trim().length > 0 && deadlineValid && !pending;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden p-0 sm:h-[680px] sm:max-h-[calc(100dvh-3rem)] sm:max-w-2xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle>{assignment ? 'Sửa bài tập' : 'Thêm bài tập'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Tiêu đề</label>
-            <input
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Bài tập cuối khóa"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Câu hỏi</label>
-            <textarea
-              className="min-h-[150px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Nhập yêu cầu bài tập cho học viên..."
-            />
-          </div>
-          <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label className="text-sm">Hiển thị cho học viên</Label>
-              <Switch checked={isPublished} onCheckedChange={setIsPublished} />
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Tiêu đề</label>
+              <input
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Bài tập cuối khóa"
+              />
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <Label className="text-sm">Cho phép nộp lại</Label>
-              <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Câu hỏi</label>
+              <textarea
+                className="min-h-[132px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="Nhập yêu cầu bài tập cho học viên..."
+              />
             </div>
-            <div className="rounded-lg border bg-background/60 p-3">
-              <div className="mb-2 text-sm font-medium">Điều kiện nộp bài</div>
-              <Select value={submissionUnlockMode} onValueChange={(value) => setSubmissionUnlockMode(value as AssignmentSubmissionUnlockMode)}>
-                <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="after_content_complete">Học xong nội dung mới được nộp</SelectItem>
-                  <SelectItem value="anytime">Được nộp khi chưa học xong</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-lg border bg-background/60 p-3">
+
+            <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
               <div className="flex items-center justify-between gap-3">
-                <Label className="flex items-center gap-2 text-sm">
-                  <CalendarClock className="h-4 w-4 text-amber-500" />
-                  Bật hạn nộp
-                </Label>
-                <Select value={deadlineMode} onValueChange={(value) => handleDeadlineModeChange(value as AssignmentDeadlineMode)} disabled={!!assignment}>
-                  <SelectTrigger className="h-9 w-[220px] rounded-lg bg-background font-semibold">
+                <Label className="text-sm">Hiển thị cho học viên</Label>
+                <Switch checked={isPublished} onCheckedChange={setIsPublished} />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-sm">Cho phép nộp lại</Label>
+                <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
+              </div>
+
+              <div className="rounded-lg border bg-background/60 p-3">
+                <div className="mb-2 text-sm font-medium">Điều kiện nộp bài</div>
+                <Select value={submissionUnlockMode} onValueChange={(value) => setSubmissionUnlockMode(value as AssignmentSubmissionUnlockMode)}>
+                  <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Không đặt hạn</SelectItem>
-                    <SelectItem value="absolute">Hạn cụ thể</SelectItem>
-                    <SelectItem value="relative_to_enrollment">Sau khi học viên ghi danh</SelectItem>
+                    <SelectItem value="after_content_complete">Học xong nội dung mới được nộp</SelectItem>
+                    <SelectItem value="anytime">Được nộp khi chưa học xong</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_82px_82px_90px]">
-                <div className="min-w-0">
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ngày</div>
-                  <input
-                    type="date"
-                    value={deadlineDate}
-                    onChange={(event) => setDeadlineDate(event.target.value)}
-                    disabled={deadlineMode !== 'absolute'}
-                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
-                  />
+
+              <div className="rounded-lg border bg-background/60 p-3">
+                <Label className="flex items-center gap-2 text-sm">
+                  <CalendarClock className="h-4 w-4 text-amber-500" />
+                  Thời hạn nộp bài
+                </Label>
+                <Select
+                  value={deadlineMode}
+                  onValueChange={(value) => setDeadlineMode(value as AssignmentFormDeadlineMode)}
+                  disabled={!!assignment}
+                >
+                  <SelectTrigger className="mt-3 h-10 w-full rounded-lg bg-background font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relative_to_enrollment">Hạn sau X ngày</SelectItem>
+                    <SelectItem value="none">Không có thời hạn</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {isRelativeDeadline ? (
+                  <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Số ngày tính từ mốc bắt đầu</div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3650}
+                      value={deadlineAfterDays}
+                      onChange={(event) => setDeadlineAfterDays(event.target.value)}
+                      disabled={!!assignment}
+                      className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
+                    />
+                    {assignment ? (
+                      <div className="mt-2 text-xs font-medium text-muted-foreground">
+                        Không thể đổi thời hạn sau khi bài tập đã được tạo.
+                      </div>
+                    ) : !hasValidRelativeDeadline ? (
+                      <div className="mt-2 text-xs font-medium text-destructive">
+                        Vui lòng nhập số ngày từ 1 đến 3650.
+                      </div>
+                    ) : null}
+                    <div className="mt-2 text-xs font-medium text-muted-foreground">
+                      Học viên đã ghi danh trước sẽ được tính từ lúc bài tập được tạo; học viên ghi danh sau sẽ được tính từ lúc ghi danh.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-lg border border-dashed bg-muted/20 px-3 py-3 text-xs font-medium text-muted-foreground">
+                    Bài tập không có thời hạn nộp.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border bg-background/60 p-3">
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  className="sr-only"
+                  onChange={handleAttachmentChange}
+                />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <Label className="flex items-center gap-2 text-sm">
+                      <Paperclip className="h-4 w-4 text-primary" />
+                      File đính kèm
+                    </Label>
+                    <div className="mt-1 text-xs font-medium text-muted-foreground">
+                      Chỉ 1 file, tối đa 25MB, hỗ trợ mọi loại file.
+                    </div>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => attachmentInputRef.current?.click()}>
+                    Chọn file
+                  </Button>
                 </div>
-                <div>
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Giờ</div>
-                  <Select value={deadlineHour} onValueChange={setDeadlineHour} disabled={deadlineMode !== 'absolute'}>
-                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOUR_OPTIONS.map((hour) => (
-                        <SelectItem key={hour} value={hour}>{hour}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Phút</div>
-                  <Select value={deadlineMinute} onValueChange={setDeadlineMinute} disabled={deadlineMode !== 'absolute'}>
-                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      {MINUTE_OPTIONS.map((minute) => (
-                        <SelectItem key={minute} value={minute}>{minute}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Buổi</div>
-                  <Select value={deadlinePeriod} onValueChange={(value) => setDeadlinePeriod(value as TimePeriod)} disabled={deadlineMode !== 'absolute'}>
-                    <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="AM">AM</SelectItem>
-                      <SelectItem value="PM">PM</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                <div className="mt-3">
+                  {attachmentFile ? (
+                    <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
+                      <FileText className="h-4 w-4 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold">{attachmentFile.name}</div>
+                        <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(attachmentFile.size)}</div>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa file">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : existingAttachment ? (
+                    <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
+                      <FileText className="h-4 w-4 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold">{existingAttachment.original_name}</div>
+                        <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(existingAttachment.size_bytes)}</div>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa file">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed px-3 py-3 text-xs font-medium text-muted-foreground">
+                      Chưa có file đính kèm.
+                    </div>
+                  )}
                 </div>
               </div>
-              {deadlineMode === 'relative_to_enrollment' && (
-                <div className="mt-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Số ngày kể từ lúc ghi danh</div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={3650}
-                    value={deadlineAfterDays}
-                    onChange={(event) => setDeadlineAfterDays(event.target.value)}
-                    disabled={!!assignment}
-                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
-                  />
-                  {assignment ? (
-                    <div className="mt-2 text-xs font-medium text-muted-foreground">
-                      Không thể đổi số ngày hết hạn sau khi bài tập đã được tạo.
-                    </div>
-                  ) : !hasValidRelativeDeadline ? (
-                    <div className="mt-2 text-xs font-medium text-destructive">
-                      Vui lòng nhập số ngày từ 1 đến 3650.
-                    </div>
-                  ) : null}
+
+              {assignment ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                  <Label className="flex min-w-0 items-center gap-2 text-sm">
+                    <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">Chấm điểm từng học viên</span>
+                  </Label>
+                  <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {assignment.grading_enabled ? 'Đang bật' : 'Đang tắt'}
+                  </span>
                 </div>
-              )}
-              {deadlineMode === 'absolute' && !deadlineIso && (
-                <div className="mt-2 text-xs font-medium text-destructive">Vui lòng chọn thời hạn nộp bài.</div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 p-3">
+                  <Label className="flex items-center gap-2 text-sm">
+                    <Trophy className="h-4 w-4 text-emerald-500" />
+                    Chấm điểm từng học viên
+                  </Label>
+                  <Switch checked={gradingEnabled} onCheckedChange={setGradingEnabled} />
+                </div>
               )}
             </div>
-            {assignment ? (
-              <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                <Label className="flex min-w-0 items-center gap-2 text-sm">
-                  <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate">Chấm điểm từng học viên</span>
-                </Label>
-                <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {assignment.grading_enabled ? 'Đang bật' : 'Đang tắt'}
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 p-3">
-                <Label className="flex items-center gap-2 text-sm">
-                  <Trophy className="h-4 w-4 text-emerald-500" />
-                  Chấm điểm từng học viên
-                </Label>
-                <Switch checked={gradingEnabled} onCheckedChange={setGradingEnabled} />
-              </div>
-            )}
           </div>
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="border-t px-4 pb-5 pt-3 sm:px-6 sm:pb-5">
           <Button variant="outline" onClick={onClose}>Hủy</Button>
           <Button disabled={!canSave} onClick={() => assignment ? updateMut.mutate() : createMut.mutate()}>
             {pending ? 'Đang lưu...' : 'Lưu'}

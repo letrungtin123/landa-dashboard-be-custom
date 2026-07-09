@@ -104,6 +104,16 @@ export interface GroupAuditLogItem {
 
 // ── Org Groups ──
 
+export interface GroupNotificationSmtpStatus {
+  configured: boolean;
+  is_enabled: boolean;
+  has_password: boolean;
+  can_send_email: boolean;
+  host: string | null;
+  from_email: string | null;
+  reason: string | null;
+}
+
 export async function getOrgGroups(params?: { page?: number; page_size?: number; search?: string }) {
   const { data } = await customApiClient.get<ApiResponse<{ groups: OrgGroup[]; total: number; page: number; page_size: number }>>("/api/groups", { params });
   return data.data;
@@ -180,8 +190,23 @@ export async function deleteTeam(id: string) {
 
 // ── Team Members ──
 
-export async function addTeamMembers(teamId: string, userIds: string[]) {
-  const { data } = await customApiClient.post<ApiResponse<{ success: boolean; added: number; skipped: number }>>(`/api/groups/teams/${teamId}/members`, { user_ids: userIds });
+export async function getGroupNotificationSmtpStatus() {
+  const { data } = await customApiClient.get<ApiResponse<GroupNotificationSmtpStatus>>("/api/groups/smtp-status");
+  return data.data;
+}
+
+export async function addTeamMembers(teamId: string, userIds: string[], options?: { send_email?: boolean }) {
+  const { data } = await customApiClient.post<ApiResponse<{
+    success: boolean;
+    added: number;
+    skipped: number;
+    notification_id: string | null;
+    email_requested: boolean;
+    email_queued: number;
+  }>>(`/api/groups/teams/${teamId}/members`, {
+    user_ids: userIds,
+    send_email: options?.send_email === true,
+  });
   return data.data;
 }
 

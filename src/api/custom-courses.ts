@@ -206,11 +206,62 @@ export async function updateSectionModalConfig(courseId: string, config: Section
 
 // ── Course Notification ──
 
-export async function sendCourseNotification(courseId: string, payload: { title: string; message: string }) {
-  const { data } = await customApiClient.post<ApiResponse<{ success: boolean; recipients: number }>>("/api/notifications", {
+export interface CourseNotificationSmtpStatus {
+  configured: boolean;
+  is_enabled: boolean;
+  has_password: boolean;
+  can_send_email: boolean;
+  host: string | null;
+  from_email: string | null;
+  reason: string | null;
+}
+
+export interface CourseNotificationHistoryItem {
+  id: string;
+  course_id: string;
+  course_name: string | null;
+  title: string;
+  message: string | null;
+  recipient_count: number;
+  sent_by_username: string | null;
+  sent_by_display_name: string | null;
+  created_at: string;
+  email_status: 'pending' | 'running' | 'done' | 'failed' | null;
+  email_queued_count: number;
+  email_last_error: string | null;
+  metadata?: { send_email?: boolean; recipient_rule?: string } | null;
+}
+
+export async function getCourseNotificationSmtpStatus() {
+  const { data } = await customApiClient.get<ApiResponse<CourseNotificationSmtpStatus>>("/api/notifications/smtp-status");
+  return data.data;
+}
+
+export async function getCourseNotificationHistory(
+  courseId: string,
+  params: { page?: number; page_size?: number; search?: string } = {},
+) {
+  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<CourseNotificationHistoryItem>>>("/api/notifications", {
+    params: {
+      course_id: courseId,
+      ...params,
+    },
+  });
+  return data.data;
+}
+
+export async function sendCourseNotification(courseId: string, payload: { title: string; message: string; send_email?: boolean }) {
+  const { data } = await customApiClient.post<ApiResponse<{
+    success: boolean;
+    notification_id: string;
+    recipients: number;
+    email_requested: boolean;
+    email_job_queued: boolean;
+  }>>("/api/notifications", {
     course_id: courseId,
     title: payload.title,
     message: payload.message,
+    send_email: payload.send_email === true,
   });
   return data.data;
 }
