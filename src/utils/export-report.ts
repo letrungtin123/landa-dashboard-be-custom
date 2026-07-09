@@ -7,6 +7,7 @@ import {
   getReportUncompletedLearners,
   type ReportSummaryResponse,
 } from '@/api/custom-reports';
+import { DEFAULT_GROUP_LABELS } from '@/utils/group-labels';
 
 // ── Style Helpers ──
 
@@ -106,11 +107,12 @@ interface ExportParams {
   selectedYear: number;
   selectedGroupId: string | 'all';
   groupName: string;
+  groupLabel?: string;
   exporterName: string;
 }
 
 export async function exportReportExcel(params: ExportParams) {
-  const { selectedYear, selectedGroupId, groupName, exporterName } = params;
+  const { selectedYear, selectedGroupId, groupName, groupLabel = DEFAULT_GROUP_LABELS.group, exporterName } = params;
   const toastId = toast.loading(`Đang tổng hợp dữ liệu chi tiết năm ${selectedYear}...`);
 
   try {
@@ -205,7 +207,7 @@ export async function exportReportExcel(params: ExportParams) {
 
     toast.loading('Đang tạo và định dạng file Excel...', { id: toastId });
     const exportDate = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const metaSubtitle = `Công ty: ${groupName} | Người xuất: ${exporterName} | Ngày xuất: ${exportDate}`;
+    const metaSubtitle = `${groupLabel}: ${groupName} | Người xuất: ${exporterName} | Ngày xuất: ${exportDate}`;
 
     // ═══ SHEET 1: TỔNG QUAN THEO THÁNG ═══
     const COL1 = 6;

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import { format } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -75,7 +76,10 @@ export function TeamDetailPanel({ teamId }: Props) {
   const [selectedCourseCategories, setSelectedCourseCategories] = useState<string[]>([]);
   const qc = useQueryClient();
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  const groupLabels = useAuthStore((s) => s.groupLabels);
   const canEdit = hasPermission('groups', 'can_edit');
+  const labels = getGroupLabelSet(groupLabels);
+  const teamLabelLower = lowerGroupLabel(labels.team);
 
   const { data: sg, isLoading } = useQuery<TeamDetail>({
     queryKey: ['team-detail', teamId],
@@ -178,7 +182,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleRemoveMember = (id: string, username: string) => {
     confirmDialog({
       title: 'Xóa thành viên',
-      description: `Xóa "${username}" khỏi phòng ban? User sẽ không còn thấy courses của phòng ban này.`,
+      description: `Xóa "${username}" khỏi ${teamLabelLower}? User sẽ không còn thấy courses của ${teamLabelLower} này.`,
       variant: 'destructive',
       onConfirm: () => removeMemberMutation.mutate(id),
     });
@@ -196,7 +200,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRemoveMembers = () => {
     confirmDialog({
       title: 'Xóa nhiều thành viên',
-      description: `Xóa ${selectedMembers.length} thành viên khỏi phòng ban?`,
+      description: `Xóa ${selectedMembers.length} thành viên khỏi ${teamLabelLower}?`,
       variant: 'destructive',
       onConfirm: () => removeMultipleMembersMutation.mutate(selectedMembers),
     });
@@ -205,7 +209,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCourses = () => {
     confirmDialog({
       title: 'Thu hồi nhiều Course',
-      description: `Thu hồi ${selectedCourses.length} course khỏi phòng ban?`,
+      description: `Thu hồi ${selectedCourses.length} course khỏi ${teamLabelLower}?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCoursesMutation.mutate(selectedCourses),
     });
@@ -223,7 +227,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCategories = () => {
     confirmDialog({
       title: 'Thu hồi nhiều danh mục',
-      description: `Thu hồi ${selectedCategories.length} danh mục khỏi phòng ban?`,
+      description: `Thu hồi ${selectedCategories.length} danh mục khỏi ${teamLabelLower}?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCategoriesMutation.mutate(selectedCategories),
     });
@@ -241,7 +245,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleBulkRevokeCourseCategories = () => {
     confirmDialog({
       title: 'Thu hồi nhiều danh mục khóa học',
-      description: `Thu hồi ${selectedCourseCategories.length} danh mục khóa học khỏi phòng ban?`,
+      description: `Thu hồi ${selectedCourseCategories.length} danh mục khóa học khỏi ${teamLabelLower}?`,
       variant: 'destructive',
       onConfirm: () => revokeMultipleCourseCategoriesMutation.mutate(selectedCourseCategories),
     });
@@ -314,7 +318,9 @@ export function TeamDetailPanel({ teamId }: Props) {
       {/* Header */}
       <div className="px-5 py-4 border-b border-border shrink-0">
         <h3 className="font-semibold text-foreground text-base">{sg.name}</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">{sg.subgroup_name} · {sg.org_group_name}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {labels.subgroup}: {sg.subgroup_name} · {labels.group}: {sg.org_group_name}
+        </p>
       </div>
 
       <div className="flex border-b border-border shrink-0 overflow-x-auto">
@@ -328,7 +334,7 @@ export function TeamDetailPanel({ teamId }: Props) {
               }`}
           >
             {tab === 'members' ? <Users className="h-3.5 w-3.5" /> : tab === 'courses' ? <BookOpen className="h-3.5 w-3.5" /> : tab === 'categories' ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
-            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'courses' ? `Courses (${sg.course_count})` : tab === 'categories' ? `Danh mục files (${sg.category_count})` : `Danh mục courses (${sg.course_category_count})`}
+            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'courses' ? `Courses (${sg.course_count})` : tab === 'categories' ? `Thư viện tài liệu (${sg.category_count})` : `Danh mục khoá học (${sg.course_category_count})`}
           </button>
         ))}
       </div>
@@ -494,7 +500,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                 )}
               </div>
               {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
-                <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục files
+                <FolderPlus className="h-3.5 w-3.5" /> Phân thư viện tài liệu
               </Button>}
             </div>
             {sg.categories.length === 0 ? (
@@ -564,7 +570,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                 )}
               </div>
               {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
-                <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục courses
+                <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục khoá học
               </Button>}
             </div>
             {sg.course_categories.length === 0 ? (

@@ -9,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getCategories } from '@/api/custom-library';
 import { assignCategories, assignTeamCategories } from '@/api/custom-groups';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
@@ -24,7 +26,9 @@ export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds,
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
-  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -75,7 +79,7 @@ export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds,
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân Danh Mục cho {targetLabel}</DialogTitle>
+          <DialogTitle>Phân danh mục cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

@@ -325,7 +325,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
               }`}
           >
             {tab === 'members' ? <Users className="h-3.5 w-3.5" /> : tab === 'courses' ? <BookOpen className="h-3.5 w-3.5" /> : tab === 'categories' ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
-            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'courses' ? `Courses (${sg.course_count})` : tab === 'categories' ? `Danh mục files (${sg.category_count})` : `Danh mục courses (${sg.course_category_count})`}
+            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'courses' ? `Courses (${sg.course_count})` : tab === 'categories' ? `Thư viện tài liệu (${sg.category_count})` : `Danh mục khoá học (${sg.course_category_count})`}
           </button>
         ))}
       </div>
@@ -426,13 +426,13 @@ export function SubGroupDetailPanel({ sgId }: Props) {
                 )}
               </div>
               <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCoursesOpen(true)}>
-                <BookPlus className="h-3.5 w-3.5" /> Phân course
+                <BookPlus className="h-3.5 w-3.5" /> Phân khoá học
               </Button>
             </div>
             {sg.courses.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
                 <BookOpen className="h-10 w-10 text-muted-foreground/20 mb-2" />
-                <p className="text-sm text-muted-foreground">Chưa có course nào được phân</p>
+                <p className="text-sm text-muted-foreground">Chưa có khoá học nào được phân</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -491,7 +491,7 @@ export function SubGroupDetailPanel({ sgId }: Props) {
                 )}
               </div>
               <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
-                <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục files
+                <FolderPlus className="h-3.5 w-3.5" /> Phân thư viện tài liệu
               </Button>
             </div>
             {sg.categories.length === 0 ? (

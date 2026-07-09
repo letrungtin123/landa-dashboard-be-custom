@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { customApiClient } from "./custom-client";
+import type { GroupLabelMap } from "@/utils/group-labels";
 import type { RoleLabelMap } from "@/utils/role-labels";
 
 /** Response format chuẩn từ custom backend */
@@ -23,6 +24,7 @@ export interface CustomLoginResponse {
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
   role_labels?: RoleLabelMap;
+  group_labels?: GroupLabelMap;
   member_groups?: { id: string; name: string }[];
 }
 
@@ -46,6 +48,7 @@ export interface CustomMeResponse {
   tenant_modules: string[];
   managed_tenants: { id: string; name: string }[];
   role_labels?: RoleLabelMap;
+  group_labels?: GroupLabelMap;
   member_groups?: { id: string; name: string }[];
 }
 
@@ -83,6 +86,11 @@ export async function customRefreshApi(refreshToken: string, tenantId?: string |
 export async function customGetRoleLabelsApi(): Promise<RoleLabelMap> {
   const { data } = await customApiClient.get<ApiResponse<{ role_labels: RoleLabelMap }>>("/api/auth/role-labels");
   return data.data.role_labels || {};
+}
+
+export async function customGetGroupLabelsApi(): Promise<GroupLabelMap> {
+  const { data } = await customApiClient.get<ApiResponse<{ group_labels: GroupLabelMap }>>("/api/auth/group-labels");
+  return data.data.group_labels || {};
 }
 
 /**

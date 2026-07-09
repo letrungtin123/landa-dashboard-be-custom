@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { customApiClient } from "./custom-client";
+import type { GroupLabelMap } from "@/utils/group-labels";
 import type { RoleLabelMap } from "@/utils/role-labels";
 
 interface ApiResponse<T> {
@@ -132,6 +133,19 @@ export async function fetchTenantRoleLabels(tenantId: string): Promise<RoleLabel
 export async function updateTenantRoleLabels(tenantId: string, labels: RoleLabelMap): Promise<RoleLabelMap> {
   const { data } = await customApiClient.put<ApiResponse<{ labels: RoleLabelMap }>>(
     `/api/tenants/${tenantId}/role-labels`,
+    { labels },
+  );
+  return data.data.labels || {};
+}
+
+export async function fetchTenantGroupLabels(tenantId: string): Promise<GroupLabelMap> {
+  const { data } = await customApiClient.get<ApiResponse<{ labels: GroupLabelMap }>>(`/api/tenants/${tenantId}/group-labels`);
+  return data.data.labels || {};
+}
+
+export async function updateTenantGroupLabels(tenantId: string, labels: GroupLabelMap): Promise<GroupLabelMap> {
+  const { data } = await customApiClient.put<ApiResponse<{ labels: GroupLabelMap }>>(
+    `/api/tenants/${tenantId}/group-labels`,
     { labels },
   );
   return data.data.labels || {};

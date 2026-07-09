@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import {
   getOrgGroups, createOrgGroup, updateOrgGroup, deleteOrgGroup,
@@ -22,6 +23,11 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   const canAdd = hasPermission('groups', 'can_add');
   const canEdit = hasPermission('groups', 'can_edit');
   const canDelete = hasPermission('groups', 'can_delete');
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const groupLabelLower = lowerGroupLabel(labels.group);
+  const subgroupLabelLower = lowerGroupLabel(labels.subgroup);
+  const teamLabelLower = lowerGroupLabel(labels.team);
   const [newName, setNewName] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -36,12 +42,12 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createOrgGroup({ name: newName.trim() }),
     onSuccess: () => {
-      toast.success('Đã tạo công ty');
+      toast.success(`Đã tạo ${groupLabelLower}`);
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo công ty'),
+    onError: (e: any) => toast.error(e.response?.data?.error || `Lỗi tạo ${groupLabelLower}`),
   });
 
   const updateMutation = useMutation({
@@ -57,19 +63,19 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteOrgGroup(id),
     onSuccess: (_, id) => {
-      toast.success('Đã xóa công ty');
+      toast.success(`Đã xóa ${groupLabelLower}`);
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error('Lỗi xóa công ty'),
+    onError: () => toast.error(`Lỗi xóa ${groupLabelLower}`),
   });
 
   const groups: OrgGroup[] = data?.groups ?? [];
 
   const handleDelete = (g: OrgGroup) => {
     confirmDialog({
-      title: 'Xóa Công ty',
-      description: `Xóa "${g.name}" sẽ xóa toàn bộ chi nhánh và phòng ban bên trong. Không thể hoàn tác.`,
+      title: `Xóa ${labels.group}`,
+      description: `Xóa "${g.name}" sẽ xóa toàn bộ ${subgroupLabelLower} và ${teamLabelLower} bên trong. Không thể hoàn tác.`,
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(g.id),
     });
@@ -78,7 +84,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Công ty</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{labels.group}</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
@@ -88,7 +94,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder="Tên công ty..."
+            placeholder={`Tên ${groupLabelLower}...`}
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -112,7 +118,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
         ) : groups.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <FolderOpen className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có công ty nào</p>
+            <p className="text-xs text-muted-foreground">Chưa có {groupLabelLower} nào</p>
           </div>
         ) : groups.map(g => (
           <div

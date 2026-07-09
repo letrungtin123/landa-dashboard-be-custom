@@ -9,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getCourses } from '@/api/custom-courses';
 import { assignCourses, assignTeamCourses } from '@/api/custom-groups';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
@@ -24,7 +26,9 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
-  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -76,7 +80,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân Course cho {targetLabel}</DialogTitle>
+          <DialogTitle>Phân course cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

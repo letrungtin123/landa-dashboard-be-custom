@@ -11,11 +11,13 @@ import { storageUrl } from '@/utils/storage-url';
 import {
   customLoginApi,
   customRefreshApi,
+  customGetGroupLabelsApi,
   customGetRoleLabelsApi,
   customLogoutApi,
   type CustomLoginResponse,
 } from '@/api/custom-auth';
 import { config } from '@/config/env';
+import { normalizeGroupLabels, type GroupLabelMap } from '@/utils/group-labels';
 import { normalizeRoleLabels, type RoleLabelMap } from '@/utils/role-labels';
 
 // ── Encrypted storage (giữ nguyên logic cũ) ──
@@ -92,6 +94,7 @@ interface AuthState {
   tenantModules: string[];
   managedTenants: { id: string; name: string }[];
   roleLabels: RoleLabelMap;
+  groupLabels: GroupLabelMap;
   isAuthenticated: boolean;
   isLoading: boolean;
   isLoggingOut: boolean;
@@ -108,6 +111,8 @@ interface AuthState {
   updateUser: (data: Partial<User>) => void;
   setRoleLabels: (labels: RoleLabelMap) => void;
   refreshRoleLabels: () => Promise<void>;
+  setGroupLabels: (labels: GroupLabelMap) => void;
+  refreshGroupLabels: () => Promise<void>;
   setLoading: (loading: boolean) => void;
   setPermissions: (permissions: PermissionsMap) => void;
   hasPermission: (moduleCode: string, action: 'can_view' | 'can_add' | 'can_edit' | 'can_delete') => boolean;
@@ -157,6 +162,7 @@ function mapLoginResponseToState(data: CustomLoginResponse) {
     tenantModules: data.tenant_modules,
     managedTenants: data.managed_tenants || [],
     roleLabels: normalizeRoleLabels(data.role_labels),
+    groupLabels: normalizeGroupLabels(data.group_labels),
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
     tokenExpiresAt: Date.now() + data.expires_in * 1000,
@@ -172,6 +178,7 @@ export const useAuthStore = create<AuthState>()(
       tenantModules: [],
       managedTenants: [],
       roleLabels: {},
+      groupLabels: {},
       isAuthenticated: false,
       isLoading: false,
       isLoggingOut: false,
@@ -192,7 +199,10 @@ export const useAuthStore = create<AuthState>()(
           try {
             const { useTenantStore } = await import('@/utils/tenant-store');
             await useTenantStore.getState().fetchTenants();
-            await get().refreshRoleLabels();
+            await Promise.all([
+              get().refreshRoleLabels(),
+              get().refreshGroupLabels(),
+            ]);
           } catch { /* ignore - tenant fetch is non-critical */ }
         }
       },
@@ -223,6 +233,7 @@ export const useAuthStore = create<AuthState>()(
           tenantModules: [],
           managedTenants: [],
           roleLabels: {},
+          groupLabels: {},
           isLoggingOut: false,
         });
 
@@ -239,6 +250,7 @@ export const useAuthStore = create<AuthState>()(
 
       setPermissions: (permissions) => set({ permissions }),
       setRoleLabels: (labels) => set({ roleLabels: normalizeRoleLabels(labels) }),
+      setGroupLabels: (labels) => set({ groupLabels: normalizeGroupLabels(labels) }),
 
       refreshRoleLabels: async () => {
         try {
@@ -246,6 +258,15 @@ export const useAuthStore = create<AuthState>()(
           set({ roleLabels: normalizeRoleLabels(labels) });
         } catch {
           set({ roleLabels: {} });
+        }
+      },
+
+      refreshGroupLabels: async () => {
+        try {
+          const labels = await customGetGroupLabelsApi();
+          set({ groupLabels: normalizeGroupLabels(labels) });
+        } catch {
+          set({ groupLabels: {} });
         }
       },
 
@@ -334,6 +355,7 @@ export const useAuthStore = create<AuthState>()(
         tenantModules: state.tenantModules,
         managedTenants: state.managedTenants,
         roleLabels: state.roleLabels,
+        groupLabels: state.groupLabels,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.isAuthenticated && state?.tokenExpiresAt) {

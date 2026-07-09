@@ -28,6 +28,7 @@ export function Header() {
   const logout = useAuthStore((state) => state.logout);
   const startLogout = useAuthStore((state) => state.startLogout);
   const refreshRoleLabels = useAuthStore((state) => state.refreshRoleLabels);
+  const refreshGroupLabels = useAuthStore((state) => state.refreshGroupLabels);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { theme, setTheme } = useTheme();
@@ -40,13 +41,13 @@ export function Header() {
   // Fetch tenants on mount for superadmin
   useEffect(() => {
     if (isSuperadmin) {
-      fetchTenants().then(() => refreshRoleLabels());
+      fetchTenants().then(() => Promise.all([refreshRoleLabels(), refreshGroupLabels()]));
     }
-  }, [isSuperadmin, fetchTenants, refreshRoleLabels]);
+  }, [isSuperadmin, fetchTenants, refreshGroupLabels, refreshRoleLabels]);
 
   const handleTenantChange = async (tenantId: string, tenantName: string) => {
     setActiveTenant(tenantId, tenantName);
-    await refreshRoleLabels();
+    await Promise.all([refreshRoleLabels(), refreshGroupLabels()]);
     qc.invalidateQueries();
   };
 

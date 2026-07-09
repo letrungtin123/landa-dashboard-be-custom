@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getCourseCategories } from '@/api/custom-course-categories';
 import { assignCourseCategories, assignTeamCourseCategories } from '@/api/custom-groups';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
@@ -21,7 +23,9 @@ interface Props {
 export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
 
   const { data, isFetching } = useQuery({
     queryKey: ['course-categories-for-group'],
@@ -72,7 +76,7 @@ export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCatego
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân Danh Mục Khóa Học cho {targetLabel}</DialogTitle>
+          <DialogTitle>Phân danh mục khóa học cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

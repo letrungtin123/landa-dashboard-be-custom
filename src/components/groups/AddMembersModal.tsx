@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useDebounce } from '@/hooks/use-debounce';
 import { fetchUsers, type CustomUser } from '@/api/custom-users';
 import { addMembers, addTeamMembers, getGroupNotificationSmtpStatus } from '@/api/custom-groups';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
@@ -30,7 +32,10 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
   const [sendEmail, setSendEmail] = useState(false);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
-  const targetLabel = teamId ? 'phòng ban' : 'chi nhánh';
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const targetLabel = teamId ? labels.team : labels.subgroup;
+  const targetLabelLower = lowerGroupLabel(targetLabel);
   const isTeamTarget = Boolean(teamId);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
@@ -50,7 +55,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
   });
   const canSendEmail = isTeamTarget && Boolean(smtpStatus?.can_send_email);
   const smtpDisabledReason = !isTeamTarget
-    ? 'Tính năng gửi email chỉ hỗ trợ khi thêm học viên vào phòng ban.'
+    ? `Tính năng gửi email chỉ hỗ trợ khi thêm học viên vào ${lowerGroupLabel(labels.team)}.`
     : isSmtpError
       ? 'Không kiểm tra được cấu hình SMTP Google của tenant.'
       : smtpStatus?.reason || 'Tenant chưa cấu hình SMTP Google.';
@@ -107,7 +112,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Thêm thành viên vào {targetLabel}</DialogTitle>
+          <DialogTitle>Thêm thành viên vào {targetLabelLower}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import {
   getTeams, createTeam, updateTeam, deleteTeam,
@@ -23,6 +24,9 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   const canAdd = hasPermission('groups', 'can_add');
   const canEdit = hasPermission('groups', 'can_edit');
   const canDelete = hasPermission('groups', 'can_delete');
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const teamLabelLower = lowerGroupLabel(labels.team);
   const [newName, setNewName] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -38,13 +42,13 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createTeam(subgroupId, { name: newName.trim() }),
     onSuccess: () => {
-      toast.success('Đã tạo phòng ban');
+      toast.success(`Đã tạo ${teamLabelLower}`);
       qc.invalidateQueries({ queryKey: ['teams', subgroupId] });
       qc.invalidateQueries({ queryKey: ['sub-groups'] }); // update team_count badge
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo phòng ban'),
+    onError: (e: any) => toast.error(e.response?.data?.error || `Lỗi tạo ${teamLabelLower}`),
   });
 
   const updateMutation = useMutation({
@@ -60,19 +64,19 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTeam(id),
     onSuccess: (_, id) => {
-      toast.success('Đã xóa phòng ban');
+      toast.success(`Đã xóa ${teamLabelLower}`);
       qc.invalidateQueries({ queryKey: ['teams', subgroupId] });
       qc.invalidateQueries({ queryKey: ['sub-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error('Lỗi xóa phòng ban'),
+    onError: () => toast.error(`Lỗi xóa ${teamLabelLower}`),
   });
 
   const teams: Team[] = data?.teams ?? [];
 
   const handleDelete = (t: Team) => {
     confirmDialog({
-      title: 'Xóa Phòng ban',
+      title: `Xóa ${labels.team}`,
       description: `Xóa "${t.name}" sẽ xóa toàn bộ thành viên và course đã phân.`,
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(t.id),
@@ -82,7 +86,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
   return (
     <div className="flex flex-col h-full border-r border-border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phòng ban</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{labels.team}</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
           <Plus className="h-3.5 w-3.5" /> Tạo mới
         </Button>}
@@ -92,7 +96,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder="Tên phòng ban..."
+            placeholder={`Tên ${teamLabelLower}...`}
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -119,7 +123,7 @@ export function TeamPanel({ subgroupId, selectedId, onSelect }: Props) {
         ) : teams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có phòng ban nào</p>
+            <p className="text-xs text-muted-foreground">Chưa có {teamLabelLower} nào</p>
           </div>
         ) : teams.map(t => (
           <div

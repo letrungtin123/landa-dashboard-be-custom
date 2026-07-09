@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail, Network } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
 import { getIconComponent } from "@/utils/icon-map";
@@ -22,9 +22,17 @@ import {
 import {
   fetchTenants, createTenant, updateTenant, deleteTenant,
   fetchTenantModules, updateTenantModules, fetchTenantRoleLabels, updateTenantRoleLabels,
+  fetchTenantGroupLabels, updateTenantGroupLabels,
   fetchTenantSmtpConfig, updateTenantSmtpConfig,
   type Tenant, type TenantModule,
 } from "@/api/custom-tenants";
+import {
+  DEFAULT_GROUP_LABELS,
+  SYSTEM_GROUP_LABEL_KEYS,
+  normalizeGroupLabels,
+  type GroupLabelKey,
+  type GroupLabelMap,
+} from "@/utils/group-labels";
 import {
   DEFAULT_ROLE_LABELS,
   SYSTEM_ROLE_KEYS,
@@ -41,8 +49,18 @@ const ROLE_LABEL_FIELD_LABELS: Record<UserRole, string> = {
   learner_plus: "Learner+",
 };
 
+const GROUP_LABEL_FIELD_LABELS: Record<GroupLabelKey, string> = {
+  group: "Cấp 1 - Công ty",
+  subgroup: "Cấp 2 - Chi nhánh",
+  team: "Cấp 3 - Phòng ban",
+};
+
 function hasAnyRoleLabel(labels: RoleLabelMap): boolean {
   return SYSTEM_ROLE_KEYS.some(role => !!labels[role]?.trim());
+}
+
+function hasAnyGroupLabel(labels: GroupLabelMap): boolean {
+  return SYSTEM_GROUP_LABEL_KEYS.some(key => !!labels[key]?.trim());
 }
 
 export default function TenantManagementPage() {
@@ -86,10 +104,13 @@ export default function TenantManagementPage() {
   const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
   const [formRoleLabels, setFormRoleLabels] = useState<RoleLabelMap>({});
   const [formRoleLabelsHadSaved, setFormRoleLabelsHadSaved] = useState(false);
+  const [formGroupLabels, setFormGroupLabels] = useState<GroupLabelMap>({});
+  const [formGroupLabelsHadSaved, setFormGroupLabelsHadSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const refreshRoleLabels = useAuthStore((s) => s.refreshRoleLabels);
+  const refreshGroupLabels = useAuthStore((s) => s.refreshGroupLabels);
 
   const loadTenants = useCallback(async function loadTenants() {
     setLoading(true);
@@ -142,11 +163,17 @@ export default function TenantManagementPage() {
     setFormGeminiApiKey("");
     setFormRoleLabels({});
     setFormRoleLabelsHadSaved(false);
+    setFormGroupLabels({});
+    setFormGroupLabelsHadSaved(false);
     setShowApiKey(false);
   }
 
   function setRoleLabel(role: UserRole, value: string) {
     setFormRoleLabels(prev => ({ ...prev, [role]: value }));
+  }
+
+  function setGroupLabel(key: GroupLabelKey, value: string) {
+    setFormGroupLabels(prev => ({ ...prev, [key]: value }));
   }
 
   async function openEditTenant(tenant: Tenant) {
@@ -161,14 +188,23 @@ export default function TenantManagementPage() {
     setShowApiKey(false);
     setFormRoleLabels({});
     setFormRoleLabelsHadSaved(false);
+    setFormGroupLabels({});
+    setFormGroupLabelsHadSaved(false);
     setEditTenant(tenant);
 
     try {
-      const labels = normalizeRoleLabels(await fetchTenantRoleLabels(tenant.id));
-      setFormRoleLabels(labels);
-      setFormRoleLabelsHadSaved(hasAnyRoleLabel(labels));
+      const [roleLabelsResult, groupLabelsResult] = await Promise.all([
+        fetchTenantRoleLabels(tenant.id),
+        fetchTenantGroupLabels(tenant.id),
+      ]);
+      const roleLabels = normalizeRoleLabels(roleLabelsResult);
+      const groupLabels = normalizeGroupLabels(groupLabelsResult);
+      setFormRoleLabels(roleLabels);
+      setFormRoleLabelsHadSaved(hasAnyRoleLabel(roleLabels));
+      setFormGroupLabels(groupLabels);
+      setFormGroupLabelsHadSaved(hasAnyGroupLabel(groupLabels));
     } catch {
-      toast.error("Không thể tải tên hiển thị vai trò");
+      toast.error("Không thể tải tên hiển thị của tenant");
     }
   }
 
@@ -191,6 +227,10 @@ export default function TenantManagementPage() {
       const labels = normalizeRoleLabels(formRoleLabels);
       if (hasAnyRoleLabel(labels)) {
         await updateTenantRoleLabels(tenant.id, labels);
+      }
+      const groupLabels = normalizeGroupLabels(formGroupLabels);
+      if (hasAnyGroupLabel(groupLabels)) {
+        await updateTenantGroupLabels(tenant.id, groupLabels);
       }
       toast.success("Tạo tenant thành công");
       setShowCreate(false);
@@ -224,8 +264,12 @@ export default function TenantManagementPage() {
       if (hasAnyRoleLabel(labels) || formRoleLabelsHadSaved) {
         await updateTenantRoleLabels(editTenant.id, labels);
       }
+      const groupLabels = normalizeGroupLabels(formGroupLabels);
+      if (hasAnyGroupLabel(groupLabels) || formGroupLabelsHadSaved) {
+        await updateTenantGroupLabels(editTenant.id, groupLabels);
+      }
       if (editTenant.id === activeTenantId) {
-        await refreshRoleLabels();
+        await Promise.all([refreshRoleLabels(), refreshGroupLabels()]);
       }
       toast.success("Cập nhật thành công");
       setEditTenant(null);
@@ -586,6 +630,30 @@ export default function TenantManagementPage() {
                         value={formRoleLabels[role] || ""}
                         onChange={function onChange(e) { setRoleLabel(role, e.target.value); }}
                         placeholder={DEFAULT_ROLE_LABELS[role]}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+              <div className="flex items-start gap-2">
+                <Network className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <div>
+                  <label className="text-sm font-medium">Tên hiển thị cấu trúc nhóm</label>
+                  <p className="text-xs text-muted-foreground">Để trống để dùng tên mặc định hiện tại trên hệ thống.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {SYSTEM_GROUP_LABEL_KEYS.map(function renderGroupLabelInput(key) {
+                  return (
+                    <div key={key} className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">{GROUP_LABEL_FIELD_LABELS[key]}</label>
+                      <Input
+                        maxLength={64}
+                        value={formGroupLabels[key] || ""}
+                        onChange={function onChange(e) { setGroupLabel(key, e.target.value); }}
+                        placeholder={DEFAULT_GROUP_LABELS[key]}
                       />
                     </div>
                   );

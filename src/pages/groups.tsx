@@ -11,6 +11,8 @@ import { OrgGroupPanel } from '@/components/groups/OrgGroupPanel';
 import { SubGroupPanel } from '@/components/groups/SubGroupPanel';
 import { TeamPanel } from '@/components/groups/TeamPanel';
 import { TeamDetailPanel } from '@/components/groups/TeamDetailPanel';
+import { getGroupLabelSet } from '@/utils/group-labels';
+import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
 
 export default function GroupsPage() {
@@ -18,6 +20,8 @@ export default function GroupsPage() {
   const [selectedSubGroupId, setSelectedSubGroupId] = useState<string>('');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
 
   // Reset tất cả selections khi superadmin đổi tenant
   useEffect(() => {
@@ -44,7 +48,7 @@ export default function GroupsPage() {
         <PageHeader
           icon={FolderTree}
           title="Quản lý nhóm"
-          description="Sắp xếp học viên theo Công ty → Chi nhánh → Phòng ban và phân quyền xem khóa học"
+          description={`Sắp xếp học viên theo ${labels.group} → ${labels.subgroup} → ${labels.team} và phân quyền xem khóa học`}
         />
       </div>
 
@@ -53,19 +57,19 @@ export default function GroupsPage() {
         <button
           onClick={() => handleSelectGroup('')}
           className={`hover:underline transition-colors ${selectedGroupId ? 'text-primary font-medium' : 'text-muted-foreground/50'}`}>
-          Công ty
+          {labels.group}
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
         <button
           onClick={() => selectedGroupId && handleSelectSubGroup('')}
           className={`hover:underline transition-colors ${selectedSubGroupId ? 'text-primary font-medium' : selectedGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
-          Chi nhánh
+          {labels.subgroup}
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
         <button
           onClick={() => selectedSubGroupId && setSelectedTeamId('')}
           className={`hover:underline transition-colors ${selectedTeamId ? 'text-primary font-medium' : selectedSubGroupId ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
-          Phòng ban
+          {labels.team}
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
         <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Chi tiết</span>
@@ -92,8 +96,8 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<Building2 className="h-7 w-7" />}
-              title="Chi nhánh"
-              text="Chọn một Công ty ở panel bên trái"
+              title={labels.subgroup}
+              text={`Chọn một ${labels.group} ở panel bên trái`}
             />
           )}
         </div>
@@ -109,8 +113,8 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<Network className="h-7 w-7" />}
-              title="Phòng ban"
-              text={selectedGroupId ? 'Chọn một Chi nhánh' : ''}
+              title={labels.team}
+              text={selectedGroupId ? `Chọn một ${labels.subgroup}` : ''}
             />
           )}
         </div>
@@ -122,13 +126,13 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<MousePointerClick className="h-7 w-7" />}
-              title="Chi tiết Phòng ban"
+              title={`Chi tiết ${labels.team}`}
               text={
                 selectedSubGroupId
-                  ? 'Chọn một Phòng ban để xem chi tiết'
+                  ? `Chọn một ${labels.team} để xem chi tiết`
                   : selectedGroupId
-                    ? 'Chọn Chi nhánh → Phòng ban'
-                    : 'Chọn Công ty → Chi nhánh → Phòng ban'
+                    ? `Chọn ${labels.subgroup} → ${labels.team}`
+                    : `Chọn ${labels.group} → ${labels.subgroup} → ${labels.team}`
               }
               large
             />

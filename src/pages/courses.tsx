@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseNotificationSmtpStatus, getCourseNotificationHistory, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig, type CourseNotificationHistoryItem } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
+import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
@@ -1564,6 +1565,9 @@ function emailStatusLabel(status: string | null | undefined): string {
 function SendNotificationDialog({ courseId, open, onClose }: { courseId: string; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const teamLabelLower = lowerGroupLabel(labels.team);
   const historyLimit = 5;
   const [activeTab, setActiveTab] = useState('compose');
   const [title, setTitle] = useState('');
@@ -1745,7 +1749,7 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
                       <div className="flex gap-3">
                         <Users className="mt-0.5 h-4 w-4 shrink-0" />
                         <p>
-                          Thông báo sẽ gửi cho nhóm học viên được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.
+                          Thông báo sẽ gửi cho học viên thuộc {teamLabelLower} được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.
                         </p>
                       </div>
                     </div>
