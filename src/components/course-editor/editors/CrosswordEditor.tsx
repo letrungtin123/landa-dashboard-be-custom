@@ -248,12 +248,12 @@ export default function CrosswordEditor({
   const keywordCoordinates = words.map((_, idx) => ({ row: idx, col: keywordCol }));
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8">
+    <div className="flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Cột trái: Form nhập liệu */}
-      <div className="flex-1 space-y-5 lg:max-w-[450px] xl:max-w-[500px] shrink-0">
+      <div className="min-w-0 flex-1 space-y-5 lg:max-w-[450px] xl:max-w-[500px] lg:shrink-0">
         <Field label="Tên bài tập">
           <input
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
             value={displayName}
             onChange={e => onDisplayNameChange(e.target.value)}
           />
@@ -275,7 +275,7 @@ export default function CrosswordEditor({
                   <Video className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <input
-                  className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
+                  className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
                   value={youtubeInput}
                   onChange={e => handleYoutubeChange(e.target.value)}
                   placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
@@ -318,30 +318,30 @@ export default function CrosswordEditor({
 
           {/* Video upload button */}
           {!youtubeId && !media.video_storage_path && (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
-              <Button type="button" variant="default" size="sm" className="gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
+            <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
+              <Button type="button" variant="default" size="sm" className="shrink-0 gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
                 {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 Upload video
               </Button>
-              <span className="text-xs text-muted-foreground">Tối đa 100MB • MP4, WebM, MOV</span>
+              <span className="min-w-0 text-xs leading-5 text-muted-foreground">Tối đa 100MB • MP4, WebM, MOV</span>
               <input ref={videoFileInputRef} type="file" accept=".mp4,.webm,.mov" className="hidden" onChange={e => { handleUploadVideo(e.target.files); e.target.value = ''; }} />
             </div>
           )}
 
           <div className="space-y-3">
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+            <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
               <Button
                 type="button"
                 variant="default"
                 size="sm"
-                className="gap-2"
+                className="shrink-0 gap-2"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
               >
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                 Upload ảnh
               </Button>
-              <span className="text-xs text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
+              <span className="min-w-0 text-xs leading-5 text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -392,15 +392,15 @@ export default function CrosswordEditor({
         </div>
 
         <Field label="Cột chữ khóa dọc (Từ khóa chính)">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <input
               type="number"
               min={0}
-              className="flex h-10 w-24 rounded-md border border-input bg-background px-3 text-sm"
+              className="flex h-10 w-24 shrink-0 rounded-md border border-input bg-background px-3 text-sm"
               value={keywordCol}
               onChange={e => onKeywordColChange?.(parseInt(e.target.value) || 0)}
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="min-w-0 text-xs leading-5 text-muted-foreground">
               Chỉ số cột sẽ được highlight tạo thành từ khóa dọc
             </span>
           </div>
@@ -409,9 +409,9 @@ export default function CrosswordEditor({
         <hr className="border-border" />
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold">Danh sách Câu Hỏi - Hàng Ngang ({words.length})</h4>
-            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={addWord}>
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h4 className="min-w-0 text-sm font-bold leading-5">Danh sách Câu Hỏi - Hàng Ngang ({words.length})</h4>
+            <Button size="sm" variant="outline" className="h-7 w-fit shrink-0 gap-1 text-xs" onClick={addWord}>
               <Plus className="h-3.5 w-3.5" /> Thêm hàng
             </Button>
           </div>
@@ -424,12 +424,12 @@ export default function CrosswordEditor({
 
           <div className="space-y-2">
             {words.map((word, idx) => (
-              <div key={word.id} className="border border-border rounded-xl p-4 bg-card space-y-3 hover:border-primary/30 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <div key={word.id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3 space-y-3 transition-colors hover:border-primary/30 sm:p-4">
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <span className="min-w-0 break-words text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Hàng #{word.id}
                     {word.answer && (
-                      <span className="ml-2 text-primary normal-case font-normal">
+                      <span className="ml-2 inline-flex shrink-0 text-primary normal-case font-normal">
                         {word.answer.length} ô
                       </span>
                     )}
@@ -442,20 +442,20 @@ export default function CrosswordEditor({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Câu hỏi gợi ý</label>
                     <input
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                       value={word.clue}
                       onChange={e => updateWord(idx, 'clue', e.target.value)}
                       placeholder="Gợi ý cho hàng ngang..."
                     />
                   </div>
-                  <div className="space-y-1">
+                  <div className="min-w-0 space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Đáp án (Viết liền không dấu)</label>
                     <input
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono uppercase"
+                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm font-mono uppercase"
                       value={word.answer}
                       onChange={e => {
                         const val = e.target.value.toUpperCase().replace(/[^A-ZĐ0-9]/g, '');
@@ -466,21 +466,21 @@ export default function CrosswordEditor({
                   </div>
                 </div>
 
-                <div className="col-span-2 space-y-1">
+                <div className="min-w-0 space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Gợi ý — Hint (tuỳ chọn)</label>
                   <input
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                     value={word.hint || ''}
                     onChange={e => updateWord(idx, 'hint', e.target.value)}
                     placeholder="Nhập gợi ý giúp học viên trả lời..."
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Căn lề cột (Thụt hàng)</label>
                   <input
                     type="number" min={0} max={20}
-                    className="flex h-9 w-24 rounded-md border border-input bg-background px-3 text-sm"
+                    className="flex h-9 w-24 max-w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={word.col}
                     onChange={e => {
                       const v = parseInt(e.target.value) || 0;
@@ -499,16 +499,16 @@ export default function CrosswordEditor({
       </div>
 
       {/* Cột phải: Live Preview */}
-      <div className="flex-1 sticky top-0 self-start">
+      <div className="min-w-0 flex-1 overflow-hidden lg:sticky lg:top-0 lg:self-start">
         <div className="mb-4">
-          <h3 className="text-sm font-bold flex items-center gap-2 text-[#0B57D0]">
+          <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-[#0B57D0]">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0B57D0]"></span>
             </span>
-            Xem trước Ma trận lưới
+            <span className="min-w-0 break-words">Xem trước Ma trận lưới</span>
           </h3>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="mt-1 min-w-0 break-words text-xs leading-5 text-muted-foreground">
             Ô màu xanh đậm = cột chữ khóa dọc (cột {keywordCol}). Thay đổi đáp án/căn lề để canh chỉnh từ khóa chính.
           </p>
         </div>

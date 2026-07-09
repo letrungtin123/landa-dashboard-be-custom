@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
@@ -420,6 +421,7 @@ export default function TenantManagementPage() {
       </div>
 
       {/* Table */}
+      <TooltipProvider delayDuration={300}>
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
@@ -500,18 +502,38 @@ export default function TenantManagementPage() {
                       <TableCell className="text-sm text-muted-foreground">{new Date(t.created_at).toLocaleDateString("vi-VN")}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={function click() { openModules(t); }} title="Modules">
-                            <Settings2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={function click() { openSmtp(t); }} title="SMTP">
-                            <Mail className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={function click() { openEditTenant(t); }} title="Sửa">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={function click() { setDeletingId(t.id); }} title="Xóa">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={function click() { openModules(t); }}>
+                                <Settings2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Modules</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={function click() { openSmtp(t); }}>
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>SMTP</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={function click() { openEditTenant(t); }}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Sửa</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={function click() { setDeletingId(t.id); }}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Xóa</TooltipContent>
+                          </Tooltip>
                         </div>
                       </TableCell>
                     </motion.tr>
@@ -522,6 +544,7 @@ export default function TenantManagementPage() {
           </TableBody>
         </Table>
       </div>
+      </TooltipProvider>
 
       {/* Pagination */}
       {total > 20 && (

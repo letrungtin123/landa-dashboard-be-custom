@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
-  ArrowDown,
-  ArrowUp,
-  CheckCircle2,
   Copy,
   Download,
+  GripVertical,
   Loader2,
   Plus,
   QrCode,
@@ -110,6 +111,62 @@ function Avatar({ account }: { account: Pick<SelectedAccount, "avatar_url" | "fu
   );
 }
 
+function SortableDemoLearnerCard({
+  account,
+  updateLabel,
+  removeLearner,
+}: {
+  account: SelectedAccount;
+  updateLabel: (userId: string, label: string) => void;
+  removeLearner: (userId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: account.user_id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { zIndex: 30, opacity: 0.72 } : {}),
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "rounded-lg border bg-background p-3 shadow-sm transition-colors",
+        isDragging && "relative border-primary/40 shadow-lg shadow-primary/10",
+      )}
+    >
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <button
+          type="button"
+          className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-lg border border-border bg-muted/30 text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary active:cursor-grabbing"
+          aria-label={`Kéo để sắp xếp ${displayName(account)}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Avatar account={account} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{displayName(account)}</p>
+            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+          </div>
+        </div>
+        <Input
+          value={account.custom_label || ""}
+          placeholder={account.full_name || account.username}
+          onChange={(event) => updateLabel(account.user_id, event.target.value)}
+          className="h-9 md:w-56"
+        />
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => removeLearner(account.user_id)}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function DemoLoginSettingsPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
@@ -162,37 +219,28 @@ export default function DemoLoginSettingsPage() {
     setSelectedAccounts(config.accounts.map(toSelectedAccount));
   }, [config]);
 
-  const saveSettingsMutation = useMutation({
-    mutationFn: () => updateDemoLoginConfig(activeTenantId!, {
-      is_enabled: enabled,
-      max_demo_accounts: maxAccounts,
-      reservation_ttl_seconds: ttlSeconds,
-    }),
+  const saveAllMutation = useMutation({
+    mutationFn: async () => {
+      await updateDemoLoginConfig(activeTenantId!, {
+        is_enabled: enabled,
+        max_demo_accounts: maxAccounts,
+        reservation_ttl_seconds: ttlSeconds,
+      });
+      return replaceDemoLoginAccounts(
+        activeTenantId!,
+        selectedAccounts.map((account) => ({
+          user_id: account.user_id,
+          label: account.custom_label?.trim() || null,
+        })),
+      );
+    },
     onSuccess: (nextConfig) => {
-      toast.success("Đã lưu cấu hình demo login");
+      toast.success("Đã lưu cấu hình demo QR login");
       queryClient.setQueryData(configQueryKey, nextConfig);
       queryClient.invalidateQueries({ queryKey: ["demo-login-eligible-learners", activeTenantId] });
     },
     onError: (error) => {
-      toast.error(errorMessage(error, "Không thể lưu cấu hình demo login"));
-    },
-  });
-
-  const saveAccountsMutation = useMutation({
-    mutationFn: () => replaceDemoLoginAccounts(
-      activeTenantId!,
-      selectedAccounts.map((account) => ({
-        user_id: account.user_id,
-        label: account.custom_label?.trim() || null,
-      })),
-    ),
-    onSuccess: (nextConfig) => {
-      toast.success("Đã lưu danh sách learner demo");
-      queryClient.setQueryData(configQueryKey, nextConfig);
-      queryClient.invalidateQueries({ queryKey: ["demo-login-eligible-learners", activeTenantId] });
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, "Không thể lưu danh sách learner demo"));
+      toast.error(errorMessage(error, "Không thể lưu cấu hình demo QR login"));
     },
   });
 
@@ -209,6 +257,9 @@ export default function DemoLoginSettingsPage() {
   const eligibleLearners = (learnerQuery.data?.data || []).filter((learner) => !selectedIds.has(learner.id));
   const canAddMore = selectedAccounts.length < maxAccounts;
   const hasUnsavedCountOverLimit = selectedAccounts.length > maxAccounts;
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   function handleTenantChange(tenantId: string) {
     const tenant = tenants.find((item) => item.id === tenantId);
@@ -227,14 +278,14 @@ export default function DemoLoginSettingsPage() {
     setSelectedAccounts((current) => current.filter((account) => account.user_id !== userId));
   }
 
-  function moveLearner(index: number, direction: -1 | 1) {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= selectedAccounts.length) return;
+  function handleLearnerDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
     setSelectedAccounts((current) => {
-      const copy = [...current];
-      const [item] = copy.splice(index, 1);
-      copy.splice(nextIndex, 0, item);
-      return copy;
+      const oldIndex = current.findIndex((account) => account.user_id === active.id);
+      const newIndex = current.findIndex((account) => account.user_id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return current;
+      return arrayMove(current, oldIndex, newIndex);
     });
   }
 
@@ -315,6 +366,13 @@ export default function DemoLoginSettingsPage() {
           >
             <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
             Làm mới
+          </Button>
+          <Button
+            onClick={() => saveAllMutation.mutate()}
+            disabled={!activeTenantId || saveAllMutation.isPending || hasUnsavedCountOverLimit}
+          >
+            {saveAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Lưu thay đổi
           </Button>
         </div>
       </div>
@@ -412,15 +470,6 @@ export default function DemoLoginSettingsPage() {
                     </div>
                   </div>
                 </div>
-
-                <Button
-                  className="w-full"
-                  onClick={() => saveSettingsMutation.mutate()}
-                  disabled={saveSettingsMutation.isPending || hasUnsavedCountOverLimit}
-                >
-                  {saveSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Lưu cấu hình
-                </Button>
               </CardContent>
             </Card>
 
@@ -447,47 +496,21 @@ export default function DemoLoginSettingsPage() {
                     Chưa có learner demo nào.
                   </div>
                 ) : (
-                  selectedAccounts.map((account, index) => (
-                    <div key={account.user_id} className="rounded-lg border bg-background p-3">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <Avatar account={account} />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{displayName(account)}</p>
-                            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
-                          </div>
-                        </div>
-                        <Input
-                          value={account.custom_label || ""}
-                          placeholder={account.full_name || account.username}
-                          onChange={(event) => updateLabel(account.user_id, event.target.value)}
-                          className="h-9 md:w-56"
-                        />
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => moveLearner(index, -1)} disabled={index === 0}>
-                            <ArrowUp className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => moveLearner(index, 1)} disabled={index === selectedAccounts.length - 1}>
-                            <ArrowDown className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => removeLearner(account.user_id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                  <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleLearnerDragEnd}>
+                    <SortableContext items={selectedAccounts.map((account) => account.user_id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-3">
+                        {selectedAccounts.map((account) => (
+                          <SortableDemoLearnerCard
+                            key={account.user_id}
+                            account={account}
+                            updateLabel={updateLabel}
+                            removeLearner={removeLearner}
+                          />
+                        ))}
                       </div>
-                    </div>
-                  ))
+                    </SortableContext>
+                  </DndContext>
                 )}
-
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  onClick={() => saveAccountsMutation.mutate()}
-                  disabled={saveAccountsMutation.isPending || hasUnsavedCountOverLimit}
-                >
-                  {saveAccountsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Lưu danh sách learner
-                </Button>
               </CardContent>
             </Card>
           </div>

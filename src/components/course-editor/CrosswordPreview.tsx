@@ -155,7 +155,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
 
       // Thêm số thứ tự hàng ở bên trái
       rows.push(
-        <div key={r} className="flex gap-2 items-center">
+        <div key={r} className="flex items-center gap-2">
           <span className="w-8 text-right text-[15px] font-semibold text-muted-foreground select-none shrink-0">
             {wordId}.
           </span>
@@ -164,7 +164,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
       );
     }
     return (
-      <div ref={gridRef} className="flex flex-col gap-2 w-fit mx-auto">
+      <div ref={gridRef} className="mx-auto flex w-fit max-w-none flex-col gap-2">
         {rows}
       </div>
     );
@@ -179,28 +179,28 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
   }
 
   return (
-    <div className="bg-muted/10 border border-border rounded-[24px] p-6 lg:p-10 space-y-10 shadow-sm w-full h-full font-sans overflow-y-auto">
+    <div className="h-full w-full min-w-0 overflow-hidden rounded-[24px] border border-border bg-muted/10 p-4 font-sans shadow-sm sm:p-6 lg:p-10">
       {/* Grid */}
-      <div className="flex flex-col items-center">
-        <div className="w-full overflow-x-auto custom-scrollbar pb-4 pt-2 min-w-0">
+      <div className="min-w-0">
+        <div className="custom-scrollbar w-full min-w-0 overflow-x-auto pb-4 pt-2">
           {renderGrid()}
         </div>
       </div>
 
       {/* Danh sách câu hỏi */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <h3 className="font-bold text-lg mb-6 text-card-foreground">Danh sách câu hỏi</h3>
-        <ul className="space-y-3 text-[15px] text-muted-foreground">
+      <div className="mt-6 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-10 sm:p-6">
+        <h3 className="mb-4 text-lg font-bold text-card-foreground sm:mb-6">Danh sách câu hỏi</h3>
+        <ul className="min-w-0 space-y-3 text-[15px] text-muted-foreground">
           {words.map((w: any, idx: number) => (
             <li
               key={w.id ?? idx}
-              className="flex gap-4 items-start bg-muted/30 px-5 py-3.5 rounded-xl border border-transparent hover:border-primary/30 transition-colors"
+              className="flex min-w-0 items-start gap-3 rounded-xl border border-transparent bg-muted/30 px-3 py-3.5 transition-colors hover:border-primary/30 sm:gap-4 sm:px-5"
             >
               <span className="font-bold text-primary shrink-0 mt-0.5">{w.id ?? idx + 1}.</span>
-              <div className="flex-1">
-                <span className="leading-relaxed">{w.clue || '(Chưa có gợi ý)'}</span>
+              <div className="min-w-0 flex-1">
+                <span className="break-words leading-relaxed">{w.clue || '(Chưa có gợi ý)'}</span>
                 {w.hint && (
-                  <span className="block text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  <span className="mt-1 block break-words text-xs text-amber-600 dark:text-amber-400">
                     💡 Hint: {w.hint}
                   </span>
                 )}
@@ -212,11 +212,11 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
 
       {/* Thông báo chưa nhập đủ */}
       {validationMsg && !submitted && (
-        <div className="flex items-center gap-3 rounded-xl p-4 bg-amber-500/10 border border-amber-500/20">
+        <div className="mt-6 flex min-w-0 items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white shrink-0">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
           </div>
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">{validationMsg}</p>
+          <p className="min-w-0 break-words text-sm font-medium text-amber-700 dark:text-amber-300">{validationMsg}</p>
         </div>
       )}
 
@@ -230,7 +230,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
         }
 
         return (
-          <div className={`flex items-center gap-3 rounded-xl p-4 ${allCorrect ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
+          <div className={`mt-6 flex min-w-0 items-center gap-3 rounded-xl p-4 ${allCorrect ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
             {allCorrect ? (
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white shrink-0">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -240,7 +240,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </div>
             )}
-            <p className="text-sm font-bold text-foreground">
+            <p className="min-w-0 break-words text-sm font-bold text-foreground">
               {allCorrect ? 'Chính xác! 🎉' : 'Chưa đúng, hãy thử lại.'}
             </p>
           </div>
@@ -249,7 +249,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
 
       {/* Nút Submit — ẩn khi showAnswers */}
       {!showAnswers && (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-6">
           <Button
             variant="default"
             className="min-w-[200px] h-12 rounded-full font-bold text-[15px] shadow-md transition-transform hover:-translate-y-0.5 active:translate-y-0"

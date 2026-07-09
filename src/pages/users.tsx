@@ -9,6 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { format } from 'date-fns';
@@ -188,6 +189,7 @@ export default function UsersPage() {
         }
       />
 
+      <TooltipProvider delayDuration={300}>
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mt-3">
         <div className="overflow-x-auto">
           <Table>
@@ -297,40 +299,72 @@ export default function UsersPage() {
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
                           {(u.role === 'learner' || u.role === 'learner_plus' || u.role === 'staff') && (
-                            <Button variant="ghost" size="icon" onClick={function viewDetail() { setSelectedLearner(u.username); }}
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors rounded-md" title="Xem chi tiết">
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={function viewDetail() { setSelectedLearner(u.username); }}
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors rounded-md">
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Xem chi tiết</TooltipContent>
+                            </Tooltip>
                           )}
                           {!canEditDelete ? (
-                            <span title="Không có quyền">
-                              <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md">
+                                  <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>Không có quyền</TooltipContent>
+                            </Tooltip>
                           ) : (
                             <>
                               {!u.is_active && canEdit && (
-                                <Button variant="ghost" size="icon" onClick={function approve() { activateMutation.mutate(u.id); }}
-                                  disabled={activateMutation.isPending}
-                                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30 transition-colors rounded-md" title="Kích hoạt">
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={function approve() { activateMutation.mutate(u.id); }}
+                                      disabled={activateMutation.isPending}
+                                      className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30 transition-colors rounded-md">
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Kích hoạt</TooltipContent>
+                                </Tooltip>
                               )}
-                              {canEdit && <Button variant="ghost" size="icon" onClick={function edit() { setSelectedUser(u); setIsDialogOpen(true); }}
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-md" title="Chỉnh sửa">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>}
+                              {canEdit && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={function edit() { setSelectedUser(u); setIsDialogOpen(true); }}
+                                      className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-md">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Chỉnh sửa</TooltipContent>
+                                </Tooltip>
+                              )}
                               {u.is_active && canDelete && (
-                                <Button variant="ghost" size="icon" onClick={function deact() { handleDeactivate(u); }}
-                                  className="h-8 w-8 text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors rounded-md" title="Vô hiệu hóa">
-                                  <Ban className="h-3.5 w-3.5" />
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={function deact() { handleDeactivate(u); }}
+                                      className="h-8 w-8 text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-950/30 transition-colors rounded-md">
+                                      <Ban className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Vô hiệu hóa</TooltipContent>
+                                </Tooltip>
                               )}
                               {canDelete && (
-                                <Button variant="ghost" size="icon" onClick={function del() { handleHardDelete(u); }}
-                                  disabled={hardDeleteMutation.isPending}
-                                  className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors rounded-md" title="Xóa vĩnh viễn">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={function del() { handleHardDelete(u); }}
+                                      disabled={hardDeleteMutation.isPending}
+                                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors rounded-md">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Xóa vĩnh viễn</TooltipContent>
+                                </Tooltip>
                               )}
                             </>
                           )}
@@ -346,6 +380,7 @@ export default function UsersPage() {
 
         <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="tài khoản" />
       </div>
+      </TooltipProvider>
 
       <UserFormDialog
         open={isDialogOpen}

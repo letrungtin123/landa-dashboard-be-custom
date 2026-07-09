@@ -93,6 +93,7 @@ export function AppSidebar() {
   const roleLabels = useAuthStore((state) => state.roleLabels);
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [moduleIcons, setModuleIcons] = useState<Record<string, string>>({});
+  const [collapsedIconError, setCollapsedIconError] = useState(false);
 
   // Fetch module icons from DB (Mocked)
   const fetchIcons = useCallback(() => {
@@ -103,6 +104,10 @@ export function AppSidebar() {
   useEffect(() => {
     fetchIcons();
   }, [fetchIcons]);
+
+  useEffect(() => {
+    setCollapsedIconError(false);
+  }, [branding.squareIcon]);
 
   const permissions = useAuthStore((state) => state.permissions);
 
@@ -135,6 +140,14 @@ export function AppSidebar() {
     group: group.group,
     items: group.items.filter(canSeeModule),
   })).filter((group) => group.items.length > 0);
+  const tenantInitials = (branding.tenantName || user?.tenant_name || 'LA')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase() || 'LA';
+  const showCollapsedTenantIcon = Boolean(branding.squareIcon) && !collapsedIconError;
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
@@ -144,9 +157,20 @@ export function AppSidebar() {
           {/* Full Logo - hidden when collapsed */}
           <img src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
 
-          {/* Badge Icon - visible only when collapsed */}
-          <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs shrink-0 shadow-sm">
-            L&A
+          {/* Square icon - visible only when collapsed */}
+          <div className={`hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg shrink-0 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`}>
+            {showCollapsedTenantIcon ? (
+              <img
+                src={branding.squareIcon}
+                alt={branding.tenantName || user?.tenant_name || 'Tenant'}
+                className="h-full w-full rounded-lg object-contain"
+                onError={() => setCollapsedIconError(true)}
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center rounded-lg border border-sidebar-border bg-transparent text-[10px] font-bold uppercase text-sidebar-foreground/70">
+                {tenantInitials}
+              </span>
+            )}
           </div>
         </Link>
       </SidebarHeader>
