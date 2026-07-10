@@ -170,23 +170,23 @@ interface ComponentType {
 
 const COMPONENT_TYPES: ComponentType[] = [
   {
-    id: 'video', category: 'video', label: 'Video', desc: 'YouTube / edX video',
+    id: 'video', category: 'video', label: 'Video', desc: 'Youtube / Upload',
     icon: <Video className="h-6 w-6" />,
     colorClass: 'border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300',
   },
   {
-    id: 'html', category: 'html', label: 'Text', desc: 'Văn bản + hình ảnh',
+    id: 'html', category: 'html', label: 'Văn bản', desc: 'Văn bản + hình ảnh',
     icon: <Type className="h-6 w-6" />,
     colorClass: 'border-blue-200 bg-blue-50 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/30 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300',
   },
   {
-    id: 'problem', category: 'problem', label: 'Problem', desc: '5 dạng câu hỏi',
+    id: 'problem', category: 'problem', label: 'Câu hỏi', desc: '5 dạng câu hỏi',
     icon: <HelpCircle className="h-6 w-6" />,
     colorClass: 'border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300',
     subTypes: PROBLEM_TYPES.map(p => ({ id: p.id, label: p.label, boilerplate: p.boilerplate })),
   },
   {
-    id: 'la_media_quiz', category: 'la_media_quiz', label: 'Media Quiz', desc: 'Trả lời tuần tự',
+    id: 'la_media_quiz', category: 'la_media_quiz', label: 'Câu hỏi kèm hình ảnh / video', desc: 'Trả lời tuần tự',
     icon: <Video className="h-6 w-6" />,
     colorClass: 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/30 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
   },

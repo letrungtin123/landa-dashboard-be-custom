@@ -7,6 +7,7 @@ export interface BadgeSetting {
   image_key: string;
   card_image_url: string | null;
   icon_image_url: string | null;
+  mobile_card_image_url: string | null;
   is_active: boolean;
 }
 
@@ -37,6 +38,17 @@ export const badgesApi = {
     formData.append('file', file);
     const res = await customApiClient.post<{ success: boolean; data: { icon_image_url: string } }>(
       `/api/badges/tenants/${tenantId}/${badgeId}/icon-image`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return res.data;
+  },
+
+  uploadMobileCardImage: async (tenantId: string, badgeId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await customApiClient.post<{ success: boolean; data: { mobile_card_image_url: string } }>(
+      `/api/badges/tenants/${tenantId}/${badgeId}/mobile-card-image`,
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     );

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { Maximize2, X, Upload, Loader2 } from "lucide-react";
 import { cn } from "@/utils/utils";
-import { BADGE_CARD_IMAGES, BADGE_ICONS } from "@/data/badgeImages";
+import { BADGE_CARD_IMAGES, BADGE_ICONS, BADGE_MOBILE_CARD_IMAGES } from "@/data/badgeImages";
 import { storageUrl } from "@/utils/storage-url";
 import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { toast } from "sonner";
@@ -18,10 +18,13 @@ interface BadgeAdminCardProps {
 
 export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: BadgeAdminCardProps) {
   const [showPreview, setShowPreview] = useState(false);
+  const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [uploadingCard, setUploadingCard] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [uploadingMobileCard, setUploadingMobileCard] = useState(false);
   const cardInputRef = useRef<HTMLInputElement>(null);
   const iconInputRef = useRef<HTMLInputElement>(null);
+  const mobileCardInputRef = useRef<HTMLInputElement>(null);
 
   // Dynamic images from API, fallback to hardcoded static assets
   const imgSrc = badge.card_image_url
@@ -30,7 +33,15 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
   const iconSrc = badge.icon_image_url
     ? storageUrl(badge.icon_image_url)
     : (BADGE_ICONS[badge.id] || BADGE_ICONS["onboarding_warrior"]);
+  const mobileCardSrc = badge.mobile_card_image_url
+    ? storageUrl(badge.mobile_card_image_url)
+    : (BADGE_MOBILE_CARD_IMAGES[badge.id] || BADGE_MOBILE_CARD_IMAGES["onboarding_warrior"]);
   const isActive = badge.is_active;
+
+  function openPreview(src: string) {
+    setPreviewImageSrc(src);
+    setShowPreview(true);
+  }
 
   async function handleCardUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -64,6 +75,22 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
     }
   }
 
+  async function handleMobileCardUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMobileCard(true);
+    try {
+      await badgesApi.uploadMobileCardImage(tenantId, badge.id, file);
+      toast.success("Upload ảnh card mobile thành công");
+      onImageUploaded?.();
+    } catch {
+      toast.error("Lỗi upload ảnh card mobile");
+    } finally {
+      setUploadingMobileCard(false);
+      if (mobileCardInputRef.current) mobileCardInputRef.current.value = "";
+    }
+  }
+
   return (
     <motion.div
       className={cn(
@@ -92,11 +119,11 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
       </div>
 
       {/* Assets Showcase */}
-      <div className="flex gap-6 h-[300px] z-10">
+      <div className="flex justify-center gap-4 h-[240px] z-10">
         {/* Card Preview */}
         <div 
           className="relative h-full aspect-[4/6.5] rounded-[16px] border border-border/20 shadow-inner overflow-hidden group/card bg-muted/30 cursor-pointer"
-          onClick={() => setShowPreview(true)}
+          onClick={() => openPreview(imgSrc)}
         >
           <img 
             src={imgSrc} 
@@ -136,7 +163,48 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
           >
             {uploadingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button>
-          <input ref={cardInputRef} type="file" accept="image/*" className="hidden" onChange={handleCardUpload} />
+          <input ref={cardInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleCardUpload} />
+        </div>
+
+        {/* Mobile Card Preview */}
+        <div
+          className="relative h-full aspect-[84/113] rounded-[10px] border border-border/20 shadow-inner overflow-hidden group/mobile bg-muted/30 cursor-pointer"
+          onClick={() => openPreview(mobileCardSrc)}
+        >
+          <img
+            src={mobileCardSrc}
+            alt="Mobile card preview"
+            loading="lazy"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover/mobile:scale-105"
+          />
+
+          {isActive && (
+            <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden rounded-[10px]">
+              <motion.div
+                className="absolute top-[-50%] w-[60%] h-[200%] bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-[-25deg]"
+                animate={{ left: ["-100%", "250%"] }}
+                transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 3.5, ease: "easeInOut" }}
+              />
+            </div>
+          )}
+
+          <div className="absolute inset-0 bg-black/0 group-hover/mobile:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/mobile:opacity-100 z-20">
+            <Maximize2 className="w-8 h-8 text-white drop-shadow-md" />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-md py-2 translate-y-full group-hover/mobile:translate-y-0 transition-transform z-20">
+            <p className="text-[11px] text-center font-bold text-white/90 tracking-widest">MOBILE</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); mobileCardInputRef.current?.click(); }}
+            disabled={uploadingMobileCard}
+            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/mobile:opacity-100"
+            title="Upload mobile card"
+          >
+            {uploadingMobileCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          </button>
+          <input ref={mobileCardInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleMobileCardUpload} />
         </div>
 
         {/* Icon Preview */}
@@ -192,7 +260,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
           >
             {uploadingIcon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button>
-          <input ref={iconInputRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
+          <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleIconUpload} />
         </div>
       </div>
 
@@ -218,10 +286,10 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowPreview(false)}
+              onClick={() => { setShowPreview(false); setPreviewImageSrc(null); }}
             >
               <motion.div
-                className="relative h-full max-h-[85vh] aspect-[4/6.5] rounded-[32px] overflow-hidden shadow-2xl cursor-default"
+                className="relative max-h-[85vh] max-w-[90vw] rounded-[32px] overflow-hidden shadow-2xl cursor-default"
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
@@ -229,17 +297,17 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
                 onClick={(e) => e.stopPropagation()}
               >
                 <button 
-                  onClick={() => setShowPreview(false)}
+                  onClick={() => { setShowPreview(false); setPreviewImageSrc(null); }}
                   className="absolute top-4 right-4 z-10 p-3 bg-black/40 text-white/90 rounded-full hover:bg-black/80 hover:text-white backdrop-blur-md transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
                 <img 
-                  src={imgSrc} 
+                  src={previewImageSrc || imgSrc}
                   alt={`${badge.name} Full Preview`} 
                   className={cn(
-                    "w-full h-full object-cover",
-                    badge.id === "omnipotent_master" && "scale-[1.06]"
+                    "block max-h-[85vh] max-w-[90vw] object-contain",
+                    badge.id === "omnipotent_master" && previewImageSrc === imgSrc && "scale-[1.06]"
                   )}
                 />
                 
