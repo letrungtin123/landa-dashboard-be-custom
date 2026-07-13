@@ -476,7 +476,7 @@ function EmailTemplateSkeleton() {
             <Skeleton key={index} className="h-24 rounded-2xl" />
           ))}
         </div>
-        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(520px,620px)]">
+        <div className="grid gap-5 min-[1800px]:grid-cols-[minmax(0,1fr)_minmax(520px,620px)]">
           <Skeleton className="h-[680px] rounded-2xl" />
           <Skeleton className="h-[680px] rounded-2xl" />
         </div>
@@ -848,7 +848,7 @@ export default function EmailTemplatesPage() {
           })}
         </aside>
 
-        <main className="grid min-w-0 grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(520px,620px)]">
+        <main className="grid min-w-0 grid-cols-1 gap-5 min-[1800px]:grid-cols-[minmax(0,1fr)_minmax(520px,620px)]">
           <motion.section
             key={activeTemplate.template_key}
             initial={{ opacity: 0, y: 10 }}
