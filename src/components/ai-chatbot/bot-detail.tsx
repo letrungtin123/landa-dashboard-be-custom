@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // Bot Detail — Full-page detail view with tabs
-// Tabs: Cài đặt chung | Nhân cách (Personas)
+// Tabs: Cài đặt chung | Nhân cách (Personas) | Bộ lọc đầu vào
 // Vertical card grid + "..." menu + full edit modal
 // ═══════════════════════════════════════════════════════════════
 
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Bot, Brain, Camera, Loader2, Save, Settings,
-  Drama, RotateCcw, Pencil, Plus, Trash2, X, Sparkles, MoreHorizontal,
+  Drama, RotateCcw, Pencil, Plus, Trash2, X, Sparkles, MoreHorizontal, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ import {
 } from "@/api/custom-prompt-templates";
 import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
+import { InputFilterTab } from "@/components/ai-chatbot/input-filter-tab";
 // ── Mascot palette ──
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 function getMascotColor(i: number) { return MASCOT_COLORS[i % MASCOT_COLORS.length]; }
@@ -245,11 +246,14 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="settings" className="w-full">
-        <TabsList className="w-full max-w-lg">
+        <TabsList className="w-full max-w-2xl">
           <TabsTrigger value="settings" className="gap-2 flex-1"><Settings className="h-4 w-4" /> Cài đặt chung</TabsTrigger>
           <TabsTrigger value="personas" className="gap-2 flex-1">
             <Drama className="h-4 w-4" /> Nhân cách
             {personas.length > 0 && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">{personas.length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="input-filter" className="gap-2 flex-1">
+            <ShieldCheck className="h-4 w-4" /> Bộ lọc đầu vào
           </TabsTrigger>
         </TabsList>
 
@@ -420,6 +424,11 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
               </div>
             )}
           </motion.div>
+        </TabsContent>
+
+        {/* ═══════ Input Filter Tab ═══════ */}
+        <TabsContent value="input-filter" className="mt-5">
+          <InputFilterTab botId={botId} botName={bot.name} />
         </TabsContent>
 
       </Tabs>

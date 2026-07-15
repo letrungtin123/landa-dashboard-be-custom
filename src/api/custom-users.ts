@@ -92,5 +92,5 @@ export async function deleteUser(id: string) {
 
 /** Gán permission groups cho user (replace toàn bộ) */
 export async function assignUserPermGroups(userId: string, groupIds: string[]) {
-  await customApiClient.put(`/api/users/${userId}/permission-groups`, { group_ids: groupIds });
+  await customApiClient.put(`/api/users/${userId}/permission-groups`, { permission_group_ids: groupIds });
 }

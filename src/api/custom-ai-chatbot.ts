@@ -53,6 +53,54 @@ export interface Chatbot {
   persona_previews?: { name: string; avatar_url: string | null; fullbody_url: string | null }[];
 }
 
+export type InputFilterMessageCode =
+  | 'EMPTY'
+  | 'TOO_SHORT'
+  | 'TOO_LONG'
+  | 'GIBBERISH'
+  | 'BINARY_GARBAGE'
+  | 'PROFANITY'
+  | 'UNSUPPORTED_LANG'
+  | 'REPEATED_SENTENCE';
+
+export interface InputFilterConfig {
+  enabled: boolean;
+  enable_length: boolean;
+  enable_normalize: boolean;
+  enable_language: boolean;
+  enable_gibberish: boolean;
+  enable_repeat: boolean;
+  enable_profanity: boolean;
+  filter_params: {
+    length: {
+      min: number;
+      max: number;
+    };
+    language: {
+      foreignCharThreshold: number;
+    };
+    gibberish: {
+      minEntropyThreshold: number;
+      maxRepeatRatio: number;
+      minValidCharRatio: number;
+      maxConsonantCluster: number;
+    };
+    repeat: {
+      maxRepeatCount: number;
+      ttlSeconds: number;
+    };
+    profanity: {
+      blockSeverity: 'HIGH' | 'MEDIUM';
+      blacklistVi: string[];
+      blacklistEn: string[];
+    };
+  };
+  message_config: Array<{
+    code: InputFilterMessageCode;
+    message: string;
+  }>;
+}
+
 interface PaginatedDocs {
   data: KbDocument[];
   total: number;
@@ -235,6 +283,19 @@ export async function updateBot(id: string, input: { name?: string; kb_id?: stri
 
 export async function deleteBot(id: string) {
   await customApiClient.delete(`/api/ai-chatbot/bots/${id}`);
+}
+
+export async function fetchBotInputFilter(botId: string): Promise<InputFilterConfig> {
+  const { data } = await customApiClient.get<ApiResponse<InputFilterConfig>>(`/api/ai-chatbot/bots/${botId}/input-filter`);
+  return data.data;
+}
+
+export async function updateBotInputFilter(botId: string, inputFilter: InputFilterConfig): Promise<InputFilterConfig> {
+  const { data } = await customApiClient.put<ApiResponse<InputFilterConfig>>(
+    `/api/ai-chatbot/bots/${botId}/input-filter`,
+    { input_filter: inputFilter },
+  );
+  return data.data;
 }
 
 export async function uploadBotAvatar(botId: string, file: File): Promise<Chatbot> {
