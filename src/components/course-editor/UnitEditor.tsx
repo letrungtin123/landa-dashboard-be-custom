@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Trash2, GripVertical, Plus, Video, Type, HelpCircle,
-  Save, Edit2, ChevronDown, ChevronLeft, ChevronRight, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb
+  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
@@ -1323,6 +1323,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
   const mediaUrl = question.media?.storage_path ? storageUrl(question.media.storage_path) : '';
   const canGoPreviousMedia = safeIndex > 0;
   const canGoNextMedia = safeIndex < questions.length - 1 && isCorrect;
+  const isFinalQuestionCompleted = safeIndex >= questions.length - 1 && isCorrect;
 
   const goToQuestion = (index: number) => {
     if (index > safeIndex && !isCorrect) return;
@@ -1368,44 +1369,11 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
     setShowHint(false);
   };
 
-  const renderMediaNavigation = () => {
-    if (questions.length <= 1) return null;
-    return (
-      <>
-        <button
-          type="button"
-          disabled={!canGoPreviousMedia}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canGoPreviousMedia) goToQuestion(safeIndex - 1);
-          }}
-          className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow-lg transition-all hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-35"
-          aria-label="Media trước"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          disabled={!canGoNextMedia}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canGoNextMedia) goToQuestion(safeIndex + 1);
-          }}
-          className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow-lg transition-all hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-35"
-          aria-label="Media tiếp theo"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-      </>
-    );
-  };
-
   const renderMedia = () => {
     if (!mediaUrl) {
       return (
         <div className="relative rounded-xl border-2 border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
           Câu hỏi này chưa có media.
-          {renderMediaNavigation()}
         </div>
       );
     }
@@ -1414,7 +1382,6 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
       return (
         <div className="relative aspect-video overflow-hidden rounded-xl bg-black">
           <video src={mediaUrl} className="h-full w-full object-contain" controls preload="metadata" />
-          {renderMediaNavigation()}
         </div>
       );
     }
@@ -1426,7 +1393,6 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
           alt={question.media?.alt || 'Ảnh câu hỏi kèm media'}
           className="max-h-[260px] w-full rounded-lg object-contain"
         />
-        {renderMediaNavigation()}
       </div>
     );
   };
@@ -1510,10 +1476,10 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
           </div>
         )}
 
-        {submitted && (
-          <div className={`flex items-center gap-3 rounded-xl p-4 ${isCorrect ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
-            {isCorrect ? <Check className="h-5 w-5 text-green-500 stroke-[3] shrink-0" /> : <X className="h-5 w-5 text-red-500 stroke-[3] shrink-0" />}
-            <p className="text-sm font-medium text-foreground">{isCorrect ? (safeIndex >= questions.length - 1 ? 'Chính xác!' : 'Chính xác! Có thể xem media tiếp theo.') : 'Chưa đúng, hãy thử lại.'}</p>
+        {submitted && !isCorrect && (
+          <div className={`flex items-center ${isCorrect ? 'gap-1.5 py-1 text-green-600 dark:text-green-400' : 'gap-3 rounded-xl bg-red-500/10 border border-red-500/20 p-4'}`}>
+            {isCorrect ? <Check className="h-5 w-5 shrink-0 stroke-[3]" /> : <X className="h-5 w-5 text-red-500 stroke-[3] shrink-0" />}
+            <p className="text-sm font-medium text-foreground">Chưa đúng, hãy thử lại.</p>
           </div>
         )}
 
@@ -1530,8 +1496,22 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-border pt-5">
-          <div>
+        <div className="flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            {questions.length > 1 && (
+              <button
+                type="button"
+                disabled={!canGoPreviousMedia}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (canGoPreviousMedia) goToQuestion(safeIndex - 1);
+                }}
+                className="flex items-center gap-2 rounded-full bg-transparent px-0 py-3 text-[14px] font-bold text-muted-foreground transition-all hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Quay lại
+              </button>
+            )}
             {hints.length > 0 && !isCorrect ? (
               <button
                 type="button"
@@ -1540,14 +1520,10 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
               >
                 {showHint ? 'Ẩn gợi ý' : 'Xem gợi ý'}
               </button>
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                {safeIndex >= questions.length - 1 && isCorrect ? 'Đã hoàn thành câu hỏi kèm media.' : 'Trả lời đúng để tiếp tục.'}
-              </div>
-            )}
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {!submitted ? (
               <button
                 type="button"
@@ -1566,6 +1542,24 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
                 Thử lại
               </button>
             ) : null}
+            {canGoNextMedia && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  goToQuestion(safeIndex + 1);
+                }}
+                className="rounded-full bg-primary px-6 py-3 text-[14px] font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.97]"
+              >
+                Tiếp tục
+              </button>
+            )}
+            {isFinalQuestionCompleted && (
+              <div className="flex items-center gap-1.5 px-4 py-3 text-green-600 dark:text-green-400">
+                <Check className="h-5 w-5 shrink-0 stroke-[3]" />
+                <span className="text-[14px] font-bold whitespace-nowrap">Đã hoàn thành</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1743,10 +1737,10 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
           })}
         </div>
 
-        {submitted && (
-          <div className={`flex items-center gap-3 rounded-xl p-4 ${isCorrect ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
-            {isCorrect ? <Check className="h-5 w-5 text-green-500 stroke-[3] shrink-0" /> : <X className="h-5 w-5 text-red-500 stroke-[3] shrink-0" />}
-            <p className="text-sm font-medium text-foreground">{isCorrect ? 'Chính xác!' : 'Chưa đúng, hãy thử lại.'}</p>
+        {submitted && !isCorrect && (
+          <div className={`flex items-center ${isCorrect ? 'gap-1.5 py-1 text-green-600 dark:text-green-400' : 'gap-3 rounded-xl bg-red-500/10 border border-red-500/20 p-4'}`}>
+            {isCorrect ? <Check className="h-5 w-5 shrink-0 stroke-[3]" /> : <X className="h-5 w-5 text-red-500 stroke-[3] shrink-0" />}
+            <p className="text-sm font-medium text-foreground">Chưa đúng, hãy thử lại.</p>
           </div>
         )}
 

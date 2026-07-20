@@ -505,13 +505,34 @@ export default function ChatWidget() {
     setConfirmDeleteId(convId);
   };
 
+  const openPersonaPickerAfterLastDelete = async () => {
+    if (!activeBot || isLessonAuthor) {
+      setState('conversations');
+      return;
+    }
+    try {
+      const p = await fetchBotPersonas(activeBot.bot_id);
+      setPersonas(p);
+      setState('persona-picker');
+    } catch {
+      setState('conversations');
+      toast.error('Không tải được nhân cách');
+    }
+  };
+
   const confirmDelete = async () => {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
       await deleteConversation(confirmDeleteId);
-      setConversations(prev => prev.filter(c => c.id !== confirmDeleteId));
-      if (currentConv?.id === confirmDeleteId) { setCurrentConv(null); setState('conversations'); }
+      const nextConversations = conversations.filter(c => c.id !== confirmDeleteId);
+      setConversations(nextConversations);
+      if (currentConv?.id === confirmDeleteId) setCurrentConv(null);
+      if (nextConversations.length === 0) {
+        await openPersonaPickerAfterLastDelete();
+      } else if (currentConv?.id === confirmDeleteId) {
+        setState('conversations');
+      }
       toast.success('Đã xoá');
     } catch { toast.error('Lỗi khi xoá'); }
     finally { setDeleting(false); setConfirmDeleteId(null); }
@@ -1022,17 +1043,11 @@ function PersonaPicker({ personas, onSelect, onBack }: {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center gap-2">
-          {onBack && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack}><ArrowLeft className="h-3.5 w-3.5" /></Button>
-          )}
-          <div>
-            <h3 className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-primary" /> Chọn nhân cách</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Mỗi nhân cách có phong cách trả lời khác nhau</p>
-          </div>
+      {onBack && (
+        <div className="px-4 pt-4 pb-2">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack}><ArrowLeft className="h-3.5 w-3.5" /></Button>
         </div>
-      </div>
+      )}
       <ScrollArea className="flex-1 px-4 pb-4">
         <div className="grid grid-cols-2 gap-3 pt-2">
           {personas.map((p, i) => {
