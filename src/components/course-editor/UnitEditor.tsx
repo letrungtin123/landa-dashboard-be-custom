@@ -44,6 +44,7 @@ import VideoEditor from './editors/VideoEditor';
 import HtmlEditor from './editors/HtmlEditor';
 import ProblemEditor, { PROBLEM_TYPES, parseProblemXml } from './editors/ProblemEditor';
 import MediaQuizEditor, {
+  getMediaQuizDraftValidationError,
   getMediaQuizValidationError,
   normalizeMediaQuizData,
   type MediaQuizData,
@@ -2409,7 +2410,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     const id = blockInfo?.id;
     if (!id) throw new Error('Block ID không hợp lệ');
     const payloadData = normalizeMediaQuizData(nextData ?? mediaQuizData);
-    const validationError = getMediaQuizValidationError(payloadData);
+    const validationError = getMediaQuizDraftValidationError(payloadData);
     if (validationError) throw new Error(validationError);
     const hasSingle = payloadData.questions.some((question: any) => question.mode !== 'multiple_select');
     const hasMultiple = payloadData.questions.some((question: any) => question.mode === 'multiple_select');

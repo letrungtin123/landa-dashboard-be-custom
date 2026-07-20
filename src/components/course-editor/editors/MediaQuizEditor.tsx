@@ -41,6 +41,8 @@ export interface MediaQuizData {
   questions: MediaQuizQuestion[];
 }
 
+type MediaQuizValidationMode = 'draft' | 'publish';
+
 interface MediaQuizEditorProps {
   displayName: string;
   onDisplayNameChange: (v: string) => void;
@@ -148,12 +150,12 @@ function stripHtml(value: string): string {
   return doc.body.textContent?.trim() || '';
 }
 
-export function getMediaQuizValidationError(data: MediaQuizData): string | null {
+export function getMediaQuizValidationError(data: MediaQuizData, mode: MediaQuizValidationMode = 'publish'): string | null {
   if (!data.questions.length) return 'Câu hỏi kèm media cần ít nhất một câu hỏi.';
   for (let index = 0; index < data.questions.length; index += 1) {
     const question = data.questions[index];
     if (!stripHtml(question.prompt_html)) return `Câu hỏi ${index + 1} cần nội dung câu hỏi.`;
-    if (!question.media?.storage_path) return `Câu hỏi ${index + 1} cần upload media.`;
+    if (mode === 'publish' && !question.media?.storage_path) return `Câu hỏi ${index + 1} cần upload media.`;
     if (question.choices.length < 2) return `Câu hỏi ${index + 1} cần ít nhất hai lựa chọn.`;
     if (!question.choices.some(choice => choice.correct)) return `Câu hỏi ${index + 1} cần ít nhất một đáp án đúng.`;
     if (question.mode === 'single_select' && question.choices.filter(choice => choice.correct).length !== 1) {
@@ -162,6 +164,10 @@ export function getMediaQuizValidationError(data: MediaQuizData): string | null 
     if (question.choices.some(choice => !stripHtml(choice.html))) return `Câu hỏi ${index + 1} có lựa chọn đang để trống.`;
   }
   return null;
+}
+
+export function getMediaQuizDraftValidationError(data: MediaQuizData): string | null {
+  return getMediaQuizValidationError(data, 'draft');
 }
 
 function ensureCorrectChoices(choices: MediaQuizChoice[], mode: MediaQuizMode): MediaQuizChoice[] {
