@@ -5,6 +5,7 @@ import { Field } from './VideoEditor';
 import { uploadCourseAsset, deleteCourseAssetByStoragePath } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { storageUrl } from '@/utils/storage-url';
+import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import ImageCarousel from '../ImageCarousel';
 import CarouselImageOrder from '../CarouselImageOrder';
 import {
@@ -126,8 +127,8 @@ export default function SortableEditor({
     if (!files || files.length === 0) return;
     if (!courseId) { toast.error('Thiếu courseId'); return; }
     const file = files[0];
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa 100MB.`);
+    if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
+      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
       return;
     }
     if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
@@ -320,7 +321,7 @@ export default function SortableEditor({
               {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Upload video
             </Button>
-            <span className="text-xs text-muted-foreground">Tối đa 100MB • MP4, WebM, MOV</span>
+            <span className="text-xs text-muted-foreground">Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV</span>
             <input ref={videoFileInputRef} type="file" accept=".mp4,.webm,.mov" className="hidden" onChange={e => { handleUploadVideo(e.target.files); e.target.value = ''; }} />
           </div>
         )}

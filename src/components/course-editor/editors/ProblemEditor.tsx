@@ -6,6 +6,7 @@ import RichTextEditor from '../RichTextEditor';
 import { uploadCourseAsset, deleteCourseAssetByStoragePath } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { storageUrl } from '@/utils/storage-url';
+import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import ImageCarousel from '../ImageCarousel';
 import CarouselImageOrder from '../CarouselImageOrder';
 import {
@@ -401,9 +402,9 @@ export default function ProblemEditor({
       return;
     }
     const file = files[0];
-    const MAX_SIZE = 100 * 1024 * 1024;
+    const MAX_SIZE = COURSE_ASSET_MAX_UPLOAD_BYTES;
     if (file.size > MAX_SIZE) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa 100MB.`);
+      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
       return;
     }
     if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
@@ -669,7 +670,7 @@ export default function ProblemEditor({
               {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Upload video
             </Button>
-            <span className="text-xs text-muted-foreground">Tối đa 100MB • MP4, WebM, MOV</span>
+            <span className="text-xs text-muted-foreground">Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV</span>
             <input
               ref={videoFileInputRef}
               type="file"

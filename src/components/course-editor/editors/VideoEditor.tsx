@@ -3,11 +3,11 @@ import { Video, Upload, Youtube, Trash2, Loader2, AlertCircle } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
 import { storageUrl } from '@/utils/storage-url';
+import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import { toast } from 'sonner';
 
 type VideoMode = 'youtube' | 'upload';
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const ACCEPTED_VIDEO_TYPES = '.mp4,.webm,.mov';
 const ACCEPTED_MIME_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
@@ -108,8 +108,8 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
       return;
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa 100MB.`);
+    if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
+      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
       return;
     }
 
@@ -388,7 +388,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                       </span>
                       <span className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1.5">
                         <AlertCircle className="h-3 w-3" />
-                        Tối đa 100MB • MP4, WebM, MOV
+                        Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV
                       </span>
                     </div>
                   </>

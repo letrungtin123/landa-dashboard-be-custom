@@ -5,6 +5,7 @@ import { Field } from './VideoEditor';
 import { deleteCourseAsset, deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
+import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 
 interface PdfEditorProps {
   displayName: string;
@@ -61,8 +62,8 @@ export default function PdfEditor({
       return;
     }
 
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error('File quá lớn (tối đa 100MB)');
+    if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
+      toast.error(`File quá lớn (tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL})`);
       return;
     }
 
@@ -179,7 +180,7 @@ export default function PdfEditor({
             </div>
             <div>
               <p className="text-sm font-semibold">Upload file PDF</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Tải lên từ máy tính (tối đa 100MB)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Tải lên từ máy tính (tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL})</p>
             </div>
           </button>
         </div>
@@ -296,7 +297,7 @@ export default function PdfEditor({
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-semibold">Nhấn để chọn file PDF</p>
-                    <p className="text-xs text-muted-foreground mt-1">Hỗ trợ file .pdf, tối đa 100MB</p>
+                    <p className="text-xs text-muted-foreground mt-1">Hỗ trợ file .pdf, tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL}</p>
                   </div>
                 </>
               )}

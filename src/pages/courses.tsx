@@ -39,11 +39,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 function getCourseMentorDisplayName(course: CustomCourse): string {
   return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || 'Chưa có mentor';
+}
+
+function getCourseCreatorDisplayName(course: CustomCourse): string {
+  return course.creator_display_name?.trim() || 'Chưa có tên hiển thị';
 }
 
 function formatCourseUpdatedAt(value: string | null | undefined): string {
@@ -461,11 +466,14 @@ export default function CoursesPage() {
 
                       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Tổ chức</div>
-                          <div className="truncate font-mono font-medium">{course.org}</div>
+                          <div className="mb-0.5 text-muted-foreground">Người tạo</div>
+                          <div className="flex min-w-0 items-center gap-1.5 font-medium">
+                            <Users className="h-3.5 w-3.5 shrink-0 text-indigo-600/70" />
+                            <span className="truncate">{getCourseCreatorDisplayName(course)}</span>
+                          </div>
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Mentor</div>
+                          <div className="mb-0.5 text-muted-foreground">Người hướng dẫn</div>
                           <div className="flex min-w-0 items-center gap-1.5 font-medium">
                             <UserRound className="h-3.5 w-3.5 shrink-0 text-cyan-600/70" />
                             <span className="truncate">{getCourseMentorDisplayName(course)}</span>
@@ -529,7 +537,7 @@ export default function CoursesPage() {
                             {canManageMentors && (
                               <DropdownMenuItem onClick={() => setMentorCourse(course)} className="gap-2">
                                 <UserRound className="h-4 w-4 text-cyan-600" />
-                                Chọn mentor
+                                Người hướng dẫn
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
@@ -578,10 +586,10 @@ export default function CoursesPage() {
                     <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
                   </TableHead>
                   <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Khóa học</TableHead>
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Tổ chức</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người tạo</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
 
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Mentor</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người hướng dẫn</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Cập nhật</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider pr-5">Thao tác</TableHead>
                 </TableRow>
@@ -624,8 +632,11 @@ export default function CoursesPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <span className="text-xs font-mono font-medium bg-secondary px-2 py-0.5 rounded border border-border">{course.org}</span>
+                      <TableCell className="text-center text-sm">
+                        <div className="mx-auto flex max-w-[180px] items-center justify-center gap-2 text-muted-foreground">
+                          <Users className="h-3.5 w-3.5 shrink-0 text-indigo-600/70" />
+                          <span className="truncate font-medium text-foreground">{getCourseCreatorDisplayName(course)}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge
@@ -645,138 +656,126 @@ export default function CoursesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center text-muted-foreground text-sm whitespace-nowrap">{formatCourseUpdatedAt(course.updated_at)}</TableCell>
-                      <TableCell className="pr-5 flex justify-center gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setPreviewCourse(course)}
-                              className="h-8 w-8 text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/30"
-                            >
-                              <LayoutTemplate className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Xem thẻ xem trước</TooltipContent>
-                        </Tooltip>
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setCourseInfoCourse(course)}
-                              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Chỉnh thông tin khóa học</TooltipContent>
-                        </Tooltip>}
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => triggerUpload(course.id)}
-                              disabled={uploadingCourseId === course.id}
-                              className="h-8 w-8 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
-                            >
-                              {uploadingCourseId === course.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Đổi ảnh đại diện</TooltipContent>
-                        </Tooltip>}
-
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setSelectedCourseFiles(course.id)}
-                              className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30"
-                            >
-                              <FolderOpen className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Quản lý tệp tin</TooltipContent>
-                        </Tooltip>
-
-                        {canManageMentors && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setMentorCourse(course)}
-                              className="h-8 w-8 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50 dark:text-cyan-400 dark:hover:bg-cyan-950/30"
-                            >
-                              <UserRound className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{course.mentor?.full_name || course.mentor?.email || 'Chọn mentor'}</TooltipContent>
-                        </Tooltip>}
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })}
-                              className={`h-8 w-8 ${course.visible_to_staff_only ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-950/30' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/50'}`}
-                            >
-                              {course.visible_to_staff_only ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
-                        </Tooltip>}
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setNotifyCourseId(course.id)}
-                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
-                            >
-                              <Bell className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Gửi thông báo</TooltipContent>
-                        </Tooltip>}
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => setModalConfigCourseId(course.id)}
-                              className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-950/30"
-                            >
-                              <Settings2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Cấu hình hộp thoại</TooltipContent>
-                        </Tooltip>}
-
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link to={`/courses/${course.id}/assignments`}>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-fuchsia-600 hover:text-fuchsia-700 hover:bg-fuchsia-50 dark:text-fuchsia-400 dark:hover:bg-fuchsia-950/30">
-                                <ClipboardList className="h-3.5 w-3.5" />
+                      <TableCell className="pr-5">
+                        <div className="flex justify-center gap-1">
+                          {canEdit && <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button asChild variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10">
+                                <Link to={`/courses/${course.id}/edit`}>
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Link>
                               </Button>
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent>Bài tập</TooltipContent>
-                        </Tooltip>}
+                            </TooltipTrigger>
+                            <TooltipContent>Chỉnh sửa nội dung</TooltipContent>
+                          </Tooltip>}
 
-                        {canEdit && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link to={`/courses/${course.id}/edit`}>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10">
-                                <Edit2 className="h-3.5 w-3.5" />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon"
+                                onClick={() => setSelectedCourseFiles(course.id)}
+                                className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30"
+                              >
+                                <FolderOpen className="h-3.5 w-3.5" />
                               </Button>
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent>Chỉnh sửa nội dung</TooltipContent>
-                        </Tooltip>}
+                            </TooltipTrigger>
+                            <TooltipContent>Quản lý tệp tin</TooltipContent>
+                          </Tooltip>
 
-                        {canDelete && <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon"
-                              onClick={() => handleDeleteCourse(course)}
-                              disabled={deleteMut.isPending}
-                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Xóa vĩnh viễn</TooltipContent>
-                        </Tooltip>}
+                          {canEdit && <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="ghost" size="icon"
+                                onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })}
+                                className={`h-8 w-8 ${course.visible_to_staff_only ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-950/30' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/50'}`}
+                              >
+                                {course.visible_to_staff_only ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
+                          </Tooltip>}
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem onClick={() => setPreviewCourse(course)}>
+                                <LayoutTemplate className="h-4 w-4 text-sky-600" />
+                                Xem thẻ xem trước
+                              </DropdownMenuItem>
+
+                              {canEdit && (
+                                <DropdownMenuItem onClick={() => setCourseInfoCourse(course)}>
+                                  <FileText className="h-4 w-4 text-emerald-600" />
+                                  Chỉnh thông tin khóa học
+                                </DropdownMenuItem>
+                              )}
+
+                              {canEdit && (
+                                <DropdownMenuItem
+                                  onClick={() => triggerUpload(course.id)}
+                                  disabled={uploadingCourseId === course.id}
+                                >
+                                  {uploadingCourseId === course.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                                  ) : (
+                                    <ImagePlus className="h-4 w-4 text-indigo-600" />
+                                  )}
+                                  Đổi ảnh đại diện
+                                </DropdownMenuItem>
+                              )}
+
+                              {canEdit && (
+                                <DropdownMenuItem asChild>
+                                  <Link to={`/courses/${course.id}/assignments`}>
+                                    <ClipboardList className="h-4 w-4 text-fuchsia-600" />
+                                    Bài tập
+                                  </Link>
+                                </DropdownMenuItem>
+                              )}
+
+                              {canManageMentors && (
+                                <DropdownMenuItem onClick={() => setMentorCourse(course)}>
+                                  <UserRound className="h-4 w-4 text-cyan-600" />
+                                  Người hướng dẫn
+                                </DropdownMenuItem>
+                              )}
+
+                              {canEdit && (
+                                <DropdownMenuItem onClick={() => setNotifyCourseId(course.id)}>
+                                  <Bell className="h-4 w-4 text-amber-600" />
+                                  Gửi thông báo
+                                </DropdownMenuItem>
+                              )}
+
+                              {canEdit && (
+                                <DropdownMenuItem onClick={() => setModalConfigCourseId(course.id)}>
+                                  <Settings2 className="h-4 w-4 text-violet-600" />
+                                  Cấu hình hộp thoại
+                                </DropdownMenuItem>
+                              )}
+
+                              {canDelete && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteCourse(course)}
+                                    disabled={deleteMut.isPending}
+                                    className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    Xóa vĩnh viễn
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -1406,7 +1405,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
             {/* ── Confirm Modal ── */}
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Hộp thoại xác nhận (0% tiến độ)</Label>
+                <Label className="text-sm font-semibold">Hộp thoại xác nhận khi hoàn thành</Label>
                 <Switch
                   checked={form.confirm_enabled}
                   onCheckedChange={(v) => updateField('confirm_enabled', v)}
@@ -1572,7 +1571,6 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
   const [activeTab, setActiveTab] = useState('compose');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
-  const [sendEmail, setSendEmail] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<CourseNotificationHistoryItem | null>(null);
 
@@ -1583,8 +1581,14 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
     staleTime: 30_000,
   });
   const smtpStatus = smtpQuery.data;
-  const canSendEmail = Boolean(smtpStatus?.can_send_email);
-  const smtpWarning = smtpStatus?.reason || 'Tenant chưa cấu hình SMTP Google.';
+  const emailAutomationReady = Boolean(smtpStatus?.can_send_email);
+  const emailBadgeText = emailAutomationReady ? 'Email tự động đang bật' : 'Chỉ tạo thông báo trong hệ thống';
+  const emailDescription = emailAutomationReady
+    ? 'Hệ thống sẽ tự gửi email cho học viên sau khi thao tác hoàn tất.'
+    : 'Chưa cấu hình email gửi đi nên học viên chỉ thấy thông báo trong hệ thống.';
+  const emailTooltip = smtpQuery.isError
+    ? 'Không kiểm tra được cấu hình email gửi đi. Hệ thống sẽ chỉ tạo thông báo trong hệ thống cho đến khi kiểm tra lại thành công.'
+    : 'Chưa cấu hình email gửi đi cho đơn vị này. Vui lòng vào phần cấu hình email để bật gửi email tự động.';
 
   const historyQuery = useQuery({
     queryKey: ['course-notification-history', activeTenantId, courseId, historyPage, historyLimit],
@@ -1602,17 +1606,12 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
   }, [open, courseId]);
 
   useEffect(() => {
-    if (!canSendEmail) setSendEmail(false);
-  }, [canSendEmail]);
-
-  useEffect(() => {
     if (activeTab !== 'history') setSelectedHistoryItem(null);
   }, [activeTab]);
 
   const closeDialog = () => {
     setTitle('');
     setMessage('');
-    setSendEmail(false);
     setActiveTab('compose');
     setHistoryPage(1);
     setSelectedHistoryItem(null);
@@ -1623,16 +1622,14 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
     mutationFn: () => sendCourseNotification(courseId, {
       title: title.trim(),
       message: message.trim(),
-      send_email: sendEmail && canSendEmail,
     }),
     onSuccess: (data) => {
       const emailText = data.email_requested
-        ? (data.email_job_queued ? ' Email đang được gửi tuần tự qua SMTP.' : ' Không có email nào cần gửi.')
+        ? (data.email_job_queued ? ' Email đang được gửi tự động.' : ' Không có email nào cần gửi.')
         : '';
       toast.success(`Đã gửi thông báo cho ${data.recipients} học viên.${emailText}`);
       setTitle('');
       setMessage('');
-      setSendEmail(false);
       setActiveTab('history');
       setHistoryPage(1);
       setSelectedHistoryItem(null);
@@ -1708,40 +1705,48 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-emerald-600" />
-                            <p className="text-sm font-semibold">Gửi thêm email SMTP</p>
-                            {!canSendEmail && (
+                    <div className="rounded-2xl border border-border/80 bg-muted/20 p-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${emailAutomationReady ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'}`}>
+                          <Mail className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {smtpQuery.isLoading ? (
+                              <Skeleton className="h-6 w-44 rounded-full" />
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className={`rounded-full px-3 py-1 text-[11px] font-bold ${emailAutomationReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'}`}
+                              >
+                                {emailBadgeText}
+                              </Badge>
+                            )}
+                            {!emailAutomationReady && !smtpQuery.isLoading && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-red-500 text-white shadow-sm shadow-red-500/20">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 transition hover:bg-red-500/15 dark:text-red-300"
+                                    aria-label="Vì sao email tự động chưa bật?"
+                                  >
                                     <Info className="h-3.5 w-3.5" />
-                                  </span>
+                                  </button>
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-[260px] border-red-500/20 bg-red-600 text-white">
-                                  {smtpWarning} Vui lòng cấu hình SMTP Google trước khi bật gửi email.
+                                <TooltipContent className="max-w-[280px] border-red-500/20 bg-red-600 text-white">
+                                  {emailTooltip}
                                 </TooltipContent>
                               </Tooltip>
                             )}
                           </div>
                           {smtpQuery.isLoading ? (
-                            <Skeleton className="h-4 w-64" />
+                            <Skeleton className="h-4 w-full max-w-[420px]" />
                           ) : (
                             <p className="text-xs leading-5 text-muted-foreground">
-                              {canSendEmail
-                                ? `SMTP đã sẵn sàng${smtpStatus?.from_email ? `: ${smtpStatus.from_email}` : ''}.`
-                                : smtpWarning}
+                              {emailDescription}
                             </p>
                           )}
                         </div>
-                        <Switch
-                          checked={sendEmail}
-                          disabled={!canSendEmail || smtpQuery.isLoading || sendMut.isPending}
-                          onCheckedChange={setSendEmail}
-                        />
                       </div>
                     </div>
 

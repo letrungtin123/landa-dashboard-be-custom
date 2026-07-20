@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebounce } from '@/hooks/use-debounce';
 import { fetchUsers, type CustomUser } from '@/api/custom-users';
@@ -29,14 +29,12 @@ interface Props {
 export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const [sendEmail, setSendEmail] = useState(false);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
   const targetLabel = teamId ? labels.team : labels.subgroup;
   const targetLabelLower = lowerGroupLabel(targetLabel);
-  const isTeamTarget = Boolean(teamId);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -53,19 +51,17 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     enabled: open,
     staleTime: 60_000,
   });
-  const canSendEmail = isTeamTarget && Boolean(smtpStatus?.can_send_email);
-  const smtpDisabledReason = !isTeamTarget
-    ? `Tính năng gửi email chỉ hỗ trợ khi thêm học viên vào ${lowerGroupLabel(labels.team)}.`
-    : isSmtpError
-      ? 'Không kiểm tra được cấu hình SMTP Google của tenant.'
-      : smtpStatus?.reason || 'Tenant chưa cấu hình SMTP Google.';
-
-  useEffect(() => {
-    if (!open || !canSendEmail) setSendEmail(false);
-  }, [open, canSendEmail]);
+  const emailAutomationReady = Boolean(smtpStatus?.can_send_email);
+  const emailBadgeText = emailAutomationReady ? 'Email tự động đang bật' : 'Chỉ tạo thông báo trong hệ thống';
+  const emailDescription = emailAutomationReady
+    ? 'Hệ thống sẽ tự gửi email cho học viên sau khi thao tác hoàn tất.'
+    : 'Chưa cấu hình email gửi đi nên học viên chỉ thấy thông báo trong hệ thống.';
+  const emailTooltip = isSmtpError
+    ? 'Không kiểm tra được cấu hình email gửi đi. Hệ thống sẽ chỉ tạo thông báo trong hệ thống cho đến khi kiểm tra lại thành công.'
+    : 'Chưa cấu hình email gửi đi cho đơn vị này. Vui lòng vào phần cấu hình email để bật gửi email tự động.';
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? addTeamMembers(teamId, selected, { send_email: sendEmail && canSendEmail }) : addMembers(sgId, selected),
+    mutationFn: () => teamId ? addTeamMembers(teamId, selected) : addMembers(sgId, selected),
     onSuccess: (res) => {
       const skippedText = res.skipped ? ` (${res.skipped} đã có hoặc không hợp lệ)` : '';
       const emailText = res.email_requested
@@ -76,7 +72,6 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
       toast.success(`Đã thêm ${res.added} học viên${skippedText}.${emailText}`);
       setSelected([]);
       setSearch('');
-      setSendEmail(false);
       onOpenChange(false);
       onSuccess();
     },
@@ -103,7 +98,6 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
   const handleClose = () => {
     setSearch('');
     setSelected([]);
-    setSendEmail(false);
     setPage(1);
     onOpenChange(false);
   };
@@ -196,45 +190,49 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
           transition={{ duration: 0.18 }}
           className="rounded-xl border border-border/80 bg-muted/20 p-3"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
-                <Mail className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold text-foreground">Gửi email cho học viên đã chọn</p>
-                  {!canSendEmail && !isSmtpFetching && (
-                    <TooltipProvider delayDuration={120}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300">
-                            <Info className="h-3.5 w-3.5" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-[280px] border-red-500/20 bg-red-600 text-white">
-                          {smtpDisabledReason}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Thông báo hệ thống luôn được tạo. Email sẽ được xếp hàng gửi tuần tự sau khi thêm thành viên thành công.
-                </p>
-              </div>
+          <div className="flex min-w-0 items-start gap-3">
+            <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${emailAutomationReady ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'}`}>
+              <Mail className="h-4 w-4" />
             </div>
-            {isSmtpFetching ? (
-              <Skeleton className="mt-1 h-5 w-10 rounded-full" />
-            ) : (
-              <Switch
-                size="sm"
-                checked={sendEmail && canSendEmail}
-                disabled={!canSendEmail || mutation.isPending}
-                onCheckedChange={(checked) => setSendEmail(Boolean(checked) && canSendEmail)}
-                aria-label="Bật gửi email cho học viên đã chọn"
-              />
-            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {isSmtpFetching ? (
+                  <Skeleton className="h-6 w-44 rounded-full" />
+                ) : (
+                  <Badge
+                    variant="secondary"
+                    className={`rounded-full px-3 py-1 text-[11px] font-bold ${emailAutomationReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'}`}
+                  >
+                    {emailBadgeText}
+                  </Badge>
+                )}
+                {!emailAutomationReady && !isSmtpFetching && (
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 transition hover:bg-red-500/15 dark:text-red-300"
+                          aria-label="Vì sao email tự động chưa bật?"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[280px] border-red-500/20 bg-red-600 text-white">
+                        {emailTooltip}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+              {isSmtpFetching ? (
+                <Skeleton className="mt-2 h-4 w-full max-w-[360px]" />
+              ) : (
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {emailDescription}
+                </p>
+              )}
+            </div>
           </div>
         </motion.div>
 

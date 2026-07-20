@@ -6,6 +6,7 @@ import { GripVertical, ImagePlus, Loader2, Plus, Trash2, Upload, Video, X } from
 import { Button } from '@/components/ui/button';
 import { uploadCourseAsset, deleteCourseAssetByStoragePath } from '@/api/custom-course-authoring';
 import { storageUrl } from '@/utils/storage-url';
+import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import { toast } from 'sonner';
 import RichTextEditor from '../RichTextEditor';
 import { Field } from './VideoEditor';
@@ -50,7 +51,7 @@ interface MediaQuizEditorProps {
 }
 
 const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
+const MAX_VIDEO_SIZE = COURSE_ASSET_MAX_UPLOAD_BYTES;
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -316,7 +317,7 @@ export default function MediaQuizEditor({
     }
     if (mediaType === 'video') {
       if (file.size > MAX_VIDEO_SIZE) {
-        toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa 100MB.`);
+        toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
         return;
       }
       if (!ACCEPTED_VIDEO_TYPES.includes(file.type)) {
@@ -604,7 +605,7 @@ export default function MediaQuizEditor({
                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                     Tải video lên
                   </Button>
-                  <span className="text-xs text-muted-foreground">Hỗ trợ ảnh hoặc MP4/WebM/MOV, tối đa 100MB.</span>
+                  <span className="text-xs text-muted-foreground">Hỗ trợ ảnh hoặc MP4/WebM/MOV, tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL}.</span>
                   <input
                     ref={element => { imageInputRefs.current[question.id] = element; }}
                     type="file"

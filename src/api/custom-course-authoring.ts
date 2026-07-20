@@ -6,6 +6,10 @@
  */
 
 import { customApiClient } from './custom-client';
+import {
+  COURSE_ASSET_MAX_UPLOAD_BYTES,
+  createCourseAssetUploadSizeError,
+} from '../utils/course-asset-upload';
 
 // ── Types ──
 
@@ -264,6 +268,10 @@ export async function getCourseAssets(
 }
 
 export async function uploadCourseAsset(courseId: string, file: File): Promise<any> {
+  if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
+    throw createCourseAssetUploadSizeError(file);
+  }
+
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await customApiClient.post(

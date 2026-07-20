@@ -19,6 +19,9 @@ export interface CustomCourse {
   end?: string | null;
   modified?: string | null;
   image_url: string;
+  created_by?: string | null;
+  creator_id?: string | null;
+  creator_display_name?: string | null;
   created_at: string;
   updated_at: string;
   mentor?: CourseMentor | null;
@@ -250,18 +253,18 @@ export async function getCourseNotificationHistory(
   return data.data;
 }
 
-export async function sendCourseNotification(courseId: string, payload: { title: string; message: string; send_email?: boolean }) {
+export async function sendCourseNotification(courseId: string, payload: { title: string; message: string }) {
   const { data } = await customApiClient.post<ApiResponse<{
     success: boolean;
     notification_id: string;
     recipients: number;
     email_requested: boolean;
     email_job_queued: boolean;
+    email_skipped_reason: string | null;
   }>>("/api/notifications", {
     course_id: courseId,
     title: payload.title,
     message: payload.message,
-    send_email: payload.send_email === true,
   });
   return data.data;
 }

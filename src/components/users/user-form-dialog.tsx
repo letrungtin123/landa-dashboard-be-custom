@@ -22,6 +22,7 @@ import { fetchTenants, getUserTenants, setUserTenants, type Tenant } from '@/api
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getRoleLabel } from '@/utils/role-labels';
+import { getGroupLabelSet } from '@/utils/group-labels';
 
 // ── Schemas ──
 const createUserSchema = z.object({
@@ -55,6 +56,7 @@ type UserFormProps = {
 export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserFormProps) {
   const currentUser = useAuthStore(function getUser(s) { return s.user; });
   const roleLabels = useAuthStore(function getRoleLabels(s) { return s.roleLabels; });
+  const groupLabels = useAuthStore(function getGroupLabels(s) { return s.groupLabels; });
   const isSuperadmin = currentUser?.role === 'superadmin';
   const isSuperuser = currentUser?.role === 'superuser';
   const isEditing = !!user;
@@ -65,6 +67,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
   const debouncedTenantSearch = useDebounce(tenantSearch, 400);
   const queryClient = useQueryClient();
   const TENANT_PAGE_SIZE = 5;
+  const tenantGroupLabels = getGroupLabelSet(groupLabels);
+  const groupHierarchyLabel = `${tenantGroupLabels.group} / ${tenantGroupLabels.subgroup} / ${tenantGroupLabels.team}`;
 
   // Reset page when search changes
   useEffect(function resetTenantPage() { setTenantPage(1); }, [debouncedTenantSearch]);
@@ -102,6 +106,8 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
     },
   });
   const watchedRole = form.watch('role');
+  const currentRoleLabel = getRoleLabel(user?.role, roleLabels, user?.role || '');
+  const watchedRoleLabel = getRoleLabel(watchedRole, roleLabels, watchedRole || '');
 
   useEffect(function resetForm() {
     if (user && open) {
@@ -333,7 +339,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                   <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                     <div className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                      <span className="font-semibold">Cảnh báo:</span> Đổi vai trò của <span className="font-semibold">{user.username}</span> từ <span className="font-mono bg-amber-100 dark:bg-amber-500/20 px-1 py-0.5 rounded">learner</span> sang <span className="font-mono bg-amber-100 dark:bg-amber-500/20 px-1 py-0.5 rounded">{watchedRole}</span> sẽ tự động xóa người dùng này khỏi tất cả <span className="font-semibold">Groups / SubGroups / Teams</span> hiện tại.
+                      <span className="font-semibold">Cảnh báo:</span> Đổi vai trò của <span className="font-semibold">{user.username}</span> từ <span className="font-mono bg-amber-100 dark:bg-amber-500/20 px-1 py-0.5 rounded">{currentRoleLabel}</span> sang <span className="font-mono bg-amber-100 dark:bg-amber-500/20 px-1 py-0.5 rounded">{watchedRoleLabel}</span> sẽ tự động xóa người dùng này khỏi toàn bộ <span className="font-semibold">{groupHierarchyLabel}</span> hiện tại.
                     </div>
                   </div>
                 )}
@@ -343,9 +349,9 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                   <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
                     <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
                     <div className="text-xs text-red-800 dark:text-red-300 leading-relaxed">
-                      <span className="font-semibold">Cảnh báo:</span> Đổi vai trò của <span className="font-semibold">{user.username}</span> từ <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">{user.role}</span> sang <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">learner</span> sẽ tự động:<br/>
-                      • Xóa khỏi <span className="font-semibold">Nhóm quyền (Permission Group)</span> hiện tại<br/>
-                      • Xóa khỏi tất cả <span className="font-semibold">Teams</span>
+                      <span className="font-semibold">Cảnh báo:</span> Đổi vai trò của <span className="font-semibold">{user.username}</span> từ <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">{currentRoleLabel}</span> sang <span className="font-mono bg-red-100 dark:bg-red-500/20 px-1 py-0.5 rounded">{watchedRoleLabel}</span> sẽ tự động:<br/>
+                      • Xóa khỏi <span className="font-semibold">Nhóm quyền</span> hiện tại<br/>
+                      • Xóa khỏi toàn bộ <span className="font-semibold">{groupHierarchyLabel}</span> hiện tại
                     </div>
                   </div>
                 )}

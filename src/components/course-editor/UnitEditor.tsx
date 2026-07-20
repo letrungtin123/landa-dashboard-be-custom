@@ -168,6 +168,12 @@ interface ComponentType {
   subTypes?: { id: string; label: string; boilerplate: string }[];
 }
 
+function isBlockNotFoundError(error: unknown): boolean {
+  const err = error as { response?: { data?: { error?: unknown; message?: unknown } }; message?: unknown };
+  const message = err?.response?.data?.error || err?.response?.data?.message || err?.message;
+  return typeof message === 'string' && message.toLowerCase().includes('block not found');
+}
+
 const COMPONENT_TYPES: ComponentType[] = [
   {
     id: 'video', category: 'video', label: 'Video', desc: 'Youtube / Upload',
@@ -255,21 +261,27 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
 
 // ─── UnitEditor (main) ────────────────────────────────────────────────────────
 
-export default function UnitEditor({ unitId, courseId, focusComponentId, externalRefreshKey = 0, onContentChange }: {
+export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange, onMissingUnit }: {
   unitId: string;
   courseId?: string;
   focusComponentId?: string | null;
-  externalRefreshKey?: number;
   onContentChange: () => void;
+  onMissingUnit?: () => void;
 }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [subTypeSelector, setSubTypeSelector] = useState<ComponentType | null>(null);
 
-  const { data: unitChildren, isLoading, refetch, dataUpdatedAt } = useQuery({
+  const { data: unitChildren, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['unit-children', unitId],
     queryFn: () => getUnitChildren(unitId),
     staleTime: 10_000,
+    retry: (failureCount, err) => !isBlockNotFoundError(err) && failureCount < 1,
   });
+
+  useEffect(() => {
+    if (!isError || !isBlockNotFoundError(error)) return;
+    onMissingUnit?.();
+  }, [error, isError, onMissingUnit]);
 
   const children: ChildBlock[] = unitChildren?.children || [];
 
@@ -348,6 +360,10 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, externa
     );
   }
 
+  if (isError && isBlockNotFoundError(error)) {
+    return null;
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-20">
       {children.length === 0 && (
@@ -367,7 +383,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, externa
                 key={child.id || child.block_id}
                 block={child}
                 courseId={courseId}
-                detailRefreshKey={`${dataUpdatedAt}:${externalRefreshKey}`}
+                detailRefreshKey={`${dataUpdatedAt}`}
                 isFocused={focusComponentId === (child.id || child.block_id)}
                 onDelete={() => { refetch(); onContentChange(); }}
                 onSaved={() => { refetch(); onContentChange(); }}

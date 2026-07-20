@@ -52,6 +52,11 @@ function isComponentBlock(node: CourseIndexSection): boolean {
   return !['course', 'chapter', 'sequential', 'vertical'].includes(node.block_type);
 }
 
+function hasBlock(node: CourseIndexSection | undefined, blockId: string | null): boolean {
+  if (!node || !blockId) return false;
+  return Boolean(findBlockPath(node, blockId));
+}
+
 // ─────────────────────────────────────────────
 // Course Root Header (Renamable)
 // ─────────────────────────────────────────────
@@ -116,7 +121,6 @@ export default function CourseEditorPage() {
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
-  const [unitEditorRefreshKey, setUnitEditorRefreshKey] = useState(0);
 
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(320);
@@ -164,19 +168,38 @@ export default function CourseEditorPage() {
 
   const courseStructure = outline?.course_structure;
 
+  const clearSelectedUnit = useCallback((unitId?: string | null) => {
+    const targetUnitId = unitId || selectedUnit;
+    if (targetUnitId) {
+      queryClient.removeQueries({ queryKey: ['unit-children', targetUnitId], exact: true });
+    }
+    setSelectedUnit(null);
+    setFocusedBlockId(null);
+    setFocusedComponentId(null);
+  }, [queryClient, selectedUnit]);
+
   const handleStructureChange = useCallback(() => {
     if (!courseId) return;
     const outlineKey = ['course-outline-index', courseId] as const;
     void queryClient.invalidateQueries({ queryKey: outlineKey, exact: true })
       .then(() => queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' }));
+  }, [courseId, queryClient]);
 
-    if (selectedUnit) {
-      const unitChildrenKey = ['unit-children', selectedUnit] as const;
-      void queryClient.invalidateQueries({ queryKey: unitChildrenKey, exact: true })
-        .then(() => queryClient.refetchQueries({ queryKey: unitChildrenKey, exact: true, type: 'active' }));
-      setUnitEditorRefreshKey((value) => value + 1);
+  useEffect(() => {
+    if (!courseStructure) return;
+
+    if (selectedUnit && !hasBlock(courseStructure, selectedUnit)) {
+      clearSelectedUnit(selectedUnit);
+      return;
     }
-  }, [courseId, queryClient, selectedUnit]);
+
+    if (focusedBlockId && !hasBlock(courseStructure, focusedBlockId)) {
+      setFocusedBlockId(null);
+    }
+    if (focusedComponentId && !hasBlock(courseStructure, focusedComponentId)) {
+      setFocusedComponentId(null);
+    }
+  }, [clearSelectedUnit, courseStructure, focusedBlockId, focusedComponentId, selectedUnit]);
 
   useEffect(() => {
     const handleFocusCourseBlock = (event: Event) => {
@@ -343,7 +366,7 @@ export default function CourseEditorPage() {
               unitId={selectedUnit}
               courseId={courseId as string}
               focusComponentId={focusedComponentId}
-              externalRefreshKey={unitEditorRefreshKey}
+              onMissingUnit={() => clearSelectedUnit(selectedUnit)}
               onContentChange={() => {
                 handleStructureChange();
               }}

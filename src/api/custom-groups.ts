@@ -195,7 +195,7 @@ export async function getGroupNotificationSmtpStatus() {
   return data.data;
 }
 
-export async function addTeamMembers(teamId: string, userIds: string[], options?: { send_email?: boolean }) {
+export async function addTeamMembers(teamId: string, userIds: string[]) {
   const { data } = await customApiClient.post<ApiResponse<{
     success: boolean;
     added: number;
@@ -203,9 +203,9 @@ export async function addTeamMembers(teamId: string, userIds: string[], options?
     notification_id: string | null;
     email_requested: boolean;
     email_queued: number;
+    email_skipped_reason: string | null;
   }>>(`/api/groups/teams/${teamId}/members`, {
     user_ids: userIds,
-    send_email: options?.send_email === true,
   });
   return data.data;
 }

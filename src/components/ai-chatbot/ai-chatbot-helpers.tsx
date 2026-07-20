@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -23,11 +24,46 @@ export const cardVariants = {
 // ── Status Badge ──
 export function statusBadge(status: string) {
   switch (status) {
-    case "learned": return <Badge variant="default" className="bg-emerald-500/90 gap-1"><CheckCircle2 className="h-3 w-3" /> Đã học</Badge>;
-    case "learning": return <Badge variant="secondary" className="bg-blue-500/20 text-blue-400 gap-1"><Clock className="h-3 w-3 animate-spin" /> Đang học...</Badge>;
-    case "deleting": return <Badge variant="secondary" className="bg-red-500/20 text-red-400 gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Đang xoá...</Badge>;
-    case "error": return <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3" /> Lỗi</Badge>;
-    default: return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Nháp</Badge>;
+    case "learned": return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="default" className="h-6 w-6 rounded-full bg-emerald-500/90 p-0 text-white" aria-label="Đã học"><CheckCircle2 className="h-3.5 w-3.5" /><span className="sr-only">Đã học</span></Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Đã học</TooltipContent>
+      </Tooltip>
+    );
+    case "learning": return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="secondary" className="h-6 w-6 rounded-full bg-blue-500/20 p-0 text-blue-400" aria-label="Đang học"><Clock className="h-3.5 w-3.5 animate-spin" /><span className="sr-only">Đang học</span></Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Đang học</TooltipContent>
+      </Tooltip>
+    );
+    case "deleting": return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="secondary" className="h-6 w-6 rounded-full bg-red-500/20 p-0 text-red-400" aria-label="Đang xoá"><Loader2 className="h-3.5 w-3.5 animate-spin" /><span className="sr-only">Đang xoá</span></Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Đang xoá</TooltipContent>
+      </Tooltip>
+    );
+    case "error": return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="destructive" className="h-6 w-6 rounded-full p-0" aria-label="Lỗi"><AlertCircle className="h-3.5 w-3.5" /><span className="sr-only">Lỗi</span></Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Lỗi</TooltipContent>
+      </Tooltip>
+    );
+    default: return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className="h-6 w-6 rounded-full p-0 text-muted-foreground" aria-label="Nháp"><Clock className="h-3.5 w-3.5" /><span className="sr-only">Nháp</span></Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Nháp</TooltipContent>
+      </Tooltip>
+    );
   }
 }
 
