@@ -8,27 +8,26 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getCategories } from '@/api/custom-library';
-import { assignCategories, assignTeamCategories } from '@/api/custom-groups';
+import { assignTeamCategories } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
-  sgId: string;
-  teamId?: string;
+  teamId: string;
   assignedCategoryIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
-export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
+export function AssignCategoriesModal({ open, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
+  const targetLabel = lowerGroupLabel(labels.team);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -40,7 +39,7 @@ export function AssignCategoriesModal({ open, sgId, teamId, assignedCategoryIds,
   });
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? assignTeamCategories(teamId, selected) : assignCategories(sgId, selected),
+    mutationFn: () => assignTeamCategories(teamId, selected),
     onSuccess: (res) => {
       toast.success(`Đã phân ${res.assigned} danh mục${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
       setSelected([]);

@@ -13,28 +13,26 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebounce } from '@/hooks/use-debounce';
 import { fetchUsers, type CustomUser } from '@/api/custom-users';
-import { addMembers, addTeamMembers, getGroupNotificationSmtpStatus } from '@/api/custom-groups';
+import { addTeamMembers, getGroupNotificationSmtpStatus } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
-  sgId: string;
-  teamId?: string;
+  teamId: string;
   existingMemberIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
-export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenChange, onSuccess }: Props) {
+export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const targetLabel = teamId ? labels.team : labels.subgroup;
-  const targetLabelLower = lowerGroupLabel(targetLabel);
+  const targetLabelLower = lowerGroupLabel(labels.team);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -61,7 +59,7 @@ export function AddMembersModal({ open, sgId, teamId, existingMemberIds, onOpenC
     : 'Chưa cấu hình email gửi đi cho đơn vị này. Vui lòng vào phần cấu hình email để bật gửi email tự động.';
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? addTeamMembers(teamId, selected) : addMembers(sgId, selected),
+    mutationFn: () => addTeamMembers(teamId, selected),
     onSuccess: (res) => {
       const skippedText = res.skipped ? ` (${res.skipped} đã có hoặc không hợp lệ)` : '';
       const emailText = res.email_requested

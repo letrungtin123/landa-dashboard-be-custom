@@ -8,27 +8,26 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getCourses } from '@/api/custom-courses';
-import { assignCourses, assignTeamCourses } from '@/api/custom-groups';
+import { assignTeamCourses } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
-  sgId: string;
-  teamId?: string;
+  teamId: string;
   assignedCourseIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
-export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOpenChange, onSuccess }: Props) {
+export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 400);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
+  const targetLabel = lowerGroupLabel(labels.team);
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -40,7 +39,7 @@ export function AssignCoursesModal({ open, sgId, teamId, assignedCourseIds, onOp
   });
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? assignTeamCourses(teamId!, selected) : assignCourses(sgId, selected),
+    mutationFn: () => assignTeamCourses(teamId, selected),
     onSuccess: (res) => {
       toast.success(`Đã phân ${res.assigned} course${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
       setSelected([]);

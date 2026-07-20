@@ -7,25 +7,24 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getCourseCategories } from '@/api/custom-course-categories';
-import { assignCourseCategories, assignTeamCourseCategories } from '@/api/custom-groups';
+import { assignTeamCourseCategories } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 
 interface Props {
   open: boolean;
-  sgId: string;
-  teamId?: string;
+  teamId: string;
   assignedCategoryIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
-export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
+export function AssignCourseCategoriesModal({ open, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const targetLabel = lowerGroupLabel(teamId ? labels.team : labels.subgroup);
+  const targetLabel = lowerGroupLabel(labels.team);
 
   const { data, isFetching } = useQuery({
     queryKey: ['course-categories-for-group'],
@@ -35,7 +34,7 @@ export function AssignCourseCategoriesModal({ open, sgId, teamId, assignedCatego
   });
 
   const mutation = useMutation({
-    mutationFn: () => teamId ? assignTeamCourseCategories(teamId, selected) : assignCourseCategories(sgId, selected),
+    mutationFn: () => assignTeamCourseCategories(teamId, selected),
     onSuccess: (res) => {
       toast.success(`Đã phân ${res.assigned} danh mục khóa học${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
       setSelected([]);

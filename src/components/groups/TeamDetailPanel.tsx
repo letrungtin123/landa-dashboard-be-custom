@@ -619,7 +619,6 @@ export function TeamDetailPanel({ teamId }: Props) {
       {/* Modals */}
       <AddMembersModal
         open={addMembersOpen}
-        sgId={teamId}
         teamId={teamId}
         existingMemberIds={sg.members.map(m => m.id)}
         onOpenChange={setAddMembersOpen}
@@ -630,7 +629,6 @@ export function TeamDetailPanel({ teamId }: Props) {
       />
       <AssignCoursesModal
         open={assignCoursesOpen}
-        sgId={teamId}
         teamId={teamId}
         assignedCourseIds={sg.courses.map(c => c.course_id)}
         onOpenChange={setAssignCoursesOpen}
@@ -641,7 +639,6 @@ export function TeamDetailPanel({ teamId }: Props) {
       />
       <AssignCategoriesModal
         open={assignCategoriesOpen}
-        sgId={teamId}
         teamId={teamId}
         assignedCategoryIds={sg.categories.map(c => c.category_id)}
         onOpenChange={setAssignCategoriesOpen}
@@ -652,7 +649,6 @@ export function TeamDetailPanel({ teamId }: Props) {
       />
       <AssignCourseCategoriesModal
         open={assignCourseCategoriesOpen}
-        sgId={teamId}
         teamId={teamId}
         assignedCategoryIds={sg.course_categories.map(c => c.category_id)}
         onOpenChange={setAssignCourseCategoriesOpen}

@@ -251,17 +251,6 @@ export async function revokeTeamCourseCategory(teamId: string, categoryId: strin
   return { success: true };
 }
 
-// ── Legacy SubGroup-level aliases (map to team-level) ──
-// These exist for backward compat during migration
-export const addMembers = addTeamMembers;
-export const removeMember = removeTeamMember;
-export const assignCourses = assignTeamCourses;
-export const revokeCourse = revokeTeamCourse;
-export const assignCategories = assignTeamCategories;
-export const revokeCategory = revokeTeamCategory;
-export const assignCourseCategories = assignTeamCourseCategories;
-export const revokeCourseCategory = revokeTeamCourseCategory;
-
 // ── Group Audit Logs ──
 
 export interface GroupAuditLogsResponse {
