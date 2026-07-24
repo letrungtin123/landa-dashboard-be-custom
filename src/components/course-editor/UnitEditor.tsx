@@ -177,7 +177,7 @@ function isBlockNotFoundError(error: unknown): boolean {
 
 const COMPONENT_TYPES: ComponentType[] = [
   {
-    id: 'video', category: 'video', label: 'Video', desc: 'Youtube / Upload',
+    id: 'video', category: 'video', label: 'Video', desc: 'YouTube / tải lên',
     icon: <Video className="h-6 w-6" />,
     colorClass: 'border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300',
   },
@@ -198,7 +198,7 @@ const COMPONENT_TYPES: ComponentType[] = [
     colorClass: 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/30 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
   },
   {
-    id: 'la_crossword', category: 'la_crossword', label: 'Ô chữ', desc: 'Crossword tương tác',
+    id: 'la_crossword', category: 'la_crossword', label: 'Ô chữ', desc: 'Trò chơi tương tác',
     icon: <Puzzle className="h-6 w-6" />,
     colorClass: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
   },
@@ -208,12 +208,12 @@ const COMPONENT_TYPES: ComponentType[] = [
     colorClass: 'border-violet-200 bg-violet-50 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 text-violet-700 dark:text-violet-300',
   },
   {
-    id: 'la_diagram', category: 'la_diagram', label: 'Biểu đồ', desc: 'Sơ đồ tổ chức, Mindmap...',
+    id: 'la_diagram', category: 'la_diagram', label: 'Biểu đồ', desc: 'Sơ đồ tổ chức, sơ đồ tư duy...',
     icon: <Network className="h-6 w-6" />,
     colorClass: 'border-orange-200 bg-orange-50 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/30 dark:hover:bg-orange-900/40 text-orange-700 dark:text-orange-300',
   },
   {
-    id: 'la_faq', category: 'la_faq', label: 'FAQ', desc: 'Câu hỏi thường gặp',
+    id: 'la_faq', category: 'la_faq', label: 'Hỏi đáp', desc: 'Câu hỏi thường gặp',
     icon: <MessageSquareText className="h-6 w-6" />,
     colorClass: 'border-teal-200 bg-teal-50 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/30 dark:hover:bg-teal-900/40 text-teal-700 dark:text-teal-300',
   },
@@ -334,7 +334,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
     mutationFn: ({ category, boilerplate }: { category: string; boilerplate?: string }) =>
       createXBlock({ type: category, category, parent_locator: unitId, boilerplate }),
     onSuccess: () => {
-      toast.success('Đã thêm component');
+      toast.success('Đã thêm nội dung tương tác');
       setShowAddDialog(false);
       setSubTypeSelector(null);
       refetch();
@@ -372,7 +372,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
           <div className="w-16 h-16 rounded-full bg-muted/40 flex items-center justify-center">
             <Plus className="h-8 w-8 opacity-20" />
           </div>
-          <p className="text-sm">Unit chưa có nội dung. Thêm component đầu tiên!</p>
+          <p className="text-sm">Bài học chưa có nội dung. Thêm nội dung tương tác đầu tiên!</p>
         </div>
       )}
 
@@ -400,7 +400,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
           className="w-full h-12 border-dashed border-2 rounded-xl hover:border-primary/60 hover:text-primary hover:bg-primary/5"
           onClick={() => setShowAddDialog(true)}
         >
-          <Plus className="h-5 w-5 mr-2" /> Thêm Component
+          <Plus className="h-5 w-5 mr-2" /> Thêm nội dung tương tác
         </Button>
       </div>
 
@@ -409,7 +409,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
         <DialogContent className="sm:max-w-xl p-0 overflow-hidden">
           <DialogHeader className="px-7 pt-6 pb-4">
             <DialogTitle className="text-xl font-bold text-center">
-              {subTypeSelector ? `Chọn dạng ${subTypeSelector.label}` : 'Thêm component mới'}
+              {subTypeSelector ? `Chọn dạng ${subTypeSelector.label}` : 'Chọn nội dung bạn muốn sử dụng để xây dựng trải nghiệm học tập.'}
             </DialogTitle>
           </DialogHeader>
           <div className="px-7 pb-7">
@@ -508,12 +508,12 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(blockId),
     onSuccess: async () => {
-      toast.success('Đã rollback về bản publish');
+      toast.success('Đã khôi phục về bản đã công khai');
       await loadDetail();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
       onSaved();
     },
-    onError: () => toast.error('Rollback thất bại'),
+    onError: () => toast.error('Khôi phục thất bại'),
   });
 
   const handleSaved = useCallback(async () => {
@@ -555,7 +555,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           </span>
           {block.has_changes && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 font-medium shrink-0">
-              draft
+              đang sửa
             </span>
           )}
         </div>
@@ -568,7 +568,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
-              title="Rollback về bản publish"
+              title="Khôi phục về bản đã công khai"
               onClick={() => setShowRollbackDialog(true)}
             >
               <Undo2 className="h-3.5 w-3.5" />
@@ -582,9 +582,9 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Xóa component này?</AlertDialogTitle>
+                <AlertDialogTitle>Xóa nội dung tương tác này?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Hành động này không thể hoàn tác. Component sẽ bị xóa vĩnh viễn khỏi hệ thống.
+                  Hành động này không thể hoàn tác. Nội dung tương tác sẽ bị xóa vĩnh viễn khỏi hệ thống.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -601,15 +601,15 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           <AlertDialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Rollback về bản publish</AlertDialogTitle>
+                <AlertDialogTitle>Khôi phục về bản đã công khai</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Data draft của component <span className="font-semibold text-foreground">"{blockData?.display_name || block.display_name}"</span> sẽ bị revert về bản publish gần nhất.
+                  Phần đang sửa của nội dung tương tác <span className="font-semibold text-foreground">"{blockData?.display_name || block.display_name}"</span> sẽ được đưa về bản đã công khai gần nhất.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Hủy</AlertDialogCancel>
                 <AlertDialogAction onClick={() => rollbackMut.mutate()}>
-                  Rollback
+                  Khôi phục
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -834,7 +834,7 @@ function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
               width="100%"
               height="100%"
               src={`https://www.youtube.com/embed/${normalized.youtube_id}?rel=0`}
-              title="Problem video preview"
+              title="Xem trước video câu hỏi"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -847,7 +847,7 @@ function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
         <div className="rounded-lg border border-border bg-muted/20 p-2">
           <img
             src={images[0].src}
-            alt={images[0].alt || 'Problem image'}
+            alt={images[0].alt || 'Ảnh câu hỏi'}
             className="max-h-[280px] w-full rounded-md object-contain"
           />
         </div>
@@ -871,7 +871,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
               <div className="p-1.5 rounded-md bg-purple-500/10 text-purple-500">
                 <Video className="h-4 w-4" />
               </div>
-              <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Uploaded Video</span>
+              <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Video đã tải lên</span>
               <div className="ml-auto flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               </div>
@@ -909,7 +909,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-1.5 rounded-md bg-red-500/10 text-red-500">
               <Video className="h-4 w-4" />
             </div>
-            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">YouTube Video</span>
+            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Video YouTube</span>
             <div className="ml-auto flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               <code className="text-[11px] font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">{ytId}</code>
@@ -921,7 +921,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
                 key={ytId}
                 width="100%" height="100%"
                 src={`https://www.youtube.com/embed/${ytId}?rel=0`}
-                title="YouTube Preview"
+                title="Xem trước video YouTube"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
                 allowFullScreen
@@ -934,7 +934,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
           <div className="p-3 bg-background rounded-full shadow-sm">
             <Video className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <span className="text-sm font-medium">Video — hover để Edit cấu hình</span>
+          <span className="text-sm font-medium">Video - đưa chuột vào để sửa cài đặt</span>
         </div>
       );
     }
@@ -950,7 +950,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-3 bg-background rounded-full shadow-sm">
               <Type className="h-6 w-6 text-muted-foreground/60" />
             </div>
-            <span className="text-sm font-medium">Text/HTML — hover để nhập nội dung & hình ảnh</span>
+            <span className="text-sm font-medium">Văn bản - đưa chuột vào để nhập nội dung và hình ảnh</span>
           </div>
         );
       }
@@ -1011,7 +1011,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
               <div className="mb-4 rounded-lg border border-border bg-muted/20 p-2">
                 <img
                   src={images[0].src}
-                  alt={images[0].alt || 'Uploaded image'}
+                  alt={images[0].alt || 'Ảnh đã tải lên'}
                   className="max-h-[280px] w-full rounded-md object-contain"
                 />
               </div>
@@ -1049,7 +1049,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
         ) : (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <HelpCircle className="h-4 w-4" />
-            <span>Problem — hover để Edit câu hỏi</span>
+            <span>Câu hỏi - đưa chuột vào để sửa</span>
           </div>
         );
 
@@ -1104,7 +1104,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-3 bg-background rounded-full shadow-sm">
               <Network className="h-6 w-6 text-muted-foreground/60" />
             </div>
-            <span className="text-sm font-medium">Diagram — hover để Edit sơ đồ</span>
+            <span className="text-sm font-medium">Sơ đồ - đưa chuột vào để sửa</span>
           </div>
         );
       }
@@ -1122,7 +1122,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-3 bg-background rounded-full shadow-sm">
               <MessageSquareText className="h-6 w-6 text-muted-foreground/60" />
             </div>
-            <span className="text-sm font-medium">FAQ — hover để thêm câu hỏi thường gặp</span>
+            <span className="text-sm font-medium">Hỏi đáp - đưa chuột vào để thêm câu hỏi thường gặp</span>
           </div>
         );
       }
@@ -1133,7 +1133,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-1.5 rounded-md bg-teal-500/10 text-teal-600">
               <MessageSquareText className="h-4 w-4" />
             </div>
-            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">FAQ — {faqItems.length} câu hỏi</span>
+            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Hỏi đáp - {faqItems.length} câu hỏi</span>
           </div>
           {faqItems.map((item: any, idx: number) => (
             <details key={item.id || idx} className="group border border-border rounded-lg overflow-hidden bg-card">
@@ -1158,7 +1158,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-3 bg-background rounded-full shadow-sm">
               <Type className="h-6 w-6 text-muted-foreground/60" />
             </div>
-            <span className="text-sm font-medium">PDF — hover để nhập link tài liệu</span>
+            <span className="text-sm font-medium">Tài liệu PDF - đưa chuột vào để nhập đường dẫn tài liệu</span>
           </div>
         );
       }
@@ -1177,11 +1177,11 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             <div className="p-1.5 rounded-md bg-rose-500/10 text-rose-500">
               <Type className="h-4 w-4" />
             </div>
-            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">PDF Embed</span>
+            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Tài liệu PDF</span>
             <code className="ml-auto text-[11px] font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20 truncate max-w-[300px]">{pdfUrl}</code>
           </div>
           <div className="border border-border rounded-xl overflow-hidden bg-muted/30">
-            <iframe src={embedUrl} title="PDF Preview" className="w-full h-[300px]" allow="autoplay" />
+            <iframe src={embedUrl} title="Xem trước tài liệu PDF" className="w-full h-[300px]" allow="autoplay" />
           </div>
         </div>
       );
@@ -1189,7 +1189,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
 
     default:
       return (
-        <div className="text-sm text-muted-foreground">[{blockType}] — hover để Edit cấu hình</div>
+        <div className="text-sm text-muted-foreground">Loại nội dung này chưa có phần xem trước. Đưa chuột vào để sửa cài đặt.</div>
       );
   }
 }
@@ -1309,7 +1309,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Video className="h-4 w-4" />
-        <span>Câu hỏi kèm media chưa có nội dung.</span>
+        <span>Câu hỏi kèm hình/video chưa có nội dung.</span>
       </div>
     );
   }
@@ -1374,7 +1374,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
     if (!mediaUrl) {
       return (
         <div className="relative rounded-xl border-2 border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-          Câu hỏi này chưa có media.
+          Câu hỏi này chưa có hình/video.
         </div>
       );
     }
@@ -1391,7 +1391,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
       <div className="relative rounded-xl border border-border bg-background p-2">
         <img
           src={mediaUrl}
-          alt={question.media?.alt || 'Ảnh câu hỏi kèm media'}
+          alt={question.media?.alt || 'Ảnh câu hỏi kèm hình/video'}
           className="max-h-[260px] w-full rounded-lg object-contain"
         />
       </div>
@@ -1426,23 +1426,21 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
             return (
               <div
                 key={choice.id}
-                className={`group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all cursor-pointer ${
-                  submitted && isSelected
+                className={`group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all cursor-pointer ${submitted && isSelected
                     ? (isCorrect ? 'bg-green-500/5 ring-1 ring-green-500' : 'bg-red-500/5 ring-1 ring-red-500')
                     : isSelected
                       ? 'bg-primary/5 ring-1 ring-primary'
                       : 'bg-muted/40 hover:bg-muted/80'
-                } ${submitted ? 'cursor-default opacity-90' : ''} ${isLastOddChoice ? 'sm:col-span-2 sm:mx-auto sm:w-[calc(50%-0.375rem)]' : ''}`}
+                  } ${submitted ? 'cursor-default opacity-90' : ''} ${isLastOddChoice ? 'sm:col-span-2 sm:mx-auto sm:w-[calc(50%-0.375rem)]' : ''}`}
                 onClick={(event) => { event.stopPropagation(); toggleChoice(choice.id); }}
               >
                 <div
-                  className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-[16px] font-bold transition-colors ${
-                    submitted && isSelected
+                  className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-[16px] font-bold transition-colors ${submitted && isSelected
                       ? (isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white')
                       : isSelected
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-background text-foreground shadow-sm'
-                  }`}
+                    }`}
                 >
                   {labelLetter}
                 </div>
@@ -1588,7 +1586,7 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Video className="h-4 w-4" />
-        <span>Câu hỏi kèm media chưa có nội dung.</span>
+        <span>Câu hỏi kèm hình/video chưa có nội dung.</span>
       </div>
     );
   }
@@ -1634,7 +1632,7 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
               <Video className="h-4 w-4" />
             </div>
             <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
-              Câu hỏi kèm media - {questions.length} câu hỏi{modeSummary ? ` (${modeSummary})` : ''}
+              Câu hỏi kèm hình/video - {questions.length} câu hỏi{modeSummary ? ` (${modeSummary})` : ''}
             </span>
           </div>
           {questions.length > 1 && (
@@ -1644,11 +1642,10 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
                   key={item.id}
                   type="button"
                   onClick={(event) => { event.stopPropagation(); goToQuestion(index); }}
-                  className={`h-7 min-w-7 rounded-full px-2 text-xs font-bold transition-colors ${
-                    index === safeIndex
+                  className={`h-7 min-w-7 rounded-full px-2 text-xs font-bold transition-colors ${index === safeIndex
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
+                    }`}
                 >
                   {index + 1}
                 </button>
@@ -1666,14 +1663,14 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
             <div className="rounded-xl border border-border bg-background p-2">
               <img
                 src={mediaUrl}
-                alt={question.media?.alt || 'Ảnh câu hỏi kèm media'}
+                alt={question.media?.alt || 'Ảnh câu hỏi kèm hình/video'}
                 className="max-h-[260px] w-full rounded-lg object-contain"
               />
             </div>
           )
         ) : (
           <div className="rounded-xl border-2 border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-            Câu hỏi này chưa có media.
+            Câu hỏi này chưa có hình/video.
           </div>
         )}
 
@@ -1697,23 +1694,21 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
             return (
               <div
                 key={choice.id}
-                className={`group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all cursor-pointer ${
-                  submitted && showCorrectness
+                className={`group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all cursor-pointer ${submitted && showCorrectness
                     ? (isChoiceCorrect ? 'bg-green-500/5 ring-1 ring-green-500' : 'bg-red-500/5 ring-1 ring-red-500')
                     : isSelected
                       ? 'bg-primary/5 ring-1 ring-primary'
                       : 'bg-muted/40 hover:bg-muted/80'
-                } ${submitted ? 'cursor-default' : ''}`}
+                  } ${submitted ? 'cursor-default' : ''}`}
                 onClick={(event) => { event.stopPropagation(); toggleChoice(choice.id); }}
               >
                 <div
-                  className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-[16px] font-bold transition-colors ${
-                    submitted && showCorrectness
+                  className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl text-[16px] font-bold transition-colors ${submitted && showCorrectness
                       ? (isChoiceCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white')
                       : isSelected
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-background text-foreground shadow-sm'
-                  }`}
+                    }`}
                 >
                   {labelLetter}
                 </div>
@@ -2257,7 +2252,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             await cleanupCourseHtmlImages(courseId, removedPaths);
           } catch (err) {
             console.warn('Failed to cleanup removed HTML images:', err);
-            toast.warning('Đã lưu nội dung nhưng chưa xoá được một số ảnh khỏi storage.');
+            toast.warning('Đã lưu nội dung nhưng chưa xoá được một số ảnh khỏi nơi lưu trữ.');
           }
         }
         return updated;
@@ -2294,7 +2289,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
               await cleanupCourseMediaQuizAssets(courseId, removedPaths);
             } catch (err) {
               console.warn('Failed to cleanup removed Media Quiz assets:', err);
-              toast.warning('Đã lưu Media Quiz nhưng chưa xoá được một số media khỏi storage.');
+              toast.warning('Đã lưu câu hỏi kèm hình/video nhưng chưa xoá được một số tệp khỏi nơi lưu trữ.');
             }
           }
 
@@ -2374,15 +2369,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     const ytId = payloadMetadata.youtube_id_1_0 || '';
     const payloadData = videoPath
       ? {
-          url: videoPath,
-          video_url: videoPath,
-          encoded_videos: { fallback: { url: videoPath } },
-        }
+        url: videoPath,
+        video_url: videoPath,
+        encoded_videos: { fallback: { url: videoPath } },
+      }
       : {
-          url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
-          video_url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
-          encoded_videos: { youtube: { url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '' } },
-        };
+        url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
+        video_url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '',
+        encoded_videos: { youtube: { url: ytId ? `https://www.youtube.com/watch?v=${ytId}` : '' } },
+      };
 
     return { metadata: payloadMetadata, data: payloadData };
   };
@@ -2562,7 +2557,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
               onChange={e => setDisplayName(e.target.value)}
             />
             <p className="text-sm text-muted-foreground italic">
-              Chưa có editor cho [{category}].
+              Chưa có màn chỉnh sửa cho loại nội dung này.
             </p>
           </div>
         );

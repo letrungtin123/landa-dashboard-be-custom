@@ -29,7 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   fetchDocuments, uploadDocuments, deleteDocument, bulkDeleteDocuments, retryDocuments,
   uploadFaqDocument, downloadFaqTemplate,
-  createArticle, updateArticle, getArticle,
+  createArticle, updateArticle, getArticle, restoreKnowledgebase,
   type Knowledgebase, type KbDocument,
 } from "@/api/custom-ai-chatbot";
 import {
@@ -44,6 +44,8 @@ const TiptapEditor = lazy(() => import("@/components/shared/tiptap-editor"));
 // ═══════════════════════════════════════════════════════════════
 export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () => void }) {
   const [docTab, setDocTab] = useState("files");
+  const [restoringKb, setRestoringKb] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
 
   // Tự động quay lại KB list khi superadmin đổi tenant
   const activeTenantId = useTenantStore(s => s.activeTenantId);
@@ -53,6 +55,20 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
       onBack();
     }
   }, [activeTenantId, onBack]);
+
+  async function handleRestoreKb() {
+    setRestoreDialogOpen(false);
+    setRestoringKb(true);
+    try {
+      await restoreKnowledgebase(kb.id);
+      toast.success("Đã đưa kho tri thức vào hàng đợi khôi phục");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err.message || "Lỗi khôi phục kho tri thức");
+    } finally {
+      setRestoringKb(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -62,6 +78,38 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           <p className="text-sm text-muted-foreground">Quản lý tài liệu cho Knowledge Base</p>
         </div>
       </div>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={restoringKb}
+          onClick={() => setRestoreDialogOpen(true)}
+        >
+          {restoringKb ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Khôi phục lại kho tri thức
+        </Button>
+      </div>
+      <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Khôi phục lại kho tri thức</DialogTitle>
+            <DialogDescription>
+              File Search store cũ trên Gemini sẽ được xoá trước, sau đó hệ thống học lại các file gốc bằng key Google/Gemini hiện tại.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={restoringKb}>Huỷ</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleRestoreKb} disabled={restoringKb} className="gap-2">
+              {restoringKb && <Loader2 className="h-4 w-4 animate-spin" />}
+              Xác nhận khôi phục
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Tabs value={docTab} onValueChange={setDocTab}>
         <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="files" className="gap-2"><FileText className="h-4 w-4" /> Tệp tin</TabsTrigger>

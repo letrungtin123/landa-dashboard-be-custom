@@ -112,6 +112,13 @@ interface UploadResult {
   failed: number;
 }
 
+export interface RestoreKnowledgebaseResult {
+  queued: true;
+  job_id: string;
+  kb_id: string;
+  lock_ttl_seconds: number;
+}
+
 // ── Knowledge Base CRUD ──
 
 export interface FetchKbsParams {
@@ -142,6 +149,13 @@ export async function updateKnowledgebase(id: string, input: { name?: string; de
 
 export async function deleteKnowledgebase(id: string) {
   await customApiClient.delete(`/api/ai-chatbot/kb/${id}`);
+}
+
+export async function restoreKnowledgebase(id: string): Promise<RestoreKnowledgebaseResult> {
+  const { data } = await customApiClient.post<ApiResponse<RestoreKnowledgebaseResult>>(
+    `/api/ai-chatbot/kb/${id}/restore`,
+  );
+  return data.data;
 }
 
 // ── Document CRUD ──

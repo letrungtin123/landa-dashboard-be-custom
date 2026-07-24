@@ -5,10 +5,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Code2,
   Copy,
   Download,
   GripVertical,
+  KeyRound,
   Loader2,
+  LockKeyhole,
   Plus,
   QrCode,
   RefreshCw,
@@ -21,9 +24,14 @@ import {
 import { toast } from "sonner";
 import {
   fetchDemoLoginConfig,
+  fetchDemoIframeConfig,
   fetchEligibleDemoLearners,
+  fetchEligibleDemoIframeLearners,
+  regenerateDemoIframeEmbed,
   replaceDemoLoginAccounts,
+  updateDemoIframeConfig,
   updateDemoLoginConfig,
+  type DemoIframeConfig,
   type DemoLoginAccount,
   type EligibleDemoLearner,
 } from "@/api/custom-demo-login";
@@ -34,6 +42,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/utils/store";
 import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
@@ -78,6 +87,20 @@ function learnerToSelected(learner: EligibleDemoLearner): SelectedAccount {
     user_id: learner.id,
     username: learner.username,
     email: learner.email,
+    full_name: learner.full_name,
+    avatar_url: learner.avatar_url,
+    custom_label: null,
+    reserved_until: null,
+  };
+}
+
+function iframeLearnerToSelected(config: DemoIframeConfig | undefined): SelectedAccount | null {
+  const learner = config?.learner;
+  if (!learner?.id) return null;
+  return {
+    user_id: learner.id,
+    username: learner.username || "",
+    email: learner.email || "",
     full_name: learner.full_name,
     avatar_url: learner.avatar_url,
     custom_label: null,
@@ -181,6 +204,11 @@ export default function DemoLoginSettingsPage() {
   const [selectedAccounts, setSelectedAccounts] = useState<SelectedAccount[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [iframeEnabled, setIframeEnabled] = useState(false);
+  const [iframeAllowedOrigin, setIframeAllowedOrigin] = useState("");
+  const [iframeLearner, setIframeLearner] = useState<SelectedAccount | null>(null);
+  const [iframeSearch, setIframeSearch] = useState("");
+  const [debouncedIframeSearch, setDebouncedIframeSearch] = useState("");
 
   useEffect(() => {
     if (user?.role === "superadmin" && tenants.length === 0) {
@@ -193,11 +221,23 @@ export default function DemoLoginSettingsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedIframeSearch(iframeSearch.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [iframeSearch]);
+
   const configQueryKey = useMemo(() => ["demo-login-config", activeTenantId], [activeTenantId]);
+  const iframeConfigQueryKey = useMemo(() => ["demo-iframe-config", activeTenantId], [activeTenantId]);
 
   const { data: config, isLoading, isFetching } = useQuery({
     queryKey: configQueryKey,
     queryFn: () => fetchDemoLoginConfig(activeTenantId!),
+    enabled: user?.role === "superadmin" && !!activeTenantId,
+  });
+
+  const iframeConfigQuery = useQuery({
+    queryKey: iframeConfigQueryKey,
+    queryFn: () => fetchDemoIframeConfig(activeTenantId!),
     enabled: user?.role === "superadmin" && !!activeTenantId,
   });
 
@@ -211,6 +251,16 @@ export default function DemoLoginSettingsPage() {
     enabled: user?.role === "superadmin" && !!activeTenantId,
   });
 
+  const iframeLearnerQuery = useQuery({
+    queryKey: ["demo-iframe-eligible-learners", activeTenantId, debouncedIframeSearch],
+    queryFn: () => fetchEligibleDemoIframeLearners(activeTenantId!, {
+      search: debouncedIframeSearch || undefined,
+      page: 1,
+      page_size: 6,
+    }),
+    enabled: user?.role === "superadmin" && !!activeTenantId,
+  });
+
   useEffect(() => {
     if (!config) return;
     setEnabled(config.settings.is_enabled);
@@ -218,6 +268,14 @@ export default function DemoLoginSettingsPage() {
     setTtlSeconds(config.settings.reservation_ttl_seconds);
     setSelectedAccounts(config.accounts.map(toSelectedAccount));
   }, [config]);
+
+  useEffect(() => {
+    const iframeConfig = iframeConfigQuery.data;
+    if (!iframeConfig) return;
+    setIframeEnabled(iframeConfig.settings.is_enabled);
+    setIframeAllowedOrigin(iframeConfig.settings.allowed_origin || "");
+    setIframeLearner(iframeLearnerToSelected(iframeConfig));
+  }, [iframeConfigQuery.data]);
 
   const saveAllMutation = useMutation({
     mutationFn: async () => {
@@ -244,6 +302,33 @@ export default function DemoLoginSettingsPage() {
     },
   });
 
+  const saveIframeMutation = useMutation({
+    mutationFn: () => updateDemoIframeConfig(activeTenantId!, {
+      is_enabled: iframeEnabled,
+      allowed_origin: iframeAllowedOrigin.trim() || null,
+      demo_user_id: iframeLearner?.user_id || null,
+    }),
+    onSuccess: (nextConfig) => {
+      toast.success("Đã lưu cấu hình demo iframe");
+      queryClient.setQueryData(iframeConfigQueryKey, nextConfig);
+      queryClient.invalidateQueries({ queryKey: ["demo-iframe-eligible-learners", activeTenantId] });
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, "Không thể lưu cấu hình demo iframe"));
+    },
+  });
+
+  const regenerateIframeMutation = useMutation({
+    mutationFn: () => regenerateDemoIframeEmbed(activeTenantId!),
+    onSuccess: (nextConfig) => {
+      toast.success("Đã tạo lại mã nhúng demo iframe");
+      queryClient.setQueryData(iframeConfigQueryKey, nextConfig);
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, "Không thể tạo lại mã nhúng"));
+    },
+  });
+
   const demoUrl = buildDemoUrl(config?.tenant.domain_learner);
   const qrSvg = useMemo(() => {
     if (!demoUrl) return null;
@@ -255,8 +340,14 @@ export default function DemoLoginSettingsPage() {
   }, [demoUrl]);
   const selectedIds = useMemo(() => new Set(selectedAccounts.map((account) => account.user_id)), [selectedAccounts]);
   const eligibleLearners = (learnerQuery.data?.data || []).filter((learner) => !selectedIds.has(learner.id));
+  const iframeEligibleLearners = (iframeLearnerQuery.data?.data || []).filter((learner) => learner.id !== iframeLearner?.user_id);
   const canAddMore = selectedAccounts.length < maxAccounts;
   const hasUnsavedCountOverLimit = selectedAccounts.length > maxAccounts;
+  const iframeEmbedUrl = iframeConfigQuery.data?.settings.embed_url || "";
+  const iframeCode = iframeConfigQuery.data?.settings.iframe_code || "";
+  const iframeSaveDisabled = !activeTenantId
+    || saveIframeMutation.isPending
+    || (iframeEnabled && (!iframeAllowedOrigin.trim() || !iframeLearner));
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -313,6 +404,30 @@ export default function DemoLoginSettingsPage() {
       toast.success("Đã tải ảnh QR demo");
     } catch (error) {
       toast.error(errorMessage(error, "Không thể tải ảnh QR"));
+    }
+  }
+
+  function selectIframeLearner(learner: EligibleDemoLearner) {
+    setIframeLearner(learnerToSelected(learner));
+  }
+
+  async function copyIframeCode() {
+    if (!iframeCode) return;
+    try {
+      await navigator.clipboard.writeText(iframeCode);
+      toast.success("Đã sao chép mã iframe");
+    } catch {
+      toast.error("Không thể sao chép mã iframe");
+    }
+  }
+
+  async function copyIframeUrl() {
+    if (!iframeEmbedUrl) return;
+    try {
+      await navigator.clipboard.writeText(iframeEmbedUrl);
+      toast.success("Đã sao chép iframe URL");
+    } catch {
+      toast.error("Không thể sao chép iframe URL");
     }
   }
 
@@ -514,6 +629,160 @@ export default function DemoLoginSettingsPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="border-b bg-muted/25">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Code2 className="h-5 w-5 text-primary" />
+                    Demo iframe nhúng FE 5173
+                  </CardTitle>
+                  <CardDescription>Mỗi tenant có một domain được phép nhúng và một learner có role learner.</CardDescription>
+                </div>
+                <div className="flex items-center gap-3">
+                  {iframeConfigQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                  <Switch checked={iframeEnabled} onCheckedChange={setIframeEnabled} />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-5 p-5 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="demo-iframe-origin">Domain khách hàng được demo</Label>
+                    <Input
+                      id="demo-iframe-origin"
+                      value={iframeAllowedOrigin}
+                      onChange={(event) => setIframeAllowedOrigin(event.target.value)}
+                      placeholder="https://khachhang.com"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => saveIframeMutation.mutate()}
+                    disabled={iframeSaveDisabled}
+                    className="md:w-36"
+                  >
+                    {saveIframeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Lưu iframe
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border bg-background p-4">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      {iframeLearner ? (
+                        <>
+                          <Avatar account={iframeLearner} />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{displayName(iframeLearner)}</p>
+                            <p className="truncate text-xs text-muted-foreground">{iframeLearner.email}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                            <KeyRound className="h-4 w-4" />
+                          </div>
+                          Chưa chọn learner demo iframe
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <LockKeyhole className="h-4 w-4" />
+                      {iframeEnabled && iframeLearner ? "Tài khoản learner sẽ bị khóa CRUD khi lưu" : "Bật iframe để khóa tài khoản"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={iframeSearch}
+                      onChange={(event) => setIframeSearch(event.target.value)}
+                      placeholder="Tìm learner có role learner cho iframe"
+                      className="pl-9"
+                    />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {iframeLearnerQuery.isLoading ? (
+                      [1, 2].map((item) => <Skeleton key={item} className="h-20" />)
+                    ) : iframeEligibleLearners.length === 0 ? (
+                      <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground md:col-span-2">
+                        Không tìm thấy learner phù hợp.
+                      </div>
+                    ) : (
+                      iframeEligibleLearners.map((learner) => {
+                        const selectedShape = learnerToSelected(learner);
+                        return (
+                          <button
+                            key={learner.id}
+                            type="button"
+                            className="flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                            onClick={() => selectIframeLearner(learner)}
+                          >
+                            <span className="flex min-w-0 items-center gap-3">
+                              <Avatar account={selectedShape} />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold">{displayName(selectedShape)}</span>
+                                <span className="block truncate text-xs text-muted-foreground">{learner.email}</span>
+                              </span>
+                            </span>
+                            <Plus className="h-4 w-4 text-primary" />
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/20 p-4">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">Iframe URL</p>
+                      <p className="truncate text-xs text-muted-foreground">{iframeEmbedUrl || "Lưu cấu hình để tạo URL nhúng"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={copyIframeUrl} disabled={!iframeEmbedUrl}>
+                      <Copy className="h-4 w-4" />
+                      Sao chép URL
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={iframeCode || ""}
+                    readOnly
+                    rows={7}
+                    placeholder="Iframe code sẽ xuất hiện sau khi lưu domain và learner."
+                    className="font-mono text-xs"
+                  />
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Button variant="outline" onClick={copyIframeCode} disabled={!iframeCode}>
+                      <Copy className="h-4 w-4" />
+                      Sao chép mã iframe
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => regenerateIframeMutation.mutate()}
+                      disabled={!activeTenantId || regenerateIframeMutation.isPending}
+                    >
+                      {regenerateIframeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Tạo lại mã nhúng
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <p className="font-semibold">Chế độ demo vỏ rỗng</p>
+                  <p className="mt-1">
+                    Learner iframe tự đăng nhập, đọc nội dung API bình thường, nhưng không ghi tiến độ, ghi danh,
+                    trạng thái modal, thời gian học, bài nộp assignment hoặc huy hiệu vào database.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="border-b bg-muted/25">

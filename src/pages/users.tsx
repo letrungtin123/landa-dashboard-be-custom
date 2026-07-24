@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck, LockKeyhole } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { format } from 'date-fns';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
@@ -120,7 +120,15 @@ export default function UsersPage() {
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
 
+  function isDemoIframeLocked(user: CustomUser) {
+    return user.is_demo_iframe_active === true;
+  }
+
   function handleDeactivate(user: CustomUser) {
+    if (isDemoIframeLocked(user)) {
+      toast.warning('Learner này đang được khóa cho demo iframe');
+      return;
+    }
     confirmDialog({
       title: 'Vô hiệu hóa tài khoản',
       description: `Bạn có chắc muốn vô hiệu hóa ${user.username}? Người dùng này sẽ không thể đăng nhập.`,
@@ -130,6 +138,10 @@ export default function UsersPage() {
   }
 
   function handleHardDelete(user: CustomUser) {
+    if (isDemoIframeLocked(user)) {
+      toast.warning('Learner này đang được khóa cho demo iframe');
+      return;
+    }
     confirmDialog({
       title: 'Xóa vĩnh viễn tài khoản',
       description: `Bạn có chắc muốn xóa vĩnh viễn "${user.full_name || user.username}"? Toàn bộ dữ liệu (tiến độ học, nhóm, quyền) sẽ bị xóa và KHÔNG thể khôi phục.`,
@@ -234,6 +246,7 @@ export default function UsersPage() {
               ) : (
                 users.map(function renderRow(u) {
                   const statusKey = u.is_active ? 'active' : 'inactive';
+                  const demoIframeLocked = isDemoIframeLocked(u);
 
                   // Role-based actions logic
                   let canEditDelete = true;
@@ -243,6 +256,9 @@ export default function UsersPage() {
                     }
                   }
                   if (!isSuperadmin && u.role === 'superadmin') {
+                    canEditDelete = false;
+                  }
+                  if (demoIframeLocked) {
                     canEditDelete = false;
                   }
 
@@ -313,10 +329,14 @@ export default function UsersPage() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md">
-                                  <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
+                                  {demoIframeLocked ? (
+                                    <LockKeyhole className="h-4 w-4 text-amber-500" />
+                                  ) : (
+                                    <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
+                                  )}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>Không có quyền</TooltipContent>
+                              <TooltipContent>{demoIframeLocked ? 'Đang khóa bởi demo iframe' : 'Không có quyền'}</TooltipContent>
                             </Tooltip>
                           ) : (
                             <>

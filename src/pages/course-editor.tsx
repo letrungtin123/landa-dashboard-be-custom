@@ -211,7 +211,7 @@ export default function CourseEditorPage() {
 
       const path = findBlockPath(courseStructure, blockId);
       if (!path) {
-        toast.error('Không tìm thấy phần được chọn trong outline hiện tại');
+        toast.error('Không tìm thấy phần được chọn trong mục lục hiện tại');
         return;
       }
 
@@ -272,9 +272,9 @@ export default function CourseEditorPage() {
         <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-5 rounded-xl flex gap-3">
           <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
           <div>
-            <h3 className="font-semibold">Lỗi tải outline</h3>
+            <h3 className="font-semibold">Lỗi tải mục lục</h3>
             <p className="text-sm mt-1 opacity-80">
-              Không thể kết nối đến CMS Studio. Kiểm tra lại kết nối và quyền truy cập.
+              Không thể kết nối đến hệ thống soạn bài. Kiểm tra lại kết nối và quyền truy cập.
             </p>
           </div>
         </div>
@@ -382,8 +382,8 @@ export default function CourseEditorPage() {
               </svg>
             </div>
             <div className="text-center">
-              <p className="text-base font-medium">Chưa chọn Unit nào</p>
-              <p className="text-sm opacity-60 mt-1">Chọn Unit ở sidebar trái để bắt đầu chỉnh sửa</p>
+              <p className="text-base font-medium">Chưa chọn bài học nào</p>
+              <p className="text-sm opacity-60 mt-1">Chọn một bài học ở cột bên trái để bắt đầu chỉnh sửa</p>
             </div>
           </div>
         )}

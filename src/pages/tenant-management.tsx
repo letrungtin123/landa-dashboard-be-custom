@@ -249,9 +249,9 @@ export default function TenantManagementPage() {
     setSaving(true);
     try {
       const updSettings: Record<string, unknown> = { ...(editTenant.settings || {}) };
-      if (formGeminiApiKey.trim()) {
-        updSettings.gemini_api_key = formGeminiApiKey.trim();
-      }
+      const nextGeminiApiKey = formGeminiApiKey.trim();
+      if (nextGeminiApiKey) updSettings.gemini_api_key = nextGeminiApiKey;
+      else delete updSettings.gemini_api_key;
       await updateTenant(editTenant.id, {
         name: formName,
         slug: formSlug,

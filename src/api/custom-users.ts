@@ -24,6 +24,7 @@ export interface CustomUser {
   tenant_name: string | null;
   last_login_at: string | null;
   created_at: string;
+  is_demo_iframe_active?: boolean;
   permission_groups?: { id: string; name: string }[];
   permission_group_id?: string | null;
   permission_group_name?: string | null;

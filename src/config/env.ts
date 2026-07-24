@@ -36,6 +36,86 @@ function requireUrl(key: string, allowEmpty = false): string {
   return url.replace(/\/+$/, "");
 }
 
+function getRuntimeOrigin(): string {
+  return typeof window !== "undefined" ? window.location.origin : "";
+}
+
+function parseUrl(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+function isSameOriginToken(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "auto" || normalized === "same-origin" || normalized === "self";
+}
+
+function resolvePublicOrigin(): string {
+  const runtimeOrigin = getRuntimeOrigin();
+  const raw = (import.meta.env.VITE_PUBLIC_ORIGIN || "").trim();
+
+  if (!raw || isSameOriginToken(raw)) {
+    if (runtimeOrigin) return runtimeOrigin;
+    throw new Error("[ENV] VITE_PUBLIC_ORIGIN must be set when runtime origin is unavailable.");
+  }
+
+  const candidates: string[] = raw.split(",").map((item: string) => item.trim()).filter(Boolean);
+  const runtimeUrl = runtimeOrigin ? parseUrl(runtimeOrigin) : null;
+
+  if (runtimeUrl) {
+    const matchingCandidate = candidates
+      .map((candidate: string) => parseUrl(candidate))
+      .find((candidate: URL | null): candidate is URL => candidate !== null && candidate.hostname === runtimeUrl.hostname);
+
+    if (matchingCandidate) {
+      return runtimeUrl.protocol === "https:" && matchingCandidate.protocol === "http:"
+        ? runtimeOrigin
+        : matchingCandidate.origin;
+    }
+
+    return runtimeOrigin;
+  }
+
+  const firstValid = candidates
+    .map((candidate: string) => parseUrl(candidate))
+    .find((candidate: URL | null): candidate is URL => candidate !== null);
+  if (firstValid) return firstValid.origin;
+
+  throw new Error(`[ENV] VITE_PUBLIC_ORIGIN is not valid: "${raw}"`);
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function resolveCustomApiUrl(): string {
+  const raw = (import.meta.env.VITE_CUSTOM_API_URL || "").trim();
+  const runtimeOrigin = getRuntimeOrigin();
+
+  if (isSameOriginToken(raw)) {
+    if (runtimeOrigin) return runtimeOrigin;
+    throw new Error("[ENV] VITE_CUSTOM_API_URL uses same-origin, but runtime origin is unavailable.");
+  }
+
+  const configuredUrl = requireUrl("VITE_CUSTOM_API_URL");
+  const parsed = parseUrl(configuredUrl);
+
+  if (
+    runtimeOrigin &&
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    parsed?.protocol === "http:" &&
+    !isLoopbackHost(parsed.hostname)
+  ) {
+    return runtimeOrigin;
+  }
+
+  return configuredUrl;
+}
+
 export const config = {
   // Cho phép lấy từ env nếu có, nếu không thì fallback về origin hiện tại
   get lmsBaseUrl(): string {
@@ -57,7 +137,9 @@ export const config = {
     "https://login.microsoftonline.com/common"
   ).trim(),
 
-  publicOrigin: (import.meta.env.VITE_PUBLIC_ORIGIN || window.location.origin).trim(),
+  get publicOrigin(): string {
+    return resolvePublicOrigin();
+  },
 
   /** Keycloak OIDC Authority URL — tùy chọn, không crash nếu thiếu */
   keycloakAuthority: (import.meta.env.VITE_KEYCLOAK_AUTHORITY || "").trim(),
@@ -66,7 +148,9 @@ export const config = {
   keycloakClientId: (import.meta.env.VITE_KEYCLOAK_CLIENT_ID || "").trim(),
 
   /** Custom Express Backend URL — bắt buộc cho auth mới */
-  customApiUrl: requireUrl("VITE_CUSTOM_API_URL"),
+  get customApiUrl(): string {
+    return resolveCustomApiUrl();
+  },
 
   get apiBaseUrl(): string {
     return "";

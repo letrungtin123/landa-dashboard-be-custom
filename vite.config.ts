@@ -34,6 +34,11 @@ export default defineConfig(({ mode }) => {
       target: backendProxyTarget,
       changeOrigin: true,
     },
+    '/cms-api': {
+      target: cmsProxyTarget,
+      changeOrigin: true,
+      rewrite: (requestPath: string) => requestPath.replace(/^\/cms-api/, ''),
+    },
     // Vẫn giữ lại proxy cho các asset của edX cũ nếu frontend còn link cứng đến đó
     '/asset-v1:': { target: lmsProxyTarget, changeOrigin: true },
     '/c4x/':      { target: lmsProxyTarget, changeOrigin: true },
@@ -99,4 +104,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-

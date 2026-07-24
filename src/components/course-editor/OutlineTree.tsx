@@ -138,7 +138,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
   if (isError || !structure) {
     return (
       <div className="p-3 text-xs text-destructive bg-destructive/10 rounded-md m-2">
-        Lỗi tải outline. Kiểm tra kết nối CMS.
+        Lỗi tải mục lục. Kiểm tra lại kết nối hệ thống.
       </div>
     );
   }
@@ -166,7 +166,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
       <AddNodeButton
         parentId={structure.id}
         category="chapter"
-        label="Thêm Section"
+        label="Thêm chương"
         onStructureChange={notifyStructureChange}
       />
       <AssignmentOutlineSection courseId={courseId} />
@@ -275,7 +275,7 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBloc
           <AddNodeButton
             parentId={node.id}
             category="sequential"
-            label="Thêm Subsection"
+            label="Thêm mục"
             onStructureChange={onStructureChange}
             small
           />
@@ -336,7 +336,7 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, on
           <AddNodeButton
             parentId={node.id}
             category="vertical"
-            label="Thêm Unit"
+            label="Thêm bài học"
             onStructureChange={onStructureChange}
             small
           />
@@ -465,7 +465,7 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
       {!isRenaming && (
         <span 
           className="shrink-0" 
-          title={!node.published ? 'Bản nháp (Draft)' : node.has_changes ? 'Đã xuất bản (Có thay đổi chưa public)' : 'Đã xuất bản'}
+          title={!node.published ? 'Bản đang sửa' : node.has_changes ? 'Đã công khai, có thay đổi chưa công khai' : 'Đã công khai'}
         >
           {!node.published ? (
             <EyeOff className="h-3 w-3 text-slate-400" />
@@ -555,19 +555,19 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 
   const publishMut = useMutation({
     mutationFn: () => publishBlock(node.id),
-    onSuccess: () => { toast.success('Đã publish'); onStructureChange(); },
-    onError: () => toast.error('Publish thất bại'),
+    onSuccess: () => { toast.success('Đã công khai'); onStructureChange(); },
+    onError: () => toast.error('Công khai thất bại'),
   });
 
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(node.id),
     onSuccess: () => {
-      toast.success('Đã rollback về bản publish');
+      toast.success('Đã khôi phục về bản đã công khai');
       onStructureChange();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
     },
-    onError: () => toast.error('Rollback thất bại'),
+    onError: () => toast.error('Khôi phục thất bại'),
   });
 
   return (
@@ -584,17 +584,17 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
           </DropdownMenuItem>
           {depth === 0 && (
             <DropdownMenuItem onClick={() => setShowSectionModal(true)}>
-              <Sparkles className="h-3.5 w-3.5 mr-2" /> Modal khích lệ
+              <Sparkles className="h-3.5 w-3.5 mr-2" /> Lời chúc hoàn thành
             </DropdownMenuItem>
           )}
           {(!node.published || node.has_changes) && (
             <DropdownMenuItem onClick={() => publishMut.mutate()}>
-              <Globe className="h-3.5 w-3.5 mr-2" /> Publish
+              <Globe className="h-3.5 w-3.5 mr-2" /> Công khai
             </DropdownMenuItem>
           )}
           {node.published && node.has_changes && (
             <DropdownMenuItem onClick={() => setShowRollbackDialog(true)}>
-              <Undo2 className="h-3.5 w-3.5 mr-2" /> Rollback
+              <Undo2 className="h-3.5 w-3.5 mr-2" /> Khôi phục
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -629,15 +629,15 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
       <AlertDialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Rollback về bản publish</AlertDialogTitle>
+            <AlertDialogTitle>Khôi phục về bản đã công khai</AlertDialogTitle>
             <AlertDialogDescription>
-              Data draft của <span className="font-semibold text-foreground">"{node.display_name}"</span> sẽ bị revert về bản publish gần nhất. Các thay đổi chưa publish sẽ bị mất.
+              Nội dung đang sửa của <span className="font-semibold text-foreground">"{node.display_name}"</span> sẽ được đưa về bản đã công khai gần nhất. Các thay đổi chưa công khai sẽ bị mất.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction onClick={() => rollbackMut.mutate()}>
-              Rollback
+              Khôi phục
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -855,7 +855,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa bài tập</AlertDialogTitle>
             <AlertDialogDescription>
-              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi outline và học viên.
+              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi mục lục và học viên.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -929,7 +929,7 @@ function AssignmentDialog({
     event.target.value = '';
     if (!file) return;
     if (file.size > MAX_ASSIGNMENT_ATTACHMENT_SIZE_BYTES) {
-      toast.error('File đính kèm không được vượt quá 25MB');
+      toast.error('Tệp đính kèm không được vượt quá 25MB');
       return;
     }
     setAttachmentFile(file);
@@ -1096,14 +1096,14 @@ function AssignmentDialog({
                   <div className="min-w-0">
                     <Label className="flex items-center gap-2 text-sm">
                       <Paperclip className="h-4 w-4 text-primary" />
-                      File đính kèm
+                      Tệp đính kèm
                     </Label>
                     <div className="mt-1 text-xs font-medium text-muted-foreground">
-                      Chỉ 1 file, tối đa 25MB, hỗ trợ mọi loại file.
+                      Chỉ 1 tệp, tối đa 25MB, hỗ trợ mọi loại tệp.
                     </div>
                   </div>
                   <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => attachmentInputRef.current?.click()}>
-                    Chọn file
+                    Chọn tệp
                   </Button>
                 </div>
 
@@ -1115,7 +1115,7 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{attachmentFile.name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(attachmentFile.size)}</div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa file">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa tệp">
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1126,13 +1126,13 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{existingAttachment.original_name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(existingAttachment.size_bytes)}</div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa file">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa tệp">
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed px-3 py-3 text-xs font-medium text-muted-foreground">
-                      Chưa có file đính kèm.
+                      Chưa có tệp đính kèm.
                     </div>
                   )}
                 </div>
@@ -1181,6 +1181,13 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
 }) {
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
+  const typeLabel = category === 'chapter'
+    ? 'chương'
+    : category === 'sequential'
+      ? 'mục'
+      : category === 'vertical'
+        ? 'bài học'
+        : 'nội dung';
 
   const addMut = useMutation({
     mutationFn: () => createBlock(parentId, category, name || undefined),
@@ -1202,7 +1209,7 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
         <input
           autoFocus
           className="flex h-7 flex-1 rounded border border-input bg-background px-2 text-xs shadow-sm"
-          placeholder={`Tên ${category}...`}
+          placeholder={`Tên ${typeLabel}...`}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -1273,7 +1280,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
       description: form.description ?? '',
     }),
     onSuccess: () => {
-      toast.success('Đã lưu cấu hình modal khích lệ');
+      toast.success('Đã lưu lời chúc hoàn thành');
       queryClient.invalidateQueries({ queryKey: ['section-modal-config', courseId, sectionId] });
       onClose();
     },
@@ -1288,7 +1295,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
         <DialogHeader>
           <DialogTitle className="text-lg flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-amber-500" />
-            Modal khích lệ — Section
+            Lời chúc hoàn thành chương
           </DialogTitle>
           <p className="text-xs text-muted-foreground truncate" title={sectionName}>{sectionName}</p>
         </DialogHeader>
@@ -1301,7 +1308,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
         ) : (
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Bật popup khích lệ</Label>
+              <Label className="text-sm font-semibold">Hiện lời chúc khi hoàn thành</Label>
               <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => updateField('enabled', v)}
@@ -1341,7 +1348,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
               (form.enabled && (!form.title?.trim() || !form.description?.trim()))
             }
           >
-            {saveMut.isPending ? 'Đang lưu...' : 'Lưu cấu hình'}
+            {saveMut.isPending ? 'Đang lưu...' : 'Lưu'}
           </Button>
         </DialogFooter>
       </DialogContent>
