@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Trash2, Search, Loader2, Upload, FileText, FolderOpen, ArrowLeft,
-  RotateCcw, Filter, Download, FileSpreadsheet, FileEdit, Plus, Pencil, RefreshCw,
+  RotateCcw, Filter, Download, FileSpreadsheet, FileEdit, Plus, Pencil, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
-  fetchDocuments, uploadDocuments, deleteDocument, bulkDeleteDocuments, retryDocuments,
+  fetchDocuments, fetchKnowledgebase, uploadDocuments, deleteDocument, bulkDeleteDocuments, retryDocuments,
   uploadFaqDocument, downloadFaqTemplate,
   createArticle, updateArticle, getArticle, restoreKnowledgebase,
   type Knowledgebase, type KbDocument,
@@ -46,6 +46,32 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
   const [docTab, setDocTab] = useState("files");
   const [restoringKb, setRestoringKb] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [kbState, setKbState] = useState(kb);
+
+  const restoreState = kbState.restore_state || "idle";
+  const restoreActive = restoreState === "queued" || restoreState === "restoring" || restoreState === "uploading";
+  const restoreRequired = Boolean(kbState.restore_required);
+  const restoreProgress = kbState.restore_progress;
+  const restoreDone = restoreProgress
+    ? restoreProgress.learned_docs + restoreProgress.failed_docs + restoreProgress.skipped_docs
+    : 0;
+  const restoreTotal = restoreProgress?.total_docs || 0;
+
+  useEffect(() => { setKbState(kb); }, [kb]);
+
+  const refreshKbState = useCallback(async () => {
+    try {
+      setKbState(await fetchKnowledgebase(kb.id));
+    } catch {
+      // Non-critical; document polling still works.
+    }
+  }, [kb.id]);
+
+  useEffect(() => {
+    if (!restoreActive && !restoringKb) return;
+    const timer = window.setInterval(refreshKbState, 3000);
+    return () => window.clearInterval(timer);
+  }, [restoreActive, restoringKb, refreshKbState]);
 
   // Tự động quay lại KB list khi superadmin đổi tenant
   const activeTenantId = useTenantStore(s => s.activeTenantId);
@@ -60,7 +86,8 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
     setRestoreDialogOpen(false);
     setRestoringKb(true);
     try {
-      await restoreKnowledgebase(kb.id);
+      await restoreKnowledgebase(kbState.id);
+      await refreshKbState();
       toast.success("Đã đưa kho tri thức vào hàng đợi khôi phục");
     } catch (err: any) {
       toast.error(err?.response?.data?.message || err.message || "Lỗi khôi phục kho tri thức");
@@ -74,10 +101,33 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack} className="gap-1.5"><ArrowLeft className="h-4 w-4" /> Quay lại</Button>
         <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2"><FolderOpen className="h-5 w-5 text-primary" /> {kb.name}</h3>
+          <h3 className="text-lg font-semibold flex items-center gap-2"><FolderOpen className="h-5 w-5 text-primary" /> {kbState.name}</h3>
           <p className="text-sm text-muted-foreground">Quản lý tài liệu cho Knowledge Base</p>
         </div>
       </div>
+      {(restoreRequired || restoreActive || restoreState === "failed") && (
+        <div className={`rounded-lg border p-4 ${restoreActive ? "border-amber-300 bg-amber-50 text-amber-950" : "border-destructive/30 bg-destructive/5 text-destructive"}`}>
+          <div className="flex items-start gap-3">
+            {restoreActive ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <AlertTriangle className="mt-0.5 h-5 w-5" />}
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="text-sm font-semibold">
+                {restoreActive ? "Kho tri thức đang được khôi phục" : "Kho tri thức cần khôi phục"}
+              </div>
+              <p className="text-sm opacity-90">
+                {restoreActive
+                  ? "Hệ thống đang tạo store mới và học lại tài liệu bằng key Google/Gemini hiện tại. Tạm thời không thể upload, xoá hoặc sửa tài liệu."
+                  : (kbState.restore_error_reason || kbState.restore_reason || "Key Google/Gemini đã thay đổi hoặc store hiện tại không còn truy cập được.")}
+              </p>
+              {restoreProgress && (
+                <div className="text-xs opacity-80">
+                  Tiến độ: {restoreDone}/{restoreTotal} tài liệu · thành công {restoreProgress.learned_docs} · lỗi {restoreProgress.failed_docs} · bỏ qua {restoreProgress.skipped_docs}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {restoreRequired && !restoreActive && (
       <div className="flex justify-end">
         <Button
           type="button"
@@ -91,12 +141,13 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           Khôi phục lại kho tri thức
         </Button>
       </div>
+      )}
       <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Khôi phục lại kho tri thức</DialogTitle>
             <DialogDescription>
-              File Search store cũ trên Gemini sẽ được xoá trước, sau đó hệ thống học lại các file gốc bằng key Google/Gemini hiện tại.
+              Hệ thống sẽ tạo File Search store mới bằng key Google/Gemini hiện tại và học lại các file gốc đang có trong kho. Store cũ không truy cập được bằng key mới sẽ được ghi nhận riêng để tránh mismatch.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -116,9 +167,9 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           <TabsTrigger value="faqs" className="gap-2"><FileSpreadsheet className="h-4 w-4" /> Câu hỏi</TabsTrigger>
           <TabsTrigger value="articles" className="gap-2"><FileEdit className="h-4 w-4" /> Bài viết</TabsTrigger>
         </TabsList>
-        <TabsContent value="files" className="mt-4"><FilesSubTab kb={kb} /></TabsContent>
-        <TabsContent value="faqs" className="mt-4"><FaqsSubTab kb={kb} /></TabsContent>
-        <TabsContent value="articles" className="mt-4"><ArticlesSubTab kb={kb} /></TabsContent>
+        <TabsContent value="files" className="mt-4"><FilesSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
+        <TabsContent value="faqs" className="mt-4"><FaqsSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
+        <TabsContent value="articles" className="mt-4"><ArticlesSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
       </Tabs>
     </div>
   );
@@ -127,7 +178,7 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
 // ───────────────────────────────────────
 // Files Sub-Tab
 // ───────────────────────────────────────
-function FilesSubTab({ kb }: { kb: Knowledgebase }) {
+function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -160,6 +211,7 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
   const errorSelected = docs.filter(d => selectedIds.has(d.id) && d.status === "error");
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể upload"); return; }
     const fl = e.target.files; if (!fl || fl.length === 0) return;
     const files = Array.from(fl); if (files.length > 20) { toast.error("Tối đa 20 file"); return; }
     setUploading(true);
@@ -168,6 +220,7 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
   async function handleBulkDelete() {
+    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể xoá tài liệu"); return; }
     if (!selectedIds.size) return;
     const idsToDelete = Array.from(selectedIds);
     setConfirmBulkDelete(false);
@@ -177,8 +230,8 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
     catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi xoá"); }
     finally { loadDocs(); }
   }
-  async function handleRetry() { const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); setSelectedIds(new Set()); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
-  async function handleRetryAll() { const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
+  async function handleRetry() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể retry"); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); setSelectedIds(new Set()); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
+  async function handleRetryAll() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể retry"); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
 
   const hasErrors = docs.some(d => d.status === "error");
   const totalPages = Math.ceil(total / pageSize);
@@ -189,7 +242,7 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
         <span className="text-sm text-muted-foreground">{total} file</span>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên</Button>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên</Button>
           <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.csv" multiple onChange={handleUpload} />
         </div>
       </div>
@@ -202,16 +255,16 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
       {someSelected && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
         <span className="text-sm font-medium">{selectedIds.size} đã chọn</span>
         <div className="flex gap-2 ml-auto">
-          {errorSelected.length > 0 && <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying} className="gap-1.5">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry ({errorSelected.length})</Button>}
-          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> Xoá ({selectedIds.size})</Button>
+          {errorSelected.length > 0 && <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying || restoreLocked} className="gap-1.5">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry ({errorSelected.length})</Button>}
+          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} disabled={restoreLocked} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> Xoá ({selectedIds.size})</Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Bỏ chọn</Button>
         </div>
       </motion.div>}
-      {hasErrors && !someSelected && <Button variant="outline" size="sm" onClick={handleRetryAll} disabled={retrying} className="gap-1.5 text-orange-500 border-orange-500/30 hover:bg-orange-500/10">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry tất cả lỗi</Button>}
+      {hasErrors && !someSelected && <Button variant="outline" size="sm" onClick={handleRetryAll} disabled={retrying || restoreLocked} className="gap-1.5 text-orange-500 border-orange-500/30 hover:bg-orange-500/10">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry tất cả lỗi</Button>}
 
       <div className="rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={6} rows={5} />
-        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} />}
+        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} restoreLocked={restoreLocked} />}
       </div>
       <PaginationBar page={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={s => { setPageSize(s); setPage(1); }} />
 
@@ -225,7 +278,7 @@ function FilesSubTab({ kb }: { kb: Knowledgebase }) {
 // ───────────────────────────────────────
 // FAQs Sub-Tab
 // ───────────────────────────────────────
-function FaqsSubTab({ kb }: { kb: Knowledgebase }) {
+function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -250,6 +303,7 @@ function FaqsSubTab({ kb }: { kb: Knowledgebase }) {
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể upload FAQ"); return; }
     const file = e.target.files?.[0]; if (!file) return;
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (ext !== '.xlsx' && ext !== '.xls') { toast.error("Chỉ hỗ trợ file .xlsx hoặc .xls"); return; }
@@ -273,7 +327,7 @@ function FaqsSubTab({ kb }: { kb: Knowledgebase }) {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="gap-1.5"><Download className="h-3.5 w-3.5" /> Tải mẫu</Button>
           <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên FAQ</Button>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên FAQ</Button>
           <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleUpload} />
         </div>
       </div>
@@ -296,8 +350,8 @@ function FaqsSubTab({ kb }: { kb: Knowledgebase }) {
                 <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1">
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" onClick={async () => { try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
             ))}</AnimatePresence>}
@@ -312,7 +366,7 @@ function FaqsSubTab({ kb }: { kb: Knowledgebase }) {
 // ───────────────────────────────────────
 // Articles Sub-Tab
 // ───────────────────────────────────────
-function ArticlesSubTab({ kb }: { kb: Knowledgebase }) {
+function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -343,14 +397,16 @@ function ArticlesSubTab({ kb }: { kb: Knowledgebase }) {
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
 
-  function openCreate() { setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
+  function openCreate() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể tạo bài viết"); return; } setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
   async function openEdit(docId: string) {
+    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể sửa bài viết"); return; }
     setLoadingArticle(true); setShowEditor(true); setEditDocId(docId); setArticleUpdatedAt(null);
     try { const doc = await getArticle(kb.id, docId); setArticleTitle(doc.name); setArticleContent(doc.content || ""); setArticleUpdatedAt(doc.updated_at || null); }
     catch { toast.error("Lỗi tải bài viết"); setShowEditor(false); }
     finally { setLoadingArticle(false); }
   }
   async function handleSave() {
+    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể lưu bài viết"); return; }
     if (!articleTitle.trim()) { toast.error("Tiêu đề không được trống"); return; }
     if (!articleContent.trim()) { toast.error("Nội dung không được trống"); return; }
     setSaving(true);
@@ -374,7 +430,7 @@ function ArticlesSubTab({ kb }: { kb: Knowledgebase }) {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" /> Tạo bài viết</Button>
+          <Button onClick={openCreate} disabled={restoreLocked} className="gap-2"><Plus className="h-4 w-4" /> Tạo bài viết</Button>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -392,16 +448,16 @@ function ArticlesSubTab({ kb }: { kb: Knowledgebase }) {
               const isLearning = doc.status === "learning";
               return (
               <motion.tr key={doc.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className={isLearning ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-muted/50 transition-colors"}
-                onClick={() => !isLearning && openEdit(doc.id)}
+                className={(isLearning || restoreLocked) ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-muted/50 transition-colors"}
+                onClick={() => !isLearning && !restoreLocked && openEdit(doc.id)}
               >
                 <TableCell><div className="flex items-center gap-2"><FileEdit className="h-4 w-4 text-blue-500 shrink-0" /><span className="font-medium truncate max-w-[300px]">{doc.name}</span></div></TableCell>
                 <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" disabled={isLearning} onClick={() => openEdit(doc.id)}><Pencil className="h-4 w-4" /></Button>
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" onClick={async () => { try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  <Button variant="ghost" size="icon" disabled={isLearning || restoreLocked} onClick={() => openEdit(doc.id)}><Pencil className="h-4 w-4" /></Button>
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
               );
@@ -434,11 +490,12 @@ function ArticlesSubTab({ kb }: { kb: Knowledgebase }) {
 // ───────────────────────────────────────
 // Shared Document Table (Files tab)
 // ───────────────────────────────────────
-function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onRefresh, searchActive, onSetDeleting }: {
+function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onRefresh, searchActive, onSetDeleting, restoreLocked }: {
   docs: KbDocument[]; loading: boolean; selectedIds: Set<string>;
   onToggleAll: () => void; onToggle: (id: string) => void;
   kbId: string; onRefresh: () => void; searchActive: boolean;
   onSetDeleting?: (id: string) => void;
+  restoreLocked?: boolean;
 }) {
   const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
   return (
@@ -459,8 +516,8 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
               <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
               <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-1">
-                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" onClick={async () => { try { await retryDocuments(kbId, [doc.id]); toast.success("Retry..."); onRefresh(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
+                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kbId, [doc.id]); toast.success("Retry..."); onRefresh(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
               </div></TableCell>
             </motion.tr>
           );

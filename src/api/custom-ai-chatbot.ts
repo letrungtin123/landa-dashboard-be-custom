@@ -21,6 +21,18 @@ export interface Knowledgebase {
   created_at: string;
   updated_at: string;
   document_count: number;
+  restore_state?: 'idle' | 'queued' | 'restoring' | 'uploading' | 'completed' | 'failed';
+  active_restore_job_id?: string | null;
+  restore_required?: boolean;
+  restore_reason?: string | null;
+  restore_error_reason?: string | null;
+  restore_progress?: {
+    total_docs: number;
+    enqueued_docs: number;
+    learned_docs: number;
+    failed_docs: number;
+    skipped_docs: number;
+  } | null;
 }
 
 export interface KbDocument {

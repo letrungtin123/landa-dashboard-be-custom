@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Trash2, Pencil, Search, Loader2, FileText, Database,
+  Plus, Trash2, Pencil, Search, Loader2, FileText, Database, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,8 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <Badge variant="secondary" className="gap-1"><FileText className="h-3 w-3" /> {kb.document_count || 0} tài liệu</Badge>
+                      {kb.restore_required && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Cần khôi phục</Badge>}
+                      {(kb.restore_state === "queued" || kb.restore_state === "restoring" || kb.restore_state === "uploading") && <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700"><RefreshCw className="h-3 w-3 animate-spin" /> Đang khôi phục</Badge>}
                       <span>{formatDate(kb.created_at)}</span>
                     </div>
                   </div>
