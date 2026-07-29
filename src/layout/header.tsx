@@ -89,13 +89,13 @@ export function Header() {
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring mr-1">
               <Building2 className="h-4 w-4 text-primary shrink-0" />
               <span className="text-xs font-medium text-foreground hidden sm:inline-block max-w-[140px] truncate">
-                {activeTenantName || 'Chọn tenant'}
+                {activeTenantName || 'Chọn doanh nghiệp'}
               </span>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mt-1 rounded-lg">
               <DropdownMenuLabel className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tổ chức</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Doanh nghiệp</span>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -124,11 +124,11 @@ export function Header() {
         {!isSuperadmin && user && (
           <div
             className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 mr-1 bg-muted/50 border border-border/60 text-foreground cursor-default select-none"
-            aria-label={`Tenant hiện tại: ${user.tenant_name || 'Chưa có tenant'}`}
+            aria-label={`Doanh nghiệp hiện tại: ${user.tenant_name || 'Chưa có doanh nghiệp'}`}
           >
             <Building2 className="h-4 w-4 text-primary shrink-0" />
             <span className="text-xs font-medium hidden sm:inline-block max-w-[140px] truncate">
-              {user.tenant_name || 'Chưa có tenant'}
+              {user.tenant_name || 'Chưa có doanh nghiệp'}
             </span>
           </div>
         )}

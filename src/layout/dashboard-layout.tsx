@@ -19,6 +19,7 @@ export default function DashboardLayout() {
               duration: 0.3,
               ease: [0.16, 1, 0.3, 1],
             }}
+            data-dashboard-scroll-container="true"
             className="w-full h-full overflow-auto"
           >
             <Outlet />

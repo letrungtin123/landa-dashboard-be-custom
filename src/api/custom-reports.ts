@@ -38,6 +38,30 @@ export interface ReportTopCourse {
   enrollments: number;
 }
 
+export type ReportCourseCompletionStatus = 'all' | 'not_started' | 'learning' | 'completed';
+
+export interface ReportCourseCompletionRanking {
+  course_id: string;
+  name: string;
+  visible_learners: number;
+  learning_count: number;
+  completed_count: number;
+  not_started_count: number;
+  completion_rate: number;
+}
+
+export interface ReportCourseCompletionLearner {
+  user_id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  avatar?: string | null;
+  enrolled_at: string | null;
+  completed_at: string | null;
+  progress: number | null;
+  status: Exclude<ReportCourseCompletionStatus, 'all'>;
+}
+
 export interface ReportLearnerStatus {
   username: string;
   email: string;
@@ -60,8 +84,10 @@ export interface LearnerDetailResult {
   course_id: string;
   course_name: string;
   enrolled_at: string | null;
+  completed_at: string | null;
   progress: number;
   is_completed: boolean;
+  status: Exclude<ReportCourseCompletionStatus, 'all'>;
 }
 
 export interface LearnerDetailResponse {
@@ -117,6 +143,7 @@ export async function getReportSummary(params?: {
   year?: number;
   group_id?: number | string;
   subgroup_id?: number | string;
+  team_id?: number | string;
 }): Promise<ReportSummaryResponse> {
   const { data } = await customApiClient.get<ApiResponse<ReportSummaryResponse>>(`${BASE}/summary`, { params });
   return data.data;
@@ -129,10 +156,12 @@ export async function getReportChart(
   group_by_org?: boolean,
   grouped?: boolean,
   subgroup_id?: number | string,
+  team_id?: number | string,
 ): Promise<ReportChartResponse> {
   const params: any = { year, metric };
   if (group_id) params.group_id = group_id;
   if (subgroup_id) params.subgroup_id = subgroup_id;
+  if (team_id) params.team_id = team_id;
   if (group_by_org) params.group_by_org = true;
   if (grouped === false) params.grouped = 'false';
   const { data } = await customApiClient.get<ApiResponse<ReportChartResponse>>(`${BASE}/chart`, { params });
@@ -146,8 +175,37 @@ export async function getReportTopCourses(params?: {
   year?: number;
   group_id?: number | string;
   subgroup_id?: number | string;
+  team_id?: number | string;
 }): Promise<ReportPaginatedResponse<ReportTopCourse>> {
   const { data } = await customApiClient.get<ApiResponse<ReportPaginatedResponse<ReportTopCourse>>>(`${BASE}/top-courses`, { params });
+  return data.data;
+}
+
+export async function getReportCourseCompletionRanking(params?: {
+  page?: number;
+  page_size?: number;
+  month?: number;
+  year?: number;
+  group_id?: number | string;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+}): Promise<ReportPaginatedResponse<ReportCourseCompletionRanking>> {
+  const { data } = await customApiClient.get<ApiResponse<ReportPaginatedResponse<ReportCourseCompletionRanking>>>(`${BASE}/course-completion-ranking`, { params });
+  return data.data;
+}
+
+export async function getReportCourseCompletionLearners(courseId: string, params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  month?: number;
+  year?: number;
+  group_id?: number | string;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+  status?: ReportCourseCompletionStatus;
+}): Promise<ReportPaginatedResponse<ReportCourseCompletionLearner>> {
+  const { data } = await customApiClient.get<ApiResponse<ReportPaginatedResponse<ReportCourseCompletionLearner>>>(`${BASE}/course-completion-ranking/${encodeURIComponent(courseId)}/learners`, { params });
   return data.data;
 }
 
@@ -159,6 +217,7 @@ export async function getReportLearners(params?: {
   year?: number;
   group_id?: number | string;
   subgroup_id?: number | string;
+  team_id?: number | string;
   status?: 'all' | 'not_started' | 'learning' | 'completed';
 }): Promise<ReportPaginatedResponse<ReportLearnerStatus>> {
   const { data } = await customApiClient.get<ApiResponse<ReportPaginatedResponse<ReportLearnerStatus>>>(`${BASE}/learners`, { params });
@@ -168,13 +227,43 @@ export async function getReportLearners(params?: {
 // Backward-compatible alias
 export const getReportUncompletedLearners = getReportLearners;
 
-export async function getLearnerDetail(
-  username: string,
-  page = 1,
-  search = '',
-): Promise<LearnerDetailResponse> {
+export async function downloadReportExcel(params: {
+  month?: number;
+  year: number;
+  group_id?: number | string;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+  group_label?: string;
+  subgroup_label?: string;
+  team_label?: string;
+}): Promise<{ blob: Blob; fileName: string }> {
+  const response = await customApiClient.get<Blob>(`${BASE}/export.xlsx`, {
+    params,
+    responseType: 'blob',
+    timeout: 0,
+  });
+  const disposition = response.headers['content-disposition'] as string | undefined;
+  const utf8Name = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plainName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+  const fileName = utf8Name
+    ? decodeURIComponent(utf8Name)
+    : plainName || `bao-cao-tong-hop-${params.month ? `${params.month}-` : ''}${params.year}.xlsx`;
+
+  return { blob: response.data, fileName };
+}
+
+export async function getLearnerDetail(params: {
+  username: string;
+  page?: number;
+  page_size?: number;
+  search?: string;
+  group_id?: number | string;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+  status?: ReportCourseCompletionStatus;
+}): Promise<LearnerDetailResponse> {
   const { data } = await customApiClient.get<ApiResponse<LearnerDetailResponse>>(`${BASE}/learner-detail`, {
-    params: { username, page, search, page_size: 10 },
+    params,
   });
   return data.data;
 }
@@ -205,5 +294,11 @@ export async function getReportGroups(): Promise<{ groups: Array<{ id: string; n
 /** Danh sách subgroups trong 1 group cho filter report */
 export async function getReportSubGroups(groupId: string): Promise<{ subgroups: Array<{ id: string; name: string; team_count: number }>; total: number }> {
   const { data } = await customApiClient.get<ApiResponse<{ subgroups: Array<{ id: string; name: string; team_count: number }>; total: number }>>(`${BASE}/groups/${groupId}/subgroups`);
+  return data.data;
+}
+
+/** Danh sách teams trong 1 subgroup cho filter report */
+export async function getReportTeams(groupId: string, subgroupId: string): Promise<{ teams: Array<{ id: string; name: string; member_count: number }>; total: number }> {
+  const { data } = await customApiClient.get<ApiResponse<{ teams: Array<{ id: string; name: string; member_count: number }>; total: number }>>(`${BASE}/groups/${groupId}/subgroups/${subgroupId}/teams`);
   return data.data;
 }

@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from "@/utils/store";
 import { useHeaderInfo } from "@/utils/header-store";
 import { PageHeader } from '@/components/shared/page-header';
+import { getModuleDisplayName } from "@/utils/module-labels";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +50,7 @@ const ACTION_META: Record<string, { label: string; icon: React.ElementType; colo
 };
 
 export default function PermissionGroupsPage() {
-  useHeaderInfo("Nhóm Quyền");
+  useHeaderInfo("Nhóm quyền");
 
   // ── List state ──
   const [groups, setGroups] = useState<PermissionGroup[]>([]);
@@ -207,7 +208,7 @@ export default function PermissionGroupsPage() {
   // ── CRUD ──
   async function handleCreate() {
     if (!formName.trim()) { toast.error("Nhập tên nhóm quyền"); return; }
-    if (isSuperadmin && !formTenantId) { toast.error("Chọn tenant"); return; }
+    if (isSuperadmin && !formTenantId) { toast.error("Chọn doanh nghiệp"); return; }
     setSaving(true);
     try {
       await createPermGroup({ name: formName, description: formDesc, tenant_id: isSuperadmin ? formTenantId : undefined });
@@ -400,7 +401,7 @@ export default function PermissionGroupsPage() {
           </div>
           <p className="text-sm font-semibold text-foreground mb-1">Chưa có nhóm quyền</p>
           <p className="text-xs text-muted-foreground max-w-xs">
-            Tạo nhóm quyền để phân quyền truy cập cho các staff và người dùng trong hệ thống.
+            Tạo nhóm quyền để phân quyền truy cập cho nhân sự và người dùng trong hệ thống.
           </p>
           <Button
             onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
@@ -587,7 +588,7 @@ export default function PermissionGroupsPage() {
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-border/50 bg-muted/30">
                         <TableHead className="min-w-[220px] pl-4 py-3">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Module</span>
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tính năng</span>
                         </TableHead>
                         {ACTIONS.map(function renderHead(action) {
                           const meta = ACTION_META[action];
@@ -619,8 +620,7 @@ export default function PermissionGroupsPage() {
                           <TableRow key={p.code} className={`hover:bg-muted/20 transition-colors border-border/30 ${idx % 2 === 0 ? '' : 'bg-muted/5'}`}>
                             <TableCell className="pl-4 py-2.5">
                               <div className="flex items-center gap-2.5">
-                                <span className="font-medium text-sm text-foreground">{p.name}</span>
-                                <code className="text-[9px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-md font-mono">{p.code}</code>
+                                <span className="font-medium text-sm text-foreground">{getModuleDisplayName(p.code, p.name)}</span>
                               </div>
                             </TableCell>
                             {ACTIONS.map(function renderCell(action) {
@@ -781,7 +781,7 @@ export default function PermissionGroupsPage() {
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" /> Thêm thành viên
             </DialogTitle>
-            <DialogDescription>Chọn staff hoặc learner+ để thêm vào nhóm "{detail?.name}"</DialogDescription>
+            <DialogDescription>Chọn nhân sự hoặc học viên nâng cao để thêm vào nhóm "{detail?.name}"</DialogDescription>
           </DialogHeader>
 
           {/* Info: 1 group per user rule */}
@@ -796,7 +796,7 @@ export default function PermissionGroupsPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
               <Input
-                placeholder="Tìm username hoặc email..."
+                placeholder="Tìm tên đăng nhập hoặc email..."
                 className="pl-9 h-10 rounded-xl"
                 value={memberSearch}
                 onChange={function onChange(e) { setMemberSearch(e.target.value); }}
@@ -818,7 +818,7 @@ export default function PermissionGroupsPage() {
                 <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                   <Search className="h-6 w-6 text-muted-foreground/20 mb-2" />
                   <p className="text-xs text-muted-foreground">
-                    {memberLoading ? "Đang tải..." : memberSearch ? "Không tìm thấy staff" : "Nhập từ khóa và nhấn Enter để tìm"}
+                    {memberLoading ? "Đang tải..." : memberSearch ? "Không tìm thấy nhân sự" : "Nhập từ khóa rồi nhấn phím Enter để tìm"}
                   </p>
                 </div>
               ) : (
@@ -925,7 +925,7 @@ export default function PermissionGroupsPage() {
               <Input
                 value={formName}
                 onChange={function onChange(e) { setFormName(e.target.value); }}
-                placeholder="VD: Content Editor, Moderator..."
+                placeholder="VD: Biên tập nội dung, Điều phối viên..."
                 className="rounded-xl h-10"
               />
             </div>
@@ -941,10 +941,10 @@ export default function PermissionGroupsPage() {
             </div>
             {isSuperadmin && showCreate && (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Tenant <span className="text-destructive">*</span></label>
+                <label className="text-sm font-medium text-foreground">Doanh nghiệp <span className="text-destructive">*</span></label>
                 <Select value={formTenantId} onValueChange={setFormTenantId}>
                   <SelectTrigger className="rounded-xl h-10">
-                    <SelectValue placeholder="Chọn tenant..." />
+                    <SelectValue placeholder="Chọn doanh nghiệp..." />
                   </SelectTrigger>
                   <SelectContent>
                     {tenantList.map(function renderOpt(t) {

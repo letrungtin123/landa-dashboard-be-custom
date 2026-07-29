@@ -3,9 +3,9 @@
  * Dùng ở: report-summary.tsx, users.tsx
  * Hiển thị chi tiết khóa học + badges + weekly momentum của 1 learner.
  */
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Users, AlertTriangle, Award, BarChart3, RefreshCcw, Filter, RotateCcw, Check,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Users, AlertTriangle, Award, BarChart3, Filter, RotateCcw, Check, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid,
@@ -27,6 +33,7 @@ import {
   getAdminUserBadges,
   getAdminUserStudyTime,
   type LearnerDetailResult,
+  type ReportCourseCompletionStatus,
   type StudyTimeGranularity,
 } from '@/api/custom-reports';
 
@@ -141,67 +148,150 @@ const formatBucketLabel = (date: string, granularity: StudyTimeGranularity = 'da
   return `${day}/${month}`;
 };
 
+const clampProgress = (value: number | null | undefined) => {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.min(Math.max(numeric, 0), 100);
+};
+
+const getCourseProgressTone = (progress: number, isCompleted: boolean) => {
+  if (isCompleted || progress >= 100) {
+    return {
+      ringClass: 'text-emerald-400',
+      trackClass: 'text-emerald-500/15',
+      textClass: 'text-emerald-300',
+      haloClass: 'bg-emerald-500/12',
+      badgeClass: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/25',
+    };
+  }
+  if (progress >= 75) {
+    return {
+      ringClass: 'text-sky-400',
+      trackClass: 'text-sky-500/15',
+      textClass: 'text-sky-300',
+      haloClass: 'bg-sky-500/12',
+      badgeClass: 'bg-sky-500/12 text-sky-300 border-sky-500/25',
+    };
+  }
+  if (progress >= 50) {
+    return {
+      ringClass: 'text-amber-400',
+      trackClass: 'text-amber-500/15',
+      textClass: 'text-amber-300',
+      haloClass: 'bg-amber-500/12',
+      badgeClass: 'bg-amber-500/12 text-amber-300 border-amber-500/25',
+    };
+  }
+  if (progress > 0) {
+    return {
+      ringClass: 'text-orange-400',
+      trackClass: 'text-orange-500/15',
+      textClass: 'text-orange-300',
+      haloClass: 'bg-orange-500/12',
+      badgeClass: 'bg-orange-500/12 text-orange-300 border-orange-500/25',
+    };
+  }
+  return {
+    ringClass: 'text-slate-400',
+    trackClass: 'text-slate-500/15',
+    textClass: 'text-slate-300',
+    haloClass: 'bg-slate-500/12',
+    badgeClass: 'bg-slate-500/12 text-slate-300 border-slate-500/25',
+  };
+};
+
+const LEARNER_DETAIL_PAGE_SIZE = 10;
+
+const COURSE_STATUS_OPTIONS: Array<{ value: ReportCourseCompletionStatus; label: string }> = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'completed', label: 'Đã học' },
+  { value: 'learning', label: 'Đang học' },
+  { value: 'not_started', label: 'Chưa học' },
+];
+
+const normalizeScopeId = (value?: string | 'all' | null) => {
+  if (!value || value === 'all') return undefined;
+  return value;
+};
+
 interface Props {
   username: string | null;
   isOpen: boolean;
   onClose: () => void;
+  groupId?: string | 'all' | null;
+  subgroupId?: string | 'all' | null;
+  teamId?: string | 'all' | null;
 }
 
-export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
+export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId }: Props) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [coursePage, setCoursePage] = useState(1);
+  const [courseStatus, setCourseStatus] = useState<ReportCourseCompletionStatus>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [momentumFilter, setMomentumFilter] = useState<MomentumFilterState>(() => createDefaultMomentumFilter());
-  const observerTarget = useRef<HTMLDivElement>(null);
 
   const studyTimeParams = useMemo(() => buildStudyTimeParams(momentumFilter), [momentumFilter]);
   const isDefaultWeekly = !studyTimeParams;
+  const scopedGroupId = normalizeScopeId(groupId);
+  const scopedSubgroupId = normalizeScopeId(subgroupId);
+  const scopedTeamId = normalizeScopeId(teamId);
+  const selectedCourseStatus = COURSE_STATUS_OPTIONS.find((option) => option.value === courseStatus) || COURSE_STATUS_OPTIONS[0];
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSearch('');
+    setDebouncedSearch('');
+    setCourseStatus('all');
+    setCoursePage(1);
+  }, [username, isOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
     return () => clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    setCoursePage(1);
+  }, [username, debouncedSearch, courseStatus, scopedGroupId, scopedSubgroupId, scopedTeamId]);
+
   const {
     data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
     isLoading,
+    isFetching,
     isError,
     refetch,
-  } = useInfiniteQuery({
-    queryKey: ['learner-detail', username, debouncedSearch],
-    queryFn: ({ pageParam = 1 }) =>
-      getLearnerDetail(username!, pageParam as number, debouncedSearch),
+  } = useQuery({
+    queryKey: [
+      'learner-detail',
+      username,
+      coursePage,
+      debouncedSearch,
+      courseStatus,
+      scopedGroupId,
+      scopedSubgroupId,
+      scopedTeamId,
+    ],
+    queryFn: () =>
+      getLearnerDetail({
+        username: username!,
+        page: coursePage,
+        page_size: LEARNER_DETAIL_PAGE_SIZE,
+        search: debouncedSearch,
+        status: courseStatus,
+        group_id: scopedGroupId,
+        subgroup_id: scopedSubgroupId,
+        team_id: scopedTeamId,
+      }),
     enabled: !!username && isOpen,
-    getNextPageParam: (lastPage) =>
-      lastPage.current_page < lastPage.total_pages
-        ? lastPage.current_page + 1
-        : undefined,
-    initialPageParam: 1,
+    placeholderData: (previousData) => previousData,
   });
 
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [target] = entries;
-      if (target.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage]
-  );
-
-  useEffect(() => {
-    const element = observerTarget.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(handleObserver, { threshold: 0.1 });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [handleObserver]);
-
-  const allResults = data?.pages.flatMap((page) => page.results) || [];
-  const userGroups = data?.pages[0]?.groups || [];
+  const allResults = data?.results || [];
+  const userGroups = data?.groups || [];
+  const totalCoursePages = data?.total_pages || 0;
+  const totalCourses = data?.total_count || 0;
+  const currentCoursePage = data?.current_page || coursePage;
 
   const { data: badgesData } = useQuery({
     queryKey: ['admin-user-badges', username],
@@ -350,21 +440,47 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                   </div>
                 )}
                 <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 hidden sm:block">
-                  Danh sách các khóa học đã đăng ký và tiến độ học tập.
+                  Danh sách khóa học được phân và tiến độ học tập.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           <div className="px-4 sm:px-6 py-3 sm:py-4 bg-muted/10 border-b border-border/40 z-10 shrink-0">
-            <div className="relative max-w-md">
-              <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm kiếm khóa học..."
-                className="pl-9 h-9 sm:h-10 bg-background border-border shadow-sm focus-visible:ring-primary/30 text-sm rounded-xl transition-all"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:max-w-md">
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm kiếm khóa học..."
+                  className="pl-9 h-9 sm:h-10 bg-background border-border shadow-sm focus-visible:ring-primary/30 text-sm rounded-xl transition-all"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 sm:h-10 w-full justify-between rounded-xl border-border bg-background px-3 text-xs font-semibold shadow-sm sm:w-[150px]"
+                  >
+                    {selectedCourseStatus.label}
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[170px]">
+                  {COURSE_STATUS_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => setCourseStatus(option.value)}
+                      className="cursor-pointer justify-between text-xs font-medium"
+                    >
+                      {option.label}
+                      {courseStatus === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -583,86 +699,115 @@ export function LearnerDetailModal({ username, isOpen, onClose }: Props) {
                 Không tìm thấy khóa học nào.
               </div>
             ) : (
-              <div className="grid gap-3">
-                <AnimatePresence>
-                  {allResults.map((course: LearnerDetailResult) => {
-                    const radius = 16;
-                    const stroke = 3;
-                    const normalizedRadius = radius - stroke;
-                    const circumference = normalizedRadius * 2 * Math.PI;
-                    const strokeDashoffset =
-                      circumference - ((course.progress || 0) / 100) * circumference;
+              <div className="space-y-3">
+                <div className={`grid gap-3 transition-opacity duration-200 ${isFetching ? 'opacity-60' : 'opacity-100'}`}>
+                  <AnimatePresence mode="popLayout">
+                    {allResults.map((course: LearnerDetailResult) => {
+                      const radius = 16;
+                      const stroke = 3;
+                      const normalizedRadius = radius - stroke;
+                      const circumference = normalizedRadius * 2 * Math.PI;
+                      const progress = clampProgress(course.progress);
+                      const tone = getCourseProgressTone(progress, course.is_completed);
+                      const strokeDashoffset =
+                        circumference - (progress / 100) * circumference;
+                      const statusLabel = course.status === 'not_started'
+                        ? 'Chưa học'
+                        : course.status === 'completed' || course.is_completed
+                          ? 'Hoàn thành'
+                          : 'Đang học';
 
-                    return (
-                      <motion.div
-                        key={course.course_id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="group p-3 sm:p-4 rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex items-center justify-between gap-2 sm:gap-4"
-                      >
-                        <div className="min-w-0 flex-grow">
-                          <p className="text-xs sm:text-sm font-bold truncate group-hover:text-primary transition-colors">
-                            {course.course_name}
-                          </p>
-                          <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
-                            ID: {course.course_id}
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 flex items-center justify-end w-auto sm:w-[140px] gap-2 sm:gap-3">
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="relative flex items-center justify-center w-10 h-10">
-                              <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
-                                <circle
-                                  stroke="currentColor"
-                                  fill="transparent"
-                                  strokeWidth={stroke}
-                                  className="text-primary/10"
-                                  r={normalizedRadius}
-                                  cx={radius}
-                                  cy={radius}
-                                />
-                                <motion.circle
-                                  stroke="currentColor"
-                                  fill="transparent"
-                                  strokeWidth={stroke}
-                                  strokeDasharray={`${circumference} ${circumference}`}
-                                  initial={{ strokeDashoffset: circumference }}
-                                  animate={{ strokeDashoffset }}
-                                  transition={{ duration: 1, ease: 'easeOut' }}
-                                  className={course.is_completed ? 'text-primary' : 'text-primary/40'}
-                                  strokeLinecap="round"
-                                  r={normalizedRadius}
-                                  cx={radius}
-                                  cy={radius}
-                                />
-                              </svg>
-                              <span
-                                className={`absolute text-[9px] font-black tabular-nums ${course.is_completed ? 'text-primary' : 'text-muted-foreground'
-                                  }`}
-                              >
-                                {Math.round(course.progress || 0)}
-                              </span>
-                            </div>
+                      return (
+                        <motion.div
+                          key={course.course_id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          layout
+                          className="group p-3 sm:p-4 rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex items-center justify-between gap-2 sm:gap-4"
+                        >
+                          <div className="min-w-0 flex-grow">
+                            <p className="text-xs sm:text-sm font-bold truncate group-hover:text-primary transition-colors">
+                              {course.course_name}
+                            </p>
+                            <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 sm:mt-1 truncate">
+                              ID: {course.course_id}
+                            </p>
                           </div>
-                          <span
-                            className={`hidden sm:inline-block w-[75px] text-center text-[9px] font-bold uppercase tracking-tighter px-1.5 py-1 rounded-full ${course.is_completed
-                                ? 'bg-primary/10 text-primary'
-                                : 'bg-muted text-muted-foreground'
-                              }`}
-                          >
-                            {course.is_completed ? 'Hoàn thành' : 'Đang học'}
-                          </span>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
 
-                <div ref={observerTarget} className="h-10 flex items-center justify-center">
-                  {isFetchingNextPage && (
-                    <RefreshCcw className="h-5 w-5 animate-spin text-muted-foreground" />
-                  )}
+                          <div className="shrink-0 flex items-center justify-end w-auto sm:w-[140px] gap-2 sm:gap-3">
+                            <div className="flex flex-col items-center justify-center">
+                              <div className={`relative flex items-center justify-center w-10 h-10 rounded-full ${tone.haloClass} shadow-inner transition-transform group-hover:scale-105`}>
+                                <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+                                  <circle
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    strokeWidth={stroke}
+                                    className={tone.trackClass}
+                                    r={normalizedRadius}
+                                    cx={radius}
+                                    cy={radius}
+                                  />
+                                  <motion.circle
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    strokeWidth={stroke}
+                                    strokeDasharray={`${circumference} ${circumference}`}
+                                    initial={{ strokeDashoffset: circumference }}
+                                    animate={{ strokeDashoffset }}
+                                    transition={{ duration: 1, ease: 'easeOut' }}
+                                    className={tone.ringClass}
+                                    strokeLinecap="round"
+                                    r={normalizedRadius}
+                                    cx={radius}
+                                    cy={radius}
+                                  />
+                                </svg>
+                                <span
+                                  className={`absolute text-[9px] font-black tabular-nums ${tone.textClass}`}
+                                >
+                                  {Math.round(progress)}
+                                </span>
+                              </div>
+                            </div>
+                            <span
+                              className={`hidden sm:inline-block w-[75px] text-center text-[9px] font-bold uppercase tracking-tighter px-1.5 py-1 rounded-full border ${tone.badgeClass}`}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex flex-col gap-2 border-t border-border/40 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Trang {currentCoursePage} / {Math.max(totalCoursePages, 1)} · {totalCourses} khóa học
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 rounded-xl"
+                      disabled={currentCoursePage <= 1 || isFetching}
+                      onClick={() => setCoursePage((current) => Math.max(current - 1, 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 rounded-xl"
+                      disabled={currentCoursePage >= totalCoursePages || isFetching}
+                      onClick={() => setCoursePage((current) => Math.min(current + 1, Math.max(totalCoursePages, 1)))}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

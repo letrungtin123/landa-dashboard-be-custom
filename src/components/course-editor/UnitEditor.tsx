@@ -900,9 +900,6 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
         if (xmlMatch) ytId = xmlMatch[1];
       }
 
-      // Open edX default video ID if no ID is found
-      if (!ytId) ytId = '3_yD_cEKoCk';
-
       return ytId ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -2107,8 +2104,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         const xmlMatch = blockInfo.data.match(/youtube_id_1_0="([^"]+)"/);
         if (xmlMatch) ytId = xmlMatch[1];
       }
-      if (!ytId) ytId = '3_yD_cEKoCk';
-      meta.youtube_id_1_0 = ytId;
+      if (ytId) meta.youtube_id_1_0 = ytId;
     }
     return meta;
   });

@@ -5,6 +5,7 @@ import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, 
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
 import { getIconComponent } from "@/utils/icon-map";
+import { getModuleDisplayName } from "@/utils/module-labels";
 import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 
@@ -43,11 +44,11 @@ import {
 } from "@/utils/role-labels";
 
 const ROLE_LABEL_FIELD_LABELS: Record<UserRole, string> = {
-  superadmin: "Super Admin",
-  superuser: "Superuser",
-  staff: "Staff",
-  learner: "Learner",
-  learner_plus: "Learner+",
+  superadmin: "Quản trị hệ thống",
+  superuser: "Quản trị doanh nghiệp",
+  staff: "Nhân sự",
+  learner: "Học viên",
+  learner_plus: "Học viên nâng cao",
 };
 
 const GROUP_LABEL_FIELD_LABELS: Record<GroupLabelKey, string> = {
@@ -120,7 +121,7 @@ export default function TenantManagementPage() {
       setTenants(result.data);
       setTotal(result.total);
     } catch (err) {
-      toast.error("Không thể tải danh sách tenant");
+      toast.error("Không thể tải danh sách doanh nghiệp");
     } finally {
       setLoading(false);
     }
@@ -146,10 +147,10 @@ export default function TenantManagementPage() {
     if (!formName.trim() || !formSlug.trim()) { toast.error("Điền đầy đủ thông tin"); return false; }
 
     const dl = formDomainLearner.trim();
-    if (dl && !validateDomain(dl, "Domain Learner")) return false;
+    if (dl && !validateDomain(dl, "Tên miền học viên")) return false;
 
     const da = formDomainAdmin.trim();
-    if (da && !validateDomain(da, "Domain Admin")) return false;
+    if (da && !validateDomain(da, "Tên miền quản trị")) return false;
 
     return true;
   }
@@ -205,7 +206,7 @@ export default function TenantManagementPage() {
       setFormGroupLabels(groupLabels);
       setFormGroupLabelsHadSaved(hasAnyGroupLabel(groupLabels));
     } catch {
-      toast.error("Không thể tải tên hiển thị của tenant");
+      toast.error("Không thể tải tên hiển thị của doanh nghiệp");
     }
   }
 
@@ -233,12 +234,12 @@ export default function TenantManagementPage() {
       if (hasAnyGroupLabel(groupLabels)) {
         await updateTenantGroupLabels(tenant.id, groupLabels);
       }
-      toast.success("Tạo tenant thành công");
+      toast.success("Tạo doanh nghiệp thành công");
       setShowCreate(false);
       resetForm();
       loadTenants();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Lỗi tạo tenant");
+      toast.error(err?.response?.data?.message || "Lỗi tạo doanh nghiệp");
     } finally { setSaving(false); }
   }
 
@@ -297,7 +298,7 @@ export default function TenantManagementPage() {
       toast.success("Xóa thành công");
       setDeletingId(null);
       loadTenants();
-    } catch { toast.error("Lỗi xóa tenant"); }
+    } catch { toast.error("Lỗi xóa doanh nghiệp"); }
   }
 
   // ── Modules ──
@@ -307,7 +308,7 @@ export default function TenantManagementPage() {
     try {
       const mods = await fetchTenantModules(tenant.id);
       setModules(mods);
-    } catch { toast.error("Lỗi tải modules"); }
+    } catch { toast.error("Lỗi tải tính năng"); }
     finally { setModulesLoading(false); }
   }
 
@@ -327,9 +328,9 @@ export default function TenantManagementPage() {
         modulesTenant.id,
         modules.map(function mapMod(m) { return { module_id: m.module_id, is_enabled: m.is_enabled }; })
       );
-      toast.success("Cập nhật modules thành công");
+      toast.success("Cập nhật tính năng thành công");
       setModulesTenant(null);
-    } catch { toast.error("Lỗi cập nhật modules"); }
+    } catch { toast.error("Lỗi cập nhật tính năng"); }
     finally { setSaving(false); }
   }
 
@@ -400,11 +401,11 @@ export default function TenantManagementPage() {
       {/* Header */}
       <PageHeader
         icon={Building2}
-        title="Quản lý Tenant"
-        description={`Quản lý tổ chức/đơn vị trong hệ thống (${total})`}
+        title="Quản lí doanh nghiệp"
+        description={`Quản lí doanh nghiệp/tổ chức trong hệ thống (${total})`}
         actions={
           <Button onClick={function open() { resetForm(); setShowCreate(true); }} className="gap-2">
-            <Plus className="h-4 w-4" /> Tạo Tenant
+            <Plus className="h-4 w-4" /> Tạo doanh nghiệp
           </Button>
         }
       />
@@ -413,7 +414,7 @@ export default function TenantManagementPage() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Tìm tenant..."
+          placeholder="Tìm doanh nghiệp..."
           value={search}
           onChange={function onChange(e) { setSearch(e.target.value); setPage(1); }}
           className="pl-9"
@@ -428,10 +429,10 @@ export default function TenantManagementPage() {
             <TableRow>
               <TableHead>Tên</TableHead>
               <TableHead>Slug</TableHead>
-              <TableHead>Domain Learner</TableHead>
-              <TableHead>Domain Admin</TableHead>
-              <TableHead className="text-center">Quota Users</TableHead>
-              <TableHead className="text-center">Quota Courses</TableHead>
+              <TableHead>Tên miền học viên</TableHead>
+              <TableHead>Tên miền quản trị</TableHead>
+              <TableHead className="text-center">Giới hạn người dùng</TableHead>
+              <TableHead className="text-center">Giới hạn khóa học</TableHead>
               <TableHead className="text-center">Trạng thái</TableHead>
               <TableHead>Ngày tạo</TableHead>
               <TableHead className="text-right">Thao tác</TableHead>
@@ -441,7 +442,7 @@ export default function TenantManagementPage() {
             {loading ? (
               <TableRow><TableCell colSpan={9} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
             ) : tenants.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Chưa có tenant nào</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">Chưa có doanh nghiệp nào</TableCell></TableRow>
             ) : (
               <AnimatePresence>
                 {tenants.map(function renderRow(t) {
@@ -496,7 +497,7 @@ export default function TenantManagementPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant={t.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={function click() { handleToggleActive(t); }}>
-                          {t.is_active ? "Active" : "Inactive"}
+                          {t.is_active ? "Hoạt động" : "Tạm khóa"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{new Date(t.created_at).toLocaleDateString("vi-VN")}</TableCell>
@@ -508,7 +509,7 @@ export default function TenantManagementPage() {
                                 <Settings2 className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Modules</TooltipContent>
+                            <TooltipContent>Tính năng</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -559,12 +560,12 @@ export default function TenantManagementPage() {
       <Dialog open={showCreate || !!editTenant} onOpenChange={function close() { setShowCreate(false); setEditTenant(null); }}>
         <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b bg-muted/20 shrink-0">
-            <DialogTitle>{editTenant ? "Sửa Tenant" : "Tạo Tenant Mới"}</DialogTitle>
+            <DialogTitle>{editTenant ? "Sửa doanh nghiệp" : "Tạo doanh nghiệp mới"}</DialogTitle>
             <DialogDescription>Điền thông tin tổ chức/đơn vị</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tên tenant</label>
+              <label className="text-sm font-medium">Tên doanh nghiệp</label>
               <Input value={formName} onChange={function onChange(e) { setFormName(e.target.value); }} placeholder="LANDA Demo" />
             </div>
             <div className="space-y-2">
@@ -573,12 +574,12 @@ export default function TenantManagementPage() {
               <p className="text-xs text-muted-foreground">Chỉ chứa chữ thường, số và dấu gạch ngang</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Domain Learner <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
+              <label className="text-sm font-medium">Tên miền học viên <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
               <Input value={formDomainLearner} onChange={function onChange(e) { setFormDomainLearner(e.target.value); }} placeholder="https://lms.nesso.com.vn" />
               <p className="text-xs text-muted-foreground">URL đầy đủ trang học viên. Ví dụ: https://lms.nesso.com.vn</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Domain Admin <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
+              <label className="text-sm font-medium">Tên miền quản trị <span className="text-muted-foreground font-normal">(tùy chọn)</span></label>
               <Input value={formDomainAdmin} onChange={function onChange(e) { setFormDomainAdmin(e.target.value); }} placeholder="https://cms.nesso.com.vn" />
               <p className="text-xs text-muted-foreground">URL đầy đủ trang quản trị. Ví dụ: https://cms.nesso.com.vn</p>
             </div>
@@ -586,7 +587,7 @@ export default function TenantManagementPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                  Giới hạn User
+                  Giới hạn người dùng
                 </label>
                 <Input
                   type="number" min="0"
@@ -599,7 +600,7 @@ export default function TenantManagementPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-1.5">
                   <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                  Giới hạn Course
+                  Giới hạn khóa học
                 </label>
                 <Input
                   type="number" min="0"
@@ -699,7 +700,7 @@ export default function TenantManagementPage() {
         <DialogContent className="sm:max-w-md w-[95vw]">
           <DialogHeader>
             <DialogTitle>Xác nhận xóa</DialogTitle>
-            <DialogDescription>Bạn có chắc chắn muốn xóa tenant này? Thao tác không thể hoàn tác.</DialogDescription>
+            <DialogDescription>Bạn có chắc chắn muốn xóa doanh nghiệp này? Thao tác không thể hoàn tác.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
@@ -714,10 +715,10 @@ export default function TenantManagementPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-primary" />
-              SMTP Tenant
+              SMTP doanh nghiệp
             </DialogTitle>
             <DialogDescription>
-              Cấu hình email feedback cho <strong>{smtpTenant?.name}</strong>
+              Cấu hình email phản hồi cho <strong>{smtpTenant?.name}</strong>
             </DialogDescription>
           </DialogHeader>
 
@@ -817,7 +818,7 @@ export default function TenantManagementPage() {
                   <Settings2 className="w-6 h-6 md:w-8 md:h-8 text-primary" />
                 </div>
                 <div>
-                  <DialogTitle className="text-xl md:text-2xl font-bold">Phân quyền Module</DialogTitle>
+                  <DialogTitle className="text-xl md:text-2xl font-bold">Phân quyền tính năng</DialogTitle>
                   <DialogDescription className="text-sm md:text-base mt-1">
                     Cấu hình tính năng cho <strong className="text-foreground">{modulesTenant?.name}</strong>
                   </DialogDescription>
@@ -829,7 +830,7 @@ export default function TenantManagementPage() {
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
                   </span>
-                  Đang kích hoạt: {modules.filter(m => m.is_enabled).length} / {modules.length} modules
+                  Đang kích hoạt: {modules.filter(m => m.is_enabled).length} / {modules.length} tính năng
                 </Badge>
               </div>
             </DialogHeader>
@@ -866,16 +867,8 @@ export default function TenantManagementPage() {
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <h4 className={cn("font-bold text-[14px] md:text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
-                              {m.name}
+                              {getModuleDisplayName(m.code, m.name)}
                             </h4>
-                            <div className="mt-1.5 md:mt-2">
-                              <code className={cn(
-                                "text-[9px] md:text-[10px] uppercase tracking-widest font-bold px-2 md:px-2.5 py-1 rounded border",
-                                m.is_enabled ? "bg-primary/5 text-primary/80 border-primary/20" : "bg-background text-muted-foreground border-border/50"
-                              )}>
-                                {m.code}
-                              </code>
-                            </div>
                           </div>
                           <Switch 
                             checked={m.is_enabled} 
@@ -896,7 +889,7 @@ export default function TenantManagementPage() {
               <DialogClose asChild><Button variant="outline" className="px-4 md:px-6 rounded-lg md:rounded-xl">Hủy</Button></DialogClose>
               <Button onClick={saveModules} disabled={saving} className="px-6 md:px-8 rounded-lg md:rounded-xl shadow-md">
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                Lưu
+                Lưu tính năng
               </Button>
             </div>
           </DialogFooter>
