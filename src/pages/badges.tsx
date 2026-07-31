@@ -44,12 +44,24 @@ export default function BadgesPage() {
     );
   }
 
+  function updateBadgeText(badgeId: string, updates: Partial<Pick<BadgeSetting, "name" | "description">>) {
+    setBadges((prev) =>
+      prev.map((b) => b.id === badgeId ? { ...b, ...updates } : b)
+    );
+  }
   async function handleSave() {
     if (!activeTenantId) return;
     setSaving(true);
     try {
-      const payload = badges.map(b => ({ badge_id: b.id, is_active: b.is_active }));
+      const payload = badges.map(b => ({
+        badge_id: b.id,
+        is_active: b.is_active,
+        name: b.name,
+        description: b.description,
+      }));
       await badgesApi.updateTenantBadges(activeTenantId, payload);
+      const result = await badgesApi.getTenantBadges(activeTenantId);
+      setBadges(result.data);
       toast.success("Đã lưu cấu hình danh hiệu thành công");
     } catch (err) {
       toast.error("Lỗi khi lưu cấu hình danh hiệu");
@@ -113,7 +125,7 @@ export default function BadgesPage() {
                     }}
                     transition={{ type: "spring", stiffness: 300, damping: 24 }}
                   >
-                    <BadgeAdminCard tenantId={activeTenantId} badge={b} onToggle={toggleBadge} onImageUploaded={() => {
+                    <BadgeAdminCard tenantId={activeTenantId} badge={b} onToggle={toggleBadge} onTextChange={updateBadgeText} onImageUploaded={() => {
                       // Reload badges to get new image URLs
                       if (!activeTenantId) return;
                       badgesApi.getTenantBadges(activeTenantId).then(result => setBadges(result.data)).catch(() => {});

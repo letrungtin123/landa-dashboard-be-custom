@@ -4,6 +4,10 @@ export interface BadgeSetting {
   id: string;
   name: string;
   description: string;
+  default_name: string;
+  default_description: string;
+  name_override: string | null;
+  description_override: string | null;
   image_key: string;
   card_image_url: string | null;
   icon_image_url: string | null;
@@ -17,7 +21,7 @@ export const badgesApi = {
     return res.data;
   },
   
-  updateTenantBadges: async (tenantId: string, badges: { badge_id: string; is_active: boolean }[]) => {
+  updateTenantBadges: async (tenantId: string, badges: { badge_id: string; is_active: boolean; name?: string; description?: string }[]) => {
     const res = await customApiClient.patch<{ success: boolean; data: any }>(`/api/badges/tenants/${tenantId}`, { badges });
     return res.data;
   },

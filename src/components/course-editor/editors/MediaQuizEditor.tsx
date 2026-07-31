@@ -10,6 +10,7 @@ import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/
 import { toast } from 'sonner';
 import RichTextEditor from '../RichTextEditor';
 import { Field } from './VideoEditor';
+import UploadedVideoPreview from '../UploadedVideoPreview';
 
 export type MediaQuizMode = 'single_select' | 'multiple_select';
 export type MediaQuizMediaType = 'image' | 'video';
@@ -556,9 +557,7 @@ export default function MediaQuizEditor({
                 {question.media ? (
                   <div className="space-y-2">
                     {question.media.type === 'video' ? (
-                      <div className="aspect-video overflow-hidden rounded-lg bg-black">
-                        <video src={mediaUrl} controls className="h-full w-full object-contain" preload="metadata" />
-                      </div>
+                  <UploadedVideoPreview src={mediaUrl} className="aspect-video overflow-hidden rounded-lg bg-black" />
                     ) : (
                       <div className="rounded-lg border border-border bg-background p-2">
                         <img

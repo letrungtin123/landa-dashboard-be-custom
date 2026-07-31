@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Search, Loader2, BookCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Loader2, BookCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -41,7 +41,7 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
   const mutation = useMutation({
     mutationFn: () => assignTeamCourses(teamId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã phân ${res.assigned} course${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
+      toast.success(`Đã phân ${res.assigned} course${res.skipped ? ` (${res.skipped} đã bỏ qua)` : ''}`);
       setSelected([]);
       setSearch('');
       onOpenChange(false);
@@ -52,7 +52,7 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
 
   // getCourses trả về { data: LandaCourse[], total, ... }
   const courses = data?.courses ?? [];
-  const availableCourses = courses.filter(c => !assignedCourseIds.includes(c.id));
+  const availableCourses = courses.filter(c => !assignedCourseIds.includes(c.id) && !c.is_public);
   const allSelected = availableCourses.length > 0 && availableCourses.every(c => selected.includes(c.id));
 
   const toggle = useCallback((id: string) => {
@@ -103,14 +103,16 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
             </div>
           ) : courses.map(c => {
             const isAssigned = assignedCourseIds.includes(c.id);
+            const isPublic = c.is_public === true;
+            const isDisabled = isAssigned || isPublic;
             const isSelected = selected.includes(c.id);
             return (
               <div
                 key={c.id}
-                onClick={() => !isAssigned && toggle(c.id)}
+                onClick={() => !isDisabled && toggle(c.id)}
                 className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
-                  isAssigned
-                    ? 'opacity-40 cursor-not-allowed bg-muted/20'
+                  isDisabled
+                    ? 'opacity-50 cursor-not-allowed bg-muted/20'
                     : isSelected
                     ? 'bg-emerald-500/10 cursor-pointer'
                     : 'hover:bg-muted/30 cursor-pointer'
@@ -128,6 +130,11 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
                 {isAssigned && (
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full shrink-0">
                     Đã phân
+                  </span>
+                )}
+                {isPublic && (
+                  <span className="inline-flex items-center gap-1 text-[10px] bg-sky-500/10 text-sky-700 dark:text-sky-300 px-1.5 py-0.5 rounded-full shrink-0">
+                    <Globe className="h-3 w-3" /> Công khai
                   </span>
                 )}
               </div>

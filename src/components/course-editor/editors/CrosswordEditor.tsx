@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { storageUrl } from '@/utils/storage-url';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import ImageCarousel from '../ImageCarousel';
+import UploadedVideoPreview from '../UploadedVideoPreview';
 import CarouselImageOrder from '../CarouselImageOrder';
 import {
   extractYoutubeId,
@@ -306,9 +307,7 @@ export default function CrosswordEditor({
           {/* Uploaded video preview */}
           {media.video_storage_path && (
             <div className="space-y-2">
-              <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-sm">
-                <video key={media.video_storage_path} src={storageUrl(media.video_storage_path)} controls className="w-full h-full object-contain" preload="metadata" />
-              </div>
+                <UploadedVideoPreview storagePath={media.video_storage_path} />
               <div className="flex justify-end">
                 <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5" onClick={handleDeleteVideo}>
                   <Trash2 className="h-3.5 w-3.5" /> Xóa video

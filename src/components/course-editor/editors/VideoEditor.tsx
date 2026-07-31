@@ -5,6 +5,7 @@ import { deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-
 import { storageUrl } from '@/utils/storage-url';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import { toast } from 'sonner';
+import UploadedVideoPreview from '../UploadedVideoPreview';
 
 type VideoMode = 'youtube' | 'upload';
 
@@ -322,15 +323,11 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
           {videoPath && !uploading ? (
             <div className="space-y-3">
               <div className="p-1.5 rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/5 to-primary/5 border border-primary/10 shadow-xl shadow-primary/5">
-                <div className="aspect-video w-full rounded-xl overflow-hidden bg-black shadow-inner">
-                  <video
-                    key={videoPath}
-                    src={videoPreviewUrl}
-                    controls
-                    className="w-full h-full object-contain"
-                    preload="metadata"
-                  />
-                </div>
+                <UploadedVideoPreview
+                  src={videoPreviewUrl}
+                  className="aspect-video w-full rounded-xl overflow-hidden bg-black shadow-inner"
+                  videoClassName="w-full h-full object-contain"
+                />
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">

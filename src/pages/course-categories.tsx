@@ -460,7 +460,7 @@ function AddCoursesToCategoryModal({
   const assignMutation = useMutation({
     mutationFn: () => addCoursesToCategory(catId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã thêm ${res.assigned} course${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
+      toast.success(`Đã thêm ${res.assigned} course${res.skipped ? ` (${res.skipped} đã bỏ qua)` : ''}`);
       setSelected([]);
       onSuccess();
       onOpenChange(false);

@@ -71,6 +71,9 @@ export default function CoursesPage() {
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const currentUser = useAuthStore((s) => s.user);
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const groupScopeText = `${labels.group}/${labels.subgroup}/${labels.team}`;
   const canAdd = hasPermission('courses', 'can_add');
   const canEdit = hasPermission('courses', 'can_edit');
   const canDelete = hasPermission('courses', 'can_delete');
@@ -187,6 +190,20 @@ export default function CoursesPage() {
     onError: () => toast.error('Cập nhật thất bại'),
   });
 
+  const publicMut = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      updateCourse(id, { is_public: isPublic }),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course-categories-for-group'] });
+      queryClient.invalidateQueries({ queryKey: ['team-detail'] });
+      toast.success(variables.isPublic ? 'Đã bật Công khai' : 'Đã tắt Công khai');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Cập nhật Công khai thất bại');
+    },
+  });
+
   // Bulk
   const bulkMut = useMutation({
     mutationFn: ({ action }: { action: 'staff_only' | 'public' }) =>
@@ -255,6 +272,22 @@ export default function CoursesPage() {
       cancelText: 'Hủy',
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(course.id),
+    });
+  }
+
+  function handleTogglePublic(course: CustomCourse) {
+    if (course.is_public) {
+      publicMut.mutate({ id: course.id, isPublic: false });
+      return;
+    }
+
+    confirmDialog({
+      title: 'Bật Công khai khóa học',
+      description: `Nếu bật khoá học này công khai, tất cả học viên không phân biệt ${groupScopeText} sẽ đều nhìn thấy và có thể tham gia khoá học này, hệ thống sẽ tự động xoá khoá học này ra khỏi ${groupScopeText} hiện tại.`,
+      confirmText: 'Bật Công khai',
+      cancelText: 'Hủy',
+      variant: 'destructive',
+      onConfirm: () => publicMut.mutate({ id: course.id, isPublic: true }),
     });
   }
 
@@ -453,15 +486,22 @@ export default function CoursesPage() {
                             <div className="mt-1 truncate text-[11px] font-mono text-muted-foreground">{course.id}</div>
                           </div>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className={course.visible_to_staff_only
-                            ? 'shrink-0 bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
-                            : 'shrink-0 bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
-                          }
-                        >
-                          {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
-                        </Badge>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={course.visible_to_staff_only
+                              ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
+                              : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                            }
+                          >
+                            {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
+                          </Badge>
+                          {course.is_public && (
+                            <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                              <Globe className="h-3 w-3" /> Công khai
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
@@ -486,6 +526,17 @@ export default function CoursesPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                        {canEdit && (
+                          <Button
+                            size="sm"
+                            variant={course.is_public ? 'secondary' : 'outline'}
+                            onClick={() => handleTogglePublic(course)}
+                            disabled={publicMut.isPending}
+                            className={`h-8 gap-1.5 text-xs ${course.is_public ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15' : ''}`}
+                          >
+                            <Globe className="h-3.5 w-3.5" /> Công khai
+                          </Button>
+                        )}
                         {canEdit && (
                           <Button size="sm" asChild className="h-8 text-xs">
                             <Link to={`/courses/${course.id}/edit`}>
@@ -544,6 +595,12 @@ export default function CoursesPage() {
                               <DropdownMenuItem onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })} className="gap-2">
                                 {course.visible_to_staff_only ? <ArchiveRestore className="h-4 w-4 text-amber-600" /> : <Archive className="h-4 w-4 text-slate-500" />}
                                 {course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => handleTogglePublic(course)} className="gap-2">
+                                <Globe className="h-4 w-4 text-sky-600" />
+                                {course.is_public ? 'Tắt Công khai' : 'Bật Công khai'}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
@@ -639,15 +696,22 @@ export default function CoursesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge
-                          variant="outline"
-                          className={course.visible_to_staff_only
-                            ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
-                            : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
-                          }
-                        >
-                          {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
-                        </Badge>
+                        <div className="flex flex-col items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={course.visible_to_staff_only
+                              ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700/50'
+                              : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                            }
+                          >
+                            {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
+                          </Badge>
+                          {course.is_public && (
+                            <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                              <Globe className="h-3 w-3" /> Công khai
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-center text-muted-foreground text-sm">
                         <div className="mx-auto flex max-w-[180px] items-center justify-center gap-2">
@@ -691,6 +755,22 @@ export default function CoursesPage() {
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
+                          </Tooltip>}
+
+                          {canEdit && <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant={course.is_public ? 'secondary' : 'ghost'}
+                                size="sm"
+                                onClick={() => handleTogglePublic(course)}
+                                disabled={publicMut.isPending}
+                                className={`h-8 gap-1.5 px-2 ${course.is_public ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15' : 'text-muted-foreground hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30'}`}
+                              >
+                                <Globe className="h-3.5 w-3.5" />
+                                <span className="text-xs">Công khai</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{course.is_public ? 'Tắt Công khai' : 'Bật Công khai'}</TooltipContent>
                           </Tooltip>}
 
                           <DropdownMenu>
@@ -823,6 +903,7 @@ export default function CoursesPage() {
       {notifyCourseId && (
         <SendNotificationDialog
           courseId={notifyCourseId}
+          isPublic={courses.find((course) => course.id === notifyCourseId)?.is_public === true}
           open={!!notifyCourseId}
           onClose={() => setNotifyCourseId(null)}
         />
@@ -1561,7 +1642,7 @@ function emailStatusLabel(status: string | null | undefined): string {
   return 'Không gửi mail';
 }
 
-function SendNotificationDialog({ courseId, open, onClose }: { courseId: string; open: boolean; onClose: () => void }) {
+function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseId: string; isPublic: boolean; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const groupLabels = useAuthStore((s) => s.groupLabels);
@@ -1754,7 +1835,9 @@ function SendNotificationDialog({ courseId, open, onClose }: { courseId: string;
                       <div className="flex gap-3">
                         <Users className="mt-0.5 h-4 w-4 shrink-0" />
                         <p>
-                          Thông báo sẽ gửi cho học viên thuộc {teamLabelLower} được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.
+                          {isPublic
+                            ? 'Thông báo sẽ gửi cho toàn bộ học viên đang hoạt động trong hệ thống. Hệ thống không yêu cầu học viên đã ghi danh khóa học.'
+                            : <>Thông báo sẽ gửi cho học viên thuộc {teamLabelLower} được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.</>}
                         </p>
                       </div>
                     </div>

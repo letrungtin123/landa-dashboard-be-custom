@@ -58,6 +58,7 @@ import { CrosswordPreviewInteractive } from './CrosswordPreview';
 import DiagramPreviewInteractive from './editors/diagram/DiagramPreviewInteractive';
 import DiagramEditor, { DiagramXBlockData } from './editors/DiagramEditor';
 import ImageCarousel from './ImageCarousel';
+import UploadedVideoPreview from './UploadedVideoPreview';
 import { getHtmlMediaImages, htmlMediaCarouselImages } from './htmlMedia';
 import {
   hasProblemMedia,
@@ -796,33 +797,26 @@ function ProblemMediaPreview({ media }: { media?: ProblemMedia | null }) {
     ...img,
     src: resolveProblemMediaImageUrl(img.src),
   }));
-  const uploadedVideoSrc = normalized.video_storage_path
-    ? storageUrl(normalized.video_storage_path)
-    : '';
+  const uploadedVideoPath = normalized.video_storage_path || '';
 
   return (
     <div className="space-y-3">
-      {uploadedVideoSrc && (
+      {uploadedVideoPath && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground tracking-wide uppercase">
             <Video className="h-4 w-4 text-purple-500" />
             <span>Video đã tải lên</span>
           </div>
           <div className="rounded-xl border border-primary/10 bg-gradient-to-br from-primary/10 via-secondary/5 to-primary/5 p-1 shadow-lg shadow-primary/5">
-            <div className="aspect-video w-full overflow-hidden rounded-lg bg-black shadow-inner">
-              <video
-                key={normalized.video_storage_path}
-                src={uploadedVideoSrc}
-                controls
-                className="h-full w-full object-contain"
-                preload="metadata"
-              />
-            </div>
+            <UploadedVideoPreview
+              storagePath={uploadedVideoPath}
+              className="aspect-video w-full overflow-hidden rounded-lg bg-black shadow-inner"
+            />
           </div>
         </div>
       )}
 
-      {!uploadedVideoSrc && normalized.youtube_id && (
+      {!uploadedVideoPath && normalized.youtube_id && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground tracking-wide uppercase">
             <Video className="h-4 w-4 text-red-500" />
@@ -864,7 +858,6 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       // Check for uploaded video first
       const videoStoragePath = blockData?.metadata?.video_storage_path || blockData?.data?.video_storage_path;
       if (videoStoragePath) {
-        const videoSrc = storageUrl(videoStoragePath);
         return (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -877,15 +870,11 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
               </div>
             </div>
             <div className="p-1 rounded-xl bg-gradient-to-br from-primary/10 via-secondary/5 to-primary/5 border border-primary/10 shadow-lg shadow-primary/5">
-              <div className="aspect-video w-full rounded-lg overflow-hidden bg-black shadow-inner">
-                <video
-                  key={videoStoragePath}
-                  src={videoSrc}
-                  controls
-                  className="w-full h-full object-contain"
-                  preload="metadata"
-                />
-              </div>
+              <UploadedVideoPreview
+                storagePath={videoStoragePath}
+                className="aspect-video w-full rounded-lg overflow-hidden bg-black shadow-inner"
+                videoClassName="w-full h-full object-contain"
+              />
             </div>
           </div>
         );
@@ -1378,9 +1367,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
 
     if (question.media?.type === 'video') {
       return (
-        <div className="relative aspect-video overflow-hidden rounded-xl bg-black">
-          <video src={mediaUrl} className="h-full w-full object-contain" controls preload="metadata" />
-        </div>
+        <UploadedVideoPreview src={mediaUrl} className="relative aspect-video overflow-hidden rounded-xl bg-black" />
       );
     }
 
@@ -1653,9 +1640,7 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
 
         {mediaUrl ? (
           question.media?.type === 'video' ? (
-            <div className="aspect-video overflow-hidden rounded-xl bg-black">
-              <video src={mediaUrl} className="h-full w-full object-contain" controls preload="metadata" />
-            </div>
+            <UploadedVideoPreview src={mediaUrl} className="aspect-video overflow-hidden rounded-xl bg-black" />
           ) : (
             <div className="rounded-xl border border-border bg-background p-2">
               <img

@@ -2,7 +2,10 @@ import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
-import { Maximize2, X, Upload, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Maximize2, X, Upload, Loader2, BadgeCheck, ImageIcon, Smartphone, RotateCcw } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { BADGE_CARD_IMAGES, BADGE_ICONS, BADGE_MOBILE_CARD_IMAGES } from "@/data/badgeImages";
 import { storageUrl } from "@/utils/storage-url";
@@ -13,10 +16,11 @@ interface BadgeAdminCardProps {
   tenantId: string;
   badge: BadgeSetting;
   onToggle: (badgeId: string) => void;
+  onTextChange?: (badgeId: string, updates: Partial<Pick<BadgeSetting, "name" | "description">>) => void;
   onImageUploaded?: () => void;
 }
 
-export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: BadgeAdminCardProps) {
+export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImageUploaded }: BadgeAdminCardProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [uploadingCard, setUploadingCard] = useState(false);
@@ -37,6 +41,12 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
     ? storageUrl(badge.mobile_card_image_url)
     : (BADGE_MOBILE_CARD_IMAGES[badge.id] || BADGE_MOBILE_CARD_IMAGES["onboarding_warrior"]);
   const isActive = badge.is_active;
+  const uploadButtonClass = "absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/45 text-white/80 opacity-0 shadow-lg backdrop-blur-md transition-all hover:bg-black/70 hover:text-white group-hover/card:opacity-100 group-hover/mobile:opacity-100 group-hover/icon:opacity-100";
+  const assetLabelClass = "pointer-events-none absolute left-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-md";
+  const defaultName = badge.default_name || "";
+  const defaultDescription = badge.default_description || "";
+  const hasTextOverride = (badge.name || "").trim() !== defaultName.trim()
+    || (badge.description || "").trim() !== defaultDescription.trim();
 
   function openPreview(src: string) {
     setPreviewImageSrc(src);
@@ -91,38 +101,90 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
     }
   }
 
+  function handleResetText() {
+    onTextChange?.(badge.id, {
+      name: defaultName,
+      description: defaultDescription,
+    });
+  }
+
   return (
     <motion.div
       className={cn(
-        "relative flex flex-col p-6 w-full max-w-[560px] mx-auto rounded-[32px] border bg-background shadow-sm transition-all",
-        isActive 
-          ? cn("border-primary/20 shadow-primary/5", !showPreview && "hover:border-primary/40 hover:shadow-primary/10 hover:-translate-y-2")
-          : "border-border/40 opacity-80 grayscale"
+        "relative mx-auto flex w-full max-w-[560px] flex-col overflow-hidden rounded-[28px] border bg-card/95 shadow-[0_18px_70px_rgba(15,23,42,0.10)] transition-all dark:bg-[#070b16]/95 dark:shadow-[0_18px_80px_rgba(0,0,0,0.35)]",
+        isActive
+          ? cn("border-primary/25 shadow-primary/10", !showPreview && "hover:border-primary/45 hover:shadow-primary/15 hover:-translate-y-1")
+          : "border-border/50 opacity-85 grayscale"
       )}
       layout
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6 z-30">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-lg leading-tight text-foreground truncate" title={badge.name}>
-            {badge.name}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1 truncate" title={badge.description}>
-            {badge.description}
-          </p>
+      <div className="relative z-30 border-b border-border/50 bg-muted/20 px-5 py-5 dark:border-white/10 dark:bg-white/[0.025]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className={cn(
+            "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider",
+            isActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
+          )}>
+            <BadgeCheck className="h-3.5 w-3.5" />
+            {isActive ? "Đang bật" : "Đã tắt"}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetText}
+              disabled={!hasTextOverride}
+              className="h-7 gap-1.5 rounded-full border-border/70 bg-background/70 px-2.5 text-[11px] font-bold text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/[0.04]"
+              title="Reset title và mô tả về mặc định"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Mặc định
+            </Button>
+            <Switch
+              checked={isActive}
+              onCheckedChange={() => onToggle(badge.id)}
+              className={cn("shrink-0 scale-110 origin-right", isActive && "data-[state=checked]:bg-emerald-500")}
+            />
+          </div>
         </div>
-        <Switch 
-          checked={isActive} 
-          onCheckedChange={() => onToggle(badge.id)} 
-          className={cn("shrink-0 scale-125 origin-right", isActive && "data-[state=checked]:bg-emerald-500")}
-        />
+
+        <div className="grid gap-3">
+          <div className="space-y-1.5">
+            <label htmlFor={`badge-name-${badge.id}`} className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              Tiêu đề
+            </label>
+            <Input
+              id={`badge-name-${badge.id}`}
+              value={badge.name || ""}
+              maxLength={200}
+              onChange={(event) => onTextChange?.(badge.id, { name: event.target.value })}
+              className="h-10 rounded-xl border-border/70 bg-background/80 px-3 text-[15px] font-bold shadow-inner shadow-black/5 focus-visible:ring-2 dark:border-white/10 dark:bg-white/[0.04]"
+              placeholder={badge.default_name || "Tiêu đề huy hiệu"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor={`badge-description-${badge.id}`} className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              Mô tả
+            </label>
+            <Textarea
+              id={`badge-description-${badge.id}`}
+              value={badge.description || ""}
+              maxLength={2000}
+              rows={2}
+              onChange={(event) => onTextChange?.(badge.id, { description: event.target.value })}
+              className="min-h-[68px] resize-none rounded-xl border-border/70 bg-background/80 px-3 py-2.5 text-sm font-medium leading-relaxed shadow-inner shadow-black/5 focus-visible:ring-2 dark:border-white/10 dark:bg-white/[0.04]"
+              placeholder={badge.default_description || "Mô tả huy hiệu"}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Assets Showcase */}
-      <div className="flex justify-center gap-4 h-[240px] z-10">
+      <div className="z-10 flex h-[252px] justify-center gap-4 bg-muted/20 p-5 dark:bg-white/[0.025]">
         {/* Card Preview */}
         <div 
-          className="relative h-full aspect-[4/6.5] rounded-[16px] border border-border/20 shadow-inner overflow-hidden group/card bg-muted/30 cursor-pointer"
+          className="relative h-full aspect-[4/6.5] cursor-pointer overflow-hidden rounded-2xl border border-border/30 bg-background/60 shadow-[0_12px_30px_rgba(15,23,42,0.14)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.04] group/card"
           onClick={() => openPreview(imgSrc)}
         >
           <img 
@@ -149,16 +211,14 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
           <div className="absolute inset-0 bg-black/0 group-hover/card:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/card:opacity-100 z-20">
             <Maximize2 className="w-8 h-8 text-white drop-shadow-md" />
           </div>
-          <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-md py-2 translate-y-full group-hover/card:translate-y-0 transition-transform z-20">
-            <p className="text-[12px] text-center font-bold text-white/90 tracking-widest">CARD</p>
-          </div>
+          <div className={assetLabelClass}><ImageIcon className="h-3 w-3" />CARD</div>
 
           {/* Upload button for card */}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); cardInputRef.current?.click(); }}
             disabled={uploadingCard}
-            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/card:opacity-100"
+            className={uploadButtonClass}
             title="Upload ảnh card mới"
           >
             {uploadingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -168,7 +228,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
 
         {/* Mobile Card Preview */}
         <div
-          className="relative h-full aspect-[84/113] rounded-[10px] border border-border/20 shadow-inner overflow-hidden group/mobile bg-muted/30 cursor-pointer"
+          className="relative h-full aspect-[84/113] cursor-pointer overflow-hidden rounded-2xl border border-border/30 bg-background/60 shadow-[0_12px_30px_rgba(15,23,42,0.12)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-white/[0.04] group/mobile"
           onClick={() => openPreview(mobileCardSrc)}
         >
           <img
@@ -191,15 +251,13 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
           <div className="absolute inset-0 bg-black/0 group-hover/mobile:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/mobile:opacity-100 z-20">
             <Maximize2 className="w-8 h-8 text-white drop-shadow-md" />
           </div>
-          <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-md py-2 translate-y-full group-hover/mobile:translate-y-0 transition-transform z-20">
-            <p className="text-[11px] text-center font-bold text-white/90 tracking-widest">MOBILE</p>
-          </div>
+          <div className={assetLabelClass}><Smartphone className="h-3 w-3" />MOBILE</div>
 
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); mobileCardInputRef.current?.click(); }}
             disabled={uploadingMobileCard}
-            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/mobile:opacity-100"
+            className={uploadButtonClass}
             title="Upload mobile card"
           >
             {uploadingMobileCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -208,7 +266,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
         </div>
 
         {/* Icon Preview */}
-        <div className="flex-1 h-full rounded-[16px] border border-dashed border-border/50 bg-muted/20 flex flex-col items-center justify-center relative group/icon overflow-hidden transition-colors hover:bg-muted/40 hover:border-border">
+        <div className="relative flex h-full flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-primary/25 bg-[radial-gradient(circle_at_50%_44%,rgba(250,204,21,0.24),transparent_48%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] transition-all hover:border-primary/45 hover:bg-muted/30 dark:border-white/10 group/icon">
           {isActive ? (
             <motion.img 
               src={iconSrc} 
@@ -246,16 +304,14 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
             </div>
           )}
 
-          <div className="absolute inset-x-0 bottom-3 z-20">
-            <p className="text-[12px] text-center font-semibold text-muted-foreground uppercase tracking-widest group-hover/icon:text-foreground transition-colors">ICON</p>
-          </div>
+          <div className="absolute inset-x-0 bottom-3 z-20"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/80 transition-colors group-hover/icon:text-primary">ICON</p></div>
 
           {/* Upload button for icon */}
           <button
             type="button"
             onClick={() => iconInputRef.current?.click()}
             disabled={uploadingIcon}
-            className="absolute top-2 right-2 z-30 p-2 rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors backdrop-blur-sm opacity-0 group-hover/icon:opacity-100"
+            className={uploadButtonClass}
             title="Upload ảnh icon mới"
           >
             {uploadingIcon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -266,7 +322,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onImageUploaded }: B
 
       {/* Inactive Overlay */}
       {!isActive && (
-        <div className="absolute inset-0 z-20 pointer-events-none rounded-[32px] bg-background/50 backdrop-blur-[1.5px] flex items-center justify-center">
+        <div className="absolute inset-0 z-20 pointer-events-none rounded-[28px] bg-background/55 backdrop-blur-[1.5px] flex items-center justify-center">
            <div className="bg-black/75 text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-xl backdrop-blur-md flex items-center gap-3 border border-white/10">
               <span className="relative flex h-3 w-3">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
