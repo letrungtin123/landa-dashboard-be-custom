@@ -7,11 +7,12 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/custom-help-docs';
+import { deleteHelpImage, getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/custom-help-docs';
 import type { HelpPageDetail } from '@/api/custom-help-docs';
-import RichTextEditor from '@/components/course-editor/RichTextEditor';
+import RichTextEditor, { prepareContentForSave } from '@/components/course-editor/RichTextEditor';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { htmlImageDisplaySrc, htmlImageStoragePath } from '@/utils/storage-url';
 import { toast } from 'sonner';
 import {
   Save, Eye, Pencil, Globe, EyeOff, ImagePlus,
@@ -23,14 +24,53 @@ interface HelpPageEditorProps {
   isSuperuser: boolean;
 }
 
+function renderHelpPageContent(html: string): string {
+  if (!html || typeof DOMParser === 'undefined') return html;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      img.setAttribute('src', htmlImageDisplaySrc(src));
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
+function extractHelpPageImagePaths(html: string): Set<string> {
+  const paths = new Set<string>();
+  if (!html || typeof DOMParser === 'undefined') return paths;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('img').forEach((img) => {
+      const path = htmlImageStoragePath(img.getAttribute('src'));
+      if (path) paths.add(path);
+    });
+  } catch {
+    // Ignore parse failures; cleanup will be retried on a later valid save/unmount.
+  }
+
+  return paths;
+}
+
 export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [isImageUploading, setIsImageUploading] = useState(false);
   const editorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef('');
+  const titleRef = useRef('');
+  const savedContentRef = useRef('');
+  const savedTitleRef = useRef('');
+  const loadedPageIdRef = useRef('');
+  const sessionUploadedPathsRef = useRef<Set<string>>(new Set());
 
   const { data: page, isLoading, isError } = useQuery({
     queryKey: ['help-page', pageId],
@@ -38,27 +78,91 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     staleTime: 10_000,
   });
 
-  // Reset state khi page thay đổi
+  // Reset state khi đổi page; không đá editor khỏi edit mode khi autosave cập nhật cache.
   useEffect(() => {
-    if (page) {
-      setTitle(page.title);
-      setContent(page.content);
-      setHasChanges(false);
-      setIsEditing(false);
-    }
-  }, [page]);
+    if (!page) return;
+    if (isEditing && loadedPageIdRef.current === page.id) return;
+
+    loadedPageIdRef.current = page.id;
+    setTitle(page.title);
+    setContent(page.content);
+    contentRef.current = page.content;
+    titleRef.current = page.title;
+    savedContentRef.current = page.content;
+    savedTitleRef.current = page.title;
+    setHasChanges(false);
+    setIsEditing(false);
+  }, [page, isEditing]);
+
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  const syncDirtyState = useCallback((nextTitle: string, nextContent: string) => {
+    setHasChanges(nextTitle !== savedTitleRef.current || nextContent !== savedContentRef.current);
+  }, []);
+
+  const deleteUploadedPaths = useCallback(async (paths: string[]) => {
+    const uniquePaths = [...new Set(paths.filter(Boolean))];
+    if (uniquePaths.length === 0) return;
+
+    await Promise.allSettled(uniquePaths.map((path) => deleteHelpImage(path)));
+    uniquePaths.forEach((path) => sessionUploadedPathsRef.current.delete(path));
+  }, []);
+
+  const markSessionUploadsSaved = useCallback((savedContent: string) => {
+    const savedPaths = extractHelpPageImagePaths(savedContent);
+    [...sessionUploadedPathsRef.current].forEach((path) => {
+      if (savedPaths.has(path)) sessionUploadedPathsRef.current.delete(path);
+    });
+  }, []);
+
+  const cleanupSessionUploads = useCallback(async (mode: 'all' | 'unused') => {
+    const referencedPaths = mode === 'unused'
+      ? extractHelpPageImagePaths(contentRef.current)
+      : new Set<string>();
+    const pathsToDelete = [...sessionUploadedPathsRef.current]
+      .filter((path) => mode === 'all' || !referencedPaths.has(path));
+    await deleteUploadedPaths(pathsToDelete);
+  }, [deleteUploadedPaths]);
+
+  useEffect(() => {
+    return () => { void cleanupSessionUploads('all'); };
+  }, [cleanupSessionUploads]);
 
   const saveMut = useMutation({
     mutationFn: (payload: { title?: string; content?: string; is_published?: boolean }) =>
       updateHelpPage(pageId, payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      if (variables.title !== undefined) savedTitleRef.current = variables.title;
+      if (variables.content !== undefined) {
+        savedContentRef.current = variables.content;
+        markSessionUploadsSaved(variables.content);
+        void cleanupSessionUploads('unused');
+      }
       toast.success('Đã lưu');
-      setHasChanges(false);
+      syncDirtyState(titleRef.current, contentRef.current);
       queryClient.invalidateQueries({ queryKey: ['help-page', pageId] });
       queryClient.invalidateQueries({ queryKey: ['help-pages'] });
     },
     onError: () => toast.error('Lưu thất bại'),
   });
+
+  const persistImageContent = useCallback(async (nextContent: string) => {
+    await updateHelpPage(pageId, { content: nextContent });
+    savedContentRef.current = nextContent;
+    markSessionUploadsSaved(nextContent);
+    syncDirtyState(titleRef.current, nextContent);
+    void cleanupSessionUploads('unused');
+    queryClient.setQueryData<HelpPageDetail>(['help-page', pageId], (current) => (
+      current ? { ...current, content: nextContent } : current
+    ));
+    queryClient.invalidateQueries({ queryKey: ['help-pages'] });
+  }, [cleanupSessionUploads, markSessionUploadsSaved, pageId, queryClient, syncDirtyState]);
 
   const handleSave = useCallback(() => {
     saveMut.mutate({ title, content });
@@ -78,26 +182,62 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
   }, [page, saveMut, hasChanges, title, content]);
 
   const handleImageUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn file ảnh');
+      return;
+    }
+
+    setIsImageUploading(true);
+    let storagePath: string | null = null;
+    const previousContent = contentRef.current;
     try {
       const result = await uploadHelpImage(file);
-      if (result.url && editorRef.current) {
-        editorRef.current.chain().focus().setImage({ src: result.url }).run();
-        toast.success('Đã upload ảnh');
-      }
-    } catch {
-      toast.error('Upload ảnh thất bại');
+      storagePath = htmlImageStoragePath(result.url);
+      if (storagePath) sessionUploadedPathsRef.current.add(storagePath);
+      if (!result.url || !editorRef.current) throw new Error('Không thể chèn ảnh vào trình soạn thảo');
+
+      const editor = editorRef.current;
+      editor.chain().focus().setImage({ src: htmlImageDisplaySrc(result.url) }).run();
+      const nextContent = prepareContentForSave(editor.getHTML());
+      setContent(nextContent);
+      contentRef.current = nextContent;
+      await persistImageContent(nextContent);
+      toast.success('Đã tải lên và lưu ảnh');
+    } catch (error: any) {
+      if (storagePath) await deleteUploadedPaths([storagePath]);
+      if (editorRef.current) editorRef.current.commands.setContent(renderHelpPageContent(previousContent));
+      setContent(previousContent);
+      contentRef.current = previousContent;
+      syncDirtyState(titleRef.current, previousContent);
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || 'Upload hoặc lưu ảnh thất bại');
+    } finally {
+      setIsImageUploading(false);
     }
-  }, []);
+  }, [deleteUploadedPaths, persistImageContent, syncDirtyState]);
 
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
-    setHasChanges(true);
-  }, []);
+    contentRef.current = newContent;
+    syncDirtyState(titleRef.current, newContent);
+  }, [syncDirtyState]);
 
   const handleTitleChange = useCallback((newTitle: string) => {
     setTitle(newTitle);
-    setHasChanges(true);
-  }, []);
+    titleRef.current = newTitle;
+    syncDirtyState(newTitle, contentRef.current);
+  }, [syncDirtyState]);
+
+  const handleCancelEdit = useCallback(() => {
+    void cleanupSessionUploads('all');
+    setIsEditing(false);
+    if (page) {
+      setTitle(page.title);
+      setContent(page.content);
+      contentRef.current = page.content;
+      titleRef.current = page.title;
+      setHasChanges(false);
+    }
+  }, [cleanupSessionUploads, page]);
 
   if (isLoading) {
     return (
@@ -165,14 +305,14 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
               <>
                 <Button
                   variant="outline" size="sm"
-                  onClick={() => { setIsEditing(false); setTitle(page.title); setContent(page.content); setHasChanges(false); }}
+                  onClick={handleCancelEdit}
                 >
                   <Eye className="h-4 w-4 mr-1.5" /> Xem
                 </Button>
                 <Button
                   size="sm"
                   onClick={handleSave}
-                  disabled={saveMut.isPending || !hasChanges}
+                  disabled={saveMut.isPending || isImageUploading || !hasChanges}
                   className="min-w-[80px]"
                 >
                   {saveMut.isPending
@@ -184,7 +324,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
                   variant={page.is_published ? 'outline' : 'default'}
                   size="sm"
                   onClick={handlePublishToggle}
-                  disabled={saveMut.isPending}
+                  disabled={saveMut.isPending || isImageUploading}
                 >
                   {page.is_published
                     ? <><EyeOff className="h-4 w-4 mr-1.5" /> Ẩn</>
@@ -201,7 +341,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
                   variant={page.is_published ? 'outline' : 'default'}
                   size="sm"
                   onClick={handlePublishToggle}
-                  disabled={saveMut.isPending}
+                  disabled={saveMut.isPending || isImageUploading}
                 >
                   {page.is_published
                     ? <><EyeOff className="h-4 w-4 mr-1.5" /> Ẩn</>
@@ -222,8 +362,13 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
             <Button
               variant="outline" size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={isImageUploading}
             >
-              <ImagePlus className="h-4 w-4 mr-1.5" /> Upload ảnh
+              {isImageUploading
+                ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                : <ImagePlus className="h-4 w-4 mr-1.5" />
+              }
+              Upload ảnh
             </Button>
             <input
               ref={fileInputRef}
@@ -243,6 +388,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
             content={content}
             onChange={handleContentChange}
             onEditorReady={(editor: any) => { editorRef.current = editor; }}
+            onImageFilePaste={handleImageUpload}
             minHeight="min-h-[500px]"
           />
         </div>
@@ -251,7 +397,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
           {page.content ? (
             <div
               className="prose prose-sm sm:prose-base dark:prose-invert max-w-none p-6 help-page-content"
-              dangerouslySetInnerHTML={{ __html: page.content }}
+              dangerouslySetInnerHTML={{ __html: renderHelpPageContent(page.content) }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">

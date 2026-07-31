@@ -104,7 +104,12 @@ export async function uploadHelpImage(file: File) {
   const { data } = await customApiClient.post<ApiResponse<{ url: string; filename: string; size: number }>>(
     "/api/help-docs/upload-image",
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+    { headers: { 'Content-Type': undefined } },
   );
   return data.data;
+}
+
+export async function deleteHelpImage(storagePath: string) {
+  await customApiClient.post("/api/help-docs/delete-image", { storage_path: storagePath });
+  return { success: true };
 }

@@ -66,7 +66,7 @@ function prepareContentForEditor(html: string): string {
   });
 }
 
-function prepareContentForSave(html: string): string {
+export function prepareContentForSave(html: string): string {
   const restored = restoreContentUrls(html);
   return transformImageSources(restored, (src) => {
     if (isTransientHtmlImageSrc(src)) return null;
@@ -102,6 +102,7 @@ interface RichTextEditorProps {
   minHeight?: string;
   hideToolbar?: boolean;
   onUnsupportedImagePaste?: () => void;
+  onImageFilePaste?: (file: File) => void | Promise<void>;
 }
 
 const MenuBar = ({ editor }: { editor: any }) => {
@@ -204,6 +205,7 @@ export default function RichTextEditor({
   minHeight,
   hideToolbar,
   onUnsupportedImagePaste,
+  onImageFilePaste,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -228,12 +230,22 @@ export default function RichTextEditor({
       transformPastedHTML: sanitizePastedHtml,
       handlePaste: (_view, event) => {
         const items = Array.from(event.clipboardData?.items || []);
-        const hasImageFile = items.some((item) => item.kind === 'file' && item.type.startsWith('image/'));
+        const imageFiles = items
+          .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => Boolean(file));
         const html = event.clipboardData?.getData('text/html') || '';
-        if (!hasImageFile || hasPersistentImageInHtml(html)) return false;
+        if (imageFiles.length === 0 || hasPersistentImageInHtml(html)) return false;
 
         event.preventDefault();
-        onUnsupportedImagePaste?.();
+        if (onImageFilePaste) {
+          void imageFiles.reduce<Promise<void>>(
+            (chain, file) => chain.then(() => Promise.resolve(onImageFilePaste(file))),
+            Promise.resolve(),
+          );
+        } else {
+          onUnsupportedImagePaste?.();
+        }
         return true;
       },
     },
