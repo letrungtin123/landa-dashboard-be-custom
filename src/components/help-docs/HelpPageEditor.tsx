@@ -65,6 +65,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
   const [isImageUploading, setIsImageUploading] = useState(false);
   const editorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasChangesRef = useRef(false);
   const contentRef = useRef('');
   const titleRef = useRef('');
   const savedContentRef = useRef('');
@@ -90,6 +91,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     titleRef.current = page.title;
     savedContentRef.current = page.content;
     savedTitleRef.current = page.title;
+    hasChangesRef.current = false;
     setHasChanges(false);
     setIsEditing(false);
   }, [page, isEditing]);
@@ -102,9 +104,14 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     titleRef.current = title;
   }, [title]);
 
-  const syncDirtyState = useCallback((nextTitle: string, nextContent: string) => {
-    setHasChanges(nextTitle !== savedTitleRef.current || nextContent !== savedContentRef.current);
+  const setDirtyState = useCallback((isDirty: boolean) => {
+    hasChangesRef.current = isDirty;
+    setHasChanges(isDirty);
   }, []);
+
+  const syncDirtyState = useCallback((nextTitle: string, nextContent: string) => {
+    setDirtyState(nextTitle !== savedTitleRef.current || nextContent !== savedContentRef.current);
+  }, [setDirtyState]);
 
   const deleteUploadedPaths = useCallback(async (paths: string[]) => {
     const uniquePaths = [...new Set(paths.filter(Boolean))];
@@ -152,17 +159,21 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     onError: () => toast.error('Lưu thất bại'),
   });
 
-  const persistImageContent = useCallback(async (nextContent: string) => {
+  const persistImageContent = useCallback(async (nextContent: string, options?: { keepDirty?: boolean }) => {
     await updateHelpPage(pageId, { content: nextContent });
     savedContentRef.current = nextContent;
     markSessionUploadsSaved(nextContent);
-    syncDirtyState(titleRef.current, nextContent);
+    if (options?.keepDirty) {
+      setDirtyState(true);
+    } else {
+      syncDirtyState(titleRef.current, nextContent);
+    }
     void cleanupSessionUploads('unused');
     queryClient.setQueryData<HelpPageDetail>(['help-page', pageId], (current) => (
       current ? { ...current, content: nextContent } : current
     ));
     queryClient.invalidateQueries({ queryKey: ['help-pages'] });
-  }, [cleanupSessionUploads, markSessionUploadsSaved, pageId, queryClient, syncDirtyState]);
+  }, [cleanupSessionUploads, markSessionUploadsSaved, pageId, queryClient, setDirtyState, syncDirtyState]);
 
   const handleSave = useCallback(() => {
     saveMut.mutate({ title, content });
@@ -190,6 +201,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     setIsImageUploading(true);
     let storagePath: string | null = null;
     const previousContent = contentRef.current;
+    const wasDirtyBeforeUpload = hasChangesRef.current;
     try {
       const result = await uploadHelpImage(file);
       storagePath = htmlImageStoragePath(result.url);
@@ -201,7 +213,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
       const nextContent = prepareContentForSave(editor.getHTML());
       setContent(nextContent);
       contentRef.current = nextContent;
-      await persistImageContent(nextContent);
+      await persistImageContent(nextContent, { keepDirty: wasDirtyBeforeUpload });
       toast.success('Đã tải lên và lưu ảnh');
     } catch (error: any) {
       if (storagePath) await deleteUploadedPaths([storagePath]);
@@ -235,6 +247,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
       setContent(page.content);
       contentRef.current = page.content;
       titleRef.current = page.title;
+      hasChangesRef.current = false;
       setHasChanges(false);
     }
   }, [cleanupSessionUploads, page]);
