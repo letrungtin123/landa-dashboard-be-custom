@@ -179,21 +179,20 @@ export default function CourseCategoriesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {categories.map((cat) => (
-            <motion.div
+            <div
               key={cat.id}
-              whileHover={{ y: -4 }}
-              className="group relative flex flex-col p-5 bg-card rounded-[24px] border border-border/50 shadow-sm hover:shadow-xl hover:border-primary/30 transition-all cursor-pointer overflow-hidden"
+              className="group relative flex flex-col p-5 bg-card rounded-[24px] border border-border/50 shadow-sm hover:-translate-y-1 hover:shadow-md hover:border-primary/30 transition-[transform,border-color,box-shadow] duration-150 ease-out cursor-pointer overflow-hidden will-change-transform"
               onClick={() => setDetailCatId(cat.id)}
             >
               {/* Background accent */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none transition-opacity opacity-50 group-hover:opacity-100" />
+              <div className="absolute top-0 right-0 w-28 h-28 bg-primary/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none opacity-60" />
               
               <div className="flex items-start justify-between relative z-10 mb-4">
                 <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0 shadow-inner">
                   <FolderKanban className="h-6 w-6 text-primary drop-shadow-sm" />
                 </div>
                 
-                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="flex gap-1.5 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-[opacity,transform] duration-150 ease-out shrink-0" onClick={(e) => e.stopPropagation()}>
                   {canEdit && (
                     <Button variant="outline" size="icon" className="h-8 w-8 rounded-full bg-background shadow-sm hover:bg-primary/10 hover:text-primary hover:border-primary/20" onClick={() => openEdit(cat)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -223,7 +222,7 @@ export default function CourseCategoriesPage() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
       )}
