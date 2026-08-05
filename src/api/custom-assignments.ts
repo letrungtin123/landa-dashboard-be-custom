@@ -26,7 +26,6 @@ export interface CourseAssignment {
   title: string;
   question: string;
   sort_order: number;
-  is_published: boolean;
   allow_resubmission: boolean;
   deadline_enabled: boolean;
   deadline_mode: AssignmentDeadlineMode;
@@ -100,7 +99,6 @@ export interface PaginatedAssignments<T> {
 type AssignmentWriteInput = {
   title?: string;
   question?: string;
-  is_published?: boolean;
   allow_resubmission?: boolean;
   deadline_enabled?: boolean;
   deadline_mode?: AssignmentDeadlineMode;
@@ -121,7 +119,6 @@ function buildAssignmentFormData(input: AssignmentWriteInput): FormData {
 
   append('title', input.title);
   append('question', input.question);
-  append('is_published', input.is_published);
   append('allow_resubmission', input.allow_resubmission);
   append('deadline_enabled', input.deadline_enabled);
   append('deadline_mode', input.deadline_mode);

@@ -84,6 +84,24 @@ function canSpeakBotText(): boolean {
     && typeof SpeechSynthesisUtterance !== 'undefined';
 }
 
+function isVietnameseSpeechVoice(voice: SpeechSynthesisVoice): boolean {
+  const lang = voice.lang.toLowerCase().replace('_', '-');
+  const name = voice.name.toLowerCase();
+  return lang === VOICE_LANG.toLowerCase()
+    || lang.startsWith('vi')
+    || name.includes('vietnam')
+    || name.includes('viet')
+    || name.includes('tiếng việt')
+    || name.includes('tieng viet');
+}
+
+function getVietnameseSpeechVoice(): SpeechSynthesisVoice | null {
+  if (!canSpeakBotText()) return null;
+  const voices = window.speechSynthesis.getVoices();
+  const exactVoice = voices.find(voice => voice.lang.toLowerCase().replace('_', '-') === VOICE_LANG.toLowerCase());
+  return exactVoice ?? voices.find(isVietnameseSpeechVoice) ?? null;
+}
+
 function getVoiceErrorMessage(error?: string): string {
   if (error === 'not-allowed' || error === 'service-not-allowed') return 'Trình duyệt chưa được cấp quyền micro.';
   if (error === 'no-speech') return 'Không nghe rõ câu nói. Vui lòng thử lại.';
@@ -261,6 +279,7 @@ export default function ChatWidget() {
   const voiceDiscardRef = useRef(false);
   const voiceErrorRef = useRef(false);
   const voiceListenTimerRef = useRef<number | null>(null);
+  const vietnameseVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const speakThisTurnRef = useRef(false);
   const speechBufferRef = useRef('');
   const streamAccRef = useRef('');  // accumulate stream text without React state race
@@ -305,12 +324,22 @@ export default function ChatWidget() {
     setVoiceCaptureState('idle');
   }, [clearVoiceListenTimer]);
 
+  const resolveVietnameseSpeechVoice = useCallback(() => {
+    const voice = vietnameseVoiceRef.current ?? getVietnameseSpeechVoice();
+    if (voice) vietnameseVoiceRef.current = voice;
+    return voice;
+  }, []);
+
   const speakBotText = useCallback((text: string) => {
     const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (!cleaned || !canSpeakBotText()) return;
+    if (!cleaned || !canSpeakBotText()) return false;
+
+    const voice = resolveVietnameseSpeechVoice();
+    if (!voice) return false;
 
     const utterance = new SpeechSynthesisUtterance(cleaned);
-    utterance.lang = VOICE_LANG;
+    utterance.voice = voice;
+    utterance.lang = voice.lang || VOICE_LANG;
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.onstart = () => setBotSpeaking(true);
@@ -322,31 +351,48 @@ export default function ChatWidget() {
     utterance.onend = markDone;
     utterance.onerror = markDone;
     window.speechSynthesis.speak(utterance);
-  }, []);
+    return true;
+  }, [resolveVietnameseSpeechVoice]);
+
+  useEffect(() => {
+    if (!canSpeakBotText()) return;
+    const synth = window.speechSynthesis;
+    const handleVoicesChanged = () => {
+      if (!resolveVietnameseSpeechVoice()) return;
+      const pendingText = speechBufferRef.current;
+      if (!pendingText.trim()) return;
+      speechBufferRef.current = '';
+      speakBotText(pendingText);
+    };
+
+    handleVoicesChanged();
+    synth.addEventListener?.('voiceschanged', handleVoicesChanged);
+    return () => synth.removeEventListener?.('voiceschanged', handleVoicesChanged);
+  }, [resolveVietnameseSpeechVoice, speakBotText]);
 
   const flushSpeechBuffer = useCallback((force = false) => {
     if (!speakThisTurnRef.current || !canSpeakBotText()) return;
+    if (!resolveVietnameseSpeechVoice()) return;
     const buffer = speechBufferRef.current;
     if (!buffer.trim()) return;
 
     if (force) {
-      speechBufferRef.current = '';
-      speakBotText(buffer);
+      if (speakBotText(buffer)) speechBufferRef.current = '';
       return;
     }
 
     const boundary = findSpeechBoundary(buffer);
     if (boundary >= VOICE_SPEAK_MIN_CHARS) {
-      speechBufferRef.current = buffer.slice(boundary + 1);
-      speakBotText(buffer.slice(0, boundary + 1));
+      if (speakBotText(buffer.slice(0, boundary + 1))) {
+        speechBufferRef.current = buffer.slice(boundary + 1);
+      }
       return;
     }
 
     if (buffer.length >= VOICE_SPEAK_MAX_CHARS) {
-      speechBufferRef.current = '';
-      speakBotText(buffer);
+      if (speakBotText(buffer)) speechBufferRef.current = '';
     }
-  }, [speakBotText]);
+  }, [resolveVietnameseSpeechVoice, speakBotText]);
 
   const queueSpeechChunk = useCallback((text: string) => {
     if (!speakThisTurnRef.current || !text) return;

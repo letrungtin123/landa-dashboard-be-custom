@@ -793,13 +793,6 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                   )}
                 </div>
               </div>
-              <span className="mt-1 shrink-0" title={assignment.is_published ? 'Đang hiển thị' : 'Đang ẩn'}>
-                {assignment.is_published ? (
-                  <Globe className="h-3.5 w-3.5 text-emerald-500" />
-                ) : (
-                  <EyeOff className="h-3.5 w-3.5 text-slate-400" />
-                )}
-              </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
@@ -809,15 +802,6 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuItem onClick={() => setEditing(assignment)}>
                     <Pencil className="mr-2 h-3.5 w-3.5" /> Sửa bài tập
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => updateMut.mutate({
-                      id: assignment.id,
-                      payload: { is_published: !assignment.is_published },
-                    })}
-                  >
-                    {assignment.is_published ? <EyeOff className="mr-2 h-3.5 w-3.5" /> : <Globe className="mr-2 h-3.5 w-3.5" />}
-                    {assignment.is_published ? 'Ẩn bài tập' : 'Hiển thị bài tập'}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => updateMut.mutate({
@@ -855,7 +839,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa bài tập</AlertDialogTitle>
             <AlertDialogDescription>
-              Bài tập "{deleting?.title}" sẽ bị ẩn khỏi mục lục và học viên.
+              Bài tập "{deleting?.title}" sẽ được xóa khỏi mục lục và không còn tính vào tiến độ học viên.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -890,7 +874,6 @@ function AssignmentDialog({
 }) {
   const [title, setTitle] = useState('');
   const [question, setQuestion] = useState('');
-  const [isPublished, setIsPublished] = useState(true);
   const [allowResubmission, setAllowResubmission] = useState(false);
   const [deadlineMode, setDeadlineMode] = useState<AssignmentFormDeadlineMode>('relative_to_enrollment');
   const [deadlineAfterDays, setDeadlineAfterDays] = useState('7');
@@ -907,7 +890,6 @@ function AssignmentDialog({
       : 'relative_to_enrollment';
     setTitle(assignment?.title || '');
     setQuestion(assignment?.question || '');
-    setIsPublished(assignment?.is_published ?? true);
     setAllowResubmission(assignment?.allow_resubmission ?? false);
     setDeadlineMode(nextDeadlineMode);
     setDeadlineAfterDays(String(assignment?.deadline_after_days || 7));
@@ -945,7 +927,6 @@ function AssignmentDialog({
     mutationFn: () => createCourseAssignment(courseId, {
       title,
       question,
-      is_published: isPublished,
       allow_resubmission: allowResubmission,
       deadline_enabled: isRelativeDeadline,
       deadline_mode: deadlineMode,
@@ -965,7 +946,6 @@ function AssignmentDialog({
     mutationFn: () => updateCourseAssignment(assignment!.id, {
       title,
       question,
-      is_published: isPublished,
       allow_resubmission: allowResubmission,
       submission_unlock_mode: submissionUnlockMode,
       attachment_file: attachmentFile,
@@ -1012,10 +992,6 @@ function AssignmentDialog({
             </div>
 
             <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <Label className="text-sm">Hiển thị cho học viên</Label>
-                <Switch checked={isPublished} onCheckedChange={setIsPublished} />
-              </div>
               <div className="flex items-center justify-between gap-3">
                 <Label className="text-sm">Cho phép nộp lại</Label>
                 <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />

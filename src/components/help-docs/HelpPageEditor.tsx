@@ -5,12 +5,13 @@
  * Staff: view mode (read-only rendered HTML)
  * Superuser: edit mode (RichTextEditor + title + publish toggle)
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { deleteHelpImage, getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/custom-help-docs';
 import type { HelpPageDetail } from '@/api/custom-help-docs';
 import RichTextEditor, { prepareContentForSave } from '@/components/course-editor/RichTextEditor';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { htmlImageDisplaySrc, htmlImageStoragePath } from '@/utils/storage-url';
 import { toast } from 'sonner';
@@ -32,6 +33,9 @@ function renderHelpPageContent(html: string): string {
     doc.querySelectorAll('img').forEach((img) => {
       const src = img.getAttribute('src') || '';
       img.setAttribute('src', htmlImageDisplaySrc(src));
+      img.setAttribute('role', 'button');
+      img.setAttribute('tabindex', '0');
+      img.setAttribute('title', 'Nhấn để phóng to ảnh');
     });
     return doc.body.innerHTML;
   } catch {
@@ -63,6 +67,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
   const [content, setContent] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [isImageUploading, setIsImageUploading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
   const editorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasChangesRef = useRef(false);
@@ -252,6 +257,32 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     }
   }, [cleanupSessionUploads, page]);
 
+  const openImagePreview = useCallback((image: HTMLImageElement) => {
+    const src = image.currentSrc || image.src || image.getAttribute('src') || '';
+    if (!src) return;
+    setPreviewImage({
+      src,
+      alt: image.getAttribute('alt')?.trim() || page?.title || 'Ảnh hướng dẫn',
+    });
+  }, [page?.title]);
+
+  const handleRenderedContentClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const image = target?.closest('img');
+    if (!image || !event.currentTarget.contains(image)) return;
+    event.preventDefault();
+    openImagePreview(image as HTMLImageElement);
+  }, [openImagePreview]);
+
+  const handleRenderedContentKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target as HTMLElement | null;
+    const image = target?.closest('img');
+    if (!image || !event.currentTarget.contains(image)) return;
+    event.preventDefault();
+    openImagePreview(image as HTMLImageElement);
+  }, [openImagePreview]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -410,6 +441,8 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
           {page.content ? (
             <div
               className="prose prose-sm sm:prose-base dark:prose-invert max-w-none p-6 help-page-content"
+              onClick={handleRenderedContentClick}
+              onKeyDown={handleRenderedContentKeyDown}
               dangerouslySetInnerHTML={{ __html: renderHelpPageContent(page.content) }}
             />
           ) : (
@@ -426,6 +459,28 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
         </div>
       )}
 
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent
+          showCloseButton
+          overlayClassName="bg-black/80 backdrop-blur-md"
+          className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 rounded-none border-none bg-black/95 p-0 text-white shadow-none ring-0 sm:rounded-none"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>{previewImage?.alt || 'Ảnh hướng dẫn'}</DialogTitle>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
+            {previewImage && (
+              <img
+                src={previewImage.src}
+                alt={previewImage.alt}
+                className="h-auto w-auto max-h-[calc(100dvh-1.5rem)] max-w-[calc(100vw-1.5rem)] cursor-zoom-out rounded-lg object-contain shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:max-w-[calc(100vw-3rem)]"
+                onClick={() => setPreviewImage(null)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Inline styles for rendered content */}
       <style>{`
         .help-page-content img {
@@ -433,6 +488,16 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
           height: auto;
           border-radius: 0.5rem;
           margin: 1rem 0;
+          cursor: zoom-in;
+          transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+        }
+        .help-page-content img:hover {
+          box-shadow: 0 14px 34px hsl(var(--foreground) / 0.14);
+          transform: translateY(-1px);
+        }
+        .help-page-content img:focus-visible {
+          outline: 2px solid hsl(var(--primary));
+          outline-offset: 3px;
         }
         .help-page-content ul {
           list-style-type: disc;
