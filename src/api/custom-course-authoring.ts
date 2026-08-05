@@ -100,8 +100,19 @@ export interface CourseAssetsResponse {
   end: number;
   page: number;
   pageSize: number;
-  totalCount: number;
+  totalCount: number | null;
   assets: CourseAsset[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
+}
+
+export interface GetCourseAssetsOptions {
+  page?: number;
+  pageSize?: number;
+  textSearch?: string;
+  assetType?: string;
+  cursor?: string | null;
+  cursorPagination?: boolean;
 }
 
 export interface Course {
@@ -251,14 +262,22 @@ export async function studioSubmit(blockId: string, payload: any): Promise<any> 
 
 export async function getCourseAssets(
   courseId: string,
-  page = 0,
+  pageOrOptions: number | GetCourseAssetsOptions = 0,
   pageSize = 50,
   textSearch = '',
   assetType = '',
 ): Promise<CourseAssetsResponse> {
-  const params: any = { page, page_size: pageSize };
-  if (textSearch) params.text_search = textSearch;
-  if (assetType) params.asset_type = assetType;
+  const options: GetCourseAssetsOptions = typeof pageOrOptions === 'object'
+    ? pageOrOptions
+    : { page: pageOrOptions, pageSize, textSearch, assetType };
+  const params: any = {
+    page: options.page ?? 0,
+    page_size: options.pageSize ?? 50,
+  };
+  if (options.textSearch) params.text_search = options.textSearch;
+  if (options.assetType) params.asset_type = options.assetType;
+  if (options.cursorPagination) params.pagination = 'cursor';
+  if (options.cursor) params.cursor = options.cursor;
 
   const { data } = await customApiClient.get<ApiResponse<CourseAssetsResponse>>(
     `${BASE}/assets/${encodeURIComponent(courseId)}`,

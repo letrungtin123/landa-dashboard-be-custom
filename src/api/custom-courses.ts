@@ -37,7 +37,26 @@ export interface CourseMentor {
   phone: string | null;
   avatar: string | null;
   role: string;
+  role_label?: string | null;
   bio?: string | null;
+}
+
+export interface CourseMentorAssignmentHistoryItem {
+  id: string;
+  assigned_by_id: string | null;
+  assigned_by_name: string;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
+  action: 'assign' | 'remove';
+  assigned_at: string;
+}
+
+export interface CourseMentorHistoryResponse {
+  items: CourseMentorAssignmentHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface CourseMentorSection {
@@ -138,6 +157,37 @@ export async function updateCourseMentor(courseId: string, mentorId: string | nu
     { mentor_id: mentorId },
   );
   return data.data.mentor;
+}
+
+export async function getCourseMentorHistory(
+  courseId: string,
+  params: { page?: number; page_size?: number; search?: string; date_from?: string; date_to?: string } = {},
+): Promise<CourseMentorHistoryResponse> {
+  const { data } = await customApiClient.get<ApiResponse<{
+    data: CourseMentorAssignmentHistoryItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }>>(
+    `/api/courses/${encodeURIComponent(courseId)}/mentor-history`,
+    {
+      params: {
+        page: params.page,
+        page_size: params.page_size,
+        search: params.search || undefined,
+        date_from: params.date_from || undefined,
+        date_to: params.date_to || undefined,
+      },
+    },
+  );
+  return {
+    items: data.data.data,
+    total: data.data.total,
+    page: data.data.page,
+    page_size: data.data.pageSize,
+    total_pages: data.data.totalPages,
+  };
 }
 
 export async function getCourseMentorSection(courseId: string): Promise<CourseMentorSection | null> {

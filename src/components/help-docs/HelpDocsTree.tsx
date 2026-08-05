@@ -1,15 +1,31 @@
 /**
  * HelpDocsTree.tsx
  * Cây folder cho Help Docs — Folder → Pages
- * Superuser: thêm/sửa/xóa folder + page
- * Staff: chỉ xem, không có nút action
+ * Người có quyền chỉnh sửa có thể kéo thả để sắp xếp folder/page.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Folder, FileText,
-  MoreVertical, Pencil, Check, X, BookOpen,
+  MoreVertical, Pencil, Check, X, BookOpen, GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -22,7 +38,7 @@ import {
 import type { HelpFolder, HelpPageSummary } from '@/api/custom-help-docs';
 import {
   createHelpFolder, updateHelpFolder, deleteHelpFolder,
-  createHelpPage, deleteHelpPage,
+  createHelpPage, deleteHelpPage, reorderHelpFolders, reorderHelpPages,
 } from '@/api/custom-help-docs';
 import { useAuthStore } from '@/utils/store';
 
@@ -31,43 +47,126 @@ interface HelpDocsTreeProps {
   pages: HelpPageSummary[];
   selectedPageId: string | null;
   onSelectPage: (pageId: string) => void;
-  isSuperuser: boolean;
 }
 
 export default function HelpDocsTree({
-  folders, pages, selectedPageId, onSelectPage, isSuperuser,
+  folders, pages, selectedPageId, onSelectPage,
 }: HelpDocsTreeProps) {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('help_docs', 'can_add');
   const canEdit = hasPermission('help_docs', 'can_edit');
-  const canDelete = hasPermission('help_docs', 'can_delete');
+  const [localFolders, setLocalFolders] = useState(folders);
+  const [localPages, setLocalPages] = useState(pages);
+
+  useEffect(() => setLocalFolders(folders), [folders]);
+  useEffect(() => setLocalPages(pages), [pages]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['help-folders'] });
     queryClient.invalidateQueries({ queryKey: ['help-pages'] });
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const folderReorderMut = useMutation({
+    mutationFn: (orderedIds: string[]) => reorderHelpFolders(orderedIds),
+  });
+
+  const pageReorderMut = useMutation({
+    mutationFn: ({ folderId, orderedIds }: { folderId: string; orderedIds: string[] }) =>
+      reorderHelpPages(folderId, orderedIds),
+  });
+
+  const canReorderFolders = canEdit && !folderReorderMut.isPending;
+  const canReorderPages = canEdit && !pageReorderMut.isPending;
+
+  const handleFolderDragEnd = (event: DragEndEvent) => {
+    if (!canReorderFolders) return;
+
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = localFolders.findIndex((folder) => folder.id === String(active.id));
+    const newIndex = localFolders.findIndex((folder) => folder.id === String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const previousFolders = localFolders;
+    const nextFolders = arrayMove(localFolders, oldIndex, newIndex)
+      .map((folder, index) => ({ ...folder, sort_order: index }));
+    setLocalFolders(nextFolders);
+
+    folderReorderMut.mutate(nextFolders.map((folder) => folder.id), {
+      onSuccess: () => {
+        toast.success('Đã lưu thứ tự folder');
+        invalidate();
+      },
+      onError: () => {
+        setLocalFolders(previousFolders);
+        toast.error('Lưu thứ tự folder thất bại');
+        invalidate();
+      },
+    });
+  };
+
+  const handlePageReorder = (folderId: string, orderedPages: HelpPageSummary[]) => {
+    if (!canReorderPages) return;
+
+    const previousPages = localPages;
+    const orderedMap = new Map(
+      orderedPages.map((page, index) => [page.id, { ...page, sort_order: index }]),
+    );
+
+    const nextPages = localPages.map((page) => orderedMap.get(page.id) || page);
+    setLocalPages(nextPages);
+
+    pageReorderMut.mutate({ folderId, orderedIds: orderedPages.map((page) => page.id) }, {
+      onSuccess: () => {
+        toast.success('Đã lưu thứ tự trang');
+        invalidate();
+      },
+      onError: () => {
+        setLocalPages(previousPages);
+        toast.error('Lưu thứ tự trang thất bại');
+        invalidate();
+      },
+    });
+  };
+
   return (
     <div className="space-y-1">
-      {folders.map((folder) => {
-        const folderPages = pages.filter((p) => p.folder_id === folder.id);
-        return (
-          <FolderNode
-            key={folder.id}
-            folder={folder}
-            pages={folderPages}
-            selectedPageId={selectedPageId}
-            onSelectPage={onSelectPage}
-            isSuperuser={isSuperuser}
-            onStructureChange={invalidate}
-          />
-        );
-      })}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFolderDragEnd}>
+        <SortableContext items={localFolders.map((folder) => folder.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1">
+            {localFolders.map((folder) => {
+              const folderPages = localPages
+                .filter((p) => p.folder_id === folder.id)
+                .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title));
+
+              return (
+                <FolderNode
+                  key={folder.id}
+                  folder={folder}
+                  pages={folderPages}
+                  selectedPageId={selectedPageId}
+                  onSelectPage={onSelectPage}
+                  onStructureChange={invalidate}
+                  onReorderPages={handlePageReorder}
+                  canReorder={canReorderFolders}
+                  canReorderPages={canReorderPages}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
       {canAdd && (
         <AddFolderButton onStructureChange={invalidate} />
       )}
-      {folders.length === 0 && !canAdd && (
+      {localFolders.length === 0 && !canAdd && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
           <BookOpen className="h-10 w-10 opacity-30" />
           <p className="text-sm">Chưa có tài liệu nào</p>
@@ -81,13 +180,15 @@ export default function HelpDocsTree({
 // Folder Node
 // ─────────────────────────────────────────────
 
-function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, onStructureChange }: {
+function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureChange, onReorderPages, canReorder, canReorderPages }: {
   folder: HelpFolder;
   pages: HelpPageSummary[];
   selectedPageId: string | null;
   onSelectPage: (id: string) => void;
-  isSuperuser: boolean;
   onStructureChange: () => void;
+  onReorderPages: (folderId: string, orderedPages: HelpPageSummary[]) => void;
+  canReorder: boolean;
+  canReorderPages: boolean;
 }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('help_docs', 'can_add');
@@ -97,6 +198,19 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(folder.title);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: folder.id,
+    disabled: !canReorder || isRenaming,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { zIndex: 30, position: 'relative' as const, opacity: 0.65 } : {}),
+  };
+
+  useEffect(() => {
+    if (pages.some((p) => p.id === selectedPageId)) setExpanded(true);
+  }, [pages, selectedPageId]);
 
   const renameMut = useMutation({
     mutationFn: () => updateHelpFolder(folder.id, { title: renameValue }),
@@ -111,12 +225,25 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
   });
 
   return (
-    <div>
+    <div ref={setNodeRef} style={style}>
       {/* Folder row */}
       <div
-        className="flex items-center group gap-1.5 py-2 px-2.5 rounded-lg cursor-pointer text-sm transition-all select-none hover:bg-muted/50"
+        className={`flex items-center group gap-1.5 py-2 px-2.5 rounded-lg cursor-pointer text-sm transition-all select-none hover:bg-muted/50 ${isDragging ? 'bg-background shadow-lg ring-2 ring-primary/20' : ''}`}
         onClick={isRenaming ? undefined : () => setExpanded(!expanded)}
       >
+        {canReorder && (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="shrink-0 flex h-5 w-4 items-center justify-center rounded text-muted-foreground/35 transition-colors cursor-grab hover:bg-muted-foreground/10 hover:text-muted-foreground active:cursor-grabbing"
+            aria-label="Kéo để sắp xếp folder"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        )}
+
         <div className="w-4 shrink-0 flex justify-center">
           {expanded
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -171,15 +298,19 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onClick={() => { setIsRenaming(true); setRenameValue(folder.title); }}>
-                  <Pencil className="h-3.5 w-3.5 mr-2" /> Đổi tên
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Xóa
-                </DropdownMenuItem>
+                {canEdit && (
+                  <DropdownMenuItem onClick={() => { setIsRenaming(true); setRenameValue(folder.title); }}>
+                    <Pencil className="h-3.5 w-3.5 mr-2" /> Đổi tên
+                  </DropdownMenuItem>
+                )}
+                {canDelete && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-2" /> Xóa
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -189,16 +320,15 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
       {/* Children */}
       {expanded && (
         <div className="ml-5 pl-2 border-l border-border/40 mt-0.5 space-y-0.5">
-          {pages.map((page) => (
-            <PageNode
-              key={page.id}
-              page={page}
-              isSelected={selectedPageId === page.id}
-              onSelect={() => onSelectPage(page.id)}
-              isSuperuser={isSuperuser}
-              onStructureChange={onStructureChange}
-            />
-          ))}
+          <SortablePageList
+            folderId={folder.id}
+            pages={pages}
+            selectedPageId={selectedPageId}
+            onSelectPage={onSelectPage}
+            onStructureChange={onStructureChange}
+            onReorder={onReorderPages}
+            canReorder={canReorderPages}
+          />
           {canAdd && (
             <AddPageButton folderId={folder.id} onStructureChange={onStructureChange} />
           )}
@@ -234,16 +364,72 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, isSuperuser, 
 // Page Node (leaf)
 // ─────────────────────────────────────────────
 
-function PageNode({ page, isSelected, onSelect, isSuperuser, onStructureChange }: {
+function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStructureChange, onReorder, canReorder }: {
+  folderId: string;
+  pages: HelpPageSummary[];
+  selectedPageId: string | null;
+  onSelectPage: (id: string) => void;
+  onStructureChange: () => void;
+  onReorder: (folderId: string, orderedPages: HelpPageSummary[]) => void;
+  canReorder: boolean;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!canReorder) return;
+
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = pages.findIndex((page) => page.id === String(active.id));
+    const newIndex = pages.findIndex((page) => page.id === String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    onReorder(folderId, arrayMove(pages, oldIndex, newIndex));
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={pages.map((page) => page.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-0.5">
+          {pages.map((page) => (
+            <PageNode
+              key={page.id}
+              page={page}
+              isSelected={selectedPageId === page.id}
+              onSelect={() => onSelectPage(page.id)}
+              onStructureChange={onStructureChange}
+              canReorder={canReorder}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder }: {
   page: HelpPageSummary;
   isSelected: boolean;
   onSelect: () => void;
-  isSuperuser: boolean;
   onStructureChange: () => void;
+  canReorder: boolean;
 }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canDelete = hasPermission('help_docs', 'can_delete');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: page.id,
+    disabled: !canReorder,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { zIndex: 25, position: 'relative' as const, opacity: 0.65 } : {}),
+  };
 
   const deleteMut = useMutation({
     mutationFn: () => deleteHelpPage(page.id),
@@ -254,10 +440,25 @@ function PageNode({ page, isSelected, onSelect, isSuperuser, onStructureChange }
   return (
     <>
       <div
+        ref={setNodeRef}
+        style={style}
         className={`flex items-center group gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-sm transition-all select-none
-          ${isSelected ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-muted/50 text-foreground/80'}`}
+          ${isSelected ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-muted/50 text-foreground/80'}
+          ${isDragging ? 'bg-background shadow-lg ring-2 ring-primary/20' : ''}`}
         onClick={onSelect}
       >
+        {canReorder && (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="shrink-0 flex h-5 w-4 items-center justify-center rounded text-muted-foreground/35 transition-colors cursor-grab hover:bg-muted-foreground/10 hover:text-muted-foreground active:cursor-grabbing"
+            aria-label="Kéo để sắp xếp trang"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3 w-3" />
+          </button>
+        )}
         <FileText className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-primary' : 'text-blue-500'}`} />
         <span className="flex-1 truncate">{page.title}</span>
 
@@ -266,7 +467,7 @@ function PageNode({ page, isSelected, onSelect, isSuperuser, onStructureChange }
           <div className={`w-1.5 h-1.5 rounded-full ${page.is_published ? 'bg-emerald-500' : 'bg-slate-400'}`} />
         </span>
 
-        {/* Delete action (superuser only) */}
+        {/* Delete action */}
         {canDelete && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
             <Button

@@ -3,7 +3,7 @@
  * Layout 2 panel: cây folder (trái) + editor/viewer (phải)
  * Giống Course Editor nhưng cho Help Docs.
  */
-import { useState } from 'react';
+import { useCallback, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery } from '@tanstack/react-query';
@@ -18,13 +18,45 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 260;
+const SIDEBAR_MAX_WIDTH = 560;
+
 export default function HelpDocsPage() {
   useHeaderInfo('Help Docs');
-  const user = useAuthStore((s) => s.user);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canEdit = hasPermission('help_docs', 'can_edit');
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+
+  const handleSidebarResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth + moveEvent.clientX - startX;
+      setSidebarWidth(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, nextWidth)));
+    };
+
+    const handlePointerUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [sidebarWidth]);
 
   const { data: foldersData, isLoading: foldersLoading, isError: foldersError } = useQuery({
     queryKey: ['help-folders', activeTenantId],
@@ -79,7 +111,6 @@ export default function HelpDocsPage() {
       pages={pages}
       selectedPageId={selectedPageId}
       onSelectPage={setSelectedPageId}
-      isSuperuser={canEdit}
     />
   );
 
@@ -124,7 +155,10 @@ export default function HelpDocsPage() {
       </div>
 
       {/* Desktop Sidebar: Folder Tree */}
-      <div className="hidden md:flex w-80 border-r border-border overflow-y-auto bg-muted/20 flex-col shrink-0">
+      <div
+        className="relative hidden md:flex border-r border-border bg-muted/20 flex-col shrink-0"
+        style={{ width: sidebarWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }}
+      >
         <div className="p-4 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary" />
@@ -136,6 +170,16 @@ export default function HelpDocsPage() {
         </div>
         <div className="p-3 flex-1 overflow-y-auto">
           {treeContent}
+        </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Điều chỉnh chiều rộng mục lục"
+          tabIndex={0}
+          onPointerDown={handleSidebarResizeStart}
+          className="group absolute -right-1 top-0 z-20 flex h-full w-2 cursor-col-resize items-center justify-center outline-none transition-colors hover:bg-primary/5 focus-visible:bg-primary/10"
+        >
+          <div className="h-10 w-0.5 rounded-full bg-border transition-colors group-hover:bg-primary/30" />
         </div>
       </div>
 

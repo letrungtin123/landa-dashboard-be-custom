@@ -12,6 +12,7 @@ import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
   BookOpenCheck, CheckCircle2, AtSign, FileText, Search, Network,
+  Mic, MicOff, Volume2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -41,6 +42,63 @@ type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | '
 type ChatSurface = 'admin' | 'lesson_author';
 type OutlineMentionOption = OutlineMention & { label: string; depth: number };
 type OutlineAncestor = { id: string; block_type: string };
+type VoiceCaptureState = 'idle' | 'requesting' | 'listening';
+type SendSource = 'text' | 'voice';
+type BrowserSpeechRecognitionResult = { isFinal: boolean; 0?: { transcript?: string } };
+type BrowserSpeechRecognitionEvent = Event & {
+  resultIndex: number;
+  results: { length: number; [index: number]: BrowserSpeechRecognitionResult };
+};
+type BrowserSpeechRecognitionErrorEvent = Event & { error?: string; message?: string };
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort?: () => void;
+};
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type SpeechWindow = Window & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
+const VOICE_LANG = 'vi-VN';
+const VOICE_MAX_LISTEN_MS = 15_000;
+const VOICE_SPEAK_MIN_CHARS = 80;
+const VOICE_SPEAK_MAX_CHARS = 180;
+
+function getSpeechRecognitionCtor(): BrowserSpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const speechWindow = window as SpeechWindow;
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+}
+
+function canSpeakBotText(): boolean {
+  return typeof window !== 'undefined'
+    && 'speechSynthesis' in window
+    && typeof SpeechSynthesisUtterance !== 'undefined';
+}
+
+function getVoiceErrorMessage(error?: string): string {
+  if (error === 'not-allowed' || error === 'service-not-allowed') return 'Trình duyệt chưa được cấp quyền micro.';
+  if (error === 'no-speech') return 'Không nghe rõ câu nói. Vui lòng thử lại.';
+  if (error === 'audio-capture') return 'Không tìm thấy micro khả dụng.';
+  if (error === 'network') return 'Nhận diện giọng nói đang bị gián đoạn.';
+  return 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói.';
+}
+
+function findSpeechBoundary(value: string): number {
+  let lastIndex = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    if ('.!?;:\n'.includes(value[index])) lastIndex = index;
+  }
+  return lastIndex;
+}
 
 function normalizeMentionText(value: string): string {
   return value
@@ -194,7 +252,17 @@ export default function ChatWidget() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [voiceCaptureState, setVoiceCaptureState] = useState<VoiceCaptureState>('idle');
+  const [botSpeaking, setBotSpeaking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const voiceTranscriptRef = useRef('');
+  const voicePreviewRef = useRef('');
+  const voiceDiscardRef = useRef(false);
+  const voiceErrorRef = useRef(false);
+  const voiceListenTimerRef = useRef<number | null>(null);
+  const speakThisTurnRef = useRef(false);
+  const speechBufferRef = useRef('');
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -207,6 +275,96 @@ export default function ChatWidget() {
       window.setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior }), 0);
     });
   }, []);
+
+  const clearVoiceListenTimer = useCallback(() => {
+    if (voiceListenTimerRef.current) {
+      window.clearTimeout(voiceListenTimerRef.current);
+      voiceListenTimerRef.current = null;
+    }
+  }, []);
+
+  const cancelBotSpeech = useCallback(() => {
+    speakThisTurnRef.current = false;
+    speechBufferRef.current = '';
+    if (canSpeakBotText()) window.speechSynthesis.cancel();
+    setBotSpeaking(false);
+  }, []);
+
+  const stopVoiceCapture = useCallback((discard = false) => {
+    if (discard) voiceDiscardRef.current = true;
+    clearVoiceListenTimer();
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      try {
+        if (discard && recognition.abort) recognition.abort();
+        else recognition.stop();
+      } catch {
+        // Browser may throw if recognition has already stopped.
+      }
+    }
+    setVoiceCaptureState('idle');
+  }, [clearVoiceListenTimer]);
+
+  const speakBotText = useCallback((text: string) => {
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned || !canSpeakBotText()) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleaned);
+    utterance.lang = VOICE_LANG;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => setBotSpeaking(true);
+    const markDone = () => {
+      window.setTimeout(() => {
+        if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) setBotSpeaking(false);
+      }, 0);
+    };
+    utterance.onend = markDone;
+    utterance.onerror = markDone;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const flushSpeechBuffer = useCallback((force = false) => {
+    if (!speakThisTurnRef.current || !canSpeakBotText()) return;
+    const buffer = speechBufferRef.current;
+    if (!buffer.trim()) return;
+
+    if (force) {
+      speechBufferRef.current = '';
+      speakBotText(buffer);
+      return;
+    }
+
+    const boundary = findSpeechBoundary(buffer);
+    if (boundary >= VOICE_SPEAK_MIN_CHARS) {
+      speechBufferRef.current = buffer.slice(boundary + 1);
+      speakBotText(buffer.slice(0, boundary + 1));
+      return;
+    }
+
+    if (buffer.length >= VOICE_SPEAK_MAX_CHARS) {
+      speechBufferRef.current = '';
+      speakBotText(buffer);
+    }
+  }, [speakBotText]);
+
+  const queueSpeechChunk = useCallback((text: string) => {
+    if (!speakThisTurnRef.current || !text) return;
+    speechBufferRef.current += text;
+    flushSpeechBuffer(false);
+  }, [flushSpeechBuffer]);
+
+  useEffect(() => () => {
+    stopVoiceCapture(true);
+    cancelBotSpeech();
+  }, [cancelBotSpeech, stopVoiceCapture]);
+
+  useEffect(() => {
+    if (!open) {
+      stopVoiceCapture(true);
+      cancelBotSpeech();
+    }
+  }, [cancelBotSpeech, open, stopVoiceCapture]);
 
   // ── FAB drag ref ──
   const fabRef = useRef<HTMLDivElement>(null);
@@ -241,6 +399,8 @@ export default function ChatWidget() {
   }, []);
 
   const resetChatState = useCallback(() => {
+    stopVoiceCapture(true);
+    cancelBotSpeech();
     abortRef.current?.abort();
     abortRef.current = null;
     setCurrentConv(null);
@@ -254,7 +414,7 @@ export default function ChatWidget() {
     setNextCursor(null);
     setProposalEvent(null);
     resetMindmapState();
-  }, [resetMindmapState]);
+  }, [cancelBotSpeech, resetMindmapState, stopVoiceCapture]);
 
   const loadOutlineMentions = useCallback(async (force = false) => {
     if (!courseId) {
@@ -554,9 +714,9 @@ export default function ChatWidget() {
   };
 
   // ── Send message ──
-  const handleSend = () => {
-    if (!currentConv || !inputValue.trim() || streaming) return;
-    const content = inputValue.trim();
+  const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text') => {
+    if (!currentConv || !rawContent.trim() || streaming) return;
+    const content = rawContent.trim();
     const outgoingMentions: OutlineMention[] = isLessonAuthor
       ? selectedMentions.map(({ block_id, block_type, display_name, path, unit_id, ancestor_ids, ancestor_types }) => ({
         block_id,
@@ -578,6 +738,11 @@ export default function ChatWidget() {
         source_info,
       }))
       : [];
+
+    stopVoiceCapture(true);
+    cancelBotSpeech();
+    speakThisTurnRef.current = source === 'voice' && canSpeakBotText();
+    speechBufferRef.current = '';
     setInputValue('');
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
@@ -588,6 +753,7 @@ export default function ChatWidget() {
       role: 'user',
       content,
       metadata: {
+        ...(source === 'voice' ? { input_mode: 'voice' } : {}),
         ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
         ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
       },
@@ -606,11 +772,14 @@ export default function ChatWidget() {
       content,
       (text) => {
         streamAccRef.current += text;
+        queueSpeechChunk(text);
         setStreamText(streamAccRef.current);
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 10);
       },
       () => {
         const full = streamAccRef.current;
+        flushSpeechBuffer(true);
+        speakThisTurnRef.current = false;
         if (full) {
           const assistantMsg: ChatMessage = {
             id: 'resp-' + Date.now(),
@@ -628,6 +797,7 @@ export default function ChatWidget() {
       },
       (message) => {
         const partial = streamAccRef.current.trim();
+        cancelBotSpeech();
         if (isLessonAuthor) {
           const assistantMsg: ChatMessage = {
             id: 'err-' + Date.now(),
@@ -653,13 +823,110 @@ export default function ChatWidget() {
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
       },
     );
+  }, [cancelBotSpeech, courseId, currentConv, flushSpeechBuffer, isLessonAuthor, queueSpeechChunk, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming]);
+
+  const handleSend = () => {
+    sendUserMessage(inputValue, 'text');
   };
 
+  const handleVoiceToggle = useCallback(async () => {
+    if (voiceCaptureState === 'listening') {
+      stopVoiceCapture(false);
+      return;
+    }
+    if (voiceCaptureState === 'requesting' || streaming) return;
+    if (!currentConv) {
+      toast.error('Vui lòng tạo hội thoại trước khi dùng micro.');
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionCtor();
+    if (!SpeechRecognition) {
+      toast.error('Trình duyệt này chưa hỗ trợ nhận diện giọng nói.');
+      return;
+    }
+
+    setVoiceCaptureState('requesting');
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+      }
+    } catch {
+      setVoiceCaptureState('idle');
+      toast.error('Trình duyệt chưa được cấp quyền micro.');
+      return;
+    }
+
+    cancelBotSpeech();
+    voiceTranscriptRef.current = '';
+    voicePreviewRef.current = '';
+    voiceDiscardRef.current = false;
+    voiceErrorRef.current = false;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = VOICE_LANG;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      let finalText = '';
+      let interimText = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript?.trim() ?? '';
+        if (!transcript) continue;
+        if (result.isFinal) finalText = `${finalText} ${transcript}`.trim();
+        else interimText = `${interimText} ${transcript}`.trim();
+      }
+      if (finalText) voiceTranscriptRef.current = `${voiceTranscriptRef.current} ${finalText}`.trim();
+      const preview = `${voiceTranscriptRef.current} ${interimText}`.trim();
+      voicePreviewRef.current = preview;
+      if (preview) setInputValue(preview);
+    };
+    recognition.onerror = (event) => {
+      voiceErrorRef.current = true;
+      clearVoiceListenTimer();
+      setVoiceCaptureState('idle');
+      toast.error(getVoiceErrorMessage(event.error));
+    };
+    recognition.onend = () => {
+      clearVoiceListenTimer();
+      setVoiceCaptureState('idle');
+      recognitionRef.current = null;
+      if (voiceDiscardRef.current) {
+        voiceDiscardRef.current = false;
+        return;
+      }
+      const transcript = (voiceTranscriptRef.current || voicePreviewRef.current).trim();
+      if (!transcript) {
+        if (!voiceErrorRef.current) toast.error('Không nghe rõ câu nói. Vui lòng thử lại.');
+        return;
+      }
+      setInputValue(transcript);
+      window.setTimeout(() => sendUserMessage(transcript, 'voice'), 0);
+    };
+
+    try {
+      recognitionRef.current = recognition;
+      recognition.start();
+      setVoiceCaptureState('listening');
+      voiceListenTimerRef.current = window.setTimeout(() => {
+        try { recognition.stop(); } catch {}
+      }, VOICE_MAX_LISTEN_MS);
+    } catch {
+      recognitionRef.current = null;
+      setVoiceCaptureState('idle');
+      toast.error('Không thể bật micro trên trình duyệt này.');
+    }
+  }, [cancelBotSpeech, clearVoiceListenTimer, currentConv, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const handleBack = () => {
+    stopVoiceCapture(true);
+    cancelBotSpeech();
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     setStreaming(false);
     setStreamText('');
@@ -886,6 +1153,9 @@ export default function ChatWidget() {
                   onInputChange={setInputValue}
                   onSend={handleSend}
                   onKeyDown={handleKeyDown}
+                  voiceCaptureState={voiceCaptureState}
+                  botSpeaking={botSpeaking}
+                  onVoiceToggle={handleVoiceToggle}
                   isLessonAuthor={isLessonAuthor}
                   outlineMentionOptions={outlineMentionOptions}
                   selectedMentions={selectedMentions}
@@ -1176,7 +1446,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, onVoiceToggle, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -1188,6 +1458,9 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onInputChange: (v: string) => void;
   onSend: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  voiceCaptureState: VoiceCaptureState;
+  botSpeaking: boolean;
+  onVoiceToggle: () => void;
   isLessonAuthor?: boolean;
   outlineMentionOptions?: OutlineMentionOption[];
   selectedMentions?: OutlineMentionOption[];
@@ -1213,6 +1486,15 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const [sourceSearch, setSourceSearch] = useState('');
   const selectedMentionList = selectedMentions ?? [];
   const selectedSourceDocumentList = selectedSourceDocuments ?? [];
+  const isVoiceListening = voiceCaptureState === 'listening';
+  const isVoiceRequesting = voiceCaptureState === 'requesting';
+  const voiceButtonTitle = isVoiceListening
+    ? 'Dừng nghe'
+    : isVoiceRequesting
+      ? 'Đang xin quyền micro...'
+      : botSpeaking
+        ? 'Bot đang nói'
+        : 'Nói bằng micro';
 
   const mentionMatches = useMemo(() => {
     if (!isLessonAuthor || mentionQuery === null) return [];
@@ -1388,6 +1670,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm whitespace-pre-wrap break-words">
                   {streamText}
                   <span className="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 animate-pulse rounded-sm" />
+                  {botSpeaking && <Volume2 className="ml-1 inline-block h-3.5 w-3.5 animate-pulse text-primary" />}
                 </div>
               </div>
             )}
@@ -1576,6 +1859,17 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 className="min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
                 style={{ minHeight: '28px' }}
               />
+              <Button
+                type="button"
+                variant={isVoiceListening ? 'default' : 'ghost'}
+                size="icon"
+                className={`h-8 w-8 rounded-lg shrink-0 ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : botSpeaking ? 'text-primary' : 'text-muted-foreground'}`}
+                disabled={streaming || isVoiceRequesting}
+                onClick={onVoiceToggle}
+                title={voiceButtonTitle}
+              >
+                {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : botSpeaking ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
+              </Button>
             </div>
           </div>
           <Button

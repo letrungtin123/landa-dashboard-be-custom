@@ -5,10 +5,11 @@ import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseNotificationSmtpStatus, getCourseNotificationHistory, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig, type CourseNotificationHistoryItem } from '@/api/custom-courses';
+import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseNotificationSmtpStatus, getCourseNotificationHistory, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorHistory, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig, type CourseNotificationHistoryItem } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { getRoleLabel } from '@/utils/role-labels';
 import { useAuthStore } from '@/utils/store';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
@@ -44,7 +45,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 function getCourseMentorDisplayName(course: CustomCourse): string {
-  return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || 'Chưa có mentor';
+  return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || 'Chưa có người phụ trách';
 }
 
 function getCourseCreatorDisplayName(course: CustomCourse): string {
@@ -62,6 +63,16 @@ function formatCourseUpdatedAt(value: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function dateInputToLocalIso(value: string, endExclusive = false): string | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day + (endExclusive ? 1 : 0), 0, 0, 0, 0);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 export default function CoursesPage() {
@@ -110,7 +121,7 @@ export default function CoursesPage() {
       start: '2020-01-01T00:00:00Z',
     }),
     onSuccess: (data) => {
-      toast.success(`Đã tạo course: ${data.display_name}`);
+      toast.success(`Đã tạo khóa học: ${data.display_name}`);
       setShowCreate(false);
       setNewNumber(''); setNewName(''); setNewDescription('');
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
@@ -513,7 +524,7 @@ export default function CoursesPage() {
                           </div>
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Người hướng dẫn</div>
+                          <div className="mb-0.5 text-muted-foreground">Người phụ trách</div>
                           <div className="flex min-w-0 items-center gap-1.5 font-medium">
                             <UserRound className="h-3.5 w-3.5 shrink-0 text-cyan-600/70" />
                             <span className="truncate">{getCourseMentorDisplayName(course)}</span>
@@ -588,7 +599,7 @@ export default function CoursesPage() {
                             {canManageMentors && (
                               <DropdownMenuItem onClick={() => setMentorCourse(course)} className="gap-2">
                                 <UserRound className="h-4 w-4 text-cyan-600" />
-                                Người hướng dẫn
+                                Người phụ trách
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
@@ -646,7 +657,7 @@ export default function CoursesPage() {
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người tạo</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
 
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người hướng dẫn</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người phụ trách</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Cập nhật</TableHead>
                   <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider pr-5">Thao tác</TableHead>
                 </TableRow>
@@ -822,7 +833,7 @@ export default function CoursesPage() {
                               {canManageMentors && (
                                 <DropdownMenuItem onClick={() => setMentorCourse(course)}>
                                   <UserRound className="h-4 w-4 text-cyan-600" />
-                                  Người hướng dẫn
+                                  Người phụ trách
                                 </DropdownMenuItem>
                               )}
 
@@ -998,13 +1009,21 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
 
 function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const roleLabels = useAuthStore((s) => s.roleLabels);
   const [search, setSearch] = useState('');
   const [description, setDescription] = useState('');
   const debouncedSearch = useDebounce(search);
   const [page, setPage] = useState(1);
   const pageSize = 8;
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(5);
+  const [historySearch, setHistorySearch] = useState('');
+  const debouncedHistorySearch = useDebounce(historySearch);
+  const [historyDateFrom, setHistoryDateFrom] = useState('');
+  const [historyDateTo, setHistoryDateTo] = useState('');
   const lightLogoInputRef = useRef<HTMLInputElement>(null);
   const darkLogoInputRef = useRef<HTMLInputElement>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -1034,6 +1053,29 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
     enabled: open && !!course.id,
   });
 
+  const historySearchTerm = debouncedHistorySearch.replace(/\s+/g, ' ').trim();
+  const historySearchTooShort = historySearchTerm.length === 1;
+  const historySearchParam = historySearchTerm.length >= 2 ? historySearchTerm : undefined;
+  const historyDateRangeInvalid = !!historyDateFrom && !!historyDateTo && historyDateFrom > historyDateTo;
+  const historyDateFromParam = dateInputToLocalIso(historyDateFrom);
+  const historyDateToParam = dateInputToLocalIso(historyDateTo, true);
+  const historyHasActiveFilters = !!historySearchParam || !!historyDateFrom || !!historyDateTo;
+  const historyQueryEnabled = open && historyOpen && !!course.id && !historySearchTooShort && !historyDateRangeInvalid;
+  const resetHistoryPaging = () => setHistoryPage(1);
+
+  const historyQuery = useQuery({
+    queryKey: ['course-mentor-history', course.id, historyPage, historyPageSize, historySearchParam || '', historyDateFromParam || '', historyDateToParam || ''],
+    queryFn: () => getCourseMentorHistory(course.id, {
+      page: historyPage,
+      page_size: historyPageSize,
+      search: historySearchParam,
+      date_from: historyDateFromParam,
+      date_to: historyDateToParam,
+    }),
+    enabled: historyQueryEnabled,
+    staleTime: 10_000,
+  });
+
   useEffect(() => {
     if (!open) return;
     setDescription(mentorSection?.description ?? '');
@@ -1042,12 +1084,14 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
   const updateMut = useMutation({
     mutationFn: (mentorId: string | null) => updateCourseMentor(course.id, mentorId),
     onSuccess: (mentor) => {
-      toast.success(mentor ? 'Đã cập nhật mentor' : 'Đã gỡ mentor');
+      toast.success(mentor ? 'Đã cập nhật người phụ trách' : 'Đã gỡ người phụ trách');
       queryClient.setQueryData(['course-mentor', course.id], mentor);
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['course-mentor-history', course.id] });
+      setHistoryPage(1);
+      if (mentor) onClose();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Cập nhật mentor thất bại'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Cập nhật người phụ trách thất bại'),
   });
 
   const updateSectionMut = useMutation({
@@ -1063,9 +1107,9 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
     mutationFn: (args: { mode: 'light' | 'dark'; file: File }) => uploadCourseMentorSectionLogo(course.id, args.mode, args.file),
     onSuccess: (section) => {
       queryClient.setQueryData(['course-mentor-section', course.id], section);
-      toast.success('Đã upload logo');
+      toast.success('Đã tải logo lên');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Upload logo thất bại'),
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Tải logo thất bại'),
   });
 
   const deleteLogoMut = useMutation({
@@ -1082,9 +1126,31 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
   const total = candidates?.total ?? 0;
 
   const avatarUrl = (mentor: CourseMentor | null | undefined) => storageUrl(mentor?.avatar || '') || null;
-  const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || 'Chưa có mentor';
+  const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || 'Chưa có người phụ trách';
+  const mentorRoleLabel = (mentor: CourseMentor | null | undefined) => {
+    const apiLabel = mentor?.role_label?.trim();
+    if (apiLabel) return apiLabel;
+    return getRoleLabel(mentor?.role, roleLabels, mentor?.role || '');
+  };
   const validLogoTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/gif'];
   const logoUrl = (path: string | null | undefined) => storageUrl(path || '') || '';
+  const historyItems = historyQuery.data?.items ?? [];
+  const historyTotal = historyQuery.data?.total ?? 0;
+  const historyTotalPages = historyQuery.data?.total_pages ?? 1;
+  const loadingFirstHistoryPage = historyQuery.isLoading && historyItems.length === 0;
+  const historyContentKey = historySearchTooShort
+    ? 'search-too-short'
+    : historyDateRangeInvalid
+      ? 'date-range-invalid'
+      : loadingFirstHistoryPage
+        ? `loading-${historyPage}-${historyPageSize}`
+        : historyItems.length === 0
+          ? `empty-${historyPage}-${historyPageSize}-${historySearchParam || ''}-${historyDateFrom}-${historyDateTo}`
+          : `rows-${historyPage}-${historyPageSize}-${historySearchParam || ''}-${historyDateFrom}-${historyDateTo}`;
+  const openHistory = () => {
+    resetHistoryPaging();
+    setHistoryOpen(true);
+  };
 
   const handleLogoFile = (mode: 'light' | 'dark', file: File | undefined) => {
     if (!file) return;
@@ -1099,26 +1165,44 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
     uploadLogoMut.mutate({ mode, file });
   };
   const logoSlots = [
-    { mode: 'light' as const, label: 'Logo sáng', hint: 'Dùng cho giao diện light', icon: Sun, path: mentorSection?.logo_light, inputRef: lightLogoInputRef },
-    { mode: 'dark' as const, label: 'Logo tối', hint: 'Dùng cho giao diện dark', icon: Moon, path: mentorSection?.logo_dark, inputRef: darkLogoInputRef },
+    { mode: 'light' as const, label: 'Logo sáng', hint: 'Dùng cho giao diện sáng', icon: Sun, path: mentorSection?.logo_light, inputRef: lightLogoInputRef },
+    { mode: 'dark' as const, label: 'Logo tối', hint: 'Dùng cho giao diện tối', icon: Moon, path: mentorSection?.logo_dark, inputRef: darkLogoInputRef },
   ];
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl md:max-w-3xl">
         <div className="shrink-0 border-b border-border bg-muted/20 px-4 py-4 sm:px-6 sm:py-5">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 pr-8 text-lg leading-6 sm:text-xl">
-              <UserRound className="h-5 w-5 text-cyan-600" />
-              Chọn mentor cho khóa học
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
-          </DialogHeader>
+          <div className="flex items-start justify-between gap-3">
+            <DialogHeader className="min-w-0 flex-1">
+              <DialogTitle className="flex items-center gap-2 pr-8 text-lg leading-6 sm:text-xl">
+                <UserRound className="h-5 w-5 text-cyan-600" />
+                Chọn người phụ trách cho khóa học
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
+            </DialogHeader>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={openHistory}
+                  aria-label="Xem lịch sử chỉ định người phụ trách"
+                >
+                  <History className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Lịch sử chỉ định</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:space-y-5 sm:px-6 sm:py-5">
           <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mentor hiện tại</div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người phụ trách hiện tại</div>
             {loadingCurrent ? (
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11 rounded-full" />
@@ -1138,7 +1222,14 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">{mentorName(currentMentor)}</div>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <div className="truncate text-sm font-semibold">{mentorName(currentMentor)}</div>
+                      {mentorRoleLabel(currentMentor) && (
+                        <Badge variant="outline" className="h-5 max-w-full px-2 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
+                          <span className="truncate">{mentorRoleLabel(currentMentor)}</span>
+                        </Badge>
+                      )}
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{currentMentor.email}</span>
                       {currentMentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{currentMentor.phone}</span>}
@@ -1154,7 +1245,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                   className="w-full shrink-0 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 sm:w-auto"
                 >
                   {updateMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                  Gỡ mentor
+                  Gỡ người phụ trách
                 </Button>
               </div>
             ) : (
@@ -1162,7 +1253,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                   <UserRound className="h-5 w-5" />
                 </div>
-                Course này chưa có mentor. Chọn một staff bên dưới để gán.
+                Khóa học này chưa có người phụ trách. Chọn một nhân sự phù hợp bên dưới để gán.
               </div>
             )}
           </div>
@@ -1170,8 +1261,8 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thông tin hiển thị trên section Người Hướng Dẫn ở trang learner</div>
-                <p className="mt-1 text-xs text-muted-foreground">Mô tả và logo light/dark cho section Người hướng dẫn của riêng course này.</p>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thông tin hiển thị trên mục Người phụ trách ở trang học viên</div>
+                <p className="mt-1 text-xs text-muted-foreground">Mô tả và logo sáng/tối cho mục Người phụ trách của riêng khóa học này.</p>
               </div>
               <Button
                 type="button"
@@ -1200,7 +1291,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     maxLength={2000}
-                    placeholder="Nhập mô tả công ty hoặc thông tin mentor section..."
+                    placeholder="Nhập mô tả công ty hoặc thông tin người phụ trách..."
                     className="min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24"
                   />
                   <div className="mt-1 text-right text-[11px] text-muted-foreground">{description.length}/2000</div>
@@ -1263,7 +1354,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                             onClick={() => slot.inputRef.current?.click()}
                           >
                             {uploading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="mr-1.5 h-3.5 w-3.5" />}
-                            {url ? 'Đổi ảnh' : 'Upload'}
+                            {url ? 'Đổi ảnh' : 'Tải lên'}
                           </Button>
                           {url && (
                             <Button
@@ -1292,7 +1383,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm staff theo tên, email hoặc username..."
+                placeholder="Tìm người phụ trách theo tên, email hoặc username..."
                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
@@ -1313,7 +1404,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               ) : rows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-10 text-center text-sm text-muted-foreground">
                   <UserRound className="mb-2 h-8 w-8 opacity-30" />
-                  Không tìm thấy staff phù hợp.
+                  Không tìm thấy người phụ trách phù hợp.
                 </div>
               ) : (
                 <div className={isFetching ? 'divide-y divide-border opacity-60' : 'divide-y divide-border'}>
@@ -1336,7 +1427,14 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-semibold">{mentorName(mentor)}</div>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <div className="truncate text-sm font-semibold">{mentorName(mentor)}</div>
+                              {mentorRoleLabel(mentor) && (
+                                <Badge variant="outline" className="h-5 max-w-full px-2 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
+                                  <span className="truncate">{mentorRoleLabel(mentor)}</span>
+                                </Badge>
+                              )}
+                            </div>
                             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                               <span className="inline-flex min-w-0 items-center gap-1"><Mail className="h-3 w-3 shrink-0" /><span className="truncate">{mentor.email}</span></span>
                               {mentor.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 shrink-0" />{mentor.phone}</span>}
@@ -1360,7 +1458,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             </div>
 
             <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>{total > 0 ? `${total} staff phù hợp` : 'Không có staff'}</span>
+              <span>{total > 0 ? `${total} người phụ trách phù hợp` : 'Không có người phù hợp'}</span>
               <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                 <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
                   Trước
@@ -1379,6 +1477,211 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="shrink-0 border-b border-border bg-muted/20 px-4 py-4 sm:px-6"
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <History className="h-5 w-5 text-cyan-600" />
+              Lịch sử thay đổi người phụ trách
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
+          </DialogHeader>
+        </motion.div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, delay: 0.03, ease: 'easeOut' }}
+            className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]"
+          >
+            <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
+              <span>Tìm người dùng</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={historySearch}
+                  onChange={(event) => {
+                    setHistorySearch(event.target.value);
+                    resetHistoryPaging();
+                  }}
+                  placeholder="Tên người thao tác hoặc người phụ trách"
+                  className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+            </label>
+            <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={historyDateFrom}
+                max={historyDateTo || undefined}
+                onChange={(event) => {
+                  setHistoryDateFrom(event.target.value);
+                  resetHistoryPaging();
+                }}
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={historyDateTo}
+                min={historyDateFrom || undefined}
+                onChange={(event) => {
+                  setHistoryDateTo(event.target.value);
+                  resetHistoryPaging();
+                }}
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+          </motion.div>
+
+          <AnimatePresence mode="wait" initial={false}>
+            {historySearchTooShort || historyDateRangeInvalid ? (
+              <motion.div
+                key={historyContentKey}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-muted-foreground"
+              >
+                <AlertCircle className="mb-2 h-8 w-8 opacity-40" />
+                {historySearchTooShort ? 'Nhập ít nhất 2 ký tự để tìm kiếm theo tên hiển thị.' : 'Khoảng ngày lọc chưa hợp lệ.'}
+              </motion.div>
+            ) : loadingFirstHistoryPage ? (
+              <motion.div
+                key={historyContentKey}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="space-y-3"
+              >
+                {Array.from({ length: Math.min(historyPageSize, 5) }).map((_, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18, delay: idx * 0.035, ease: 'easeOut' }}
+                    className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_160px]"
+                  >
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-44" />
+                    <Skeleton className="h-4 w-28" />
+                  </motion.div>
+                ))}
+              </motion.div>
+            ) : historyItems.length === 0 ? (
+              <motion.div
+                key={historyContentKey}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-muted-foreground"
+              >
+                <History className="mb-2 h-8 w-8 opacity-30" />
+                {historyHasActiveFilters ? 'Không có lịch sử phù hợp với bộ lọc.' : 'Chưa có lịch sử thay đổi người phụ trách.'}
+              </motion.div>
+            ) : (
+              <motion.div
+                key={historyContentKey}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="overflow-hidden rounded-xl border border-border"
+              >
+                <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_160px] gap-3 border-b border-border bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
+                  <div>Người thao tác</div>
+                  <div>Nội dung thay đổi</div>
+                  <div>Thời gian</div>
+                </div>
+                <div className="divide-y divide-border">
+                  {historyItems.map((item, index) => {
+                    const isAssign = item.action === 'assign';
+                    return (
+                      <motion.div
+                        key={item.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.18, delay: Math.min(index * 0.025, 0.14), ease: 'easeOut' }}
+                        className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_160px] sm:gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Người thao tác</div>
+                          <div className="truncate font-medium text-foreground">{item.assigned_by_name}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Nội dung thay đổi</div>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Badge
+                              variant={isAssign ? 'secondary' : 'destructive'}
+                              size="sm"
+                              className={isAssign ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : undefined}
+                            >
+                              {isAssign ? 'Chỉ định' : 'Gỡ'}
+                            </Badge>
+                            <div className={isAssign ? 'truncate font-medium text-foreground' : 'truncate font-medium text-red-600 dark:text-red-400'}>
+                              {isAssign ? item.assigned_to_name || 'Không xác định' : 'Không còn người phụ trách'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Thời gian</div>
+                          <div className="whitespace-nowrap text-muted-foreground">{formatCourseUpdatedAt(item.assigned_at)}</div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {!historySearchTooShort && !historyDateRangeInvalid && historyTotal > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="shrink-0 border-t border-border"
+          >
+            <Pagination
+              page={historyQuery.data?.page ?? historyPage}
+              limit={historyPageSize}
+              total={historyTotal}
+              totalPages={historyTotalPages}
+              limitOptions={[5, 10, 15, 20]}
+              label="lịch sử"
+              onPageChange={setHistoryPage}
+              onLimitChange={setHistoryPageSize}
+            />
+          </motion.div>
+        )}
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, delay: 0.04 }}
+        >
+          <DialogFooter className="m-0 shrink-0 rounded-none border-t border-border bg-muted/20 px-4 py-3 sm:px-6">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setHistoryOpen(false)}>Đóng</Button>
+          </DialogFooter>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
