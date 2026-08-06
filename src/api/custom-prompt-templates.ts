@@ -15,6 +15,7 @@ export interface PromptTemplate {
   name: string;
   description: string;
   prompt: string;
+  voice_prompt: string | null;
   avatar_url: string | null;
   fullbody_url: string | null;
   is_active: boolean;
@@ -52,6 +53,7 @@ export async function createTemplate(input: {
   name: string;
   description?: string;
   prompt: string;
+  voice_prompt?: string | null;
   is_active?: boolean;
   is_lesson_author?: boolean;
   sort_order?: number;
@@ -64,6 +66,7 @@ export async function updateTemplate(id: string, input: {
   name?: string;
   description?: string;
   prompt?: string;
+  voice_prompt?: string | null;
   is_active?: boolean;
   is_lesson_author?: boolean;
   sort_order?: number;

@@ -2,8 +2,8 @@
  * HelpPageEditor.tsx
  * Panel bên phải — hiển thị / chỉnh sửa nội dung Help Page
  *
- * Staff: view mode (read-only rendered HTML)
- * Superuser: edit mode (RichTextEditor + title + publish toggle)
+ * Non-superadmin: view mode (read-only rendered HTML)
+ * Superadmin: edit mode (RichTextEditor + title + publish toggle)
  */
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +22,7 @@ import {
 
 interface HelpPageEditorProps {
   pageId: string;
-  isSuperuser: boolean;
+  canManage: boolean;
 }
 
 function renderHelpPageContent(html: string): string {
@@ -60,7 +60,7 @@ function extractHelpPageImagePaths(html: string): Set<string> {
   return paths;
 }
 
-export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorProps) {
+export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
@@ -83,6 +83,10 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
     queryFn: () => getHelpPage(pageId),
     staleTime: 10_000,
   });
+
+  useEffect(() => {
+    if (!canManage && isEditing) setIsEditing(false);
+  }, [canManage, isEditing]);
 
   // Reset state khi đổi page; không đá editor khỏi edit mode khi autosave cập nhật cache.
   useEffect(() => {
@@ -306,7 +310,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
       {/* Header bar */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex-1 min-w-0">
-          {isEditing ? (
+          {isEditing && canManage ? (
             <input
               className="text-xl font-bold w-full bg-transparent border-b-2 border-primary/30 focus:border-primary outline-none pb-1 transition-colors"
               value={title}
@@ -342,10 +346,10 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
           </div>
         </div>
 
-        {/* Action buttons (superuser only) */}
-        {isSuperuser && (
+        {/* Action buttons (superadmin only) */}
+        {canManage && (
           <div className="flex items-center gap-2 shrink-0">
-            {isEditing ? (
+            {isEditing && canManage ? (
               <>
                 <Button
                   variant="outline" size="sm"
@@ -399,7 +403,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
       </div>
 
       {/* Content area */}
-      {isEditing ? (
+      {isEditing && canManage ? (
         <div className="space-y-3">
           {/* Image upload button */}
           <div className="flex items-center gap-2">
@@ -449,7 +453,7 @@ export default function HelpPageEditor({ pageId, isSuperuser }: HelpPageEditorPr
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
               <FileTextIcon className="h-12 w-12 opacity-20" />
               <p className="text-sm">Chưa có nội dung</p>
-              {isSuperuser && (
+              {canManage && (
                 <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
                   <Pencil className="h-4 w-4 mr-1.5" /> Bắt đầu viết
                 </Button>

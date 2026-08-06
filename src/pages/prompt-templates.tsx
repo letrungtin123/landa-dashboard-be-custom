@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Drama, Plus, Trash2, Pencil, Loader2, Camera, Bot,
-  Save, Image, Flag,
+  Save, Image, Flag, Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,7 @@ export default function PromptTemplatesPage() {
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
+  const [formVoicePrompt, setFormVoicePrompt] = useState("");
   const [formActive, setFormActive] = useState(false);
   const [formLessonAuthor, setFormLessonAuthor] = useState(false);
 
@@ -74,11 +75,11 @@ export default function PromptTemplatesPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   function openCreate() {
-    setFormName(""); setFormDesc(""); setFormPrompt(""); setFormActive(false); setFormLessonAuthor(false);
+    setFormName(""); setFormDesc(""); setFormPrompt(""); setFormVoicePrompt(""); setFormActive(false); setFormLessonAuthor(false);
     setEditTpl(null); setShowForm(true);
   }
   function openEdit(tpl: PromptTemplate) {
-    setFormName(tpl.name); setFormDesc(tpl.description); setFormPrompt(tpl.prompt); setFormActive(tpl.is_active); setFormLessonAuthor(tpl.is_lesson_author);
+    setFormName(tpl.name); setFormDesc(tpl.description); setFormPrompt(tpl.prompt); setFormVoicePrompt(tpl.voice_prompt || ""); setFormActive(tpl.is_active); setFormLessonAuthor(tpl.is_lesson_author);
     setEditTpl(tpl); setShowForm(true);
   }
 
@@ -97,6 +98,7 @@ export default function PromptTemplatesPage() {
           name: formName,
           description: formDesc,
           prompt: formPrompt,
+          voice_prompt: formVoicePrompt.trim() || null,
           is_active: formLessonAuthor ? false : formActive,
           is_lesson_author: formLessonAuthor,
         });
@@ -106,6 +108,7 @@ export default function PromptTemplatesPage() {
           name: formName,
           description: formDesc,
           prompt: formPrompt,
+          voice_prompt: formVoicePrompt.trim() || null,
           is_active: formLessonAuthor ? false : formActive,
           is_lesson_author: formLessonAuthor,
         });
@@ -279,6 +282,15 @@ export default function PromptTemplatesPage() {
                     <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed font-mono">{tpl.prompt}</p>
                   </div>
 
+                  {tpl.voice_prompt && (
+                    <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                        <Volume2 className="h-3.5 w-3.5" /> Voice prompt
+                      </div>
+                      <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{tpl.voice_prompt}</p>
+                    </div>
+                  )}
+
                   {/* Toggle active */}
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
@@ -343,6 +355,14 @@ export default function PromptTemplatesPage() {
                 value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
                 placeholder="Bạn là trợ lý AI chuyên tư vấn bán hàng. Phong cách: thân thiện, chuyên nghiệp..."
                 rows={6} className="resize-none font-mono text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Voice Prompt</label>
+              <Textarea
+                value={formVoicePrompt} onChange={e => setFormVoicePrompt(e.target.value)}
+                placeholder="VD: Nói giọng nữ miền Nam, ấm áp, tốc độ vừa phải, ngắt nghỉ tự nhiên."
+                rows={4} className="resize-none text-sm"
               />
             </div>
             <div className="flex items-center gap-3">

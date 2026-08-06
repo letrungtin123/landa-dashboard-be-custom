@@ -12,7 +12,7 @@ import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
   BookOpenCheck, CheckCircle2, AtSign, FileText, Search, Network,
-  Mic, MicOff, Volume2,
+  Mic, MicOff, PhoneOff, Play, Volume2, VolumeX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,7 +23,7 @@ import { storageUrl } from '@/utils/storage-url';
 import { useAuthStore } from '@/utils/store';
 import {
   fetchActiveBot, fetchConversations, createConversation,
-  deleteConversation, fetchMessages, sendMessageStream,
+  deleteConversation, fetchMessages, sendMessageStream, generateChatSpeech,
   fetchLessonAuthorSettings, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
@@ -43,6 +43,7 @@ type ChatSurface = 'admin' | 'lesson_author';
 type OutlineMentionOption = OutlineMention & { label: string; depth: number };
 type OutlineAncestor = { id: string; block_type: string };
 type VoiceCaptureState = 'idle' | 'requesting' | 'listening';
+type VoiceModePhase = 'idle' | 'requesting' | 'listening' | 'thinking' | 'preparing' | 'speaking' | 'play_blocked';
 type SendSource = 'text' | 'voice';
 type BrowserSpeechRecognitionResult = { isFinal: boolean; 0?: { transcript?: string } };
 type BrowserSpeechRecognitionEvent = Event & {
@@ -67,10 +68,12 @@ type SpeechWindow = Window & {
   SpeechRecognition?: BrowserSpeechRecognitionConstructor;
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 };
+type AudioContextWindow = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
 const VOICE_LANG = 'vi-VN';
 const VOICE_MAX_LISTEN_MS = 15_000;
-const VOICE_SPEAK_MIN_CHARS = 80;
-const VOICE_SPEAK_MAX_CHARS = 180;
+const SILENT_AUDIO_DATA_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==';
 
 function getSpeechRecognitionCtor(): BrowserSpeechRecognitionConstructor | null {
   if (typeof window === 'undefined') return null;
@@ -78,29 +81,21 @@ function getSpeechRecognitionCtor(): BrowserSpeechRecognitionConstructor | null 
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
 }
 
-function canSpeakBotText(): boolean {
-  return typeof window !== 'undefined'
-    && 'speechSynthesis' in window
-    && typeof SpeechSynthesisUtterance !== 'undefined';
+function getAudioContextCtor(): typeof AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const audioWindow = window as AudioContextWindow;
+  return audioWindow.AudioContext ?? audioWindow.webkitAudioContext ?? null;
 }
 
-function isVietnameseSpeechVoice(voice: SpeechSynthesisVoice): boolean {
-  const lang = voice.lang.toLowerCase().replace('_', '-');
-  const name = voice.name.toLowerCase();
-  return lang === VOICE_LANG.toLowerCase()
-    || lang.startsWith('vi')
-    || name.includes('vietnam')
-    || name.includes('viet')
-    || name.includes('tiếng việt')
-    || name.includes('tieng viet');
+function decodeChatAudioData(context: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {
+  return new Promise((resolve, reject) => {
+    const promise = context.decodeAudioData(audioData.slice(0), resolve, reject);
+    if (promise && typeof promise.then === 'function') {
+      promise.then(resolve).catch(reject);
+    }
+  });
 }
 
-function getVietnameseSpeechVoice(): SpeechSynthesisVoice | null {
-  if (!canSpeakBotText()) return null;
-  const voices = window.speechSynthesis.getVoices();
-  const exactVoice = voices.find(voice => voice.lang.toLowerCase().replace('_', '-') === VOICE_LANG.toLowerCase());
-  return exactVoice ?? voices.find(isVietnameseSpeechVoice) ?? null;
-}
 
 function getVoiceErrorMessage(error?: string): string {
   if (error === 'not-allowed' || error === 'service-not-allowed') return 'Trình duyệt chưa được cấp quyền micro.';
@@ -109,14 +104,13 @@ function getVoiceErrorMessage(error?: string): string {
   if (error === 'network') return 'Nhận diện giọng nói đang bị gián đoạn.';
   return 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói.';
 }
-
-function findSpeechBoundary(value: string): number {
-  let lastIndex = -1;
-  for (let index = 0; index < value.length; index += 1) {
-    if ('.!?;:\n'.includes(value[index])) lastIndex = index;
-  }
-  return lastIndex;
+function formatCallDuration(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
+
 
 function normalizeMentionText(value: string): string {
   return value
@@ -272,6 +266,13 @@ export default function ChatWidget() {
   const [deleting, setDeleting] = useState(false);
   const [voiceCaptureState, setVoiceCaptureState] = useState<VoiceCaptureState>('idle');
   const [botSpeaking, setBotSpeaking] = useState(false);
+  const [botSpeechLoading, setBotSpeechLoading] = useState(false);
+  const [botSpeechNeedsTap, setBotSpeechNeedsTap] = useState(false);
+  const [botSpeechText, setBotSpeechText] = useState('');
+  const [voiceModeActive, setVoiceModeActive] = useState(false);
+  const [voiceModeTranscript, setVoiceModeTranscript] = useState('');
+  const [voiceCallStartedAt, setVoiceCallStartedAt] = useState<number | null>(null);
+  const [voiceCallMuted, setVoiceCallMuted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceTranscriptRef = useRef('');
@@ -279,9 +280,17 @@ export default function ChatWidget() {
   const voiceDiscardRef = useRef(false);
   const voiceErrorRef = useRef(false);
   const voiceListenTimerRef = useRef<number | null>(null);
-  const vietnameseVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
-  const speakThisTurnRef = useRef(false);
-  const speechBufferRef = useRef('');
+  const voiceCallActiveRef = useRef(false);
+  const voiceCallMutedRef = useRef(false);
+  const voiceAutoListenTimerRef = useRef<number | null>(null);
+  const voiceAutoListenCallbackRef = useRef<(() => void) | null>(null);
+  const botAudioPrimedRef = useRef(false);
+  const botAudioRef = useRef<HTMLAudioElement | null>(null);
+  const botAudioUrlRef = useRef<string | null>(null);
+  const botAudioContextRef = useRef<AudioContext | null>(null);
+  const botAudioGainRef = useRef<GainNode | null>(null);
+  const botAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const botSpeechRequestIdRef = useRef(0);
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -302,13 +311,276 @@ export default function ChatWidget() {
     }
   }, []);
 
-  const cancelBotSpeech = useCallback(() => {
-    speakThisTurnRef.current = false;
-    speechBufferRef.current = '';
-    if (canSpeakBotText()) window.speechSynthesis.cancel();
-    setBotSpeaking(false);
+  const clearVoiceAutoListenTimer = useCallback(() => {
+    if (voiceAutoListenTimerRef.current) {
+      window.clearTimeout(voiceAutoListenTimerRef.current);
+      voiceAutoListenTimerRef.current = null;
+    }
   }, []);
 
+  useEffect(() => { voiceCallActiveRef.current = voiceModeActive; }, [voiceModeActive]);
+  useEffect(() => { voiceCallMutedRef.current = voiceCallMuted; }, [voiceCallMuted]);
+  const ensureBotAudioElement = useCallback(() => {
+    if (typeof Audio === 'undefined') return null;
+    const audio = botAudioRef.current ?? new Audio();
+    audio.preload = 'auto';
+    audio.controls = false;
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('webkit-playsinline', 'true');
+    if (typeof document !== 'undefined' && !audio.isConnected) {
+      audio.style.display = 'none';
+      document.body.appendChild(audio);
+    }
+    botAudioRef.current = audio;
+    return audio;
+  }, []);
+
+  const ensureBotAudioContext = useCallback(() => {
+    const AudioContextCtor = getAudioContextCtor();
+    if (!AudioContextCtor) return null;
+    const context = botAudioContextRef.current ?? new AudioContextCtor();
+    botAudioContextRef.current = context;
+
+    if (!botAudioGainRef.current) {
+      const gain = context.createGain();
+      gain.gain.value = 1;
+      gain.connect(context.destination);
+      botAudioGainRef.current = gain;
+    }
+
+    return context;
+  }, []);
+
+  const stopBotAudioSource = useCallback(() => {
+    const source = botAudioSourceRef.current;
+    if (!source) return;
+    source.onended = null;
+    try { source.stop(); } catch {}
+    try { source.disconnect(); } catch {}
+    botAudioSourceRef.current = null;
+  }, []);
+
+  const primeBotAudioPlayback = useCallback(() => {
+    if (botAudioPrimedRef.current) return;
+
+    const context = ensureBotAudioContext();
+    if (context) {
+      void (async () => {
+        try {
+          if (context.state === 'suspended') await context.resume();
+          const source = context.createBufferSource();
+          source.buffer = context.createBuffer(1, 1, 22050);
+          source.connect(botAudioGainRef.current ?? context.destination);
+          source.start(0);
+          botAudioPrimedRef.current = true;
+        } catch {}
+      })();
+    }
+
+    const audio = ensureBotAudioElement();
+    if (!audio) return;
+
+    try {
+      audio.pause();
+      audio.src = SILENT_AUDIO_DATA_URI;
+      audio.muted = true;
+      audio.volume = 0;
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        void playPromise
+          .then(() => {
+            audio.pause();
+            try { audio.currentTime = 0; } catch {}
+            audio.muted = false;
+            audio.volume = 1;
+            botAudioPrimedRef.current = true;
+          })
+          .catch(() => {
+            audio.muted = false;
+            audio.volume = 1;
+          });
+      } else {
+        audio.pause();
+        audio.muted = false;
+        audio.volume = 1;
+        botAudioPrimedRef.current = true;
+      }
+    } catch {
+      audio.muted = false;
+      audio.volume = 1;
+    }
+  }, [ensureBotAudioContext, ensureBotAudioElement]);
+
+  const scheduleVoiceAutoListen = useCallback((delayMs = 450) => {
+    clearVoiceAutoListenTimer();
+    if (!voiceCallActiveRef.current || voiceCallMutedRef.current) return;
+
+    voiceAutoListenTimerRef.current = window.setTimeout(() => {
+      voiceAutoListenTimerRef.current = null;
+      if (!voiceCallActiveRef.current || voiceCallMutedRef.current) return;
+      voiceAutoListenCallbackRef.current?.();
+    }, delayMs);
+  }, [clearVoiceAutoListenTimer]);
+
+  const cancelBotSpeech = useCallback(() => {
+    botSpeechRequestIdRef.current += 1;
+    stopBotAudioSource();
+    const audio = botAudioRef.current;
+    if (audio) {
+      audio.onplay = null;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute('src');
+      try { audio.load(); } catch {}
+    }
+    if (botAudioUrlRef.current) {
+      URL.revokeObjectURL(botAudioUrlRef.current);
+      botAudioUrlRef.current = null;
+    }
+    setBotSpeechLoading(false);
+    setBotSpeechNeedsTap(false);
+    setBotSpeaking(false);
+    setBotSpeechText('');
+  }, [stopBotAudioSource]);
+
+  const playBotSpeech = useCallback(async (text: string, conversationId?: string) => {
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned || typeof Audio === 'undefined') return;
+
+    cancelBotSpeech();
+    const requestId = botSpeechRequestIdRef.current + 1;
+    botSpeechRequestIdRef.current = requestId;
+    setBotSpeechText(cleaned);
+    setBotSpeechLoading(true);
+    setBotSpeechNeedsTap(false);
+    setBotSpeaking(false);
+
+    const finishSpeech = () => {
+      setBotSpeechLoading(false);
+      setBotSpeechNeedsTap(false);
+      setBotSpeaking(false);
+      setBotSpeechText('');
+    };
+
+    try {
+      const blob = await generateChatSpeech(cleaned, conversationId);
+      if (botSpeechRequestIdRef.current !== requestId) return;
+
+      const context = ensureBotAudioContext();
+      if (context) {
+        try {
+          if (context.state === 'suspended') await context.resume();
+          const audioBuffer = await decodeChatAudioData(context, await blob.arrayBuffer());
+          if (botSpeechRequestIdRef.current !== requestId) return;
+
+          stopBotAudioSource();
+          const source = context.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(botAudioGainRef.current ?? context.destination);
+          botAudioSourceRef.current = source;
+          source.onended = () => {
+            if (botAudioSourceRef.current === source) {
+              source.onended = null;
+              try { source.disconnect(); } catch {}
+              botAudioSourceRef.current = null;
+            }
+            finishSpeech();
+            scheduleVoiceAutoListen(350);
+          };
+          source.start(0);
+          setBotSpeechLoading(false);
+          setBotSpeechNeedsTap(false);
+          setBotSpeaking(true);
+          return;
+        } catch {
+          stopBotAudioSource();
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const audio = ensureBotAudioElement();
+      if (!audio) return;
+      audio.pause();
+      audio.src = url;
+      audio.muted = false;
+      audio.volume = 1;
+      try { audio.load(); } catch {}
+      botAudioRef.current = audio;
+      botAudioUrlRef.current = url;
+
+      const cleanup = () => {
+        if (botAudioRef.current === audio) {
+          audio.onplay = null;
+          audio.onended = null;
+          audio.onerror = null;
+          audio.pause();
+          audio.removeAttribute('src');
+          try { audio.load(); } catch {}
+        }
+        if (botAudioUrlRef.current === url) {
+          URL.revokeObjectURL(url);
+          botAudioUrlRef.current = null;
+        }
+        finishSpeech();
+      };
+
+      audio.onplay = () => {
+        setBotSpeechLoading(false);
+        setBotSpeechNeedsTap(false);
+        setBotSpeaking(true);
+      };
+      audio.onended = () => {
+        cleanup();
+        scheduleVoiceAutoListen(350);
+      };
+      audio.onerror = () => {
+        cleanup();
+        toast.error('Không phát được giọng bot. Vui lòng thử lại.');
+      };
+
+      try {
+        await audio.play();
+      } catch {
+        if (botAudioRef.current !== audio) return;
+        setBotSpeechLoading(false);
+        setBotSpeaking(false);
+        setBotSpeechNeedsTap(true);
+      }
+    } catch (err: any) {
+      if (botSpeechRequestIdRef.current !== requestId) return;
+      setBotSpeechLoading(false);
+      setBotSpeechNeedsTap(false);
+      setBotSpeaking(false);
+      setBotSpeechText('');
+      toast.error(err?.message || 'Không tạo được giọng bot');
+    }
+  }, [cancelBotSpeech, ensureBotAudioContext, ensureBotAudioElement, scheduleVoiceAutoListen, stopBotAudioSource]);
+
+  const handleResumeBotSpeech = useCallback(async () => {
+    const context = ensureBotAudioContext();
+    if (context?.state === 'suspended') {
+      try { await context.resume(); } catch {}
+    }
+
+    const audio = botAudioRef.current;
+    if (!audio || !audio.src) {
+      setBotSpeechNeedsTap(false);
+      toast.error('Không tìm thấy audio bot. Vui lòng gửi lại tin nhắn.');
+      return;
+    }
+
+    try {
+      setBotSpeechNeedsTap(false);
+      await audio.play();
+      setBotSpeechLoading(false);
+      setBotSpeaking(true);
+    } catch {
+      setBotSpeechNeedsTap(true);
+      setBotSpeaking(false);
+      toast.error('Trình duyệt vẫn đang chặn phát audio. Vui lòng thử lại.');
+    }
+  }, [ensureBotAudioContext]);
   const stopVoiceCapture = useCallback((discard = false) => {
     if (discard) voiceDiscardRef.current = true;
     clearVoiceListenTimer();
@@ -324,93 +596,34 @@ export default function ChatWidget() {
     setVoiceCaptureState('idle');
   }, [clearVoiceListenTimer]);
 
-  const resolveVietnameseSpeechVoice = useCallback(() => {
-    const voice = vietnameseVoiceRef.current ?? getVietnameseSpeechVoice();
-    if (voice) vietnameseVoiceRef.current = voice;
-    return voice;
-  }, []);
-
-  const speakBotText = useCallback((text: string) => {
-    const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (!cleaned || !canSpeakBotText()) return false;
-
-    const voice = resolveVietnameseSpeechVoice();
-    if (!voice) return false;
-
-    const utterance = new SpeechSynthesisUtterance(cleaned);
-    utterance.voice = voice;
-    utterance.lang = voice.lang || VOICE_LANG;
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onstart = () => setBotSpeaking(true);
-    const markDone = () => {
-      window.setTimeout(() => {
-        if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) setBotSpeaking(false);
-      }, 0);
-    };
-    utterance.onend = markDone;
-    utterance.onerror = markDone;
-    window.speechSynthesis.speak(utterance);
-    return true;
-  }, [resolveVietnameseSpeechVoice]);
-
-  useEffect(() => {
-    if (!canSpeakBotText()) return;
-    const synth = window.speechSynthesis;
-    const handleVoicesChanged = () => {
-      if (!resolveVietnameseSpeechVoice()) return;
-      const pendingText = speechBufferRef.current;
-      if (!pendingText.trim()) return;
-      speechBufferRef.current = '';
-      speakBotText(pendingText);
-    };
-
-    handleVoicesChanged();
-    synth.addEventListener?.('voiceschanged', handleVoicesChanged);
-    return () => synth.removeEventListener?.('voiceschanged', handleVoicesChanged);
-  }, [resolveVietnameseSpeechVoice, speakBotText]);
-
-  const flushSpeechBuffer = useCallback((force = false) => {
-    if (!speakThisTurnRef.current || !canSpeakBotText()) return;
-    if (!resolveVietnameseSpeechVoice()) return;
-    const buffer = speechBufferRef.current;
-    if (!buffer.trim()) return;
-
-    if (force) {
-      if (speakBotText(buffer)) speechBufferRef.current = '';
-      return;
-    }
-
-    const boundary = findSpeechBoundary(buffer);
-    if (boundary >= VOICE_SPEAK_MIN_CHARS) {
-      if (speakBotText(buffer.slice(0, boundary + 1))) {
-        speechBufferRef.current = buffer.slice(boundary + 1);
-      }
-      return;
-    }
-
-    if (buffer.length >= VOICE_SPEAK_MAX_CHARS) {
-      if (speakBotText(buffer)) speechBufferRef.current = '';
-    }
-  }, [resolveVietnameseSpeechVoice, speakBotText]);
-
-  const queueSpeechChunk = useCallback((text: string) => {
-    if (!speakThisTurnRef.current || !text) return;
-    speechBufferRef.current += text;
-    flushSpeechBuffer(false);
-  }, [flushSpeechBuffer]);
-
   useEffect(() => () => {
+    clearVoiceAutoListenTimer();
     stopVoiceCapture(true);
     cancelBotSpeech();
-  }, [cancelBotSpeech, stopVoiceCapture]);
+    stopBotAudioSource();
+    const audio = botAudioRef.current;
+    if (audio?.isConnected) audio.remove();
+    botAudioRef.current = null;
+    botAudioGainRef.current = null;
+    const context = botAudioContextRef.current;
+    if (context && context.state !== 'closed') void context.close().catch(() => {});
+    botAudioContextRef.current = null;
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, stopBotAudioSource, stopVoiceCapture]);
 
   useEffect(() => {
     if (!open) {
+      setFullscreen(false);
+      clearVoiceAutoListenTimer();
+      voiceCallActiveRef.current = false;
+      voiceCallMutedRef.current = false;
+      setVoiceModeActive(false);
+      setVoiceModeTranscript('');
+      setVoiceCallStartedAt(null);
+      setVoiceCallMuted(false);
       stopVoiceCapture(true);
       cancelBotSpeech();
     }
-  }, [cancelBotSpeech, open, stopVoiceCapture]);
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, open, stopVoiceCapture]);
 
   // ── FAB drag ref ──
   const fabRef = useRef<HTMLDivElement>(null);
@@ -763,6 +976,22 @@ export default function ChatWidget() {
   const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text') => {
     if (!currentConv || !rawContent.trim() || streaming) return;
     const content = rawContent.trim();
+    const isVoiceTurn = source === 'voice' || voiceModeActive;
+    const shouldUseVoicePlayback = isVoiceTurn && !isLessonAuthor;
+    if (shouldUseVoicePlayback) {
+      voiceCallActiveRef.current = true;
+      setVoiceModeActive(true);
+      setVoiceCallStartedAt(prev => prev ?? Date.now());
+      setVoiceModeTranscript(content);
+    } else if (isVoiceTurn && isLessonAuthor) {
+      clearVoiceAutoListenTimer();
+      voiceCallActiveRef.current = false;
+      voiceCallMutedRef.current = false;
+      setVoiceModeActive(false);
+      setVoiceModeTranscript('');
+      setVoiceCallStartedAt(null);
+      setVoiceCallMuted(false);
+    }
     const outgoingMentions: OutlineMention[] = isLessonAuthor
       ? selectedMentions.map(({ block_id, block_type, display_name, path, unit_id, ancestor_ids, ancestor_types }) => ({
         block_id,
@@ -787,8 +1016,6 @@ export default function ChatWidget() {
 
     stopVoiceCapture(true);
     cancelBotSpeech();
-    speakThisTurnRef.current = source === 'voice' && canSpeakBotText();
-    speechBufferRef.current = '';
     setInputValue('');
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
@@ -799,7 +1026,7 @@ export default function ChatWidget() {
       role: 'user',
       content,
       metadata: {
-        ...(source === 'voice' ? { input_mode: 'voice' } : {}),
+        ...(isVoiceTurn ? { input_mode: 'voice' } : {}),
         ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
         ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
       },
@@ -818,14 +1045,11 @@ export default function ChatWidget() {
       content,
       (text) => {
         streamAccRef.current += text;
-        queueSpeechChunk(text);
         setStreamText(streamAccRef.current);
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 10);
       },
       () => {
         const full = streamAccRef.current;
-        flushSpeechBuffer(true);
-        speakThisTurnRef.current = false;
         if (full) {
           const assistantMsg: ChatMessage = {
             id: 'resp-' + Date.now(),
@@ -836,6 +1060,7 @@ export default function ChatWidget() {
             created_at: new Date().toISOString(),
           };
           setMessages(msgs => [...msgs, assistantMsg]);
+          if (shouldUseVoicePlayback) void playBotSpeech(full, currentConv.id);
         }
         setStreamText('');
         streamAccRef.current = '';
@@ -866,21 +1091,24 @@ export default function ChatWidget() {
         mode: isLessonAuthor ? 'auto' : 'chat',
         outline_mentions: outgoingMentions,
         source_documents: outgoingSourceDocuments,
+        input_mode: isVoiceTurn ? 'voice' : 'text',
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
       },
     );
-  }, [cancelBotSpeech, courseId, currentConv, flushSpeechBuffer, isLessonAuthor, queueSpeechChunk, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming]);
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, playBotSpeech, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
   };
 
   const handleVoiceToggle = useCallback(async () => {
+    clearVoiceAutoListenTimer();
     if (voiceCaptureState === 'listening') {
       stopVoiceCapture(false);
       return;
     }
     if (voiceCaptureState === 'requesting' || streaming) return;
+    primeBotAudioPlayback();
     if (!currentConv) {
       toast.error('Vui lòng tạo hội thoại trước khi dùng micro.');
       return;
@@ -892,6 +1120,11 @@ export default function ChatWidget() {
       return;
     }
 
+    voiceCallActiveRef.current = true;
+    voiceCallMutedRef.current = false;
+    setVoiceModeActive(true);
+    setVoiceCallStartedAt(prev => prev ?? Date.now());
+    setVoiceCallMuted(false);
     setVoiceCaptureState('requesting');
     try {
       if (navigator.mediaDevices?.getUserMedia) {
@@ -900,6 +1133,12 @@ export default function ChatWidget() {
       }
     } catch {
       setVoiceCaptureState('idle');
+      voiceCallActiveRef.current = false;
+      voiceCallMutedRef.current = false;
+      setVoiceModeActive(false);
+      setVoiceModeTranscript('');
+      setVoiceCallStartedAt(null);
+      setVoiceCallMuted(false);
       toast.error('Trình duyệt chưa được cấp quyền micro.');
       return;
     }
@@ -928,12 +1167,31 @@ export default function ChatWidget() {
       if (finalText) voiceTranscriptRef.current = `${voiceTranscriptRef.current} ${finalText}`.trim();
       const preview = `${voiceTranscriptRef.current} ${interimText}`.trim();
       voicePreviewRef.current = preview;
-      if (preview) setInputValue(preview);
+      if (preview) {
+        setInputValue(preview);
+        setVoiceModeTranscript(preview);
+      }
     };
     recognition.onerror = (event) => {
-      voiceErrorRef.current = true;
       clearVoiceListenTimer();
       setVoiceCaptureState('idle');
+      if (voiceDiscardRef.current || !voiceCallActiveRef.current) {
+        recognitionRef.current = null;
+        return;
+      }
+      voiceErrorRef.current = true;
+      const shouldEndCall = event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture';
+      if (shouldEndCall) {
+        voiceCallActiveRef.current = false;
+        voiceCallMutedRef.current = false;
+        setVoiceModeActive(false);
+        setVoiceCallStartedAt(null);
+        setVoiceCallMuted(false);
+      } else {
+        voiceCallMutedRef.current = true;
+        setVoiceCallMuted(true);
+      }
+      setVoiceModeTranscript('');
       toast.error(getVoiceErrorMessage(event.error));
     };
     recognition.onend = () => {
@@ -946,10 +1204,14 @@ export default function ChatWidget() {
       }
       const transcript = (voiceTranscriptRef.current || voicePreviewRef.current).trim();
       if (!transcript) {
+        voiceCallMutedRef.current = true;
+        setVoiceCallMuted(true);
+        setVoiceModeTranscript('');
         if (!voiceErrorRef.current) toast.error('Không nghe rõ câu nói. Vui lòng thử lại.');
         return;
       }
       setInputValue(transcript);
+      setVoiceModeTranscript(transcript);
       window.setTimeout(() => sendUserMessage(transcript, 'voice'), 0);
     };
 
@@ -963,9 +1225,61 @@ export default function ChatWidget() {
     } catch {
       recognitionRef.current = null;
       setVoiceCaptureState('idle');
+      voiceCallActiveRef.current = false;
+      voiceCallMutedRef.current = false;
+      setVoiceModeActive(false);
+      setVoiceModeTranscript('');
+      setVoiceCallStartedAt(null);
+      setVoiceCallMuted(false);
       toast.error('Không thể bật micro trên trình duyệt này.');
     }
-  }, [cancelBotSpeech, clearVoiceListenTimer, currentConv, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, clearVoiceListenTimer, currentConv, primeBotAudioPlayback, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
+
+  useEffect(() => {
+    voiceAutoListenCallbackRef.current = () => { void handleVoiceToggle(); };
+  }, [handleVoiceToggle]);
+
+  const handleCloseVoiceMode = useCallback(() => {
+    clearVoiceAutoListenTimer();
+    voiceCallActiveRef.current = false;
+    voiceCallMutedRef.current = false;
+    setVoiceModeActive(false);
+    setVoiceModeTranscript('');
+    setVoiceCallStartedAt(null);
+    setVoiceCallMuted(false);
+    stopVoiceCapture(true);
+    cancelBotSpeech();
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, stopVoiceCapture]);
+
+  const handleToggleVoiceMute = useCallback(() => {
+    if (!voiceModeActive) return;
+
+    if (voiceCallMutedRef.current) {
+      voiceCallMutedRef.current = false;
+      setVoiceCallMuted(false);
+      window.setTimeout(() => {
+        if (voiceCallActiveRef.current) void handleVoiceToggle();
+      }, 120);
+      return;
+    }
+
+    voiceCallMutedRef.current = true;
+    setVoiceCallMuted(true);
+    clearVoiceAutoListenTimer();
+    stopVoiceCapture(true);
+    setVoiceCaptureState('idle');
+  }, [clearVoiceAutoListenTimer, handleVoiceToggle, stopVoiceCapture, voiceModeActive]);
+
+  useEffect(() => {
+    if (!voiceModeActive || voiceCallMuted || voiceCaptureState !== 'idle' || streaming || botSpeechLoading || botSpeaking || botSpeechNeedsTap || !currentConv) {
+      clearVoiceAutoListenTimer();
+      return;
+    }
+
+    scheduleVoiceAutoListen(450);
+
+    return clearVoiceAutoListenTimer;
+  }, [botSpeaking, botSpeechLoading, botSpeechNeedsTap, clearVoiceAutoListenTimer, currentConv, scheduleVoiceAutoListen, streaming, voiceCallMuted, voiceCaptureState, voiceModeActive]);
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
@@ -1201,7 +1515,20 @@ export default function ChatWidget() {
                   onKeyDown={handleKeyDown}
                   voiceCaptureState={voiceCaptureState}
                   botSpeaking={botSpeaking}
+                  botSpeechLoading={botSpeechLoading}
+                  botSpeechNeedsTap={botSpeechNeedsTap}
+                  botSpeechText={botSpeechText}
+                  voiceModeActive={voiceModeActive}
+                  voiceModeTranscript={voiceModeTranscript}
+                  voiceCallStartedAt={voiceCallStartedAt}
+                  voiceCallMuted={voiceCallMuted}
+                  botName={headerTitle}
+                  botAvatarSrc={botAvatarSrc}
                   onVoiceToggle={handleVoiceToggle}
+                  onToggleVoiceMute={handleToggleVoiceMute}
+                  onResumeBotSpeech={handleResumeBotSpeech}
+                  onStopBotSpeech={cancelBotSpeech}
+                  onCloseVoiceMode={handleCloseVoiceMode}
                   isLessonAuthor={isLessonAuthor}
                   outlineMentionOptions={outlineMentionOptions}
                   selectedMentions={selectedMentions}
@@ -1492,7 +1819,224 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, onVoiceToggle, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
+
+
+function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarSrc, startedAt, muted, onMic, onToggleMute, onResumeBotSpeech, onStopBotSpeech, onClose }: {
+  active: boolean;
+  phase: VoiceModePhase;
+  transcript: string;
+  botText: string;
+  botName: string;
+  botAvatarSrc: string | null;
+  startedAt: number | null;
+  muted: boolean;
+  onMic: () => void;
+  onToggleMute: () => void;
+  onResumeBotSpeech: () => void;
+  onStopBotSpeech: () => void;
+  onClose: () => void;
+}) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  void botText;
+
+  useEffect(() => {
+    if (!active || !startedAt) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const updateElapsed = () => setElapsedSeconds((Date.now() - startedAt) / 1000);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [active, startedAt]);
+
+  const isUserTurn = phase === 'requesting' || phase === 'listening';
+  const isBotTurn = phase === 'thinking' || phase === 'preparing' || phase === 'speaking' || phase === 'play_blocked';
+  const userVoiceActive = phase === 'listening' && transcript.trim().length > 0;
+  const botVoiceActive = phase === 'speaking';
+  const waveActive = !muted && (userVoiceActive || botVoiceActive);
+  const caption = (isBotTurn ? '' : transcript).trim();
+  const title = muted && phase === 'idle'
+    ? 'Micro đang tắt'
+    : phase === 'requesting'
+      ? 'Đang kết nối micro'
+      : phase === 'listening'
+        ? 'Đang nghe bạn nói'
+        : phase === 'thinking'
+          ? 'Đang suy nghĩ'
+          : phase === 'preparing'
+            ? 'Đang chuẩn bị giọng'
+            : phase === 'speaking'
+              ? 'Bot đang nói'
+              : phase === 'play_blocked'
+                ? 'Chạm để phát giọng'
+                : 'Đang trong cuộc gọi';
+  const hint = muted && phase === 'idle'
+    ? 'Bật mic để tiếp tục cuộc gọi'
+    : phase === 'idle'
+      ? 'Sẵn sàng nghe lượt tiếp theo'
+      : phase === 'play_blocked'
+        ? 'Safari cần một lần chạm để phát audio'
+        : caption || title;
+  const statusDotClass = muted
+    ? 'bg-amber-300'
+    : isUserTurn
+      ? 'bg-rose-500 dark:bg-rose-300'
+      : isBotTurn
+        ? 'bg-sky-500 dark:bg-sky-300'
+        : 'bg-emerald-500 dark:bg-emerald-300';
+  const avatarTone = isBotTurn
+    ? 'border-sky-500/25 bg-sky-500/10 text-sky-700 shadow-sky-500/10 dark:border-sky-300/25 dark:bg-sky-400/15 dark:text-sky-100 dark:shadow-sky-950/40'
+    : muted
+      ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 shadow-amber-500/10 dark:border-amber-300/25 dark:bg-amber-400/15 dark:text-amber-100 dark:shadow-amber-950/35'
+      : 'border-rose-500/25 bg-rose-500/10 text-rose-700 shadow-rose-500/10 dark:border-rose-300/25 dark:bg-rose-400/15 dark:text-rose-100 dark:shadow-rose-950/40';
+  const ringTone = isBotTurn ? 'border-sky-500/20 bg-sky-500/10 dark:border-sky-300/20 dark:bg-sky-300/10' : muted ? 'border-amber-500/20 bg-amber-500/10 dark:border-amber-300/20 dark:bg-amber-300/10' : 'border-rose-500/20 bg-rose-500/10 dark:border-rose-300/20 dark:bg-rose-300/10';
+  const barTone = isBotTurn ? 'bg-sky-500/70 dark:bg-sky-300/80' : muted ? 'bg-muted-foreground/25 dark:bg-white/25' : 'bg-rose-500/70 dark:bg-rose-300/80';
+  const rightAction = phase === 'play_blocked'
+    ? onResumeBotSpeech
+    : phase === 'speaking' || phase === 'preparing'
+      ? onStopBotSpeech
+      : onMic;
+  const rightDisabled = muted || phase === 'requesting' || phase === 'thinking';
+  const rightTitle = phase === 'play_blocked'
+    ? 'Phát giọng bot'
+    : phase === 'speaking' || phase === 'preparing'
+      ? 'Tắt giọng bot'
+      : 'Nói ngay';
+  const rightLabel = phase === 'play_blocked' ? 'Phát' : phase === 'speaking' || phase === 'preparing' ? 'Tắt bot' : 'Nói';
+  const bars = [12, 18, 14, 26, 20, 34, 24, 42, 28, 38, 22, 30, 18, 24, 14];
+
+  return (
+    <AnimatePresence>
+      {active && (
+        <motion.div
+          key="voice-call-mode"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute inset-0 z-50 flex flex-col overflow-hidden bg-background text-foreground dark:bg-zinc-950 dark:text-white"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted))_52%,hsl(var(--background))_100%)] dark:bg-[linear-gradient(180deg,#0b1220_0%,#111827_52%,#09090b_100%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(14,165,233,0.10)_0%,transparent_34%,rgba(244,63,94,0.08)_72%,rgba(16,185,129,0.08)_100%)] dark:bg-[linear-gradient(135deg,rgba(14,165,233,0.16)_0%,transparent_34%,rgba(244,63,94,0.12)_72%,rgba(16,185,129,0.10)_100%)]" />
+
+          <div className="relative z-10 flex items-center justify-between px-4 pt-4">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground dark:text-white">{botName}</p>
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground dark:text-white/55">
+                <span className={`h-2 w-2 rounded-full ${statusDotClass}`} />
+                <span className="truncate">{title}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-card/80 px-3 py-1.5 text-xs font-semibold tabular-nums text-foreground shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/10 dark:text-white/85">
+              {formatCallDuration(elapsedSeconds)}
+            </div>
+          </div>
+
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-4 text-center">
+            <motion.div layout className="mb-5 inline-flex max-w-full items-center gap-2 rounded-lg border border-border/70 bg-card/80 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/10 dark:text-white/75">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass}`} />
+              <span className="truncate">{title}</span>
+            </motion.div>
+
+            <div className="relative flex h-56 w-56 items-center justify-center">
+              <motion.span
+                className={`absolute h-48 w-48 rounded-full border ${ringTone}`}
+                animate={waveActive ? { scale: [0.86, 1.12, 0.86], opacity: [0.72, 0.22, 0.72] } : { scale: 0.95, opacity: 0.28 }}
+                transition={{ duration: waveActive ? 1.18 : 0.2, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
+              />
+              <motion.span
+                className={`absolute h-40 w-40 rounded-full ${ringTone}`}
+                animate={waveActive ? { scale: [0.9, 1.24, 0.9], opacity: [0.52, 0.12, 0.52] } : { scale: 0.96, opacity: 0.16 }}
+                transition={{ duration: waveActive ? 0.86 : 0.2, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
+              />
+              <motion.button
+                type="button"
+                onClick={phase === 'play_blocked' ? onResumeBotSpeech : phase === 'speaking' ? onStopBotSpeech : undefined}
+                disabled={phase !== 'play_blocked' && phase !== 'speaking'}
+                className={`relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border backdrop-blur-xl shadow-2xl disabled:cursor-default ${avatarTone}`}
+                animate={{ scale: waveActive ? [1, 1.035, 1] : 1 }}
+                transition={{ duration: 0.78, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
+                title={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}
+              >
+                {botAvatarSrc ? (
+                  <img src={botAvatarSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <Bot className="h-12 w-12" />
+                )}
+                {phase === 'play_blocked' && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-background/75 text-foreground backdrop-blur-sm dark:bg-black/45 dark:text-white">
+                    <Play className="h-10 w-10" />
+                  </span>
+                )}
+              </motion.button>
+            </div>
+
+            <div className="mt-4 flex h-12 items-center justify-center gap-1.5">
+              {bars.map((idleHeight, index) => {
+                const offset = Math.abs(index - 7);
+                return (
+                  <motion.span
+                    key={index}
+                    className={`w-1.5 rounded-full ${barTone}`}
+                    animate={{ height: waveActive ? [14 + offset, Math.max(18, 44 - offset * 2), 12 + offset] : idleHeight }}
+                    transition={{ duration: 0.5 + (index % 4) * 0.06, repeat: waveActive ? Infinity : 0, ease: 'easeInOut', delay: waveActive ? index * 0.025 : 0 }}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="mt-5 min-h-[76px] w-full max-w-[19rem]">
+              <p className="text-base font-semibold tracking-normal text-foreground dark:text-white">{hint}</p>
+              {caption ? (
+                <motion.p
+                  key={caption}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 max-h-24 overflow-hidden rounded-lg border border-border/70 bg-card/80 px-4 py-3 text-sm leading-6 text-muted-foreground backdrop-blur-md line-clamp-3 dark:border-white/10 dark:bg-white/10 dark:text-white/70"
+                >
+                  {caption}
+                </motion.p>
+              ) : (
+                <p className="mt-3 text-xs text-muted-foreground dark:text-white/45">{isBotTurn ? 'Giữ cuộc gọi mở trong khi bot phản hồi' : 'Nói tự nhiên, mình sẽ tự gửi khi bạn dừng'}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="relative z-10 px-5 pb-5">
+            <div className="mx-auto grid max-w-xs grid-cols-3 items-end gap-4 rounded-lg border border-border/70 bg-card/85 px-4 py-4 shadow-2xl shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:shadow-black/25">
+              <div className="flex flex-col items-center">
+                <Button type="button" variant="ghost" size="icon" className={`h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 ${muted ? 'border-amber-500/40 text-amber-700 dark:border-amber-300/35 dark:text-amber-100' : ''}`} onClick={onToggleMute} title={muted ? 'Bật micro' : 'Tắt micro'}>
+                  {muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                </Button>
+                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{muted ? 'Bật mic' : 'Tắt mic'}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <Button type="button" size="icon" className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-red-950/35 hover:bg-red-600" onClick={onClose} title="Kết thúc cuộc gọi">
+                  <PhoneOff className="h-6 w-6" />
+                </Button>
+                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">Kết thúc</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <Button type="button" variant="ghost" size="icon" className="h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted disabled:opacity-35 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15" onClick={rightAction} disabled={rightDisabled} title={rightTitle}>
+                  {phase === 'play_blocked'
+                    ? <Play className="h-5 w-5" />
+                    : phase === 'speaking' || phase === 'preparing'
+                      ? <VolumeX className="h-5 w-5" />
+                      : <Mic className="h-5 w-5" />}
+                </Button>
+                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{rightLabel}</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -1506,7 +2050,20 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onKeyDown: (e: React.KeyboardEvent) => void;
   voiceCaptureState: VoiceCaptureState;
   botSpeaking: boolean;
+  botSpeechLoading: boolean;
+  botSpeechNeedsTap: boolean;
+  botSpeechText: string;
+  voiceModeActive: boolean;
+  voiceModeTranscript: string;
+  voiceCallStartedAt: number | null;
+  voiceCallMuted: boolean;
+  botName: string;
+  botAvatarSrc: string | null;
   onVoiceToggle: () => void;
+  onToggleVoiceMute: () => void;
+  onResumeBotSpeech: () => void;
+  onStopBotSpeech: () => void;
+  onCloseVoiceMode: () => void;
   isLessonAuthor?: boolean;
   outlineMentionOptions?: OutlineMentionOption[];
   selectedMentions?: OutlineMentionOption[];
@@ -1534,14 +2091,27 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const selectedSourceDocumentList = selectedSourceDocuments ?? [];
   const isVoiceListening = voiceCaptureState === 'listening';
   const isVoiceRequesting = voiceCaptureState === 'requesting';
+  const isBotVoiceActive = voiceModeActive && (streaming || botSpeechLoading || botSpeaking || botSpeechNeedsTap);
+  const voiceModePhase: VoiceModePhase = isVoiceRequesting
+    ? 'requesting'
+    : isVoiceListening
+      ? 'listening'
+      : streaming
+        ? 'thinking'
+        : botSpeechLoading
+          ? 'preparing'
+          : botSpeaking
+            ? 'speaking'
+            : botSpeechNeedsTap
+              ? 'play_blocked'
+              : 'idle';
   const voiceButtonTitle = isVoiceListening
     ? 'Dừng nghe'
     : isVoiceRequesting
       ? 'Đang xin quyền micro...'
-      : botSpeaking
+      : isBotVoiceActive
         ? 'Bot đang nói'
         : 'Nói bằng micro';
-
   const mentionMatches = useMemo(() => {
     if (!isLessonAuthor || mentionQuery === null) return [];
     const query = normalizeMentionText(mentionQuery);
@@ -1677,7 +2247,22 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
+      <VoiceModeView
+        active={voiceModeActive}
+        phase={voiceModePhase}
+        transcript={voiceModeTranscript || inputValue}
+        botText=''
+        botName={botName}
+        botAvatarSrc={botAvatarSrc}
+        startedAt={voiceCallStartedAt}
+        muted={voiceCallMuted}
+        onMic={onVoiceToggle}
+        onToggleMute={onToggleVoiceMute}
+        onResumeBotSpeech={onResumeBotSpeech}
+        onStopBotSpeech={onStopBotSpeech}
+        onClose={onCloseVoiceMode}
+      />
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {loading ? (
           <div className="space-y-3">
@@ -1716,7 +2301,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm whitespace-pre-wrap break-words">
                   {streamText}
                   <span className="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 animate-pulse rounded-sm" />
-                  {botSpeaking && <Volume2 className="ml-1 inline-block h-3.5 w-3.5 animate-pulse text-primary" />}
+                  {isBotVoiceActive && <Volume2 className="ml-1 inline-block h-3.5 w-3.5 animate-pulse text-primary" />}
                 </div>
               </div>
             )}
@@ -1875,7 +2460,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 )}
               </div>
             )}
-            <div className="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 px-2.5 py-1.5 transition-all focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/20">
+            <div className="flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 px-2.5 py-1.5 transition-all focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/20">
               {isLessonAuthor && selectedMentionList.map(mention => (
                 <MentionBadge
                   key={mention.block_id}
@@ -1902,25 +2487,25 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn outline, + để chọn file KB...' : 'Nhập tin nhắn...'}
                 disabled={streaming}
                 rows={1}
-                className="min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
-                style={{ minHeight: '28px' }}
+                className="min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
+                style={{ minHeight: '32px' }}
               />
               <Button
                 type="button"
                 variant={isVoiceListening ? 'default' : 'ghost'}
                 size="icon"
-                className={`h-8 w-8 rounded-lg shrink-0 ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : botSpeaking ? 'text-primary' : 'text-muted-foreground'}`}
+                className={`h-8 w-8 shrink-0 self-center rounded-lg ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : isBotVoiceActive ? 'text-primary' : 'text-muted-foreground'}`}
                 disabled={streaming || isVoiceRequesting}
                 onClick={onVoiceToggle}
                 title={voiceButtonTitle}
               >
-                {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : botSpeaking ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
+                {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : isBotVoiceActive ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
               </Button>
             </div>
           </div>
           <Button
             size="icon"
-            className="h-10 w-10 rounded-xl shrink-0"
+            className="h-11 w-11 shrink-0 self-center rounded-xl"
             disabled={!inputValue.trim() || streaming}
             onClick={onSend}
           >

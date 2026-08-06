@@ -40,22 +40,21 @@ import {
   createHelpFolder, updateHelpFolder, deleteHelpFolder,
   createHelpPage, deleteHelpPage, reorderHelpFolders, reorderHelpPages,
 } from '@/api/custom-help-docs';
-import { useAuthStore } from '@/utils/store';
 
 interface HelpDocsTreeProps {
   folders: HelpFolder[];
   pages: HelpPageSummary[];
   selectedPageId: string | null;
   onSelectPage: (pageId: string) => void;
+  canManage: boolean;
 }
 
 export default function HelpDocsTree({
-  folders, pages, selectedPageId, onSelectPage,
+  folders, pages, selectedPageId, onSelectPage, canManage,
 }: HelpDocsTreeProps) {
   const queryClient = useQueryClient();
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canAdd = hasPermission('help_docs', 'can_add');
-  const canEdit = hasPermission('help_docs', 'can_edit');
+  const canAdd = canManage;
+  const canEdit = canManage;
   const [localFolders, setLocalFolders] = useState(folders);
   const [localPages, setLocalPages] = useState(pages);
 
@@ -157,6 +156,7 @@ export default function HelpDocsTree({
                   onReorderPages={handlePageReorder}
                   canReorder={canReorderFolders}
                   canReorderPages={canReorderPages}
+                  canManage={canManage}
                 />
               );
             })}
@@ -180,7 +180,7 @@ export default function HelpDocsTree({
 // Folder Node
 // ─────────────────────────────────────────────
 
-function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureChange, onReorderPages, canReorder, canReorderPages }: {
+function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureChange, onReorderPages, canReorder, canReorderPages, canManage }: {
   folder: HelpFolder;
   pages: HelpPageSummary[];
   selectedPageId: string | null;
@@ -189,11 +189,11 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
   onReorderPages: (folderId: string, orderedPages: HelpPageSummary[]) => void;
   canReorder: boolean;
   canReorderPages: boolean;
+  canManage: boolean;
 }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canAdd = hasPermission('help_docs', 'can_add');
-  const canEdit = hasPermission('help_docs', 'can_edit');
-  const canDelete = hasPermission('help_docs', 'can_delete');
+  const canAdd = canManage;
+  const canEdit = canManage;
+  const canDelete = canManage;
   const [expanded, setExpanded] = useState(pages.some((p) => p.id === selectedPageId));
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(folder.title);
@@ -328,6 +328,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
             onStructureChange={onStructureChange}
             onReorder={onReorderPages}
             canReorder={canReorderPages}
+            canManage={canManage}
           />
           {canAdd && (
             <AddPageButton folderId={folder.id} onStructureChange={onStructureChange} />
@@ -364,7 +365,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
 // Page Node (leaf)
 // ─────────────────────────────────────────────
 
-function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStructureChange, onReorder, canReorder }: {
+function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStructureChange, onReorder, canReorder, canManage }: {
   folderId: string;
   pages: HelpPageSummary[];
   selectedPageId: string | null;
@@ -372,6 +373,7 @@ function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStr
   onStructureChange: () => void;
   onReorder: (folderId: string, orderedPages: HelpPageSummary[]) => void;
   canReorder: boolean;
+  canManage: boolean;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -403,6 +405,7 @@ function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStr
               onSelect={() => onSelectPage(page.id)}
               onStructureChange={onStructureChange}
               canReorder={canReorder}
+              canDelete={canManage}
             />
           ))}
         </div>
@@ -411,15 +414,14 @@ function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStr
   );
 }
 
-function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder }: {
+function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, canDelete }: {
   page: HelpPageSummary;
   isSelected: boolean;
   onSelect: () => void;
   onStructureChange: () => void;
   canReorder: boolean;
+  canDelete: boolean;
 }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canDelete = hasPermission('help_docs', 'can_delete');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: page.id,

@@ -24,8 +24,8 @@ const SIDEBAR_MAX_WIDTH = 560;
 
 export default function HelpDocsPage() {
   useHeaderInfo('Help Docs');
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canEdit = hasPermission('help_docs', 'can_edit');
+  const user = useAuthStore((s) => s.user);
+  const canManageHelpDocs = user?.role === 'superadmin';
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
@@ -111,6 +111,7 @@ export default function HelpDocsPage() {
       pages={pages}
       selectedPageId={selectedPageId}
       onSelectPage={setSelectedPageId}
+      canManage={canManageHelpDocs}
     />
   );
 
@@ -190,7 +191,7 @@ export default function HelpDocsPage() {
             <HelpPageEditor
               key={selectedPageId}
               pageId={selectedPageId}
-              isSuperuser={canEdit}
+              canManage={canManageHelpDocs}
             />
           </div>
         ) : (
@@ -201,7 +202,7 @@ export default function HelpDocsPage() {
             <div className="text-center">
               <p className="text-base font-medium">Chọn trang để xem</p>
               <p className="text-sm opacity-60 mt-1">
-                {canEdit
+                {canManageHelpDocs
                   ? 'Chọn trang ở sidebar trái hoặc tạo folder/trang mới'
                   : 'Chọn trang ở sidebar trái để đọc hướng dẫn'
                 }
