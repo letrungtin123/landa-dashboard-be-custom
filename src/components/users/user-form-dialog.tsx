@@ -55,6 +55,7 @@ type UserFormProps = {
 
 export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserFormProps) {
   const currentUser = useAuthStore(function getUser(s) { return s.user; });
+  const syncCurrentUser = useAuthStore(function getUpdateUser(s) { return s.updateUser; });
   const roleLabels = useAuthStore(function getRoleLabels(s) { return s.roleLabels; });
   const groupLabels = useAuthStore(function getGroupLabels(s) { return s.groupLabels; });
   const isSuperadmin = currentUser?.role === 'superadmin';
@@ -144,7 +145,19 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
       }
 
       if (isEditing) {
-        await updateUser(user!.id, payload);
+        const updatedUser = await updateUser(user!.id, payload);
+        if (currentUser?.id && updatedUser.id === currentUser.id) {
+          const nextAvatarUrl = updatedUser.avatar_url || currentUser.avatar_url || currentUser.avatar;
+          syncCurrentUser({
+            name: updatedUser.full_name || updatedUser.username || currentUser.name,
+            username: updatedUser.username || currentUser.username,
+            email: updatedUser.email || currentUser.email,
+            avatar: nextAvatarUrl,
+            avatar_url: nextAvatarUrl,
+            role: updatedUser.role || currentUser.role,
+            status: updatedUser.is_active === false ? 'inactive' : 'active',
+          });
+        }
 
         // Lưu managed tenants nếu đang edit superadmin (multi-tenant)
         if (isSuperadmin && user!.role === 'superadmin') {

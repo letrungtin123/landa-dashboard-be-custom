@@ -130,6 +130,13 @@ export default function ProfilePage() {
       const { data } = await customApiClient.get(`/api/users/profile/${user.username}`);
       const profile = data.data || data;
       setProfileData(profile);
+      const currentAuthUser = useAuthStore.getState().user;
+      updateUser({
+        name: profile.full_name || profile.name || profile.username || currentAuthUser?.name || user.name,
+        email: profile.email || currentAuthUser?.email || user.email,
+        avatar: storageUrl(profile.avatar_url) || currentAuthUser?.avatar || user.avatar,
+        avatar_url: storageUrl(profile.avatar_url) || currentAuthUser?.avatar_url || user.avatar_url,
+      });
       setForm({
         name: profile.full_name || profile.name || '',
         bio: profile.bio || '',
@@ -145,7 +152,7 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingProfile(false);
     }
-  }, [user?.username]);
+  }, [updateUser, user?.username]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
@@ -181,7 +188,9 @@ export default function ProfilePage() {
       };
       if (year_of_birth) payload.year_of_birth = parseInt(year_of_birth, 10);
 
-      await customApiClient.patch('/api/users/profile', payload);
+      const profileRes = await customApiClient.patch('/api/users/profile', payload);
+      const updatedProfile = profileRes.data?.data || profileRes.data;
+      const nextDisplayName = updatedProfile?.full_name || updatedProfile?.name || form.name;
 
       // Upload avatar nếu có
       if (avatarFile) {
@@ -195,11 +204,11 @@ export default function ProfilePage() {
           // Cache-bust: append timestamp to prevent browser caching old image
           const resolvedUrl = storageUrl(newAvatarUrl);
           const bustUrl = `${resolvedUrl}${resolvedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-          updateUser({ name: form.name, avatar: bustUrl, avatar_url: bustUrl });
+          updateUser({ name: nextDisplayName, avatar: bustUrl, avatar_url: bustUrl });
         }
         setAvatarFile(null);
       } else {
-        updateUser({ name: form.name });
+        updateUser({ name: nextDisplayName });
       }
 
       await loadProfile();
