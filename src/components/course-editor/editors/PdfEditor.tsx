@@ -6,6 +6,7 @@ import { deleteCourseAsset, deleteCourseAssetByStoragePath, uploadCourseAsset } 
 import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
+import { extractPdfStoragePath, getPdfFileName, isUploadedPdfAssetUrl, resolvePdfEmbedUrl, resolvePdfFileUrl } from '@/utils/pdf-url';
 
 interface PdfEditorProps {
   displayName: string;
@@ -28,30 +29,14 @@ export default function PdfEditor({
   courseId,
   onAutoSave,
 }: PdfEditorProps) {
-  // Detect mode dựa vào URL hiện tại
-  const isAssetUrl = pdfUrl.includes('/asset-v1:') || pdfUrl.includes('/c4x/');
+  // Detect mode dựa vào URL hiện tại, bao gồm storage path mới của backend.
+  const isAssetUrl = isUploadedPdfAssetUrl(pdfUrl);
   const [mode, setMode] = useState<InputMode>(isAssetUrl ? 'upload' : 'link');
   const [uploading, setUploading] = useState(false);
-  const [uploadedFileName, setUploadedFileName] = useState<string>(() => {
-    if (isAssetUrl) {
-      // Trích tên file từ asset URL
-      const parts = pdfUrl.split('/');
-      return decodeURIComponent(parts[parts.length - 1] || 'file.pdf');
-    }
-    return '';
-  });
+  const [uploadedFileName, setUploadedFileName] = useState<string>(() => (
+    isAssetUrl ? getPdfFileName(pdfUrl) : ''
+  ));
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Chuyển Google Drive share link → embed preview link
-  const getEmbedUrl = (url: string): string | null => {
-    if (!url.trim()) return null;
-    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-    if (driveMatch) {
-      return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
-    }
-    // Ẩn toolbar mặc định của browser PDF viewer
-    return url.trim() + '#toolbar=0&navpanes=0';
-  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,18 +60,19 @@ export default function PdfEditor({
     setUploading(true);
     try {
       const result = await uploadCourseAsset(courseId, file);
-      // Studio trả về asset URL dạng: /asset-v1:Org+Course+Run+type@asset+block@filename.pdf
-      const assetUrl = result?.asset?.url || result?.url || result?.storage_path || '';
-      if (assetUrl) {
+      const assetUrl = result?.asset?.storage_path || result?.storage_path || result?.asset?.url || result?.url || '';
+      const storedPdfUrl = extractPdfStoragePath(assetUrl) || assetUrl;
+      if (storedPdfUrl) {
         const previousPdfUrl = pdfUrl;
         const previousFileName = uploadedFileName;
-        onPdfUrlChange(assetUrl);
+        onPdfUrlChange(storedPdfUrl);
         setUploadedFileName(file.name);
         try {
-          await onAutoSave?.(assetUrl);
+          await onAutoSave?.(storedPdfUrl);
           toast.success(`Đã upload và lưu draft: ${file.name}`);
         } catch (saveErr) {
-          await deleteCourseAssetByStoragePath(courseId, assetUrl).catch(() => {});
+          const uploadedPath = extractPdfStoragePath(storedPdfUrl);
+          if (uploadedPath) await deleteCourseAssetByStoragePath(courseId, uploadedPath).catch(() => {});
           onPdfUrlChange(previousPdfUrl);
           setUploadedFileName(previousFileName);
           throw saveErr;
@@ -104,27 +90,39 @@ export default function PdfEditor({
   };
 
   const clearUpload = async () => {
-    // Xóa file thật khỏi course assets nếu là asset URL
-    if (pdfUrl && courseId && (pdfUrl.includes('/asset-v1:') || pdfUrl.includes('/c4x/'))) {
-      try {
-        // Trích asset key từ URL: /asset-v1:Org+Course+Run+type@asset+block@filename.pdf → filename.pdf
-        const parts = pdfUrl.split('/');
-        const assetKey = decodeURIComponent(parts[parts.length - 1] || '');
-        if (assetKey) {
-          await deleteCourseAsset(courseId, assetKey);
-        }
-      } catch (err) {
-        // Không chặn flow nếu xóa asset thất bại
-        console.warn('Failed to delete course asset:', err);
-      }
-    }
+    const previousPdfUrl = pdfUrl;
+    const previousFileName = uploadedFileName;
+    const storagePath = extractPdfStoragePath(pdfUrl);
+    const legacyAssetKey = !storagePath && (pdfUrl.includes('/asset-v1:') || pdfUrl.includes('/c4x/'))
+      ? getPdfFileName(pdfUrl, '')
+      : '';
+
     onPdfUrlChange('');
     setUploadedFileName('');
-    onAutoSave?.('');
+    try {
+      await onAutoSave?.('');
+      if (courseId) {
+        try {
+          if (storagePath) {
+            await deleteCourseAssetByStoragePath(courseId, storagePath);
+          } else if (legacyAssetKey) {
+            await deleteCourseAsset(courseId, legacyAssetKey);
+          }
+        } catch (err) {
+          console.warn('Failed to delete course asset:', err);
+        }
+      }
+      toast.success('Đã gỡ tài liệu PDF khỏi draft');
+    } catch (err) {
+      onPdfUrlChange(previousPdfUrl);
+      setUploadedFileName(previousFileName);
+      toast.error('Không thể lưu thay đổi gỡ tài liệu PDF');
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const embedUrl = mode === 'link' ? getEmbedUrl(pdfUrl) : null;
+  const embedUrl = mode === 'link' ? resolvePdfEmbedUrl(pdfUrl) : '';
+  const fileUrl = resolvePdfFileUrl(pdfUrl);
 
   return (
     <div className="space-y-5">
@@ -142,7 +140,7 @@ export default function PdfEditor({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => { setMode('link'); if (isAssetUrl) onPdfUrlChange(''); }}
+            onClick={() => { setMode('link'); if (isAssetUrl) void clearUpload(); }}
             className={cn(
               "flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left",
               mode === 'link'
@@ -164,7 +162,7 @@ export default function PdfEditor({
 
           <button
             type="button"
-            onClick={() => { setMode('upload'); if (!isAssetUrl) onPdfUrlChange(''); }}
+            onClick={() => { setMode('upload'); if (!isAssetUrl) onPdfUrlChange(''); setUploadedFileName(''); }}
             className={cn(
               "flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left",
               mode === 'upload'
@@ -211,7 +209,7 @@ export default function PdfEditor({
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-muted-foreground">Xem trước</label>
                 <a
-                  href={pdfUrl}
+                  href={fileUrl || pdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline flex items-center gap-1"

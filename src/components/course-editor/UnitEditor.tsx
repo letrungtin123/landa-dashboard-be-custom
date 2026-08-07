@@ -76,6 +76,7 @@ import {
 } from '@/utils/storage-url';
 
 import { config } from '@/config/env';
+import { resolvePdfEmbedUrl } from '@/utils/pdf-url';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -1148,15 +1149,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
           </div>
         );
       }
-      // Chuyển Google Drive share link → embed preview
-      let embedUrl = pdfUrl;
-      const driveMatch = pdfUrl.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-      if (driveMatch) {
-        embedUrl = `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
-      } else {
-        // Ẩn toolbar mặc định của browser PDF viewer
-        embedUrl = pdfUrl + '#toolbar=0&navpanes=0';
-      }
+      const embedUrl = resolvePdfEmbedUrl(pdfUrl);
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
