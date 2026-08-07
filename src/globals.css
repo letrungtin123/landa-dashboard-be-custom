@@ -352,6 +352,33 @@
   scrollbar-color: color-mix(in srgb, var(--foreground) 12%, transparent) transparent;
 }
 
+
+.chart-horizontal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--primary) 58%, transparent) color-mix(in srgb, var(--muted) 60%, transparent);
+  scrollbar-gutter: stable;
+}
+
+.chart-horizontal-scrollbar::-webkit-scrollbar {
+  height: 9px;
+}
+
+.chart-horizontal-scrollbar::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
+  border-radius: 999px;
+}
+
+.chart-horizontal-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--primary) 58%, var(--foreground) 8%);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.chart-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--primary) 74%, var(--foreground) 10%);
+  background-clip: content-box;
+}
 /* ── NProgress Loading Bar — Gradient ── */
 #nprogress {
   pointer-events: none;

@@ -15,6 +15,9 @@ export interface ReportSummaryResponse {
     year: number;
     month_label: string;
     is_current_month: boolean;
+    date_from?: string;
+    date_to?: string;
+    range_label?: string;
   };
   overview: {
     total_learners: number;
@@ -24,12 +27,43 @@ export interface ReportSummaryResponse {
   };
 }
 
+export type ReportChartGranularity = 'auto' | 'day' | 'week' | 'month';
+export type ReportChartWindowDirection = 'initial' | 'before' | 'after';
+
+export interface ReportChartWindowMeta {
+  mode: 'window';
+  range_start: string;
+  range_end: string;
+  window_start: string;
+  window_end: string;
+  has_before: boolean;
+  has_after: boolean;
+  next_before: string | null;
+  next_after: string | null;
+  limit_buckets: number;
+}
+export interface ReportChartPoint {
+  month: string | number;
+  month_label: string;
+  bucket?: string;
+  bucket_label?: string;
+  value?: number;
+  [key: string]: unknown;
+}
+
 export interface ReportChartResponse {
   year: number;
   metric: string;
   is_grouped?: boolean;
-  data: Array<{ month: number; month_label: string; value: number; [key: string]: unknown }>;
-  grouped_data?: Record<string, Array<{ month: number; month_label: string; value: number }>>;
+  granularity?: Exclude<ReportChartGranularity, 'auto'>;
+  date_from?: string;
+  date_to?: string;
+  bucket_count?: number;
+  window?: ReportChartWindowMeta;
+  series_limit?: number;
+  series_overflow?: boolean;
+  data: ReportChartPoint[];
+  grouped_data?: Record<string, ReportChartPoint[]>;
 }
 
 export interface ReportTopCourse {
@@ -138,7 +172,12 @@ const BASE = '/api/reports';
 
 type ApiResponse<T> = { success: boolean; data: T };
 
-export async function getReportSummary(params?: {
+type ReportDateParams = {
+  date_from?: string;
+  date_to?: string;
+};
+
+export async function getReportSummary(params?: ReportDateParams & {
   month?: number;
   year?: number;
   group_id?: number | string;
@@ -149,26 +188,29 @@ export async function getReportSummary(params?: {
   return data.data;
 }
 
-export async function getReportChart(
-  year: number,
-  metric: string,
-  group_id?: number | string,
-  group_by_org?: boolean,
-  grouped?: boolean,
-  subgroup_id?: number | string,
-  team_id?: number | string,
-): Promise<ReportChartResponse> {
-  const params: any = { year, metric };
-  if (group_id) params.group_id = group_id;
-  if (subgroup_id) params.subgroup_id = subgroup_id;
-  if (team_id) params.team_id = team_id;
-  if (group_by_org) params.group_by_org = true;
-  if (grouped === false) params.grouped = 'false';
-  const { data } = await customApiClient.get<ApiResponse<ReportChartResponse>>(`${BASE}/chart`, { params });
+export async function getReportChart(params: ReportDateParams & {
+  year?: number;
+  metric: string;
+  group_id?: number | string;
+  group_by_org?: boolean;
+  grouped?: boolean;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+  granularity?: ReportChartGranularity;
+  mode?: 'range' | 'window';
+  direction?: ReportChartWindowDirection;
+  anchor_bucket?: string;
+  limit_buckets?: number;
+  series_limit?: number;
+}): Promise<ReportChartResponse> {
+  const queryParams: any = { ...params };
+  if (params.grouped === false) queryParams.grouped = 'false';
+  if (!params.group_by_org) delete queryParams.group_by_org;
+  const { data } = await customApiClient.get<ApiResponse<ReportChartResponse>>(`${BASE}/chart`, { params: queryParams });
   return data.data;
 }
 
-export async function getReportTopCourses(params?: {
+export async function getReportTopCourses(params?: ReportDateParams & {
   page?: number;
   page_size?: number;
   month?: number;
@@ -181,7 +223,7 @@ export async function getReportTopCourses(params?: {
   return data.data;
 }
 
-export async function getReportCourseCompletionRanking(params?: {
+export async function getReportCourseCompletionRanking(params?: ReportDateParams & {
   page?: number;
   page_size?: number;
   month?: number;
@@ -194,7 +236,7 @@ export async function getReportCourseCompletionRanking(params?: {
   return data.data;
 }
 
-export async function getReportCourseCompletionLearners(courseId: string, params?: {
+export async function getReportCourseCompletionLearners(courseId: string, params?: ReportDateParams & {
   page?: number;
   page_size?: number;
   search?: string;
@@ -209,7 +251,7 @@ export async function getReportCourseCompletionLearners(courseId: string, params
   return data.data;
 }
 
-export async function getReportLearners(params?: {
+export async function getReportLearners(params?: ReportDateParams & {
   page?: number;
   page_size?: number;
   search?: string;
@@ -227,9 +269,9 @@ export async function getReportLearners(params?: {
 // Backward-compatible alias
 export const getReportUncompletedLearners = getReportLearners;
 
-export async function downloadReportExcel(params: {
+export async function downloadReportExcel(params: ReportDateParams & {
   month?: number;
-  year: number;
+  year?: number;
   group_id?: number | string;
   subgroup_id?: number | string;
   team_id?: number | string;
@@ -247,7 +289,9 @@ export async function downloadReportExcel(params: {
   const plainName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
   const fileName = utf8Name
     ? decodeURIComponent(utf8Name)
-    : plainName || `bao-cao-tong-hop-${params.month ? `${params.month}-` : ''}${params.year}.xlsx`;
+    : plainName || (params.date_from && params.date_to
+      ? `bao-cao-tong-hop-${params.date_from}-den-${params.date_to}.xlsx`
+      : `bao-cao-tong-hop-${params.month ? `${params.month}-` : ''}${params.year || new Date().getFullYear()}.xlsx`);
 
   return { blob: response.data, fileName };
 }

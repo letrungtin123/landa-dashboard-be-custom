@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+﻿import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
@@ -6,7 +6,6 @@ import { PageHeader } from '@/components/shared/page-header';
 import { useAuthStore } from '@/utils/store';
 import {
   getReportSummary,
-  getReportChart,
   getReportCourseCompletionLearners,
   getReportCourseCompletionRanking,
   getReportLearners,
@@ -20,7 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, BookOpen, GraduationCap, UserCheck, Percent, Award, AlertTriangle, ShieldAlert,
-  ArrowUpRight, Calendar, Clock, Download, RefreshCcw, ChevronLeft, ChevronRight, BarChart3, ChevronDown, Check, CheckCircle2, TrendingUp, Search, ArrowLeft
+  Calendar as CalendarIcon, Clock, Download, RefreshCcw, ChevronLeft, ChevronRight, BarChart3, ChevronDown, Check, CheckCircle2, TrendingUp, Search, ArrowLeft, X
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,10 +28,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import {
-  AreaChart, Area, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, Cell, CartesianGrid,
-  LineChart, Line, Legend, LabelList
+  ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, Cell, LabelList
 } from 'recharts';
 import {
   Dialog,
@@ -50,9 +50,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { addDays, differenceInCalendarDays, format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { exportReportExcel } from '@/utils/export-report';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
+import { ReportWindowChart } from '@/components/reports/ReportWindowChart';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 
 const cardVariant = {
@@ -77,18 +80,42 @@ const paginatedRowVariants = {
   exit: { opacity: 0, y: -4, transition: { duration: 0.12 } },
 };
 
-const generateSparkline = (base: number) => {
-  const data = [];
-  let current = base * 0.8;
-  for (let i = 0; i < 10; i++) {
-    current = current + (Math.random() - 0.4) * (base * 0.1);
-    data.push({ value: Math.max(0, Math.floor(current)) });
-  }
-  data[data.length - 1].value = base;
-  return data;
-};
 
 const REPORT_PAGE_SIZE_OPTIONS = [5, 10, 15, 20] as const;
+type DateDraftTarget = 'from' | 'to';
+
+function getDefaultReportDateRange(): DateRange {
+  const now = new Date();
+  return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
+}
+
+function normalizeReportDateRange(range: DateRange | undefined): { from: Date; to: Date } {
+  const fallback = getDefaultReportDateRange();
+  const from = range?.from || fallback.from!;
+  const to = range?.to || range?.from || fallback.to!;
+  return from.getTime() <= to.getTime() ? { from, to } : { from: to, to: from };
+}
+
+function formatDateParam(date: Date): string {
+  return format(date, 'yyyy-MM-dd');
+}
+
+function formatDateLabel(date: Date): string {
+  return format(date, 'dd/MM/yyyy');
+}
+
+function getDateRangeLabel(from: Date, to: Date): string {
+  if (formatDateParam(from) === formatDateParam(to)) return formatDateLabel(from);
+  return `${formatDateLabel(from)} - ${formatDateLabel(to)}`;
+}
+
+function getPreviousDateRange(from: Date, to: Date): { from: Date; to: Date } {
+  const dayCount = Math.max(1, differenceInCalendarDays(to, from) + 1);
+  const previousTo = addDays(from, -1);
+  return { from: addDays(previousTo, -(dayCount - 1)), to: previousTo };
+}
+
+
 
 function clampPercent(value: number | null | undefined) {
   const numericValue = Number(value ?? 0);
@@ -140,6 +167,18 @@ function ReportPageSizeDropdown({
   );
 }
 
+function getMetricChartColors(metricKey: string | null): string[] {
+  if (metricKey === 'active_learners') return ['#10b981'];
+  if (metricKey === 'completion_rate') return ['#8b5cf6'];
+  if (metricKey === 'total_enrollments') return ['#ef4444'];
+  return ['#3b82f6'];
+}
+
+function formatChartMetricValue(metricKey: string | null, value: number): string {
+  if (metricKey === 'completion_rate') return formatPercent(value);
+  return value.toLocaleString('vi-VN');
+}
+
 function ChartTrendModal({
   metricKey,
   title,
@@ -148,6 +187,9 @@ function ChartTrendModal({
   groupId,
   subgroupId,
   teamId,
+  dateFrom,
+  dateTo,
+  dateLabel,
 }: {
   metricKey: string | null;
   title: string;
@@ -156,135 +198,57 @@ function ChartTrendModal({
   groupId: string | 'all';
   subgroupId: string | 'all';
   teamId: string | 'all';
+  dateFrom: string;
+  dateTo: string;
+  dateLabel: string;
 }) {
-  const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
+  const chartRequest = useMemo(() => {
+    if (!metricKey) return null;
+    return {
+      date_from: dateFrom,
+      date_to: dateTo,
+      metric: metricKey,
+      group_id: groupId === 'all' ? undefined : groupId,
+      grouped: false,
+      subgroup_id: subgroupId === 'all' ? undefined : subgroupId,
+      team_id: teamId === 'all' ? undefined : teamId,
+      granularity: 'auto' as const,
+    };
+  }, [dateFrom, dateTo, groupId, metricKey, subgroupId, teamId]);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['report-chart', year, metricKey, groupId, subgroupId, teamId],
-    queryFn: () => getReportChart(
-      year, metricKey!,
-      groupId === 'all' ? undefined : groupId,
-      false, false,
-      subgroupId === 'all' ? undefined : subgroupId,
-      teamId === 'all' ? undefined : teamId
-    ),
-    enabled: !!metricKey && isOpen,
-  });
-
-  const CHART_COLORS = [
-    '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444',
-    '#ec4899', '#06b6d4', '#84cc16', '#6366f1', '#14b8a6'
-  ];
+  const chartColors = useMemo(() => getMetricChartColors(metricKey), [metricKey]);
+  const formatValue = useCallback((value: number) => formatChartMetricValue(metricKey, value), [metricKey]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-[90vw] lg:max-w-[1200px] bg-background border-border shadow-2xl sm:rounded-2xl p-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-muted/10 pointer-events-none z-0" />
         <div className="z-10 flex flex-col w-full h-full">
-          <DialogHeader className="p-6 border-b border-border/40 bg-muted/20 backdrop-blur-md">
-            <div className="flex justify-between items-center pr-8">
-              <div>
-                <DialogTitle className="text-2xl font-bold">{title}</DialogTitle>
-                <DialogDescription className="text-sm mt-1">Biểu đồ xu hướng 12 tháng</DialogDescription>
+          <DialogHeader className="p-5 sm:p-6 border-b border-border/40 bg-muted/20 backdrop-blur-md">
+            <div className="flex justify-between items-center pr-8 gap-4">
+              <div className="min-w-0">
+                <DialogTitle className="text-xl sm:text-2xl font-bold truncate">{title}</DialogTitle>
+                <DialogDescription className="text-sm mt-1">
+                  Dữ liệu trong khoảng · {dateLabel}
+                </DialogDescription>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-2 h-10 px-4 rounded-xl border border-border bg-background shadow-sm text-sm font-medium outline-none focus-visible:ring-1 focus-visible:ring-primary hover:bg-muted transition-all">
-                  Năm {year}
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[120px] rounded-lg">
-                  {[currentYear, currentYear - 1, currentYear - 2].map(y => (
-                    <DropdownMenuItem
-                      key={y}
-                      onClick={() => setYear(y)}
-                      className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${year === y ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
-                    >
-                      Năm {y}
-                      <div className={`w-1.5 h-1.5 rounded-full transition-colors ${year === y ? 'bg-foreground' : 'bg-transparent'}`} />
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm shrink-0">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                Chart theo thời gian
+              </div>
             </div>
           </DialogHeader>
-          <div className="h-[450px] w-full p-6">
-            {isLoading ? (
-              <Skeleton className="h-full w-full rounded-xl" />
-            ) : isError ? (
-              <div className="flex flex-col h-full items-center justify-center text-muted-foreground gap-2">
-                <AlertTriangle className="h-8 w-8 opacity-50" />
-                <span>Lỗi tải biểu đồ</span>
-              </div>
-            ) : data && data.data ? (
-              <ResponsiveContainer width="100%" height="100%">
-                {data.is_grouped ? (
-                  <LineChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="month_label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                    <ReTooltip
-                      cursor={{ stroke: 'var(--muted)', strokeWidth: 2 }}
-                      contentStyle={{
-                        backgroundColor: 'var(--popover)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '12px',
-                        color: 'var(--popover-foreground)',
-                        boxShadow: '0 14px 32px rgba(15, 23, 42, 0.16)',
-                        fontSize: '12px',
-                      }}
-                      labelStyle={{
-                        color: 'var(--foreground)',
-                        fontWeight: 700,
-                        marginBottom: '6px',
-                      }}
-                      itemStyle={{
-                        color: 'var(--popover-foreground)',
-                        fontWeight: 600,
-                      }}
-                    />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    {Object.keys(data.data[0] || {}).filter(k => k !== 'month' && k !== 'month_label').map((key, index) => (
-                      <Line
-                        key={key}
-                        type="monotone"
-                        dataKey={key}
-                        stroke={CHART_COLORS[index % CHART_COLORS.length]}
-                        strokeWidth={3}
-                        dot={{ r: 4, strokeWidth: 2 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    ))}
-                  </LineChart>
-                ) : (
-                  <BarChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="month_label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                    <ReTooltip
-                      cursor={{ fill: 'var(--muted)', opacity: 0.35 }}
-                      contentStyle={{
-                        backgroundColor: 'var(--popover)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '12px',
-                        color: 'var(--popover-foreground)',
-                        boxShadow: '0 14px 32px rgba(15, 23, 42, 0.16)',
-                        fontSize: '12px',
-                      }}
-                      labelStyle={{
-                        color: 'var(--foreground)',
-                        fontWeight: 700,
-                        marginBottom: '6px',
-                      }}
-                      itemStyle={{
-                        color: 'var(--popover-foreground)',
-                        fontWeight: 600,
-                      }}
-                    />
-                    <Bar dataKey="value" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={40} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
+          <div className="w-full p-4 sm:p-6">
+            {chartRequest ? (
+              <ReportWindowChart
+                request={chartRequest}
+                height={420}
+                valueLabel={title}
+                valueSuffix={metricKey === 'completion_rate' ? '%' : ''}
+                formatValue={formatValue}
+                colors={chartColors}
+                emptyLabel="Không có dữ liệu trong khoảng này"
+              />
             ) : null}
           </div>
         </div>
@@ -292,7 +256,6 @@ function ChartTrendModal({
     </Dialog>
   );
 }
-
 function CourseCompletionTooltip({
   active,
   payload,
@@ -358,15 +321,15 @@ function CourseCompletionRateLabel(props: {
 }
 
 function CourseCompletionRankingWidget({
-  month,
-  year,
+  dateFrom,
+  dateTo,
   groupId,
   subgroupId,
   teamId,
   onSelectLearner,
 }: {
-  month: number;
-  year: number;
+  dateFrom: string;
+  dateTo: string;
   groupId: string | 'all';
   subgroupId: string | 'all';
   teamId: string | 'all';
@@ -411,7 +374,7 @@ function CourseCompletionRankingWidget({
   useEffect(() => {
     setPage(1);
     setSelectedCourse(null);
-  }, [month, year, groupId, subgroupId, teamId]);
+  }, [dateFrom, dateTo, groupId, subgroupId, teamId]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedLearnerSearch(learnerSearch), 300);
@@ -419,9 +382,9 @@ function CourseCompletionRankingWidget({
   }, [learnerSearch]);
 
   const { data, isLoading, isFetching: isFetchingRanking } = useQuery({
-    queryKey: ['report-course-completion-ranking', month, year, page, pageSize, groupId, subgroupId, teamId],
+    queryKey: ['report-course-completion-ranking', dateFrom, dateTo, page, pageSize, groupId, subgroupId, teamId],
     queryFn: () => getReportCourseCompletionRanking({
-      month, year, page, page_size: pageSize,
+      date_from: dateFrom, date_to: dateTo, page, page_size: pageSize,
       group_id: groupId === 'all' ? undefined : groupId,
       subgroup_id: subgroupId === 'all' ? undefined : subgroupId,
       team_id: teamId === 'all' ? undefined : teamId
@@ -438,8 +401,8 @@ function CourseCompletionRankingWidget({
     queryKey: [
       'report-course-completion-learners',
       selectedCourse?.course_id,
-      month,
-      year,
+      dateFrom,
+      dateTo,
       learnerPage,
       learnerPageSize,
       debouncedLearnerSearch,
@@ -449,8 +412,8 @@ function CourseCompletionRankingWidget({
       teamId,
     ],
     queryFn: () => getReportCourseCompletionLearners(selectedCourse!.course_id, {
-      month,
-      year,
+      date_from: dateFrom,
+      date_to: dateTo,
       page: learnerPage,
       page_size: learnerPageSize,
       search: debouncedLearnerSearch,
@@ -843,162 +806,84 @@ const GROUP_BAR_COLORS = [
 ];
 
 function GroupEnrollmentsWidget({
-  year,
+  dateFrom,
+  dateTo,
+  dateLabel,
   selectedGroupId,
   selectedSubGroupId,
   selectedTeamId,
+  totalEnrollments,
 }: {
-  year: number;
+  dateFrom: string;
+  dateTo: string;
+  dateLabel: string;
   selectedGroupId: string | 'all';
   selectedSubGroupId: string | 'all';
   selectedTeamId: string | 'all';
+  totalEnrollments: number;
 }) {
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const { data, isLoading } = useQuery({
-    queryKey: ['group-enrollments-trend', year, selectedGroupId, selectedSubGroupId, selectedTeamId],
-    queryFn: () => getReportChart(
-      year,
-      'total_enrollments',
-      selectedGroupId === 'all' ? undefined : selectedGroupId,
-      selectedGroupId === 'all' && selectedTeamId === 'all',
-      selectedTeamId !== 'all' ? false : undefined,
-      selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
-      selectedTeamId === 'all' ? undefined : selectedTeamId
-    ),
-  });
+  const title = selectedTeamId !== 'all'
+    ? `Tổng lượt ghi danh của ${lowerGroupLabel(labels.team)}`
+    : selectedSubGroupId !== 'all'
+      ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.team)}`
+      : selectedGroupId !== 'all'
+        ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.subgroup)}`
+        : `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.group)}`;
 
-  const groupKeys = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    return Object.keys(data.data[0]).filter(k => k !== 'month' && k !== 'month_label');
-  }, [data]);
+  const chartRequest = useMemo(() => ({
+    date_from: dateFrom,
+    date_to: dateTo,
+    metric: 'total_enrollments',
+    group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+    group_by_org: selectedGroupId === 'all' && selectedTeamId === 'all',
+    grouped: selectedTeamId !== 'all' ? false : undefined,
+    subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
+    team_id: selectedTeamId === 'all' ? undefined : selectedTeamId,
+    granularity: 'auto' as const,
+  }), [dateFrom, dateTo, selectedGroupId, selectedSubGroupId, selectedTeamId]);
 
-  const chartData = useMemo(() => {
-    if (!data?.data) return [];
-
-    return data.data.map(row => {
-      const next = { ...row };
-      groupKeys.forEach(key => {
-        const value = Number(row[key]) || 0;
-        next[key] = value > 0 ? value : null;
-      });
-      return next;
-    });
-  }, [data, groupKeys]);
-
-  const hasLineData = useMemo(() => {
-    return chartData.some(row => groupKeys.some(key => row[key] !== null && row[key] !== undefined));
-  }, [chartData, groupKeys]);
-
-  const totalThisYear = useMemo(() => {
-    if (!data?.data) return 0;
-    return data.data.reduce((sum, row) => {
-      return sum + groupKeys.reduce((s, k) => s + (Number(row[k]) || 0), 0);
-    }, 0);
-  }, [data, groupKeys]);
+  const formatEnrollmentValue = useCallback((value: number) => `${value.toLocaleString('vi-VN')} lượt`, []);
 
   return (
     <Card className="shadow-sm border-border/70 h-full flex flex-col bg-card/95 overflow-hidden relative">
       <CardHeader className="p-5 pb-0">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1 min-w-0">
             <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
                 <TrendingUp className="h-4 w-4" />
               </span>
-              {selectedTeamId !== 'all'
-                ? `Tổng lượt ghi danh của ${lowerGroupLabel(labels.team)}`
-                : selectedSubGroupId !== 'all'
-                ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.team)}`
-                : selectedGroupId !== 'all'
-                  ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.subgroup)}`
-                  : `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.group)}`}
+              {title}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground">
-              Xu hướng ghi danh theo tháng - năm {year}
+              Xu hướng ghi danh · {dateLabel}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-0.5">
+          <div className="flex flex-col items-end gap-0.5 shrink-0">
             <span className="text-2xl font-bold text-foreground leading-none">
-              {isLoading ? '—' : totalThisYear.toLocaleString('en-US')}
+              {totalEnrollments.toLocaleString('en-US')}
             </span>
-            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Cả năm</span>
+            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Trong khoảng</span>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-5 flex-grow flex flex-col">
-        {isLoading ? (
-          <Skeleton className="w-full h-[240px] rounded-xl" />
-        ) : !data?.data || groupKeys.length === 0 || !hasLineData ? (
-          <div className="flex-grow flex items-center justify-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-xl bg-muted/20">
-            Không có dữ liệu ghi danh
-          </div>
-        ) : (
-          <div className="w-full mt-3 h-[248px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 16, right: 18, left: -10, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="4 8" vertical={false} stroke="var(--border)" opacity={0.24} />
-                <XAxis
-                  dataKey="month_label"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }}
-                  padding={{ left: 8, right: 8 }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontWeight: 600 }}
-                  allowDecimals={false}
-                />
-                <ReTooltip
-                  cursor={{ stroke: 'var(--primary)', strokeWidth: 1, strokeDasharray: '4 4', opacity: 0.35 }}
-                  contentStyle={{
-                    borderRadius: '14px',
-                    border: '1px solid var(--border)',
-                    backgroundColor: 'var(--popover)',
-                    color: 'var(--popover-foreground)',
-                    fontSize: '12px',
-                    boxShadow: '0 14px 36px rgba(15, 23, 42, 0.16)',
-                  }}
-                  formatter={(value: number, name: string) => [
-                    `${Number(value).toLocaleString('vi-VN')} lượt`,
-                    name === 'value' ? 'Ghi danh' : name,
-                  ]}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: '11px', paddingTop: '10px', fontWeight: 600 }}
-                />
-                {groupKeys.map((key, i) => (
-                  <Line
-                    key={key}
-                    type="monotone"
-                    dataKey={key}
-                    name={key === 'value' ? 'Ghi danh' : key}
-                    stroke={GROUP_BAR_COLORS[i % GROUP_BAR_COLORS.length]}
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    connectNulls={false}
-                    dot={{ r: 3.5, strokeWidth: 2, fill: 'var(--background)' }}
-                    activeDot={{ r: 6, strokeWidth: 3, fill: 'var(--background)' }}
-                    isAnimationActive
-                    animationDuration={650}
-                    style={{ filter: 'drop-shadow(0 5px 10px rgba(37, 99, 235, 0.12))' }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+      <CardContent className="p-5 flex-grow flex flex-col min-w-0">
+        <ReportWindowChart
+          request={chartRequest}
+          height={340}
+          valueLabel="Ghi danh"
+          emptyLabel="Không có dữ liệu ghi danh"
+          formatValue={formatEnrollmentValue}
+          colors={GROUP_BAR_COLORS}
+          variant="line"
+        />
       </CardContent>
     </Card>
   );
 }
-
-function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId, teamId }: { month: number, year: number, onSelectLearner: (u: string) => void, groupId: string | 'all', subgroupId: string | 'all', teamId: string | 'all' }) {
+function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgroupId, teamId }: { dateFrom: string, dateTo: string, onSelectLearner: (u: string) => void, groupId: string | 'all', subgroupId: string | 'all', teamId: string | 'all' }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1010,9 +895,9 @@ function UncompletedWidget({ month, year, onSelectLearner, groupId, subgroupId, 
   }, [search]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['report-learners', month, year, page, debouncedSearch, groupId, subgroupId, teamId, statusFilter],
+    queryKey: ['report-learners', dateFrom, dateTo, page, debouncedSearch, groupId, subgroupId, teamId, statusFilter],
     queryFn: () => getReportLearners({
-      month, year, page, page_size: 5,
+      date_from: dateFrom, date_to: dateTo, page, page_size: 5,
       search: debouncedSearch,
       group_id: groupId === 'all' ? undefined : groupId,
       subgroup_id: subgroupId === 'all' ? undefined : subgroupId,
@@ -1164,10 +1049,21 @@ export default function ReportSummaryPage() {
   const [selectedLearner, setSelectedLearner] = useState<string | null>(null);
   const [chartMetric, setChartMetric] = useState<{ key: string, title: string } | null>(null);
 
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-  const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultReportDateRange());
+  const [draftDateRange, setDraftDateRange] = useState<DateRange>(() => getDefaultReportDateRange());
+  const [dateDraftTarget, setDateDraftTarget] = useState<DateDraftTarget>('from');
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(true);
+  const normalizedDateRange = useMemo(() => normalizeReportDateRange(dateRange), [dateRange]);
+  const normalizedDraftDateRange = useMemo(() => normalizeReportDateRange(draftDateRange), [draftDateRange]);
+  const dateFrom = useMemo(() => formatDateParam(normalizedDateRange.from), [normalizedDateRange.from]);
+  const dateTo = useMemo(() => formatDateParam(normalizedDateRange.to), [normalizedDateRange.to]);
+  const draftDateFrom = useMemo(() => formatDateParam(normalizedDraftDateRange.from), [normalizedDraftDateRange.from]);
+  const draftDateTo = useMemo(() => formatDateParam(normalizedDraftDateRange.to), [normalizedDraftDateRange.to]);
+  const dateLabel = useMemo(() => getDateRangeLabel(normalizedDateRange.from, normalizedDateRange.to), [normalizedDateRange.from, normalizedDateRange.to]);
+  const draftDateLabel = useMemo(() => getDateRangeLabel(normalizedDraftDateRange.from, normalizedDraftDateRange.to), [normalizedDraftDateRange.from, normalizedDraftDateRange.to]);
+  const previousDateRange = useMemo(() => getPreviousDateRange(normalizedDateRange.from, normalizedDateRange.to), [normalizedDateRange.from, normalizedDateRange.to]);
+  const previousDateFrom = useMemo(() => formatDateParam(previousDateRange.from), [previousDateRange.from]);
+  const previousDateTo = useMemo(() => formatDateParam(previousDateRange.to), [previousDateRange.to]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | 'all'>('all');
   const [selectedSubGroupId, setSelectedSubGroupId] = useState<string | 'all'>('all');
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>('all');
@@ -1191,6 +1087,60 @@ export default function ReportSummaryPage() {
     ? user.memberGroupIds.map((id, i) => ({ id, name: user.memberGroupNames?.[i] || `${labels.group} ${id}` }))
     : [];
   const hasNoGroups = isLearnerPlus && learnerPlusMemberGroups.length === 0;
+
+  const syncDraftDateRange = useCallback(() => {
+    setDraftDateRange({ from: normalizedDateRange.from, to: normalizedDateRange.to });
+    setDateDraftTarget('from');
+  }, [normalizedDateRange.from, normalizedDateRange.to]);
+
+  const handleDateFilterOpenChange = useCallback((open: boolean) => {
+    setIsDateFilterOpen(open);
+    if (open) {
+      setDraftDateRange({ from: normalizedDateRange.from, to: normalizedDateRange.to });
+      setDateDraftTarget('from');
+    }
+  }, [normalizedDateRange.from, normalizedDateRange.to]);
+
+  const handleDraftDateSelect = useCallback((selectedDate?: Date) => {
+    if (!selectedDate) return;
+    setDraftDateRange(current => {
+      const currentRange = normalizeReportDateRange(current);
+      if (dateDraftTarget === 'from') {
+        return {
+          from: selectedDate,
+          to: selectedDate.getTime() > currentRange.to.getTime() ? selectedDate : currentRange.to,
+        };
+      }
+      return {
+        from: selectedDate.getTime() < currentRange.from.getTime() ? selectedDate : currentRange.from,
+        to: selectedDate,
+      };
+    });
+  }, [dateDraftTarget]);
+
+  const handleApplyDateFilter = useCallback(() => {
+    setDateRange({ from: normalizedDraftDateRange.from, to: normalizedDraftDateRange.to });
+    setIsDateFilterOpen(false);
+  }, [normalizedDraftDateRange.from, normalizedDraftDateRange.to]);
+
+  const handleResetDateFilter = useCallback(() => {
+    const nextRange = getDefaultReportDateRange();
+    setDateRange(nextRange);
+    setDraftDateRange(nextRange);
+    setDateDraftTarget('from');
+    setIsDateFilterOpen(false);
+  }, []);
+
+  const handleDraftCurrentMonth = useCallback(() => {
+    const nextRange = getDefaultReportDateRange();
+    setDraftDateRange(nextRange);
+    setDateDraftTarget('from');
+  }, []);
+
+  const handleCancelDateFilter = useCallback(() => {
+    syncDraftDateRange();
+    setIsDateFilterOpen(false);
+  }, [syncDraftDateRange]);
 
   const { data: groupsData } = useQuery({
     queryKey: ['report-groups-list', activeTenantId],
@@ -1220,10 +1170,10 @@ export default function ReportSummaryPage() {
   }, [isLearnerPlus, selectedGroupId, groupsData?.groups?.length, learnerPlusMemberGroups.length]);
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ['report-summary', selectedMonth, selectedYear, selectedGroupId, selectedSubGroupId, selectedTeamId, activeTenantId],
+    queryKey: ['report-summary', dateFrom, dateTo, selectedGroupId, selectedSubGroupId, selectedTeamId, activeTenantId],
     queryFn: () => getReportSummary({
-      month: selectedMonth,
-      year: selectedYear,
+      date_from: dateFrom,
+      date_to: dateTo,
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
       team_id: selectedTeamId === 'all' ? undefined : selectedTeamId
@@ -1232,14 +1182,11 @@ export default function ReportSummaryPage() {
     enabled: canViewReport && !hasNoGroups && (isSuperadmin || isStaff || selectedGroupId !== 'all'),
   });
 
-  const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
-  const prevMonthYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-
   const { data: prevData } = useQuery({
-    queryKey: ['report-summary', prevMonth, prevMonthYear, selectedGroupId, selectedSubGroupId, selectedTeamId, activeTenantId],
+    queryKey: ['report-summary-prev', previousDateFrom, previousDateTo, selectedGroupId, selectedSubGroupId, selectedTeamId, activeTenantId],
     queryFn: () => getReportSummary({
-      month: prevMonth,
-      year: prevMonthYear,
+      date_from: previousDateFrom,
+      date_to: previousDateTo,
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
       team_id: selectedTeamId === 'all' ? undefined : selectedTeamId
@@ -1251,8 +1198,8 @@ export default function ReportSummaryPage() {
     setIsExporting(true);
     try {
       await exportReportExcel({
-        selectedMonth,
-        selectedYear,
+        dateFrom,
+        dateTo,
         selectedGroupId,
         selectedSubGroupId,
         selectedTeamId,
@@ -1370,7 +1317,7 @@ export default function ReportSummaryPage() {
     { title: 'Tổng học viên', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '' },
     { title: 'Học viên đang hoạt động', value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '' },
     { title: 'Tỷ lệ hoàn thành', value: overview.completion_rate, icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%' },
-    { title: 'Lượt ghi danh hàng tháng', value: overview.total_enrollments, icon: Calendar, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '' },
+    { title: 'Lượt ghi danh', value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '' },
   ];
 
   return (
@@ -1393,6 +1340,9 @@ export default function ReportSummaryPage() {
         groupId={selectedGroupId}
         subgroupId={selectedSubGroupId}
         teamId={selectedTeamId}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        dateLabel={dateLabel}
       />
 
       {/* Background Decor */}
@@ -1509,35 +1459,93 @@ export default function ReportSummaryPage() {
             </DropdownMenu>
           )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm shrink-0">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="whitespace-nowrap">Tháng {selectedMonth}/{selectedYear}</span>
+          <Popover open={isDateFilterOpen} onOpenChange={handleDateFilterOpenChange}>
+            <PopoverTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm shrink-0">
+              <CalendarIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="whitespace-nowrap">{dateLabel}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[140px] max-h-[300px] overflow-y-auto rounded-lg custom-scrollbar">
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(offset => {
-                const d = new Date();
-                d.setMonth(d.getMonth() - offset);
-                const m = d.getMonth() + 1;
-                const y = d.getFullYear();
-                const isSelected = selectedMonth === m && selectedYear === y;
-                return (
-                  <DropdownMenuItem
-                    key={`${m}-${y}`}
-                    onClick={() => {
-                      setSelectedMonth(m);
-                      setSelectedYear(y);
-                    }}
-                    className={`cursor-pointer text-[13px] mx-1 rounded-md mb-0.5 justify-between transition-colors ${isSelected ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[min(calc(100vw-2rem),640px)] max-h-[min(82vh,720px)] overflow-y-auto p-0 rounded-xl border-border/70 shadow-xl bg-popover">
+              <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-foreground">Bộ lọc thời gian</p>
+                  <p className="text-[11px] text-muted-foreground truncate">Đang áp dụng: {dateLabel}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDraftCurrentMonth}
+                  className="h-7 rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                >
+                  Tháng này
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-3 border-b border-border/60 bg-muted/20">
+                <button
+                  type="button"
+                  onClick={() => setDateDraftTarget('from')}
+                  aria-pressed={dateDraftTarget === 'from'}
+                  className={`h-[72px] rounded-xl border px-3 text-left transition-all ${dateDraftTarget === 'from' ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/15' : 'border-border bg-background hover:bg-muted'}`}
+                >
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Từ ngày</span>
+                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.from)}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateDraftTarget('to')}
+                  aria-pressed={dateDraftTarget === 'to'}
+                  className={`h-[72px] rounded-xl border px-3 text-left transition-all ${dateDraftTarget === 'to' ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/15' : 'border-border bg-background hover:bg-muted'}`}
+                >
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Đến ngày</span>
+                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.to)}</span>
+                </button>
+              </div>
+              <div className="px-2 sm:px-3">
+                <Calendar
+                  mode="single"
+                  selected={dateDraftTarget === 'from' ? normalizedDraftDateRange.from : normalizedDraftDateRange.to}
+                  onSelect={handleDraftDateSelect}
+                  numberOfMonths={2}
+                  disabled={{ after: new Date() }}
+                  modifiers={{
+                    range_start: normalizedDraftDateRange.from,
+                    range_end: normalizedDraftDateRange.to,
+                    range_middle: { after: normalizedDraftDateRange.from, before: normalizedDraftDateRange.to },
+                  }}
+                  className="mx-auto"
+                />
+              </div>
+              <div className="flex flex-col gap-2 border-t border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 text-xs font-semibold text-muted-foreground">
+                  {draftDateLabel}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelDateFilter}
+                    className="h-8 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
-                    Tháng {m}/{y}
-                    <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isSelected ? 'bg-foreground' : 'bg-transparent'}`} />
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyDateFilter}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-95 transition-all"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Áp dụng
+                  </button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <button
+            type="button"
+            onClick={handleResetDateFilter}
+            className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-border bg-background hover:bg-muted transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm shrink-0"
+            title="Đặt lại khoảng thời gian"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
           <button onClick={() => refetch()} className={`inline-flex items-center justify-center h-9 w-9 rounded-full border border-border bg-background hover:bg-muted transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm shrink-0 ${isFetching ? 'animate-spin' : ''}`}>
             <RefreshCcw className="h-3.5 w-3.5" />
           </button>
@@ -1584,22 +1592,23 @@ export default function ReportSummaryPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <div className="text-[34px] font-bold tracking-tight text-foreground leading-none mb-4">
                     {typeof stat.value === 'number' ? stat.value.toLocaleString('en-US') : stat.value}{stat.suffix}
                   </div>
 
                   {stat.trend && (
-                    <div className="inline-flex">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${stat.trendType === 'up'
+                    <div className="inline-flex max-w-full">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full truncate ${stat.trendType === 'up'
                         ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                         : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
                         }`}>
-                        {stat.trend} so với tháng trước
+                        {stat.trend} so với khoảng trước
                       </span>
                     </div>
                   )}
                 </div>
+
               </CardContent>
             </Card>
           </motion.div>
@@ -1618,8 +1627,8 @@ export default function ReportSummaryPage() {
       >
         <motion.div variants={cardVariant}>
           <CourseCompletionRankingWidget
-            month={selectedMonth}
-            year={selectedYear}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
             groupId={selectedGroupId}
             subgroupId={selectedSubGroupId}
             teamId={selectedTeamId}
@@ -1630,18 +1639,21 @@ export default function ReportSummaryPage() {
         {((groupsData && groupsData.groups.length > 0) || (isLearnerPlus && learnerPlusMemberGroups.length > 0)) && (
           <motion.div variants={cardVariant}>
             <GroupEnrollmentsWidget
-              year={selectedYear}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              dateLabel={dateLabel}
               selectedGroupId={selectedGroupId}
               selectedSubGroupId={selectedSubGroupId}
               selectedTeamId={selectedTeamId}
+              totalEnrollments={overview.total_enrollments}
             />
           </motion.div>
         )}
 
         <motion.div variants={cardVariant}>
           <UncompletedWidget
-            month={selectedMonth}
-            year={selectedYear}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
             groupId={selectedGroupId}
             subgroupId={selectedSubGroupId}
             teamId={selectedTeamId}

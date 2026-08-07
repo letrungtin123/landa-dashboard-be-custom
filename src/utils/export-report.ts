@@ -4,8 +4,8 @@ import { downloadReportExcel } from '@/api/custom-reports';
 import { DEFAULT_GROUP_LABELS } from '@/utils/group-labels';
 
 interface ExportParams {
-  selectedMonth?: number;
-  selectedYear: number;
+  dateFrom: string;
+  dateTo: string;
   selectedGroupId: string | 'all';
   selectedSubGroupId?: string | 'all';
   selectedTeamId?: string | 'all';
@@ -16,8 +16,8 @@ interface ExportParams {
 
 export async function exportReportExcel(params: ExportParams) {
   const {
-    selectedMonth,
-    selectedYear,
+    dateFrom,
+    dateTo,
     selectedGroupId,
     selectedSubGroupId = 'all',
     selectedTeamId = 'all',
@@ -30,8 +30,8 @@ export async function exportReportExcel(params: ExportParams) {
 
   try {
     const { blob, fileName } = await downloadReportExcel({
-      month: selectedMonth,
-      year: selectedYear,
+      date_from: dateFrom,
+      date_to: dateTo,
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
       team_id: selectedTeamId === 'all' ? undefined : selectedTeamId,
