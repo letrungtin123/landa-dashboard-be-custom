@@ -117,7 +117,7 @@ export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange,
           />
         </div>
 
-        <div className="max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+        <div className="app-liquid-card max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border">
           {isFetching ? (
             <div className="divide-y divide-border">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -186,7 +186,7 @@ export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange,
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18 }}
-          className="rounded-xl border border-border/80 bg-muted/20 p-3"
+          className="app-liquid-card rounded-xl border border-border/80 bg-muted/20 p-3"
         >
           <div className="flex min-w-0 items-start gap-3">
             <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${emailAutomationReady ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'}`}>

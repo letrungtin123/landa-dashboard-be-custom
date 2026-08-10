@@ -550,7 +550,7 @@ export default function DemoLoginSettingsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border bg-background p-4">
+                <div className="app-liquid-card rounded-lg border bg-background p-4">
                   <div className="grid gap-4 sm:grid-cols-[144px_1fr] sm:items-center">
                     <div className="mx-auto flex h-36 w-36 items-center justify-center rounded-lg border bg-white p-2 shadow-sm sm:mx-0">
                       {qrSvg ? (
@@ -668,7 +668,7 @@ export default function DemoLoginSettingsPage() {
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-background p-4">
+                <div className="app-liquid-card rounded-lg border bg-background p-4">
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
                       {iframeLearner ? (
@@ -719,7 +719,7 @@ export default function DemoLoginSettingsPage() {
                           <button
                             key={learner.id}
                             type="button"
-                            className="flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                            className="app-liquid-card flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5"
                             onClick={() => selectIframeLearner(learner)}
                           >
                             <span className="flex min-w-0 items-center gap-3">
@@ -739,7 +739,7 @@ export default function DemoLoginSettingsPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-lg border bg-muted/20 p-4">
+                <div className="app-liquid-card rounded-lg border bg-muted/20 p-4">
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">Iframe URL</p>
@@ -819,7 +819,7 @@ export default function DemoLoginSettingsPage() {
                       <button
                         key={learner.id}
                         type="button"
-                        className="flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="app-liquid-card flex min-h-20 items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={!canAddMore}
                         onClick={() => addLearner(learner)}
                       >

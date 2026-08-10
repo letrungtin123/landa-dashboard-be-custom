@@ -476,11 +476,11 @@ function ImageCard({
   return (
     <div
       className={`
-        group relative rounded-2xl border bg-card overflow-hidden
+        app-liquid-card group relative rounded-2xl overflow-hidden
         transition-all duration-200 ease-out
         hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20
         hover:border-primary/20
-        ${isDragOver ? 'border-primary/50 bg-primary/5 scale-[1.02]' : 'border-border'}
+        ${isDragOver ? 'app-liquid-filter-active scale-[1.02]' : ''}
         ${compact ? 'p-3' : 'p-4'}
       `}
       onDrop={handleDrop}
@@ -798,7 +798,7 @@ function DashboardContentSection() {
       </div>
 
       {/* Form */}
-      <div className="rounded-2xl border border-border bg-card p-6 space-y-10">
+      <div className="app-liquid-card rounded-2xl p-6 space-y-10">
 
         {/* ── Hero Card Section ── */}
         <div className="space-y-6">
@@ -839,7 +839,7 @@ function DashboardContentSection() {
           </div>
 
           {/* Preview */}
-          <div className="mt-6 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+          <div className="app-liquid-card mt-6 rounded-2xl p-6 flex flex-col items-center">
             <div className="w-full max-w-[828px]">
               <div className="mb-4 flex items-center justify-center gap-2">
                 <Monitor className="w-4 h-4 text-muted-foreground" />
@@ -903,7 +903,7 @@ function DashboardContentSection() {
             {/* Form Fields */}
             <div className="flex-1 space-y-4">
               {/* Tip 1 */}
-              <div className="rounded-xl border border-border/60 p-5 space-y-4 bg-muted/10 shadow-sm">
+              <div className="app-liquid-card rounded-xl p-5 space-y-4">
                 <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 1</p>
                 <div className="space-y-2">
                   <Label htmlFor="tip1-title" className="text-xs font-medium text-muted-foreground">
@@ -935,7 +935,7 @@ function DashboardContentSection() {
               </div>
 
               {/* Tip 2 */}
-              <div className="rounded-xl border border-border/60 p-5 space-y-4 bg-muted/10 shadow-sm">
+              <div className="app-liquid-card rounded-xl p-5 space-y-4">
                 <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 2</p>
                 <div className="space-y-2">
                   <Label htmlFor="tip2-title" className="text-xs font-medium text-muted-foreground">
@@ -968,7 +968,7 @@ function DashboardContentSection() {
             </div>
 
             {/* Preview */}
-            <div className="w-full xl:w-[320px] shrink-0 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+            <div className="app-liquid-card w-full xl:w-[320px] shrink-0 rounded-2xl p-6 flex flex-col items-center">
               <div className="mb-4 flex items-center justify-center gap-2 w-full">
                 <Monitor className="w-4 h-4 text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">Preview Tips (Kích thước PC)</span>
@@ -1073,7 +1073,7 @@ function DashboardContentSection() {
           </div>
 
           {/* Preview */}
-          <div className="mt-6 rounded-2xl bg-muted/30 border border-border p-6 flex flex-col items-center">
+          <div className="app-liquid-card mt-6 rounded-2xl p-6 flex flex-col items-center">
             <div className="w-full max-w-[1000px]">
               <div className="mb-4 flex items-center justify-center gap-2">
                 <Monitor className="w-4 h-4 text-muted-foreground" />

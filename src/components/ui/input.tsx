@@ -10,7 +10,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
         type={type}
         data-slot="input"
         className={cn(
-          "h-8 w-full min-w-0 rounded-lg border border-border bg-transparent px-2.5 py-1 text-base outline-none transition-[color,border-color,box-shadow] duration-200 ease-[var(--ease-out-expo)] file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-3 aria-[invalid=true]:ring-destructive/20 md:text-sm dark:bg-white/[0.03] dark:border-white/10 dark:disabled:bg-input/80",
+          "app-liquid-field h-8 w-full min-w-0 rounded-lg border border-border bg-transparent px-2.5 py-1 text-base outline-none transition-[color,border-color,box-shadow] duration-200 ease-[var(--ease-out-expo)] file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/20 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-3 aria-[invalid=true]:ring-destructive/20 md:text-sm dark:bg-white/[0.03] dark:border-white/10 dark:disabled:bg-input/80",
           className
         )}
         ref={ref}

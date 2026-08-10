@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, MoveHorizontal } from 'lucide-react';
 
@@ -654,7 +654,7 @@ export function ReportWindowChart({
   }
 
   return (
-    <div className={cn('relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-inner', className)} style={{ height }}>
+    <div className={cn('app-liquid-card relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-inner', className)} style={{ height }}>
       <div ref={containerRef} className="absolute inset-0">
         <canvas
           ref={canvasRef}

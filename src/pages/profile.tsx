@@ -302,7 +302,7 @@ export default function ProfilePage() {
         <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-6">
 
           {/* ═══ AVATAR & INFO HEADER ═══ */}
-          <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+          <motion.div variants={itemVariants} className="app-liquid-card relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
             {/* Banner gradient */}
             <div className="h-32 bg-gradient-to-br from-primary/80 via-primary/60 to-primary/30 dark:from-primary/40 dark:via-primary/20 dark:to-primary/10" />
             <div className="relative px-6 pb-6 lg:px-10 lg:pb-8">
@@ -350,7 +350,7 @@ export default function ProfilePage() {
           </motion.div>
 
           {/* ═══ PROFILE FORM ═══ */}
-          <motion.div variants={itemVariants} className="rounded-3xl border border-border bg-card shadow-sm p-6 lg:p-10">
+          <motion.div variants={itemVariants} className="app-liquid-card rounded-3xl border border-border bg-card shadow-sm p-6 lg:p-10">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><User className="w-5 h-5 text-primary" /></div>
               <div>
@@ -419,7 +419,7 @@ export default function ProfilePage() {
           </motion.div>
 
           {/* ═══ SECURITY CARD ═══ */}
-          <motion.div variants={itemVariants} className="rounded-3xl border border-border bg-card shadow-sm p-6 lg:p-10">
+          <motion.div variants={itemVariants} className="app-liquid-card rounded-3xl border border-border bg-card shadow-sm p-6 lg:p-10">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center"><KeyRound className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div>
               <div>
@@ -498,7 +498,7 @@ export default function ProfilePage() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4"
+                className="app-liquid-card bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4"
               >
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-foreground">Đổi mật khẩu</h3>

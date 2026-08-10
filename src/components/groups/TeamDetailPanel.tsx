@@ -698,7 +698,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
           <p className="text-xs text-muted-foreground">{courses.length} courses trong danh mục</p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
+        <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -752,7 +752,7 @@ function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string |
           <p className="text-xs text-muted-foreground">{files.length} files trong danh mục</p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
+        <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

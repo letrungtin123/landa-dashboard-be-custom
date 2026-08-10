@@ -146,7 +146,7 @@ export default function HtmlEditor({
       </Field>
 
       <Field label="Ảnh upload riêng">
-        <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+        <div className="app-liquid-card space-y-3 rounded-xl border border-border bg-muted/30 p-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="default"
@@ -183,7 +183,7 @@ export default function HtmlEditor({
               {carouselImages.length >= 2 ? (
                 <ImageCarousel images={carouselImages} />
               ) : (
-                <div className="rounded-lg border border-border bg-background p-2">
+                <div className="app-liquid-card rounded-lg border border-border bg-background p-2">
                   <img
                     src={htmlImageDisplaySrc(uploadedImages[0].src)}
                     alt={uploadedImages[0].alt || 'Uploaded image'}

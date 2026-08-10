@@ -991,13 +991,13 @@ function AssignmentDialog({
               />
             </div>
 
-            <div className="grid gap-3 rounded-lg border bg-muted/10 p-3">
+            <div className="app-liquid-card grid gap-3 rounded-lg border bg-muted/10 p-3">
               <div className="flex items-center justify-between gap-3">
                 <Label className="text-sm">Cho phép nộp lại</Label>
                 <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
               </div>
 
-              <div className="rounded-lg border bg-background/60 p-3">
+              <div className="app-liquid-card rounded-lg border bg-background/60 p-3">
                 <div className="mb-2 text-sm font-medium">Điều kiện nộp bài</div>
                 <Select value={submissionUnlockMode} onValueChange={(value) => setSubmissionUnlockMode(value as AssignmentSubmissionUnlockMode)}>
                   <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
@@ -1010,7 +1010,7 @@ function AssignmentDialog({
                 </Select>
               </div>
 
-              <div className="rounded-lg border bg-background/60 p-3">
+              <div className="app-liquid-card rounded-lg border bg-background/60 p-3">
                 <Label className="flex items-center gap-2 text-sm">
                   <CalendarClock className="h-4 w-4 text-amber-500" />
                   Thời hạn nộp bài
@@ -1030,7 +1030,7 @@ function AssignmentDialog({
                 </Select>
 
                 {isRelativeDeadline ? (
-                  <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+                  <div className="app-liquid-card mt-3 rounded-lg border bg-muted/20 p-3">
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Số ngày tính từ mốc bắt đầu</div>
                     <input
                       type="number"
@@ -1061,7 +1061,7 @@ function AssignmentDialog({
                 )}
               </div>
 
-              <div className="rounded-lg border bg-background/60 p-3">
+              <div className="app-liquid-card rounded-lg border bg-background/60 p-3">
                 <input
                   ref={attachmentInputRef}
                   type="file"
@@ -1085,7 +1085,7 @@ function AssignmentDialog({
 
                 <div className="mt-3">
                   {attachmentFile ? (
-                    <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
+                    <div className="app-liquid-card flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
                       <FileText className="h-4 w-4 shrink-0 text-primary" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold">{attachmentFile.name}</div>
@@ -1096,7 +1096,7 @@ function AssignmentDialog({
                       </Button>
                     </div>
                   ) : existingAttachment ? (
-                    <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
+                    <div className="app-liquid-card flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
                       <FileText className="h-4 w-4 shrink-0 text-primary" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold">{existingAttachment.original_name}</div>
@@ -1115,7 +1115,7 @@ function AssignmentDialog({
               </div>
 
               {assignment ? (
-                <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                <div className="app-liquid-card flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
                   <Label className="flex min-w-0 items-center gap-2 text-sm">
                     <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="truncate">Chấm điểm từng học viên</span>

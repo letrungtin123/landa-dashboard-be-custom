@@ -67,7 +67,7 @@ export default function FaqEditor({
           {items.map((item, idx) => (
             <div
               key={item.id}
-              className="border border-border rounded-xl p-4 bg-card space-y-3 hover:border-primary/30 transition-colors"
+              className="app-liquid-card border border-border rounded-xl p-4 bg-card space-y-3 hover:border-primary/30 transition-colors"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">

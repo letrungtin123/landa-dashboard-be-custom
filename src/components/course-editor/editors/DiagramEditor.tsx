@@ -604,7 +604,7 @@ export default function DiagramEditor({
                   rows={2}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg border border-border/50">
+              <div className="app-liquid-card grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg border border-border/50">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold flex items-center gap-1.5 mb-1 text-muted-foreground">
                     <Palette className="w-3.5 h-3.5" /> Màu nền

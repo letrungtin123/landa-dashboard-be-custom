@@ -6,6 +6,28 @@ import { customApiClient } from "./custom-client";
 
 interface ApiResponse<T> { success: boolean; data: T; message?: string; }
 
+const MB = 1024 * 1024;
+export const LIBRARY_DOCUMENT_MAX_UPLOAD_MB = 300;
+export const LIBRARY_DOCUMENT_MAX_UPLOAD_BYTES = LIBRARY_DOCUMENT_MAX_UPLOAD_MB * MB;
+export const LIBRARY_DOCUMENT_MAX_UPLOAD_LABEL = `${LIBRARY_DOCUMENT_MAX_UPLOAD_MB}MB`;
+const LIBRARY_DOCUMENT_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+export function formatLibraryDocumentUploadSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0MB';
+  const mb = bytes / MB;
+  if (mb >= 1) return `${mb.toFixed(mb >= 10 ? 0 : 1)}MB`;
+  return `${Math.ceil(bytes / 1024)}KB`;
+}
+
+export function getLibraryDocumentUploadSizeError(file: File): string | null {
+  if (file.size <= LIBRARY_DOCUMENT_MAX_UPLOAD_BYTES) return null;
+  return `File "${file.name}" quá giới hạn upload ${LIBRARY_DOCUMENT_MAX_UPLOAD_LABEL}. Dung lượng hiện tại: ${formatLibraryDocumentUploadSize(file.size)}.`;
+}
+
+function extractLibraryUploadError(error: unknown, fallback = 'Upload thất bại'): string {
+  const responseData = (error as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+  return responseData?.message || responseData?.error || (error instanceof Error ? error.message : fallback);
+}
 // ── Types ──
 
 export interface DocCategory {
@@ -82,14 +104,17 @@ export async function uploadDocument(formData: FormData) {
   const { data } = await customApiClient.post<ApiResponse<{ uploaded: number; failed: number; documents: Document[]; errors: string[] }>>(
     "/api/library/documents/upload",
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: LIBRARY_DOCUMENT_UPLOAD_TIMEOUT_MS,
+    },
   );
   return { success: true, created: data.data.uploaded, errors: data.data.errors ?? [] };
 }
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 1;
 
-/** Upload files in batches of 20 — production-ready for large uploads */
+/** Upload files sequentially so many large files do not create an oversized multipart request. */
 export async function uploadDocumentsBatch(files: File[]): Promise<{ created: number; errors: string[] }> {
   let totalCreated = 0;
   const allErrors: string[] = [];
@@ -98,9 +123,15 @@ export async function uploadDocumentsBatch(files: File[]): Promise<{ created: nu
     const batch = files.slice(i, i + BATCH_SIZE);
     const formData = new FormData();
     batch.forEach(f => formData.append('files', f));
-    const result = await uploadDocument(formData);
-    totalCreated += result.created;
-    allErrors.push(...result.errors);
+
+    try {
+      const result = await uploadDocument(formData);
+      totalCreated += result.created;
+      allErrors.push(...result.errors);
+    } catch (error) {
+      const names = batch.map((file) => file.name).join(', ');
+      allErrors.push(`${names}: ${extractLibraryUploadError(error)}`);
+    }
   }
 
   return { created: totalCreated, errors: allErrors };

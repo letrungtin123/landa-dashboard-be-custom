@@ -137,7 +137,7 @@ function ReportPageSizeDropdown({
 }) {
   return (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 bg-background/80 px-2.5 text-[11px] font-bold text-foreground shadow-sm outline-none transition-all hover:bg-muted focus-visible:ring-1 focus-visible:ring-primary/40">
+      <DropdownMenuTrigger className="app-liquid-field inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 bg-background/80 px-2.5 text-[11px] font-bold text-foreground shadow-sm outline-none transition-all hover:bg-muted focus-visible:ring-1 focus-visible:ring-border">
         <span>{value}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
@@ -567,7 +567,7 @@ function CourseCompletionRankingWidget({
                   />
                 </div>
                 <Select value={learnerStatus} onValueChange={(val) => { setLearnerStatus(val as ReportCourseCompletionStatus); setLearnerPage(1); }}>
-                  <SelectTrigger className="w-full sm:w-[140px] h-10 text-xs bg-background/80 border-border shadow-sm">
+                  <SelectTrigger className={`w-full sm:w-[140px] h-10 text-xs bg-background/80 border-border shadow-sm ${learnerStatus !== 'all' ? 'app-liquid-filter-active' : ''}`}>
                     <SelectValue placeholder="Trạng thái" />
                   </SelectTrigger>
                   <SelectContent>
@@ -936,7 +936,7 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
             />
           </div>
           <Select value={statusFilter} onValueChange={(val: any) => { setStatusFilter(val); setPage(1); }}>
-            <SelectTrigger className="w-[110px] h-9 text-xs bg-background border-border shadow-sm">
+            <SelectTrigger className={`w-[110px] h-9 text-xs bg-background border-border shadow-sm ${statusFilter !== 'all' ? 'app-liquid-filter-active' : ''}`}>
               <SelectValue placeholder="Trạng thái" />
             </SelectTrigger>
             <SelectContent>
@@ -1057,6 +1057,10 @@ export default function ReportSummaryPage() {
   const normalizedDraftDateRange = useMemo(() => normalizeReportDateRange(draftDateRange), [draftDateRange]);
   const dateFrom = useMemo(() => formatDateParam(normalizedDateRange.from), [normalizedDateRange.from]);
   const dateTo = useMemo(() => formatDateParam(normalizedDateRange.to), [normalizedDateRange.to]);
+  const defaultDateRange = useMemo(() => normalizeReportDateRange(getDefaultReportDateRange()), []);
+  const defaultDateFrom = useMemo(() => formatDateParam(defaultDateRange.from), [defaultDateRange.from]);
+  const defaultDateTo = useMemo(() => formatDateParam(defaultDateRange.to), [defaultDateRange.to]);
+  const isDateRangeFiltered = dateFrom !== defaultDateFrom || dateTo !== defaultDateTo;
   const draftDateFrom = useMemo(() => formatDateParam(normalizedDraftDateRange.from), [normalizedDraftDateRange.from]);
   const draftDateTo = useMemo(() => formatDateParam(normalizedDraftDateRange.to), [normalizedDraftDateRange.to]);
   const dateLabel = useMemo(() => getDateRangeLabel(normalizedDateRange.from, normalizedDateRange.to), [normalizedDateRange.from, normalizedDateRange.to]);
@@ -1358,7 +1362,7 @@ export default function ReportSummaryPage() {
         />
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">
+            <DropdownMenuTrigger className={`app-liquid-field flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-border transition-all text-foreground shadow-sm max-w-full sm:max-w-none ${selectedGroupId !== 'all' ? 'app-liquid-filter-active' : ''}`}>
               <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="truncate max-w-[100px] sm:max-w-[120px]">
                 {selectedGroupId === 'all'
@@ -1395,7 +1399,7 @@ export default function ReportSummaryPage() {
           {/* SubGroup Filter — chỉ hiện khi đã chọn Group */}
           {selectedGroupId !== 'all' && canViewReport && (
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">
+              <DropdownMenuTrigger className={`app-liquid-field flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-border transition-all text-foreground shadow-sm max-w-full sm:max-w-none ${selectedSubGroupId !== 'all' ? 'app-liquid-filter-active' : ''}`}>
                 <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedSubGroupId === 'all'
@@ -1428,7 +1432,7 @@ export default function ReportSummaryPage() {
 
           {selectedSubGroupId !== 'all' && canViewReport && (
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm max-w-full sm:max-w-none">
+              <DropdownMenuTrigger className={`app-liquid-field flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-border transition-all text-foreground shadow-sm max-w-full sm:max-w-none ${selectedTeamId !== 'all' ? 'app-liquid-filter-active' : ''}`}>
                 <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedTeamId === 'all'
@@ -1460,8 +1464,8 @@ export default function ReportSummaryPage() {
           )}
 
           <Popover open={isDateFilterOpen} onOpenChange={handleDateFilterOpenChange}>
-            <PopoverTrigger className="flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 outline-none focus-visible:ring-1 focus-visible:ring-primary transition-all text-foreground shadow-sm shrink-0">
-              <CalendarIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+            <PopoverTrigger className={`app-liquid-field flex items-center gap-2 h-9 pl-3 pr-2 py-0 text-xs font-medium rounded-full border border-border bg-background hover:bg-muted outline-none focus-visible:ring-1 focus-visible:ring-border transition-all text-foreground shadow-sm shrink-0 ${isDateRangeFiltered ? 'app-liquid-filter-active' : ''}`}>
+              <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="whitespace-nowrap">{dateLabel}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
             </PopoverTrigger>

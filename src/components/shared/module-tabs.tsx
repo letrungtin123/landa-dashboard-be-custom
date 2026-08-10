@@ -1,5 +1,4 @@
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useAuthStore } from '@/utils/store';
 import { cn } from '@/utils/utils';
 
@@ -61,20 +60,13 @@ export function ModuleTabs({ tabs, defaultTab }: ModuleTabsProps) {
                   key={tab.key}
                   onClick={() => handleTabChange(tab.key)}
                   className={cn(
-                    'relative py-3.5 text-sm font-medium transition-colors outline-none',
+                    'relative my-2 inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium transition-all outline-none !shadow-none',
                     isActive
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'app-liquid-button text-current'
+                      : 'text-muted-foreground hover:text-primary hover:bg-primary/5'
                   )}
                 >
                   {tab.label}
-                  {isActive && (
-                    <motion.div
-                      layoutId="module-tab-indicator"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full"
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                    />
-                  )}
                 </button>
               );
             })}

@@ -219,7 +219,7 @@ export default function CategoriesTab() {
       )}
 
       {/* Table */}
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="divide-y divide-border md:hidden">
           {isLoading ? (
             Array.from({ length: Math.min(limit, 5) }).map((_, i) => (

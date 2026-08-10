@@ -133,7 +133,7 @@ export function DeploySection() {
               key={key}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-xl border bg-card p-5 space-y-4"
+              className="app-liquid-card rounded-xl border bg-card p-5 space-y-4"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -205,7 +205,7 @@ export function DeploySection() {
 
               {key === "lesson_author" && (
                 <>
-                  <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                  <div className="app-liquid-card space-y-2 rounded-lg border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-xs font-medium">
                         <Database className="h-3.5 w-3.5 text-primary" />
@@ -258,7 +258,7 @@ export function DeploySection() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                  <div className="app-liquid-card rounded-lg border bg-muted/20 p-3 space-y-2">
                     <div className="flex items-center gap-2 text-xs font-medium">
                       <Drama className="h-3.5 w-3.5 text-amber-600" />
                       Nhân cách chuyên gia

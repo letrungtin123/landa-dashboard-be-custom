@@ -3,6 +3,7 @@
  * Hỗ trợ: video, html, problem (5 dạng), la_crossword, la_sortable
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, discardDraft, reorderChildren,
@@ -535,7 +536,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
       id={`course-component-${blockId}`}
       ref={setNodeRef}
       style={sortableStyle}
-      className={`border border-border rounded-xl bg-card shadow-sm hover:shadow-md transition-shadow group ${isFocused ? 'ring-2 ring-primary/50 border-primary/50' : ''
+      className={`app-liquid-card border border-border rounded-xl bg-card shadow-sm hover:shadow-md transition-shadow group ${isFocused ? 'ring-2 ring-primary/50 border-primary/50' : ''
         } ${isDragging ? 'shadow-lg ring-2 ring-primary/20' : ''}`}
     >
       {/* Header */}
@@ -632,8 +633,8 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
       </div>
 
       {/* Fullscreen Editor for Diagram */}
-      {isEditing && block.block_type === 'la_diagram' && (
-        <div className="fixed inset-0 z-[9999] bg-background w-screen h-screen overflow-hidden flex flex-col">
+      {isEditing && block.block_type === 'la_diagram' && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 left-0 top-0 z-[9999] flex h-[100dvh] w-screen flex-col overflow-hidden bg-background">
           <ComponentEditForm
             key={editFormKey}
             blockInfo={blockData}
@@ -642,7 +643,8 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
             onImmediateSaved={handleImmediateSaved}
             onCancel={() => setIsEditing(false)}
           />
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Edit Dialog for Normal Components */}
@@ -720,7 +722,7 @@ function SortablePreviewInteractive({ parsed, questionText }: { parsed: any, que
   }
 
   return (
-    <div className="border border-border rounded-xl p-5 bg-card space-y-5">
+    <div className="app-liquid-card border border-border rounded-xl p-5 bg-card space-y-5">
       {questionText && <p className="text-[15px] prose dark:prose-invert max-w-none">{questionText}</p>}
 
       <div className="space-y-2 mt-4">
@@ -1377,7 +1379,7 @@ function MediaQuizPreviewInteractiveV2({ quiz }: { quiz: MediaQuizData }) {
 
   return (
     <div className="w-full">
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
+      <div className="app-liquid-card rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
         <div className="text-[20px] font-bold text-foreground">
           Câu hỏi {safeIndex + 1}/{questions.length}
         </div>
@@ -1602,7 +1604,7 @@ function MediaQuizPreviewInteractive({ quiz }: { quiz: MediaQuizData }) {
 
   return (
     <div className="w-full">
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
+      <div className="app-liquid-card rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-md bg-cyan-500/10 text-cyan-600">
@@ -1864,7 +1866,7 @@ function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; wei
 
   return (
     <div className="w-full">
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-6">
+      <div className="app-liquid-card rounded-2xl border border-border bg-card p-6 shadow-sm space-y-6">
         <ProblemMediaPreview media={media} />
 
         {/* Question */}

@@ -262,7 +262,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
       </motion.div>}
       {hasErrors && !someSelected && <Button variant="outline" size="sm" onClick={handleRetryAll} disabled={retrying || restoreLocked} className="gap-1.5 text-orange-500 border-orange-500/30 hover:bg-orange-500/10">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry tất cả lỗi</Button>}
 
-      <div className="rounded-lg border bg-card">
+      <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={6} rows={5} />
         : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} restoreLocked={restoreLocked} />}
       </div>
@@ -337,7 +337,7 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
           <SelectContent><SelectItem value="__all__">Tất cả trạng thái</SelectItem><SelectItem value="learned">Đã học</SelectItem><SelectItem value="learning">Đang học</SelectItem><SelectItem value="error">Lỗi</SelectItem></SelectContent>
         </Select>
       </div>
-      <div className="rounded-lg border bg-card">
+      <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={5} rows={4} />
         : <Table><TableHeader><TableRow><TableHead>Tên file</TableHead><TableHead className="text-center">Rows</TableHead><TableHead className="text-center">Kích thước</TableHead><TableHead className="text-center">Trạng thái</TableHead><TableHead>Ngày upload</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader>
           <TableBody>
@@ -439,7 +439,7 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
           <SelectContent><SelectItem value="__all__">Tất cả trạng thái</SelectItem><SelectItem value="learned">Đã học</SelectItem><SelectItem value="learning">Đang học</SelectItem><SelectItem value="error">Lỗi</SelectItem></SelectContent>
         </Select>
       </div>
-      <div className="rounded-lg border bg-card">
+      <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={4} rows={4} />
         : <Table><TableHeader><TableRow><TableHead>Tiêu đề</TableHead><TableHead className="text-center">Trạng thái</TableHead><TableHead>Ngày tạo</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader>
           <TableBody>

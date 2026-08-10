@@ -98,7 +98,7 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
               return (
                 <motion.div
                   key={bot.id} custom={i} variants={cardVariants} initial="hidden" animate="visible" exit="exit" layout
-                  className="group rounded-xl border bg-card hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer overflow-hidden"
+                  className="app-liquid-card group rounded-xl hover:border-primary/40 transition-all duration-300 cursor-pointer overflow-hidden"
                   onClick={() => onSelectBot(bot)}
                 >
                   <div className="p-5 space-y-3">

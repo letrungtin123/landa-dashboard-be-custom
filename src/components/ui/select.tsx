@@ -23,7 +23,7 @@ const SelectTrigger = React.forwardRef<
     data-slot="select-trigger"
     data-size={size}
     className={cn(
-      "group/select flex w-fit items-center justify-between gap-2 rounded-lg border bg-card px-3 text-sm font-medium whitespace-nowrap outline-none select-none cursor-pointer",
+      "app-liquid-field group/select flex w-fit items-center justify-between gap-2 rounded-lg border bg-card px-3 text-sm font-medium whitespace-nowrap outline-none select-none cursor-pointer",
       "transition-all duration-200 ease-[var(--ease-out-expo)]",
       "border-border/60 hover:border-border hover:shadow-sm",
       "focus:ring-2 focus:ring-ring/20 focus:border-ring/50",

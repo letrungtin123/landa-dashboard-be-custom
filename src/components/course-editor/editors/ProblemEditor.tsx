@@ -595,7 +595,7 @@ export default function ProblemEditor({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-4">
+      <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
         <div>
           <h3 className="text-sm font-bold">Media minh họa</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -651,7 +651,7 @@ export default function ProblemEditor({
 
         {/* Video upload button (khi chưa có YouTube và chưa có uploaded video) */}
         {!youtubeId && !media.video_storage_path && (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+          <div className="app-liquid-card flex items-center gap-3 rounded-lg border border-border bg-background p-3">
             <Button
               type="button"
               variant="default"
@@ -675,7 +675,7 @@ export default function ProblemEditor({
         )}
 
         <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+          <div className="app-liquid-card flex items-center gap-3 rounded-lg border border-border bg-background p-3">
             <Button
               type="button"
               variant="default"
@@ -702,7 +702,7 @@ export default function ProblemEditor({
           </div>
 
           {resolvedImages.length === 1 && (
-            <div className="relative rounded-lg border border-border bg-background p-2">
+            <div className="app-liquid-card relative rounded-lg border border-border bg-background p-2">
               <img
                 src={resolvedImages[0].src}
                 alt={resolvedImages[0].alt || 'Problem image'}
@@ -895,7 +895,7 @@ export default function ProblemEditor({
           </div>
 
           <div className="w-full lg:w-72 shrink-0 space-y-6">
-            <div className="border border-border rounded-xl p-4 bg-muted/10 space-y-3">
+            <div className="app-liquid-card border border-border rounded-xl p-4 bg-muted/10 space-y-3">
               <label className="text-sm font-semibold text-primary">Gợi ý</label>
               <div className="space-y-2">
                 {state.hints.map((hint, i) => (

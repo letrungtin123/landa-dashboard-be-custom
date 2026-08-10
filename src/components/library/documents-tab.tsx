@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDocuments, getAllCategories, uploadDocumentsBatch, updateDocument, deleteDocument,
-  bulkDocumentAction, type Document, type DocCategory,
+  bulkDocumentAction, getLibraryDocumentUploadSizeError, type Document, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';
 import { storageUrl } from '@/utils/storage-url';
@@ -156,7 +156,9 @@ export default function DocumentsTab() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
-      toast.success(`Đã upload ${result.created} tài liệu`);
+      if (result.created > 0) {
+        toast.success(`Đã upload ${result.created} tài liệu`);
+      }
       if (result.errors?.length) {
         result.errors.forEach((e) => toast.error(e));
       }
@@ -172,7 +174,19 @@ export default function DocumentsTab() {
     input.onchange = (e) => {
       const fileList = (e.target as HTMLInputElement).files;
       if (!fileList?.length) return;
-      uploadMut.mutate(Array.from(fileList));
+
+      const validFiles: File[] = [];
+      Array.from(fileList).forEach((file) => {
+        const sizeError = getLibraryDocumentUploadSizeError(file);
+        if (sizeError) {
+          toast.error(sizeError);
+          return;
+        }
+        validFiles.push(file);
+      });
+
+      if (validFiles.length === 0) return;
+      uploadMut.mutate(validFiles);
     };
     input.click();
   };
@@ -305,7 +319,7 @@ export default function DocumentsTab() {
         </div>
       )}
 
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="divide-y divide-border md:hidden">
           {isLoading ? (
             Array.from({ length: Math.min(limit, 5) }).map((_, i) => (

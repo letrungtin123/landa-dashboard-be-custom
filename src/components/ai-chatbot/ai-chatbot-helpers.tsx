@@ -117,7 +117,7 @@ export function PaginationBar({ page, totalPages, pageSize, onPageChange, onPage
 // ── Skeleton Cards ──
 export function KbCardSkeleton() {
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-3">
+    <div className="app-liquid-card rounded-xl p-5 space-y-3">
       <div className="flex items-start justify-between">
         <div className="space-y-2 flex-1">
           <Skeleton className="h-5 w-2/3" />
@@ -135,7 +135,7 @@ export function KbCardSkeleton() {
 
 export function BotCardSkeleton() {
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-3">
+    <div className="app-liquid-card rounded-xl p-5 space-y-3">
       <div className="flex items-center gap-3">
         <Skeleton className="h-12 w-12 rounded-full" />
         <div className="space-y-2 flex-1">

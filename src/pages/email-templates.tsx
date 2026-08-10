@@ -234,7 +234,7 @@ function renderHighlightedEditorText(value: string, tokens: string[]) {
     parts.push(
       <span
         key={`${range.start}-${range.end}-${index}`}
-        className="box-decoration-clone rounded-md bg-[#eff6ff] text-[#1d4ed8] ring-1 ring-inset ring-[#bfdbfe] shadow-[0_1px_0_rgba(29,78,216,0.08)] dark:bg-[#172554]/55 dark:text-[#bfdbfe] dark:ring-[#60a5fa]/35 dark:shadow-none"
+        className="email-template-token"
       >
         {value.slice(range.start, range.end)}
       </span>,
@@ -824,7 +824,7 @@ export default function EmailTemplatesPage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.04 }}
                 onClick={() => setActiveKey(template.template_key)}
-                className={`group w-full rounded-2xl border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${active ? `${accent.ring} ring-4` : "border-border hover:border-primary/25"
+                className={`app-liquid-card group w-full rounded-2xl border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${active ? `${accent.ring} ring-4` : "border-border hover:border-primary/25"
                   }`}
               >
                 <div className="flex items-start gap-3">
@@ -853,7 +853,7 @@ export default function EmailTemplatesPage() {
             key={activeTemplate.template_key}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="overflow-hidden rounded-2xl border bg-card shadow-sm"
+            className="app-liquid-card overflow-hidden rounded-2xl border bg-card shadow-sm"
           >
             <div className="border-b border-border bg-muted/20 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -887,7 +887,7 @@ export default function EmailTemplatesPage() {
                   <div className="relative rounded-xl bg-background">
                     <div
                       aria-hidden="true"
-                      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-xl text-foreground ${highlightedLayerClass("subject_template")}`}
+                      className={`email-template-editor-layer pointer-events-none absolute inset-0 overflow-hidden rounded-xl ${highlightedLayerClass("subject_template")}`}
                     >
                       <div
                         className="whitespace-pre-wrap break-words"
@@ -907,7 +907,7 @@ export default function EmailTemplatesPage() {
                       onCut={(event) => handleEditorCut(event, "subject_template")}
                       onChange={(event) => setDraftField("subject_template", event.target.value)}
                       rows={2}
-                      className="relative z-10 min-h-[74px] resize-none rounded-xl !bg-transparent text-sm font-semibold leading-6 text-transparent caret-foreground shadow-sm selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
+                      className="email-template-editor-textarea relative z-10 min-h-[74px] resize-none rounded-xl !bg-transparent text-sm font-semibold leading-6 text-transparent caret-foreground shadow-sm selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
                     />
                   </div>
                 </div>
@@ -916,7 +916,7 @@ export default function EmailTemplatesPage() {
                   <div className="relative rounded-xl bg-background">
                     <div
                       aria-hidden="true"
-                      className={`pointer-events-none absolute inset-0 overflow-hidden rounded-xl text-foreground ${highlightedLayerClass("preheader_template")}`}
+                      className={`email-template-editor-layer pointer-events-none absolute inset-0 overflow-hidden rounded-xl ${highlightedLayerClass("preheader_template")}`}
                     >
                       <div
                         className="whitespace-pre-wrap break-words"
@@ -936,7 +936,7 @@ export default function EmailTemplatesPage() {
                       onCut={(event) => handleEditorCut(event, "preheader_template")}
                       onChange={(event) => setDraftField("preheader_template", event.target.value)}
                       rows={2}
-                      className="relative z-10 min-h-[74px] resize-none rounded-xl !bg-transparent text-sm leading-6 text-transparent caret-foreground shadow-sm selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
+                      className="email-template-editor-textarea relative z-10 min-h-[74px] resize-none rounded-xl !bg-transparent text-sm leading-6 text-transparent caret-foreground shadow-sm selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
                     />
                   </div>
                 </div>
@@ -947,7 +947,7 @@ export default function EmailTemplatesPage() {
                 <div className="relative rounded-xl bg-background">
                   <div
                     aria-hidden="true"
-                    className={`pointer-events-none absolute inset-0 overflow-hidden rounded-xl text-foreground ${highlightedLayerClass("body_template")}`}
+                    className={`email-template-editor-layer pointer-events-none absolute inset-0 overflow-hidden rounded-xl ${highlightedLayerClass("body_template")}`}
                   >
                     <div
                       className="whitespace-pre-wrap break-words"
@@ -966,7 +966,7 @@ export default function EmailTemplatesPage() {
                     onPaste={(event) => handleEditorPaste(event, "body_template")}
                     onCut={(event) => handleEditorCut(event, "body_template")}
                     onChange={(event) => setDraftField("body_template", event.target.value)}
-                    className="relative z-10 min-h-[310px] resize-y rounded-xl !bg-transparent text-sm leading-7 text-transparent caret-foreground shadow-inner selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
+                    className="email-template-editor-textarea relative z-10 min-h-[310px] resize-y rounded-xl !bg-transparent text-sm leading-7 text-transparent caret-foreground shadow-inner selection:bg-sky-500/20 selection:text-transparent disabled:!bg-transparent"
                   />
                 </div>
               </div>
@@ -1000,7 +1000,7 @@ export default function EmailTemplatesPage() {
             </div>
           </motion.section>
 
-          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <section className="app-liquid-card overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="flex items-center justify-between border-b border-border bg-muted/20 p-5">
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-primary" />

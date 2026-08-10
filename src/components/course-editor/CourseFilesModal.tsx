@@ -366,7 +366,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
         </DialogHeader>
 
         <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto bg-background p-8">
-          <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
+          <div className="app-data-table-shell overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
                 <TableRow className="border-b border-border/60 bg-muted/40 hover:bg-muted/40">

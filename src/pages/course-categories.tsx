@@ -181,7 +181,7 @@ export default function CourseCategoriesPage() {
           {categories.map((cat) => (
             <div
               key={cat.id}
-              className="group relative flex flex-col p-5 bg-card rounded-[24px] border border-border/50 shadow-sm hover:-translate-y-1 hover:shadow-md hover:border-primary/30 transition-[transform,border-color,box-shadow] duration-150 ease-out cursor-pointer overflow-hidden will-change-transform"
+              className="app-liquid-card group relative flex flex-col p-5 rounded-[24px] hover:-translate-y-1 hover:border-primary/30 transition-[transform,border-color,box-shadow] duration-150 ease-out cursor-pointer overflow-hidden will-change-transform"
               onClick={() => setDetailCatId(cat.id)}
             >
               {/* Background accent */}
@@ -320,7 +320,7 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="relative p-8 rounded-[32px] overflow-hidden bg-gradient-to-r from-card to-muted/30 border shadow-sm">
+      <div className="app-liquid-card relative p-8 rounded-[32px] overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -383,7 +383,7 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ delay: i * 0.05 }}
-                className="flex items-center gap-4 px-5 py-4 bg-card rounded-[20px] border shadow-sm hover:shadow-md hover:border-primary/30 group transition-all"
+                className="app-liquid-card flex items-center gap-4 px-5 py-4 rounded-[20px] hover:border-primary/30 group transition-all"
               >
                 <div className="w-12 h-12 rounded-[14px] bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 flex items-center justify-center shrink-0">
                   <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />

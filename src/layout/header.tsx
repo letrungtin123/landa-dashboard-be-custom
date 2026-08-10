@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/utils/store';
 import { useHeaderStore } from '@/utils/header-store';
 import { useTenantStore } from '@/utils/tenant-store';
@@ -22,6 +22,7 @@ import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
 import { useBranding } from '@/hooks/useBranding';
 import { customGenerateOttApi } from '@/api/custom-auth';
+import { storageUrl } from '@/utils/storage-url';
 
 export function Header() {
   const user = useAuthStore((state) => state.user);
@@ -37,6 +38,13 @@ export function Header() {
   const isSuperadmin = user?.role === 'superadmin';
   const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
   const { branding } = useBranding();
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const userAvatar = user?.avatar_url || user?.avatar;
+  const showUserAvatar = Boolean(userAvatar) && !avatarLoadFailed;
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [userAvatar]);
 
   // Fetch tenants on mount for superadmin
   useEffect(() => {
@@ -67,7 +75,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/60 bg-card/90 backdrop-blur-xl px-6 dark:bg-[#080b16]/80 dark:border-white/[0.06]">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/70 bg-white px-6 dark:border-white/[0.06] dark:bg-[#080b16]">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="-ml-1 h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-lg" />
         {title && (
@@ -86,7 +94,7 @@ export function Header() {
         {/* ── Tenant Switcher (superadmin only) ── */}
         {isSuperadmin && tenants.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring mr-1">
+            <DropdownMenuTrigger className="app-liquid-field flex items-center gap-1.5 rounded-lg px-2.5 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring mr-1">
               <Building2 className="h-4 w-4 text-primary shrink-0" />
               <span className="text-xs font-medium text-foreground hidden sm:inline-block max-w-[140px] truncate">
                 {activeTenantName || 'Chọn doanh nghiệp'}
@@ -123,7 +131,7 @@ export function Header() {
         {/* ── Tenant badge (non-superadmin, read-only) ── */}
         {!isSuperadmin && user && (
           <div
-            className="flex items-center gap-1.5 rounded-lg px-2.5 h-8 mr-1 bg-muted/50 border border-border/60 text-foreground cursor-default select-none"
+            className="app-liquid-field flex items-center gap-1.5 rounded-lg px-2.5 h-8 mr-1 bg-muted/50 border border-border/60 text-foreground cursor-default select-none"
             aria-label={`Doanh nghiệp hiện tại: ${user.tenant_name || 'Chưa có doanh nghiệp'}`}
           >
             <Building2 className="h-4 w-4 text-primary shrink-0" />
@@ -147,18 +155,41 @@ export function Header() {
 
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring">
-            <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground flex items-center justify-center font-semibold text-[11px] uppercase shrink-0">
-              {user?.name?.[0] || 'U'}
-            </div>
+            {showUserAvatar ? (
+              <img
+                src={storageUrl(userAvatar)}
+                alt={user?.name || 'User'}
+                className="w-6 h-6 rounded-full object-cover shrink-0 shadow-sm ring-1 ring-border/70"
+                onError={() => setAvatarLoadFailed(true)}
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-muted border border-border text-foreground flex items-center justify-center font-semibold text-[11px] uppercase shrink-0">
+                {user?.name?.[0] || 'U'}
+              </div>
+            )}
             <span className="text-sm font-medium text-foreground hidden sm:inline-block max-w-[120px] truncate">
               {user?.name}
             </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground hidden sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52 mt-1 rounded-lg">
-            <div className="px-3 py-2.5">
-              <p className="text-sm font-medium text-foreground">{user?.name}</p>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">{user?.email}</p>
+            <div className="px-3 py-2.5 flex items-center gap-3">
+              {showUserAvatar ? (
+                <img
+                  src={storageUrl(userAvatar)}
+                  alt={user?.name || 'User'}
+                  className="h-9 w-9 rounded-xl object-cover shrink-0 shadow-sm ring-1 ring-border/70"
+                  onError={() => setAvatarLoadFailed(true)}
+                />
+              ) : (
+                <div className="h-9 w-9 rounded-xl bg-muted border border-border text-foreground flex items-center justify-center font-semibold text-xs uppercase shrink-0">
+                  {user?.name?.[0] || 'U'}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{user?.name}</p>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">{user?.email}</p>
+              </div>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem

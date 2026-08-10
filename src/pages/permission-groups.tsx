@@ -377,7 +377,7 @@ export default function PermissionGroupsPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: i * 0.05 }}
-              className="bg-card rounded-2xl border border-border/50 p-5 space-y-3 flex flex-col"
+              className="app-liquid-card bg-card rounded-2xl border border-border/50 p-5 space-y-3 flex flex-col"
             >
               <div className="flex items-center gap-2.5">
                 <Skeleton className="h-9 w-9 rounded-xl shrink-0" />
@@ -421,7 +421,7 @@ export default function PermissionGroupsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: idx * 0.06, ease: [0.25, 0.46, 0.45, 0.94] }}
                 onClick={function open() { openDetail(g.id); }}
-                className="group bg-card hover:bg-accent/30 rounded-2xl border border-border/50 hover:border-primary/30 p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 relative overflow-hidden flex flex-col"
+                className="app-liquid-card group bg-card hover:bg-accent/30 rounded-2xl border border-border/50 hover:border-primary/30 p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 relative overflow-hidden flex flex-col"
               >
                 {/* Decorative gradient line */}
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -582,7 +582,7 @@ export default function PermissionGroupsPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="rounded-xl border border-border/50 overflow-hidden shadow-sm"
+                  className="app-liquid-card rounded-xl border border-border/50 overflow-hidden shadow-sm"
                 >
                   <Table>
                     <TableHeader>
@@ -733,7 +733,7 @@ export default function PermissionGroupsPage() {
                           <div key={m.id} className={`group flex items-center gap-3 p-3 rounded-xl border transition-all ${
                             isPendingAdd
                               ? 'border-emerald-300 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5'
-                              : 'border-border/30 hover:border-primary/20 bg-card hover:bg-accent/20'
+                              : 'app-liquid-card border-border/30 hover:border-primary/20 bg-card hover:bg-accent/20'
                           }`}>
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
                               isPendingAdd
@@ -813,7 +813,7 @@ export default function PermissionGroupsPage() {
               </Button>
             </div>
 
-            <div className="max-h-[350px] overflow-y-auto rounded-xl border border-border/50">
+            <div className="app-liquid-card max-h-[350px] overflow-y-auto rounded-xl border border-border/50">
               {memberResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                   <Search className="h-6 w-6 text-muted-foreground/20 mb-2" />

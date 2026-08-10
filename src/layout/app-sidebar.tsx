@@ -150,15 +150,15 @@ export function AppSidebar() {
   const showCollapsedTenantIcon = Boolean(branding.squareIcon) && !collapsedIconError;
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border/70 bg-transparent">
       {/* Header */}
-      <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border">
+      <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border/70">
         <Link to="/" className="flex items-center justify-center w-full overflow-hidden">
           {/* Full Logo - hidden when collapsed */}
           <img src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
 
           {/* Square icon - visible only when collapsed */}
-          <div className={`hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg shrink-0 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`}>
+          <div className={`hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg sidebar-liquid-control shrink-0 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`}>
             {showCollapsedTenantIcon ? (
               <img
                 src={branding.squareIcon}
@@ -167,7 +167,7 @@ export function AppSidebar() {
                 onError={() => setCollapsedIconError(true)}
               />
             ) : (
-              <span className="flex h-full w-full items-center justify-center rounded-lg border border-sidebar-border bg-transparent text-[10px] font-bold uppercase text-sidebar-foreground/70">
+              <span className="flex h-full w-full items-center justify-center rounded-lg text-[10px] font-bold uppercase text-sidebar-foreground/70">
                 {tenantInitials}
               </span>
             )}
@@ -180,7 +180,7 @@ export function AppSidebar() {
         {filteredNavGroups.map((group, groupIdx) => (
           <SidebarGroup key={group.group} className={`!py-0.5 ${groupIdx > 0 ? 'mt-0.5 group-data-[collapsible=icon]:mt-0.5' : ''}`}>
             {/* Group label */}
-            <SidebarGroupLabel className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-[0.15em] px-2 mb-0.5 group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel className="text-[10px] font-semibold text-sidebar-foreground/45 uppercase tracking-[0.15em] px-2 mb-0.5 group-data-[collapsible=icon]:hidden">
               {group.group}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -196,13 +196,13 @@ export function AppSidebar() {
                         isActive={isActive}
                         tooltip={item.title}
                         className={`h-9 rounded-xl group-data-[collapsible=icon]:!w-8 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:!rounded-xl ${isActive
-                          ? 'bg-primary/10 text-primary font-semibold dark:bg-primary/15'
-                          : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                          ? 'sidebar-liquid-active font-semibold'
+                          : 'text-sidebar-foreground/68 hover:bg-white/45 hover:text-sidebar-foreground dark:hover:bg-white/[0.07]'
                           }`}
                       >
                         <Link to={item.url}>
-                          <Icon className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-primary' : 'text-sidebar-foreground/45'} group-data-[collapsible=icon]:w-[18px] group-data-[collapsible=icon]:h-[18px]`} />
-                          <span className={`font-medium text-[13px] group-data-[collapsible=icon]:hidden ${isActive ? 'text-primary' : ''}`}>
+                          <Icon className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-current' : 'text-sidebar-foreground/45'} group-data-[collapsible=icon]:w-[18px] group-data-[collapsible=icon]:h-[18px]`} />
+                          <span className={`font-medium text-[13px] group-data-[collapsible=icon]:hidden ${isActive ? 'text-current' : ''}`}>
                             {item.title}
                           </span>
                         </Link>
@@ -217,24 +217,24 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2 mt-auto border-t border-sidebar-border group-data-[collapsible=icon]:items-center">
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2 mt-auto border-t border-sidebar-border/70 group-data-[collapsible=icon]:items-center">
         <SidebarMenu className="group-data-[collapsible=icon]:items-center">
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
               tooltip={user?.name || 'Profile'}
-              className="h-auto p-2.5 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:!size-8 rounded-xl hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center"
+              className="h-auto p-2.5 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:!size-8 rounded-xl hover:bg-white/45 dark:hover:bg-white/[0.07] group-data-[collapsible=icon]:justify-center"
             >
               <Link to="/profile">
                 {(user?.avatar_url || user?.avatar) ? (
                   <img
                     src={storageUrl(user.avatar_url || user.avatar || '')}
                     alt={user?.name || 'User'}
-                    className="w-9 h-9 rounded-xl object-cover shrink-0 shadow-sm ring-1 ring-sidebar-border"
+                    className="w-9 h-9 rounded-xl object-cover shrink-0 shadow-sm ring-1 ring-sidebar-border/70"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
                   />
                 ) : null}
-                <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-sm ${(user?.avatar_url || user?.avatar) ? 'hidden' : ''}`} style={{ background: 'linear-gradient(135deg, var(--sidebar-active-from), var(--sidebar-active-to))' }}>
+                <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-sm ring-1 ring-white/25 ${(user?.avatar_url || user?.avatar) ? 'hidden' : ''}`} style={{ background: 'linear-gradient(135deg, var(--sidebar-active-from), var(--sidebar-active-to))' }}>
                   {user?.name?.[0] || 'U'}
                 </div>
                 <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden ml-0.5">

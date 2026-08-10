@@ -68,11 +68,11 @@ export function Pagination({
       </div>
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           onClick={() => onPageChange(Math.max(1, page - 1))}
           disabled={page === 1}
-          className="h-8 w-8 bg-background"
+          className="pagination-page-button h-8 w-8 text-muted-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -83,10 +83,11 @@ export function Pagination({
                 <span className="text-xs text-muted-foreground px-1">…</span>
               )}
               <Button
-                variant={page === pageNum ? 'default' : 'outline'}
+                variant={page === pageNum ? 'default' : 'ghost'}
                 size="icon"
                 onClick={() => onPageChange(pageNum)}
-                className={`h-8 w-8 text-xs ${page !== pageNum ? 'bg-background' : 'ring-1 ring-primary/20'}`}
+                aria-current={page === pageNum ? 'page' : undefined}
+                className={`h-8 w-8 text-xs ${page === pageNum ? 'pagination-page-active font-bold' : 'pagination-page-button text-muted-foreground'}`}
               >
                 {pageNum}
               </Button>
@@ -94,11 +95,11 @@ export function Pagination({
           ))}
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
           disabled={page === totalPages}
-          className="h-8 w-8 bg-background"
+          className="pagination-page-button h-8 w-8 text-muted-foreground"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>

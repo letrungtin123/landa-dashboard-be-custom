@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/utils"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium whitespace-nowrap outline-none select-none transition-all duration-200 ease-[var(--ease-out-expo)] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "relative isolate inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg text-sm font-medium whitespace-nowrap outline-none select-none transition-all duration-200 ease-[var(--ease-out-expo)] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 !shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-[linear-gradient(to_right,var(--gradient-from),var(--gradient-to))] text-white shadow-[0_2px_12px_-2px_rgba(0,0,0,0.25)] hover:opacity-90 hover:shadow-[0_4px_20px_-2px_rgba(0,0,0,0.3)]",
+        default: "app-liquid-button text-current",
         outline:
-          "border border-border bg-background hover:bg-muted hover:text-foreground",
+          "app-liquid-button text-current",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "app-liquid-button text-current",
         ghost:
           "hover:bg-muted hover:text-foreground",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20",
-        link: "text-primary underline-offset-4 hover:underline",
+          "app-liquid-button app-liquid-button-danger text-destructive",
+        link: "text-primary underline-offset-4 hover:underline !shadow-none",
       },
       size: {
         default: "h-8 gap-1.5 px-3",

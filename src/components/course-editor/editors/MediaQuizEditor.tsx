@@ -224,7 +224,7 @@ function QuestionTypeChooser({
   onCancel?: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-4">
+    <div className="app-liquid-card rounded-xl border border-border bg-muted/20 p-5 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold">{title}</h3>
@@ -242,7 +242,7 @@ function QuestionTypeChooser({
         <button
           type="button"
           onClick={() => onSelect('single_select')}
-          className="rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
+          className="app-liquid-card rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
         >
           <div className="font-bold text-sm">Chọn một đáp án</div>
           <p className="mt-1 text-xs text-muted-foreground">Học viên chọn đúng một lựa chọn.</p>
@@ -250,7 +250,7 @@ function QuestionTypeChooser({
         <button
           type="button"
           onClick={() => onSelect('multiple_select')}
-          className="rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
+          className="app-liquid-card rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
         >
           <div className="font-bold text-sm">Chọn nhiều đáp án</div>
           <p className="mt-1 text-xs text-muted-foreground">Học viên phải chọn đúng toàn bộ đáp án.</p>
@@ -523,7 +523,7 @@ export default function MediaQuizEditor({
           return (
             <SortableQuestionShell key={question.id} id={question.id}>
               {(dragHandleProps) => (
-            <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+            <div className="app-liquid-card rounded-xl border border-border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-bold">Câu hỏi {questionIndex + 1}</div>
@@ -553,13 +553,13 @@ export default function MediaQuizEditor({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-3">
+              <div className="app-liquid-card rounded-lg border border-border bg-muted/10 p-3 space-y-3">
                 {question.media ? (
                   <div className="space-y-2">
                     {question.media.type === 'video' ? (
                   <UploadedVideoPreview src={mediaUrl} className="aspect-video overflow-hidden rounded-lg bg-black" />
                     ) : (
-                      <div className="rounded-lg border border-border bg-background p-2">
+                      <div className="app-liquid-card rounded-lg border border-border bg-background p-2">
                         <img
                           src={mediaUrl}
                           alt={question.media.alt || 'Ảnh câu hỏi kèm media'}

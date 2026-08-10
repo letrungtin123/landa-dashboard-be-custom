@@ -529,7 +529,7 @@ function LessonAuthorMindmapContent({
         <div className="grid min-h-0 flex-1 grid-cols-1 bg-muted/20 lg:grid-cols-[292px_minmax(0,1fr)]">
           <aside className="border-b bg-background/90 p-4 backdrop-blur lg:border-b-0 lg:border-r">
             <div className="space-y-4">
-              <div className="rounded-xl border bg-card p-3 shadow-sm">
+              <div className="app-liquid-card rounded-xl border bg-card p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">Tóm tắt plan</p>
                   {jobSuffix && <Badge variant="secondary" className="font-mono text-[10px]">#{jobSuffix}</Badge>}
@@ -624,7 +624,7 @@ function LoadingMindmap() {
 
 function StatTile({ label, value, accent = 'text-foreground' }: { label: string; value: number; accent?: string }) {
   return (
-    <div className="rounded-lg border bg-card px-3 py-2">
+    <div className="app-liquid-card rounded-lg border bg-card px-3 py-2">
       <p className={`text-lg font-semibold leading-none ${accent}`}>{value}</p>
       <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
     </div>

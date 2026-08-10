@@ -423,7 +423,7 @@ export default function TenantManagementPage() {
 
       {/* Table */}
       <TooltipProvider delayDuration={300}>
-      <div className="rounded-lg border bg-card">
+      <div className="app-data-table-shell rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -636,7 +636,7 @@ export default function TenantManagementPage() {
               </div>
               <p className="text-xs text-muted-foreground">API key Google Gemini cho AI Chatbot. Lấy từ Google AI Studio.</p>
             </div>
-            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+            <div className="app-liquid-card space-y-3 rounded-lg border bg-muted/10 p-4">
               <div className="flex items-start gap-2">
                 <Layers className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 <div>
@@ -660,7 +660,7 @@ export default function TenantManagementPage() {
                 })}
               </div>
             </div>
-            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+            <div className="app-liquid-card space-y-3 rounded-lg border bg-muted/10 p-4">
               <div className="flex items-start gap-2">
                 <Network className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 <div>
@@ -732,7 +732,7 @@ export default function TenantManagementPage() {
             </div>
           ) : (
             <div className="space-y-4 py-2">
-              <div className="flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
+              <div className="app-liquid-card flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
                 <div>
                   <div className="text-sm font-medium">Bật SMTP</div>
                   <div className="text-xs text-muted-foreground">Feedback sẽ gửi email cho learner và bản copy</div>
@@ -788,7 +788,7 @@ export default function TenantManagementPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
+              <div className="app-liquid-card flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2">
                 <div>
                   <div className="text-sm font-medium">Gửi bản copy về account doanh nghiệp</div>
                   <div className="text-xs text-muted-foreground">Nếu để trống email copy, hệ thống dùng username SMTP</div>

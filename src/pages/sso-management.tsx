@@ -427,7 +427,7 @@ export default function SsoManagementPage() {
                           {errors.client_secret && <p className="text-xs text-destructive">{errors.client_secret}</p>}
                         </div>
 
-                        <div className="rounded-lg border bg-muted/20 p-3">
+                        <div className="app-liquid-card rounded-lg border bg-muted/20 p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
                               <div className="text-sm font-medium">Tu dong kich hoat learner moi</div>

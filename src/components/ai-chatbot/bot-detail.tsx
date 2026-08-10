@@ -56,7 +56,7 @@ function DetailSkeleton() {
         <div className="space-y-2"><Skeleton className="h-6 w-48" /><Skeleton className="h-4 w-32" /></div>
       </div>
       <Skeleton className="h-10 w-full max-w-md" />
-      <div className="rounded-xl border bg-card p-6 space-y-6">
+      <div className="app-liquid-card rounded-xl border bg-card p-6 space-y-6">
         <div className="flex items-center gap-6">
           <Skeleton className="h-24 w-24 rounded-full" />
           <div className="space-y-3 flex-1"><Skeleton className="h-5 w-32" /><Skeleton className="h-10 w-full" /></div>
@@ -259,7 +259,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
 
         {/* ═══════ Settings Tab ═══════ */}
         <TabsContent value="settings" className="mt-5">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl border bg-card overflow-hidden">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="app-liquid-card rounded-xl border bg-card overflow-hidden">
             <div className="p-6 border-b">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Avatar</h3>
               <div className="flex items-center gap-6">
@@ -327,7 +327,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             {personasLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-xl border bg-card overflow-hidden">
+                  <div key={i} className="app-liquid-card rounded-xl border bg-card overflow-hidden">
                     <Skeleton className="h-44 w-full" />
                     <div className="p-4 space-y-2">
                       <Skeleton className="h-10 w-10 rounded-full mx-auto" />
@@ -338,7 +338,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                 ))}
               </div>
             ) : personas.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground rounded-xl border bg-card">
+              <div className="app-liquid-card text-center py-16 text-muted-foreground rounded-xl border bg-card">
                 <Drama className="h-12 w-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Bot này chưa có nhân cách nào.</p>
                 <Button variant="outline" size="sm" onClick={openAddModal} className="gap-1.5 mt-4"><Plus className="h-4 w-4" /> Thêm nhân cách</Button>
@@ -360,7 +360,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                         exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
                         transition={{ delay: i * 0.06, duration: 0.3 }}
                         layout
-                        className="group rounded-xl border bg-card overflow-hidden hover:shadow-lg hover:shadow-primary/5 hover:border-primary/30 transition-all duration-300"
+                        className="app-liquid-card group rounded-xl border bg-card overflow-hidden hover:shadow-lg hover:shadow-primary/5 hover:border-primary/30 transition-all duration-300"
                       >
                         {/* Fullbody Image */}
                         <div
@@ -542,7 +542,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             {templatesLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="rounded-xl border bg-card overflow-hidden">
+                  <div key={i} className="app-liquid-card rounded-xl border bg-card overflow-hidden">
                     <Skeleton className="h-36 w-full" />
                     <div className="p-4 space-y-2"><Skeleton className="h-10 w-10 rounded-full mx-auto" /><Skeleton className="h-4 w-28 mx-auto" /><Skeleton className="h-8 w-full rounded-lg" /></div>
                   </div>
@@ -568,7 +568,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: i * 0.06, duration: 0.3 }}
-                        className={`rounded-xl border overflow-hidden transition-all duration-300 ${isAssigned ? 'bg-muted/30 border-primary/20 opacity-70' : 'bg-card hover:shadow-lg hover:border-primary/30'}`}
+                        className={`app-liquid-card rounded-xl border overflow-hidden transition-all duration-300 ${isAssigned ? 'bg-muted/30 border-primary/20 opacity-70' : 'bg-card hover:shadow-lg hover:border-primary/30'}`}
                       >
                         {/* Fullbody */}
                         <div className="relative h-36 flex items-center justify-center overflow-hidden" style={{ background: `linear-gradient(135deg, ${color}08 0%, ${color}15 100%)` }}>

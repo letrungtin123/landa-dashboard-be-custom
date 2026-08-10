@@ -259,7 +259,7 @@ export default function SortableEditor({
       </Field>
 
       {/* ── Media minh họa ── */}
-      <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-4">
+      <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
         <div>
           <h3 className="text-sm font-bold">Media minh họa</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -315,7 +315,7 @@ export default function SortableEditor({
 
         {/* Video upload button */}
         {!youtubeId && !media.video_storage_path && (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+          <div className="app-liquid-card flex items-center gap-3 rounded-lg border border-border bg-background p-3">
             <Button type="button" variant="default" size="sm" className="gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
               {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               Upload video
@@ -326,7 +326,7 @@ export default function SortableEditor({
         )}
 
         <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+          <div className="app-liquid-card flex items-center gap-3 rounded-lg border border-border bg-background p-3">
             <Button
               type="button"
               variant="default"
@@ -353,7 +353,7 @@ export default function SortableEditor({
           </div>
 
           {resolvedImages.length === 1 && (
-            <div className="relative rounded-lg border border-border bg-background p-2">
+            <div className="app-liquid-card relative rounded-lg border border-border bg-background p-2">
               <img
                 src={resolvedImages[0].src}
                 alt={resolvedImages[0].alt || 'Sortable image'}

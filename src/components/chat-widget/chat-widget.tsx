@@ -1653,7 +1653,7 @@ function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | nu
           Cần cấu hình đủ bot, KB và mascot chuyên gia trước khi chat trong course outline.
         </p>
       </div>
-      <div className="w-full max-w-xs rounded-lg border bg-muted/30 p-3 text-left">
+      <div className="app-liquid-card w-full max-w-xs rounded-lg border bg-muted/30 p-3 text-left">
         <p className="text-[11px] font-medium text-muted-foreground mb-2">Đang thiếu</p>
         <div className="space-y-1">
           {missing.map(item => (
@@ -1707,7 +1707,7 @@ function PersonaPicker({ personas, onSelect, onBack }: {
                 transition={{ delay: i * 0.06 }}
                 onClick={() => handleSelect(p.id)}
                 disabled={selecting !== null}
-                className="group relative rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-200 overflow-hidden text-left disabled:opacity-50"
+                className="app-liquid-card group relative rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-200 overflow-hidden text-left disabled:opacity-50"
               >
                 <div className="h-28 bg-gradient-to-br from-muted/40 to-muted/10 flex items-end justify-center overflow-hidden">
                   {fullbody ? (

@@ -187,7 +187,7 @@ export default function PromptTemplatesPage() {
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {loading ? Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card p-5 space-y-4">
+          <div key={i} className="app-liquid-card rounded-xl border bg-card p-5 space-y-4">
             <div className="flex items-center gap-4">
               <Skeleton className="h-16 w-16 rounded-full" />
               <div className="space-y-2 flex-1"><Skeleton className="h-5 w-32" /><Skeleton className="h-4 w-20" /></div>
@@ -205,7 +205,7 @@ export default function PromptTemplatesPage() {
             {templates.map((tpl, i) => (
               <motion.div
                 key={tpl.id} custom={i} variants={cardVariants} initial="hidden" animate="visible" exit="exit" layout
-                className="group rounded-xl border bg-card hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 overflow-hidden"
+                className="app-liquid-card group rounded-xl border bg-card hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 overflow-hidden"
               >
                 {/* Fullbody preview */}
                 <div className="relative h-40 bg-gradient-to-br from-muted/30 to-muted/10 flex items-center justify-center overflow-hidden">
@@ -370,7 +370,7 @@ export default function PromptTemplatesPage() {
                 disabled={formLessonAuthor || (!editTpl?.is_active && !formActive && activeCount >= 6)} />
               <label className="text-sm">Bật mascot thường {!editTpl?.is_active && activeCount >= 6 && !formLessonAuthor && "(đã đủ 6/6)"}</label>
             </div>
-            <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-3">
+            <div className="app-liquid-card flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-3">
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Flag className="h-4 w-4 text-amber-600" />

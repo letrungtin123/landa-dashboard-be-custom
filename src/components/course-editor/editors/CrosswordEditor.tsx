@@ -262,7 +262,7 @@ export default function CrosswordEditor({
         </Field>
 
         {/* ── Media minh họa ── */}
-        <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-4">
+        <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
           <div>
             <h3 className="text-sm font-bold">Media minh họa</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -318,7 +318,7 @@ export default function CrosswordEditor({
 
           {/* Video upload button */}
           {!youtubeId && !media.video_storage_path && (
-            <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
+            <div className="app-liquid-card flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
               <Button type="button" variant="default" size="sm" className="shrink-0 gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
                 {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 Upload video
@@ -329,7 +329,7 @@ export default function CrosswordEditor({
           )}
 
           <div className="space-y-3">
-            <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
+            <div className="app-liquid-card flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
               <Button
                 type="button"
                 variant="default"
@@ -356,7 +356,7 @@ export default function CrosswordEditor({
             </div>
 
             {resolvedImages.length === 1 && (
-              <div className="relative rounded-lg border border-border bg-background p-2">
+              <div className="app-liquid-card relative rounded-lg border border-border bg-background p-2">
                 <img
                   src={resolvedImages[0].src}
                   alt={resolvedImages[0].alt || 'Crossword image'}
@@ -424,7 +424,7 @@ export default function CrosswordEditor({
 
           <div className="space-y-2">
             {words.map((word, idx) => (
-              <div key={word.id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3 space-y-3 transition-colors hover:border-primary/30 sm:p-4">
+              <div key={word.id} className="app-liquid-card min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3 space-y-3 transition-colors hover:border-primary/30 sm:p-4">
                 <div className="flex min-w-0 items-start justify-between gap-2">
                   <span className="min-w-0 break-words text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Hàng #{word.id}

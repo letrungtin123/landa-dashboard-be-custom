@@ -195,7 +195,7 @@ export default function AuditLogsPage() {
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <div className={`flex flex-col ${isFetching && activities.length > 0 ? 'opacity-50 pointer-events-none transition-opacity duration-200' : 'transition-opacity duration-200'}`}>
             {isLoading && activities.length === 0 ? (
               [1, 2, 3, 4, 5].map((i, index) => (
@@ -258,7 +258,7 @@ export default function AuditLogsPage() {
 
       {/* TIMELINE VIEW */}
       {viewMode === 'timeline' && (
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <div className="max-h-[520px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
             <div className={`p-6 ${isFetching && activities.length > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
               {isLoading && activities.length === 0 ? (

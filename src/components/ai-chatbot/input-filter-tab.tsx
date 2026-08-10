@@ -127,7 +127,7 @@ function parseList(value: string): string[] {
 function FilterSkeleton() {
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="app-liquid-card rounded-xl border bg-card p-5 space-y-4">
         <Skeleton className="h-7 w-56" />
         <Skeleton className="h-10 w-full max-w-md" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -210,7 +210,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="app-liquid-card rounded-xl border bg-card overflow-hidden">
         <div className="p-5 border-b bg-muted/20">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -241,7 +241,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
         ) : (
           <div className="p-5 space-y-6">
             <div className="grid grid-cols-1 gap-5">
-              <div className="rounded-lg border bg-background p-4 flex items-center justify-between gap-4">
+              <div className="app-liquid-card rounded-lg border bg-background p-4 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-medium">Bật bộ lọc cho {botName || "chatbot này"}</p>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -266,7 +266,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                     <motion.div
                       key={step.key}
                       layout
-                      className="rounded-lg border bg-background p-4 flex gap-3"
+                      className="app-liquid-card rounded-lg border bg-background p-4 flex gap-3"
                     >
                       <div className={`h-10 w-10 rounded-lg border flex items-center justify-center ${step.tone}`}>
                         <Icon className="h-5 w-5" />
@@ -288,7 +288,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
               </div>
             </section>
 
-            <section className="rounded-lg border bg-background overflow-hidden">
+            <section className="app-liquid-card rounded-lg border bg-background overflow-hidden">
               <button
                 type="button"
                 onClick={() => setAdvancedOpen(open => !open)}
@@ -390,7 +390,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+                  <div className="app-liquid-card rounded-lg border bg-muted/20 p-4 space-y-4">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
                       <div>
@@ -442,7 +442,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
               )}
             </section>
 
-            <section className="rounded-lg border bg-background overflow-hidden">
+            <section className="app-liquid-card rounded-lg border bg-background overflow-hidden">
               <button
                 type="button"
                 onClick={() => setMessagesOpen(open => !open)}

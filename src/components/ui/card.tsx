@@ -12,9 +12,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-xl py-4 text-sm text-card-foreground transition-all duration-300 ease-[var(--ease-out-expo)] hover:-translate-y-0.5 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
-        "bg-card shadow-sm ring-1 ring-border/60 hover:shadow-md hover:ring-border",
-        "dark:bg-[#0e1525]/80 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:shadow-[0_2px_12px_-2px_rgba(0,0,0,0.3)] dark:hover:ring-ring/15 dark:hover:shadow-[0_8px_24px_-4px_rgba(0,0,0,0.15)]",
+        "app-liquid-card group/card flex flex-col gap-4 overflow-hidden rounded-xl border border-transparent py-4 text-sm text-card-foreground transition-all duration-300 ease-[var(--ease-out-expo)] hover:-translate-y-0.5 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         className
       )}
       {...props}
@@ -86,7 +84,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/card:p-3",
+        "flex items-center rounded-b-xl border-t border-border/45 bg-white/[0.18] p-4 group-data-[size=sm]/card:p-3 dark:border-white/[0.06] dark:bg-white/[0.035]",
         className
       )}
       {...props}

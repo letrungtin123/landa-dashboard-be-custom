@@ -217,7 +217,7 @@ export default function PdfEditor({
                   Mở trong tab mới <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
-              <div className="border border-border rounded-xl overflow-hidden bg-muted/30">
+              <div className="app-liquid-card border border-border rounded-xl overflow-hidden bg-muted/30">
                 <iframe
                   src={embedUrl}
                   title="PDF Preview"

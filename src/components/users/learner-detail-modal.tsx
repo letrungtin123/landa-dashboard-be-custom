@@ -461,8 +461,8 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    variant="outline"
-                    className="h-9 sm:h-10 w-full justify-between rounded-xl border-border bg-background px-3 text-xs font-semibold shadow-sm sm:w-[150px]"
+                    variant="ghost"
+                    className={`app-liquid-field h-9 sm:h-10 w-full justify-between rounded-xl border-border bg-background px-3 text-xs font-semibold shadow-sm sm:w-[150px] ${courseStatus !== 'all' ? 'app-liquid-filter-active' : ''}`}
                   >
                     {selectedCourseStatus.label}
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -488,7 +488,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
             {/* Badges & Weekly Momentum Row */}
             <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 mb-2">
               {/* Badges Card */}
-              <div className="rounded-xl border border-border bg-card p-3 sm:p-4 shadow-sm min-w-0">
+              <div className="app-liquid-card rounded-xl border border-border bg-card p-3 sm:p-4 shadow-sm min-w-0">
                 <div className="flex items-center gap-2 mb-3">
                   <Award className="h-4 w-4 text-amber-500 shrink-0" />
                   <h4 className="text-xs sm:text-sm font-bold text-foreground">Danh hiệu đạt được</h4>
@@ -724,7 +724,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -6 }}
                           layout
-                          className="group p-3 sm:p-4 rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex items-center justify-between gap-2 sm:gap-4"
+                          className="app-liquid-card group p-3 sm:p-4 rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex items-center justify-between gap-2 sm:gap-4"
                         >
                           <div className="min-w-0 flex-grow">
                             <p className="text-xs sm:text-sm font-bold truncate group-hover:text-primary transition-colors">

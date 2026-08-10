@@ -373,7 +373,7 @@ export default function CoursesPage() {
             💡 Phần này chỉ có chức năng xem trước giao diện tĩnh của card khóa học ở phía người học và không thể click tương tác
           </div>
 
-          <div className="w-full rounded-[28px] border border-border bg-card p-2 pb-4 shadow-sm">
+          <div className="app-liquid-card w-full rounded-[28px] border border-border bg-card p-2 pb-4 shadow-sm">
             {/* Ảnh bìa khóa học */}
             <div className="flex h-44 items-center justify-center relative overflow-hidden shrink-0 rounded-[20px] bg-muted">
               {previewCourse?.image_url && !previewCourse.image_url.includes('images/course_image') && !previewCourse.image_url.includes('images_course_image') ? (
@@ -456,7 +456,7 @@ export default function CoursesPage() {
       />
 
       <TooltipProvider delayDuration={300}>
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden">
           <div className="divide-y divide-border md:hidden">
             {isLoading ? (
               Array.from({ length: Math.min(limit, 5) }).map((_, i) => (
@@ -1201,7 +1201,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:space-y-5 sm:px-6 sm:py-5">
-          <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
+          <div className="app-liquid-card rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
             <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người phụ trách hiện tại</div>
             {loadingCurrent ? (
               <div className="flex items-center gap-3">
@@ -1258,7 +1258,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             )}
           </div>
 
-          <div className="rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
+          <div className="app-liquid-card rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thông tin hiển thị trên mục Người phụ trách ở trang học viên</div>
@@ -1310,7 +1310,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                       ? 'bg-white/10 text-slate-200'
                       : 'bg-slate-100 text-slate-600';
                     return (
-                      <div key={slot.mode} className="rounded-lg border border-border bg-muted/20 p-3">
+                      <div key={slot.mode} className="app-liquid-card rounded-lg border border-border bg-muted/20 p-3">
                         <input
                           ref={slot.inputRef}
                           type="file"
@@ -2089,7 +2089,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-border/80 bg-muted/20 p-4">
+                    <div className="app-liquid-card rounded-2xl border border-border/80 bg-muted/20 p-4">
                       <div className="flex min-w-0 items-start gap-3">
                         <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${emailAutomationReady ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'}`}>
                           <Mail className="h-4 w-4" />
@@ -2179,7 +2179,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                             {formatNotificationDate(selectedHistoryItem.created_at)}
                           </Badge>
                         </div>
-                        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-sm">
+                        <div className="app-liquid-card min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-sm">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
                               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chi tiết thông báo</p>
@@ -2200,7 +2200,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                             </div>
                           </div>
 
-                          <div className="mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm sm:grid-cols-2">
+                          <div className="app-liquid-card mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm sm:grid-cols-2">
                             <div>
                               <p className="text-xs text-muted-foreground">Người gửi</p>
                               <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.sent_by_display_name || 'Không xác định'}</p>
@@ -2221,7 +2221,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
 
                           <div className="mt-5">
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nội dung</p>
-                            <div className="mt-2 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-sm leading-6 text-foreground">
+                            <div className="app-liquid-card mt-2 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-sm leading-6 text-foreground">
                               {selectedHistoryItem.message || 'Không có nội dung'}
                             </div>
                           </div>
@@ -2267,7 +2267,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 onClick={() => setSelectedHistoryItem(item)}
-                                className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:border-primary/40 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                className="app-liquid-card w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:border-primary/40 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                               >
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="min-w-0">

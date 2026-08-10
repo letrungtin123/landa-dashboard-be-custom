@@ -202,7 +202,7 @@ export default function UsersPage() {
       />
 
       <TooltipProvider delayDuration={300}>
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mt-3">
+      <div className="app-data-table-shell bg-card rounded-xl border border-border shadow-sm overflow-hidden mt-3">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted/10">

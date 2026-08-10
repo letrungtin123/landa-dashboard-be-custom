@@ -188,7 +188,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
       </div>
 
       {/* Danh sách câu hỏi */}
-      <div className="mt-6 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-10 sm:p-6">
+      <div className="app-liquid-card mt-6 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-10 sm:p-6">
         <h3 className="mb-4 text-lg font-bold text-card-foreground sm:mb-6">Danh sách câu hỏi</h3>
         <ul className="min-w-0 space-y-3 text-[15px] text-muted-foreground">
           {words.map((w: any, idx: number) => (

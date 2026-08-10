@@ -47,12 +47,12 @@ export function TableToolbar({
     <div className="flex flex-col sm:flex-row items-center gap-3 w-full pb-3 border-b border-border/50">
       {/* Search */}
       <div className="relative w-full sm:max-w-sm group/search">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 transition-colors duration-200 group-focus-within/search:text-primary" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 transition-colors duration-200 group-focus-within/search:text-foreground" />
         <Input
           placeholder={searchPlaceholder}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-9 h-9 w-full bg-muted/40 border-border/50 hover:border-border hover:bg-muted/60 focus-visible:bg-background focus-visible:border-primary/30 shadow-none rounded-lg transition-all duration-200 text-sm placeholder:text-muted-foreground/50"
+          className="pl-9 h-9 w-full bg-muted/40 border-border/50 hover:border-border hover:bg-muted/60 focus-visible:bg-background focus-visible:border-border shadow-none rounded-lg transition-all duration-200 text-sm placeholder:text-muted-foreground/50"
         />
       </div>
 
@@ -80,8 +80,8 @@ export function TableToolbar({
                   transition-all duration-200 ease-[var(--ease-out-expo)]
                   shadow-none border
                   ${isActive
-                    ? 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/15 dark:bg-primary/15 dark:border-primary/40'
-                    : 'bg-muted/40 border-border/50 text-muted-foreground hover:bg-muted/70 hover:border-border hover:text-foreground'
+                    ? 'app-liquid-filter-active font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
                   }
                 `}
               >
