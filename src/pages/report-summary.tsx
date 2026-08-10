@@ -1,4 +1,4 @@
-﻿import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
@@ -1052,7 +1052,7 @@ export default function ReportSummaryPage() {
   const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultReportDateRange());
   const [draftDateRange, setDraftDateRange] = useState<DateRange>(() => getDefaultReportDateRange());
   const [dateDraftTarget, setDateDraftTarget] = useState<DateDraftTarget>('from');
-  const [isDateFilterOpen, setIsDateFilterOpen] = useState(true);
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const normalizedDateRange = useMemo(() => normalizeReportDateRange(dateRange), [dateRange]);
   const normalizedDraftDateRange = useMemo(() => normalizeReportDateRange(draftDateRange), [draftDateRange]);
   const dateFrom = useMemo(() => formatDateParam(normalizedDateRange.from), [normalizedDateRange.from]);
