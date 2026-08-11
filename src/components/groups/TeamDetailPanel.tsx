@@ -1,13 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { storageUrl } from '@/utils/storage-url';
-import { UserPlus, BookPlus, Trash2, Users, BookOpen, Loader2, FolderOpen, FolderPlus, FolderKanban, Eye, FileText, FileImage, FileSpreadsheet, FileType, Film } from 'lucide-react';
+import {
+  UserPlus,
+  Trash2,
+  Users,
+  Loader2,
+  BookOpen,
+  FolderOpen,
+  FolderPlus,
+  FolderKanban,
+  Eye,
+  FileText,
+  FileImage,
+  FileSpreadsheet,
+  FileType,
+  Film,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
+import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -17,22 +37,29 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  getTeamDetail, removeTeamMember, revokeTeamCourse, revokeTeamCategory, revokeTeamCourseCategory,
+  getTeamDetail,
+  getTeamMembers,
+  getTeamCategories,
+  getTeamCourseCategories,
+  removeTeamMember,
+  revokeTeamCategory,
+  revokeTeamCourseCategory,
   type TeamDetail,
 } from '@/api/custom-groups';
 import { getCourseCategoryCourses } from '@/api/custom-course-categories';
 import { getDocuments } from '@/api/custom-library';
 import { AddMembersModal } from './AddMembersModal';
-import { AssignCoursesModal } from './AssignCoursesModal';
 import { AssignCategoriesModal } from './AssignCategoriesModal';
 import { AssignCourseCategoriesModal } from './AssignCourseCategoriesModal';
-
 
 interface Props {
   teamId: string;
 }
 
-type Tab = 'members' | 'courses' | 'categories' | 'course_categories';
+type Tab = 'members' | 'categories' | 'course_categories';
+
+const TEAM_DETAIL_PAGE_SIZE = 20;
+const VISIBLE_TABS: Tab[] = ['members', 'categories', 'course_categories'];
 
 // Icon & color theo extension (reuse pattern từ documents-tab)
 const EXT_ICONS: Record<string, React.ElementType> = {
@@ -59,21 +86,102 @@ const EXT_BG: Record<string, string> = {
   jpg: 'bg-pink-500/10', jpeg: 'bg-pink-500/10', png: 'bg-pink-500/10',
 };
 
-// Tabs hiển thị trên UI (ẩn tab courses vì tạm không dùng phân course lẻ)
-const VISIBLE_TABS: Tab[] = ['members', 'categories', 'course_categories'];
+function PaginationControls({
+  page,
+  totalPages,
+  isFetching,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  isFetching?: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border px-4 py-3">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(Math.max(1, page - 1))}
+        disabled={page <= 1 || isFetching}
+        className="h-8 w-8 p-0"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        Trang {page} / {Math.max(1, totalPages)}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages || isFetching}
+        className="h-8 w-8 p-0"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+function TabSearch({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        className="h-9 pl-9"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+function LoadingRows() {
+  return (
+    <div className="divide-y divide-border">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="flex items-center gap-3 px-4 py-3">
+          <Skeleton className="h-5 w-5 rounded" />
+          <Skeleton className="h-8 w-8 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function TeamDetailPanel({ teamId }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('members');
   const [addMembersOpen, setAddMembersOpen] = useState(false);
-  const [assignCoursesOpen, setAssignCoursesOpen] = useState(false);
   const [assignCategoriesOpen, setAssignCategoriesOpen] = useState(false);
   const [assignCourseCategoriesOpen, setAssignCourseCategoriesOpen] = useState(false);
   const [previewCatId, setPreviewCatId] = useState<string | null>(null);
   const [previewFileCatId, setPreviewFileCatId] = useState<string | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedCourseCategories, setSelectedCourseCategories] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [categorySearch, setCategorySearch] = useState('');
+  const [courseCategorySearch, setCourseCategorySearch] = useState('');
+  const [memberPage, setMemberPage] = useState(1);
+  const [categoryPage, setCategoryPage] = useState(1);
+  const [courseCategoryPage, setCourseCategoryPage] = useState(1);
+  const debouncedMemberSearch = useDebounce(memberSearch, 350);
+  const debouncedCategorySearch = useDebounce(categorySearch, 350);
+  const debouncedCourseCategorySearch = useDebounce(courseCategorySearch, 350);
   const qc = useQueryClient();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const groupLabels = useAuthStore((s) => s.groupLabels);
@@ -87,24 +195,65 @@ export function TeamDetailPanel({ teamId }: Props) {
     enabled: !!teamId,
   });
 
+  const membersQuery = useQuery({
+    queryKey: ['team-detail-members', teamId, debouncedMemberSearch, memberPage],
+    queryFn: () => getTeamMembers(teamId, {
+      page: memberPage,
+      page_size: TEAM_DETAIL_PAGE_SIZE,
+      search: debouncedMemberSearch || undefined,
+    }),
+    enabled: !!teamId && activeTab === 'members',
+  });
+
+  const categoriesQuery = useQuery({
+    queryKey: ['team-detail-categories', teamId, debouncedCategorySearch, categoryPage],
+    queryFn: () => getTeamCategories(teamId, {
+      page: categoryPage,
+      page_size: TEAM_DETAIL_PAGE_SIZE,
+      search: debouncedCategorySearch || undefined,
+    }),
+    enabled: !!teamId && activeTab === 'categories',
+  });
+
+  const courseCategoriesQuery = useQuery({
+    queryKey: ['team-detail-course-categories', teamId, debouncedCourseCategorySearch, courseCategoryPage],
+    queryFn: () => getTeamCourseCategories(teamId, {
+      page: courseCategoryPage,
+      page_size: TEAM_DETAIL_PAGE_SIZE,
+      search: debouncedCourseCategorySearch || undefined,
+    }),
+    enabled: !!teamId && activeTab === 'course_categories',
+  });
+
+  const members = membersQuery.data?.data ?? [];
+  const categories = categoriesQuery.data?.data ?? [];
+  const courseCategories = courseCategoriesQuery.data?.data ?? [];
+  const memberTotalPages = membersQuery.data?.totalPages ?? 1;
+  const categoryTotalPages = categoriesQuery.data?.totalPages ?? 1;
+  const courseCategoryTotalPages = courseCategoriesQuery.data?.totalPages ?? 1;
+
+  useEffect(() => { setMemberPage(1); }, [teamId, debouncedMemberSearch]);
+  useEffect(() => { setCategoryPage(1); }, [teamId, debouncedCategorySearch]);
+  useEffect(() => { setCourseCategoryPage(1); }, [teamId, debouncedCourseCategorySearch]);
+  useEffect(() => { setSelectedMembers([]); }, [teamId, debouncedMemberSearch, memberPage]);
+  useEffect(() => { setSelectedCategories([]); }, [teamId, debouncedCategorySearch, categoryPage]);
+  useEffect(() => { setSelectedCourseCategories([]); }, [teamId, debouncedCourseCategorySearch, courseCategoryPage]);
+
+  const invalidateTeamQueries = () => {
+    qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
+    qc.invalidateQueries({ queryKey: ['team-detail-members', teamId] });
+    qc.invalidateQueries({ queryKey: ['team-detail-categories', teamId] });
+    qc.invalidateQueries({ queryKey: ['team-detail-course-categories', teamId] });
+    qc.invalidateQueries({ queryKey: ['teams'] });
+  };
+
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => removeTeamMember(teamId, userId),
     onSuccess: () => {
       toast.success('Đã xóa thành viên');
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi xóa thành viên'),
-  });
-
-  const revokeMutation = useMutation({
-    mutationFn: (courseId: string) => revokeTeamCourse(teamId, courseId),
-    onSuccess: () => {
-      toast.success('Đã thu hồi course');
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
-    },
-    onError: () => toast.error('Lỗi thu hồi course'),
   });
 
   const removeMultipleMembersMutation = useMutation({
@@ -114,31 +263,16 @@ export function TeamDetailPanel({ teamId }: Props) {
     onSuccess: () => {
       toast.success('Đã xóa các thành viên đã chọn');
       setSelectedMembers([]);
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi xóa thành viên'),
-  });
-
-  const revokeMultipleCoursesMutation = useMutation({
-    mutationFn: async (courseIds: string[]) => {
-      await Promise.all(courseIds.map(id => revokeTeamCourse(teamId, id)));
-    },
-    onSuccess: () => {
-      toast.success('Đã thu hồi các course đã chọn');
-      setSelectedCourses([]);
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
-    },
-    onError: () => toast.error('Lỗi thu hồi course'),
   });
 
   const revokeCategoryMutation = useMutation({
     mutationFn: (categoryId: string) => revokeTeamCategory(teamId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục');
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi thu hồi danh mục'),
   });
@@ -150,8 +284,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     onSuccess: () => {
       toast.success('Đã thu hồi các danh mục đã chọn');
       setSelectedCategories([]);
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi thu hồi danh mục'),
   });
@@ -160,8 +293,7 @@ export function TeamDetailPanel({ teamId }: Props) {
     mutationFn: (categoryId: string) => revokeTeamCourseCategory(teamId, categoryId),
     onSuccess: () => {
       toast.success('Đã thu hồi danh mục khóa học');
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
   });
@@ -173,27 +305,17 @@ export function TeamDetailPanel({ teamId }: Props) {
     onSuccess: () => {
       toast.success('Đã thu hồi các danh mục khóa học đã chọn');
       setSelectedCourseCategories([]);
-      qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-      qc.invalidateQueries({ queryKey: ['teams'] });
+      invalidateTeamQueries();
     },
     onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
   });
 
-  const handleRemoveMember = (id: string, username: string) => {
+  const handleRemoveMember = (userId: string, username: string) => {
     confirmDialog({
       title: 'Xóa thành viên',
-      description: `Xóa "${username}" khỏi ${teamLabelLower}? User sẽ không còn thấy courses của ${teamLabelLower} này.`,
+      description: `Xóa ${username} khỏi ${teamLabelLower}?`,
       variant: 'destructive',
-      onConfirm: () => removeMemberMutation.mutate(id),
-    });
-  };
-
-  const handleRevokeCourse = (courseId: string, displayName: string) => {
-    confirmDialog({
-      title: 'Thu hồi Course',
-      description: `Thu hồi "${displayName}"? Các thành viên sẽ không còn thấy course này.`,
-      variant: 'destructive',
-      onConfirm: () => revokeMutation.mutate(courseId),
+      onConfirm: () => removeMemberMutation.mutate(userId),
     });
   };
 
@@ -206,19 +328,10 @@ export function TeamDetailPanel({ teamId }: Props) {
     });
   };
 
-  const handleBulkRevokeCourses = () => {
-    confirmDialog({
-      title: 'Thu hồi nhiều Course',
-      description: `Thu hồi ${selectedCourses.length} course khỏi ${teamLabelLower}?`,
-      variant: 'destructive',
-      onConfirm: () => revokeMultipleCoursesMutation.mutate(selectedCourses),
-    });
-  };
-
   const handleRevokeCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục',
-      description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy danh mục này.`,
+      description: `Thu hồi "${name}"? Thành viên sẽ không còn thấy tài liệu trong danh mục này.`,
       variant: 'destructive',
       onConfirm: () => revokeCategoryMutation.mutate(categoryId),
     });
@@ -256,23 +369,9 @@ export function TeamDetailPanel({ teamId }: Props) {
   };
 
   const toggleAllMembers = () => {
-    if (sg?.members.length && selectedMembers.length === sg.members.length) {
-      setSelectedMembers([]);
-    } else {
-      setSelectedMembers(sg?.members.map(m => m.id) ?? []);
-    }
-  };
-
-  const toggleCourse = (id: string) => {
-    setSelectedCourses(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const toggleAllCourses = () => {
-    if (sg?.courses.length && selectedCourses.length === sg.courses.length) {
-      setSelectedCourses([]);
-    } else {
-      setSelectedCourses(sg?.courses.map(c => c.course_id) ?? []);
-    }
+    const visibleIds = members.map(m => m.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedMembers.includes(id));
+    setSelectedMembers(allVisibleSelected ? [] : visibleIds);
   };
 
   const toggleCategory = (id: string) => {
@@ -280,11 +379,9 @@ export function TeamDetailPanel({ teamId }: Props) {
   };
 
   const toggleAllCategories = () => {
-    if (sg?.categories.length && selectedCategories.length === sg.categories.length) {
-      setSelectedCategories([]);
-    } else {
-      setSelectedCategories(sg?.categories.map(c => c.category_id) ?? []);
-    }
+    const visibleIds = categories.map(c => c.category_id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedCategories.includes(id));
+    setSelectedCategories(allVisibleSelected ? [] : visibleIds);
   };
 
   const toggleCourseCategory = (id: string) => {
@@ -292,19 +389,17 @@ export function TeamDetailPanel({ teamId }: Props) {
   };
 
   const toggleAllCourseCategories = () => {
-    if (sg?.course_categories.length && selectedCourseCategories.length === sg.course_categories.length) {
-      setSelectedCourseCategories([]);
-    } else {
-      setSelectedCourseCategories(sg?.course_categories.map(c => c.category_id) ?? []);
-    }
+    const visibleIds = courseCategories.map(c => c.category_id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedCourseCategories.includes(id));
+    setSelectedCourseCategories(allVisibleSelected ? [] : visibleIds);
   };
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full p-4 gap-3">
+      <div className="flex h-full flex-col gap-3 p-4">
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-4 w-1/3" />
-        <div className="space-y-2 mt-4">
+        <div className="mt-4 space-y-2">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
         </div>
       </div>
@@ -313,207 +408,161 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   if (!sg) return null;
 
+  const allMembersSelected = members.length > 0 && members.every(m => selectedMembers.includes(m.id));
+  const allCategoriesSelected = categories.length > 0 && categories.every(c => selectedCategories.includes(c.category_id));
+  const allCourseCategoriesSelected = courseCategories.length > 0 && courseCategories.every(c => selectedCourseCategories.includes(c.category_id));
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-border shrink-0">
-        <h3 className="font-semibold text-foreground text-base">{sg.name}</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border px-5 py-4">
+        <h3 className="text-base font-semibold text-foreground">{sg.name}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {labels.subgroup}: {sg.subgroup_name} · {labels.group}: {sg.org_group_name}
         </p>
       </div>
 
-      <div className="flex border-b border-border shrink-0 overflow-x-auto">
+      <div className="flex shrink-0 overflow-x-auto border-b border-border">
         {VISIBLE_TABS.map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab
+            className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === tab
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
           >
-            {tab === 'members' ? <Users className="h-3.5 w-3.5" /> : tab === 'courses' ? <BookOpen className="h-3.5 w-3.5" /> : tab === 'categories' ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
-            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'courses' ? `Courses (${sg.course_count})` : tab === 'categories' ? `Thư viện tài liệu (${sg.category_count})` : `Danh mục khoá học (${sg.course_category_count})`}
+            {tab === 'members' ? <Users className="h-3.5 w-3.5" /> : tab === 'categories' ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
+            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'categories' ? `Thư viện tài liệu (${sg.category_count})` : `Danh mục khoá học (${sg.course_category_count})`}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {activeTab === 'members' && (
           <>
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  checked={sg.members.length > 0 && selectedMembers.length === sg.members.length}
-                  onCheckedChange={toggleAllMembers}
-                  disabled={sg.members.length === 0}
-                  id="select-all-members"
-                />
-                <label htmlFor="select-all-members" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedMembers.length > 0 && canEdit && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 ml-2 text-xs"
-                    onClick={handleBulkRemoveMembers}
-                    disabled={removeMultipleMembersMutation.isPending}
-                  >
-                    {removeMultipleMembersMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
-                    Xóa ({selectedMembers.length})
+            <div className="space-y-3 border-b border-border px-4 py-3">
+              <TabSearch value={memberSearch} placeholder="Tìm thành viên theo tên hoặc email..." onChange={setMemberSearch} />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Checkbox
+                    checked={allMembersSelected}
+                    onCheckedChange={toggleAllMembers}
+                    disabled={members.length === 0 || membersQuery.isFetching}
+                    id="select-all-members"
+                  />
+                  <label htmlFor="select-all-members" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  {selectedMembers.length > 0 && canEdit && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 text-xs"
+                      onClick={handleBulkRemoveMembers}
+                      disabled={removeMultipleMembersMutation.isPending}
+                    >
+                      {removeMultipleMembersMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                      Xóa ({selectedMembers.length})
+                    </Button>
+                  )}
+                </div>
+                {canEdit && (
+                  <Button size="sm" className="h-8 gap-1.5 text-xs sm:self-auto" onClick={() => setAddMembersOpen(true)}>
+                    <UserPlus className="h-3.5 w-3.5" /> Thêm thành viên
                   </Button>
                 )}
               </div>
-              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddMembersOpen(true)}>
-                <UserPlus className="h-3.5 w-3.5" /> Thêm thành viên
-              </Button>}
             </div>
-            {sg.members.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <Users className="h-10 w-10 text-muted-foreground/20 mb-2" />
-                <p className="text-sm text-muted-foreground">Chưa có thành viên</p>
+            {membersQuery.isFetching && !membersQuery.data ? (
+              <LoadingRows />
+            ) : members.length === 0 ? (
+              <div className="flex h-40 flex-col items-center justify-center text-center">
+                <Users className="mb-2 h-10 w-10 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">{debouncedMemberSearch ? 'Không tìm thấy thành viên phù hợp' : 'Chưa có thành viên'}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {sg.members.map(m => (
-                  <div key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 group">
+                {members.map(m => (
+                  <div key={m.id} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
                     <Checkbox
                       checked={selectedMembers.includes(m.id)}
                       onCheckedChange={() => toggleMember(m.id)}
                     />
                     {m.avatar ? (
-                      <img src={storageUrl(m.avatar)} alt={m.username} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
+                      <img src={storageUrl(m.avatar)} alt={m.username} className="h-8 w-8 shrink-0 rounded-full border border-border object-cover" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-secondary text-xs font-semibold text-muted-foreground">
                         {m.username[0]?.toUpperCase()}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{m.username}</p>
-                      <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{m.username}</p>
+                      <p className="truncate text-xs text-muted-foreground">{m.email}</p>
                     </div>
-                    <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
+                    <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
                       {format(new Date(m.added_at), 'dd/MM/yyyy')}
                     </span>
-                    {canEdit && <button
-                      onClick={() => handleRemoveMember(m.id, m.username)}
-                      disabled={removeMemberMutation.isPending}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                    >
-                      {removeMemberMutation.isPending && removeMemberMutation.variables === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>}
+                    {canEdit && (
+                      <button
+                        onClick={() => handleRemoveMember(m.id, m.username)}
+                        disabled={removeMemberMutation.isPending}
+                        className="p-1.5 text-muted-foreground opacity-100 transition-all hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                      >
+                        {removeMemberMutation.isPending && removeMemberMutation.variables === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
-          </>
-        )}
-
-        {activeTab === 'courses' && (
-          <>
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  checked={sg.courses.length > 0 && selectedCourses.length === sg.courses.length}
-                  onCheckedChange={toggleAllCourses}
-                  disabled={sg.courses.length === 0}
-                  id="select-all-courses"
-                />
-                <label htmlFor="select-all-courses" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCourses.length > 0 && canEdit && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 ml-2 text-xs"
-                    onClick={handleBulkRevokeCourses}
-                    disabled={revokeMultipleCoursesMutation.isPending}
-                  >
-                    {revokeMultipleCoursesMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
-                    Xóa ({selectedCourses.length})
-                  </Button>
-                )}
-              </div>
-              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCoursesOpen(true)}>
-                <BookPlus className="h-3.5 w-3.5" /> Phân course
-              </Button>}
-            </div>
-            {sg.courses.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <BookOpen className="h-10 w-10 text-muted-foreground/20 mb-2" />
-                <p className="text-sm text-muted-foreground">Chưa có course nào được phân</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {sg.courses.map(c => (
-                  <div key={c.course_id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 group">
-                    <Checkbox
-                      checked={selectedCourses.includes(c.course_id)}
-                      onCheckedChange={() => toggleCourse(c.course_id)}
-                    />
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                      <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{c.display_name}</p>
-                      <p className="text-[11px] text-muted-foreground truncate font-mono">{c.course_id}</p>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
-                      {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
-                    </span>
-                    {canEdit && <button
-                      onClick={() => handleRevokeCourse(c.course_id, c.display_name)}
-                      disabled={revokeMutation.isPending}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                    >
-                      {revokeMutation.isPending && revokeMutation.variables === c.course_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>}
-                  </div>
-                ))}
-              </div>
-            )}
+            <PaginationControls page={memberPage} totalPages={memberTotalPages} isFetching={membersQuery.isFetching} onPageChange={setMemberPage} />
           </>
         )}
 
         {activeTab === 'categories' && (
           <>
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  checked={sg.categories.length > 0 && selectedCategories.length === sg.categories.length}
-                  onCheckedChange={toggleAllCategories}
-                  disabled={sg.categories.length === 0}
-                  id="select-all-categories"
-                />
-                <label htmlFor="select-all-categories" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCategories.length > 0 && canEdit && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 ml-2 text-xs"
-                    onClick={handleBulkRevokeCategories}
-                    disabled={revokeMultipleCategoriesMutation.isPending}
-                  >
-                    {revokeMultipleCategoriesMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
-                    Xóa ({selectedCategories.length})
+            <div className="space-y-3 border-b border-border px-4 py-3">
+              <TabSearch value={categorySearch} placeholder="Tìm danh mục tài liệu..." onChange={setCategorySearch} />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Checkbox
+                    checked={allCategoriesSelected}
+                    onCheckedChange={toggleAllCategories}
+                    disabled={categories.length === 0 || categoriesQuery.isFetching}
+                    id="select-all-categories"
+                  />
+                  <label htmlFor="select-all-categories" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  {selectedCategories.length > 0 && canEdit && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 text-xs"
+                      onClick={handleBulkRevokeCategories}
+                      disabled={revokeMultipleCategoriesMutation.isPending}
+                    >
+                      {revokeMultipleCategoriesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                      Xóa ({selectedCategories.length})
+                    </Button>
+                  )}
+                </div>
+                {canEdit && (
+                  <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
+                    <FolderPlus className="h-3.5 w-3.5" /> Phân thư viện tài liệu
                   </Button>
                 )}
               </div>
-              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
-                <FolderPlus className="h-3.5 w-3.5" /> Phân thư viện tài liệu
-              </Button>}
             </div>
-            {sg.categories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <FolderOpen className="h-10 w-10 text-muted-foreground/20 mb-2" />
-                <p className="text-sm text-muted-foreground">Chưa có danh mục nào được phân</p>
+            {categoriesQuery.isFetching && !categoriesQuery.data ? (
+              <LoadingRows />
+            ) : categories.length === 0 ? (
+              <div className="flex h-40 flex-col items-center justify-center text-center">
+                <FolderOpen className="mb-2 h-10 w-10 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">{debouncedCategorySearch ? 'Không tìm thấy danh mục tài liệu phù hợp' : 'Chưa có danh mục nào được phân'}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {sg.categories.map(c => (
+                {categories.map(c => (
                   <div
                     key={c.category_id}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 group cursor-pointer"
+                    className="group flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
                     onClick={() => setPreviewFileCatId(c.category_id)}
                   >
                     <Checkbox
@@ -521,69 +570,79 @@ export function TeamDetailPanel({ teamId }: Props) {
                       onCheckedChange={() => toggleCategory(c.category_id)}
                       onClick={(e: React.MouseEvent) => e.stopPropagation()}
                     />
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10">
                       <FolderOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
                     </div>
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
-                    <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
+                    <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+                    <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
                       {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
                     </span>
-                    {canEdit && <button
-                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCategory(c.category_id, c.name); }}
-                      disabled={revokeCategoryMutation.isPending}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                    >
-                      {revokeCategoryMutation.isPending && revokeCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>}
+                    {canEdit && (
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCategory(c.category_id, c.name); }}
+                        disabled={revokeCategoryMutation.isPending}
+                        className="p-1.5 text-muted-foreground opacity-100 transition-all hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                      >
+                        {revokeCategoryMutation.isPending && revokeCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
+            <PaginationControls page={categoryPage} totalPages={categoryTotalPages} isFetching={categoriesQuery.isFetching} onPageChange={setCategoryPage} />
           </>
         )}
 
         {activeTab === 'course_categories' && (
           <>
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  checked={sg.course_categories.length > 0 && selectedCourseCategories.length === sg.course_categories.length}
-                  onCheckedChange={toggleAllCourseCategories}
-                  disabled={sg.course_categories.length === 0}
-                  id="select-all-course-categories"
-                />
-                <label htmlFor="select-all-course-categories" className="text-sm font-medium cursor-pointer">Chọn tất cả</label>
-                {selectedCourseCategories.length > 0 && canEdit && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 ml-2 text-xs"
-                    onClick={handleBulkRevokeCourseCategories}
-                    disabled={revokeMultipleCourseCategoriesMutation.isPending}
-                  >
-                    {revokeMultipleCourseCategoriesMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
-                    Xóa ({selectedCourseCategories.length})
+            <div className="space-y-3 border-b border-border px-4 py-3">
+              <TabSearch value={courseCategorySearch} placeholder="Tìm danh mục khoá học..." onChange={setCourseCategorySearch} />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Checkbox
+                    checked={allCourseCategoriesSelected}
+                    onCheckedChange={toggleAllCourseCategories}
+                    disabled={courseCategories.length === 0 || courseCategoriesQuery.isFetching}
+                    id="select-all-course-categories"
+                  />
+                  <label htmlFor="select-all-course-categories" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  {selectedCourseCategories.length > 0 && canEdit && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 text-xs"
+                      onClick={handleBulkRevokeCourseCategories}
+                      disabled={revokeMultipleCourseCategoriesMutation.isPending}
+                    >
+                      {revokeMultipleCourseCategoriesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                      Xóa ({selectedCourseCategories.length})
+                    </Button>
+                  )}
+                </div>
+                {canEdit && (
+                  <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
+                    <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục khoá học
                   </Button>
                 )}
               </div>
-              {canEdit && <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
-                <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục khoá học
-              </Button>}
             </div>
-            {sg.course_categories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <FolderKanban className="h-10 w-10 text-muted-foreground/20 mb-2" />
-                <p className="text-sm text-muted-foreground">Chưa có danh mục khóa học nào được phân</p>
+            {courseCategoriesQuery.isFetching && !courseCategoriesQuery.data ? (
+              <LoadingRows />
+            ) : courseCategories.length === 0 ? (
+              <div className="flex h-40 flex-col items-center justify-center text-center">
+                <FolderKanban className="mb-2 h-10 w-10 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">{debouncedCourseCategorySearch ? 'Không tìm thấy danh mục khóa học phù hợp' : 'Chưa có danh mục khóa học nào được phân'}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {sg.course_categories.map(c => (
+                {courseCategories.map(c => (
                   <div
                     key={c.category_id}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 group cursor-pointer"
+                    className="group flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
                     onClick={() => setPreviewCatId(c.category_id)}
                   >
                     <Checkbox
@@ -591,88 +650,65 @@ export function TeamDetailPanel({ teamId }: Props) {
                       onCheckedChange={() => toggleCourseCategory(c.category_id)}
                       onClick={(e: React.MouseEvent) => e.stopPropagation()}
                     />
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                       <FolderKanban className="h-4 w-4 text-primary" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
                     </div>
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
-                    <span className="text-[11px] text-muted-foreground/60 hidden group-hover:block shrink-0">
+                    <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+                    <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
                       {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
                     </span>
-                    {canEdit && <button
-                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCourseCategory(c.category_id, c.name); }}
-                      disabled={revokeCourseCategoryMutation.isPending}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                    >
-                      {revokeCourseCategoryMutation.isPending && revokeCourseCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>}
+                    {canEdit && (
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleRevokeCourseCategory(c.category_id, c.name); }}
+                        disabled={revokeCourseCategoryMutation.isPending}
+                        className="p-1.5 text-muted-foreground opacity-100 transition-all hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                      >
+                        {revokeCourseCategoryMutation.isPending && revokeCourseCategoryMutation.variables === c.category_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
+            <PaginationControls page={courseCategoryPage} totalPages={courseCategoryTotalPages} isFetching={courseCategoriesQuery.isFetching} onPageChange={setCourseCategoryPage} />
           </>
         )}
       </div>
 
-      {/* Modals */}
       <AddMembersModal
         open={addMembersOpen}
         teamId={teamId}
-        existingMemberIds={sg.members.map(m => m.id)}
         onOpenChange={setAddMembersOpen}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-          qc.invalidateQueries({ queryKey: ['teams'] });
-        }}
-      />
-      <AssignCoursesModal
-        open={assignCoursesOpen}
-        teamId={teamId}
-        assignedCourseIds={sg.courses.map(c => c.course_id)}
-        onOpenChange={setAssignCoursesOpen}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-          qc.invalidateQueries({ queryKey: ['teams'] });
-        }}
+        onSuccess={invalidateTeamQueries}
       />
       <AssignCategoriesModal
         open={assignCategoriesOpen}
         teamId={teamId}
-        assignedCategoryIds={sg.categories.map(c => c.category_id)}
         onOpenChange={setAssignCategoriesOpen}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-          qc.invalidateQueries({ queryKey: ['teams'] });
-        }}
+        onSuccess={invalidateTeamQueries}
       />
       <AssignCourseCategoriesModal
         open={assignCourseCategoriesOpen}
         teamId={teamId}
-        assignedCategoryIds={sg.course_categories.map(c => c.category_id)}
         onOpenChange={setAssignCourseCategoriesOpen}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ['team-detail', teamId] });
-          qc.invalidateQueries({ queryKey: ['teams'] });
-        }}
+        onSuccess={invalidateTeamQueries}
       />
-      {/* Preview courses in category modal */}
       <CourseCategoryPreviewModal
         catId={previewCatId}
-        catName={sg.course_categories.find(c => c.category_id === previewCatId)?.name || ''}
+        catName={courseCategories.find(c => c.category_id === previewCatId)?.name || ''}
         onClose={() => setPreviewCatId(null)}
       />
-      {/* Preview files in category modal */}
       <FileCategoryPreviewModal
         catId={previewFileCatId}
-        catName={sg.categories.find(c => c.category_id === previewFileCatId)?.name || ''}
+        catName={categories.find(c => c.category_id === previewFileCatId)?.name || ''}
         onClose={() => setPreviewFileCatId(null)}
       />
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════
 // Modal xem danh sách courses trong 1 danh mục

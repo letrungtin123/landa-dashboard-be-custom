@@ -247,42 +247,6 @@ export async function fetchMessages(conversationId: string, cursor?: string): Pr
   return data.data;
 }
 
-async function readChatSpeechError(response: Response, fallback: string): Promise<string> {
-  try {
-    const payload = await response.json();
-    return payload?.message || payload?.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export async function generateChatSpeech(text: string, conversationId?: string): Promise<Blob> {
-  const content = text.trim();
-  if (!content) throw new Error('Nội dung giọng bot không được để trống');
-
-  const { accessToken, user } = useAuthStore.getState();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${accessToken}`,
-  };
-  if (user?.role === 'superadmin') {
-    const { activeTenantId } = useTenantStore.getState();
-    if (activeTenantId) headers['X-Tenant-Id'] = activeTenantId;
-  }
-
-  const response = await fetch(`${config.customApiUrl}/api/ai-chatbot/chat/tts`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ text: content, ...(conversationId ? { conversation_id: conversationId } : {}) }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await readChatSpeechError(response, 'Không tạo được giọng bot'));
-  }
-
-  return response.blob();
-}
-
 function normalizeStreamErrorMessage(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err || '');
   if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) {

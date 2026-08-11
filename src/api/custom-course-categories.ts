@@ -14,6 +14,7 @@ export interface CourseCategory {
   sort_order: number;
   course_count: number;
   created_at: string;
+  is_assigned_to_team?: boolean;
 }
 
 export interface CourseCategoryMembership {
@@ -23,8 +24,14 @@ export interface CourseCategoryMembership {
   assigned_at: string | null;
 }
 
-export async function getCourseCategories() {
-  const { data } = await customApiClient.get<ApiResponse<{ results: CourseCategory[] }>>("/api/course-categories");
+export async function getCourseCategories(params?: { page?: number; page_size?: number; search?: string; assigned_team_id?: string }) {
+  const { data } = await customApiClient.get<ApiResponse<{
+    results: CourseCategory[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    totalPages?: number;
+  }>>("/api/course-categories", { params });
   return data.data;
 }
 

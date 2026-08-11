@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -15,12 +15,11 @@ import { useAuthStore } from '@/utils/store';
 interface Props {
   open: boolean;
   teamId: string;
-  assignedCategoryIds: string[];
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
 }
 
-export function AssignCategoriesModal({ open, teamId, assignedCategoryIds, onOpenChange, onSuccess }: Props) {
+export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }: Props) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -32,8 +31,8 @@ export function AssignCategoriesModal({ open, teamId, assignedCategoryIds, onOpe
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   const { data, isFetching } = useQuery({
-    queryKey: ['categories-for-group', debouncedSearch, page],
-    queryFn: () => getCategories({ page, page_size: 30, search: debouncedSearch }),
+    queryKey: ['categories-for-group', teamId, debouncedSearch, page],
+    queryFn: () => getCategories({ page, page_size: 30, search: debouncedSearch, assigned_team_id: teamId }),
     enabled: open,
     staleTime: 30000,
   });
@@ -51,7 +50,7 @@ export function AssignCategoriesModal({ open, teamId, assignedCategoryIds, onOpe
   });
 
   const categories = data?.categories ?? [];
-  const availableCategories = categories.filter((c: { id: string }) => !assignedCategoryIds.includes(c.id));
+  const availableCategories = categories.filter((c: { id: string; is_assigned_to_team?: boolean }) => !c.is_assigned_to_team);
   const allSelected = availableCategories.length > 0 && availableCategories.every(c => selected.includes(c.id));
 
   const toggle = useCallback((id: string) => {
@@ -101,8 +100,8 @@ export function AssignCategoriesModal({ open, teamId, assignedCategoryIds, onOpe
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
               Không tìm thấy danh mục
             </div>
-          ) : categories.map((c: { id: string; name: string }) => {
-            const isAssigned = assignedCategoryIds.includes(c.id);
+          ) : categories.map((c: { id: string; name: string; is_assigned_to_team?: boolean }) => {
+            const isAssigned = Boolean(c.is_assigned_to_team);
             const isSelected = selected.includes(c.id);
             return (
               <div

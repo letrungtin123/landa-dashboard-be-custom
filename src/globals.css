@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
@@ -734,7 +734,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):not([aria-hidden="true"]) {
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):not([aria-hidden="true"]) {
     background: color-mix(in srgb, var(--background) 10%, transparent) !important;
     border-color: color-mix(in srgb, var(--sidebar-active-from) 30%, rgba(15, 23, 42, 0.16)) !important;
     border-top-color: color-mix(in srgb, var(--sidebar-active-from) 42%, rgba(255, 255, 255, 0.50)) !important;
@@ -763,7 +763,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):hover {
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):hover {
     background: color-mix(in srgb, var(--background) 14%, transparent) !important;
     border-color: color-mix(in srgb, var(--sidebar-active-from) 38%, rgba(15, 23, 42, 0.18)) !important;
     border-top-color: color-mix(in srgb, var(--sidebar-active-from) 50%, rgba(255, 255, 255, 0.54)) !important;
@@ -788,7 +788,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):focus-visible {
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):focus-visible {
     background: color-mix(in srgb, var(--background) 16%, transparent) !important;
     border-color: color-mix(in srgb, var(--sidebar-active-from) 48%, rgba(15, 23, 42, 0.18)) !important;
     border-top-color: color-mix(in srgb, var(--sidebar-active-from) 58%, rgba(255, 255, 255, 0.58)) !important;
@@ -846,7 +846,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):not([aria-hidden="true"]) {
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):not([aria-hidden="true"]) {
     background:
       linear-gradient(180deg,
         color-mix(in srgb, var(--card) 84%, rgba(255, 255, 255, 0.10)),
@@ -878,7 +878,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):hover,
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):hover,
   .dark :where(
     input:not([type]),
     input[type="text"],
@@ -894,7 +894,7 @@
     input[type="week"],
     input[type="time"],
     textarea
-  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(:disabled):focus-visible {
+  ):not(.app-liquid-field):not(.email-template-editor-textarea):not(.chat-widget-input-textarea):not(:disabled):focus-visible {
     background:
       linear-gradient(180deg,
         color-mix(in srgb, var(--card) 80%, rgba(255, 255, 255, 0.14)),

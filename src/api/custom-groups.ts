@@ -6,6 +6,14 @@ import { customApiClient } from "./custom-client";
 
 interface ApiResponse<T> { success: boolean; data: T; message?: string; }
 
+interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 // ── Types ──
 
 export interface OrgGroup {
@@ -27,6 +35,7 @@ export interface SubGroup {
 export interface SubGroupMember {
   id: string;
   username: string;
+  full_name?: string;
   email: string;
   avatar?: string;
   added_at: string;
@@ -175,6 +184,21 @@ export async function createTeam(subgroupId: string, payload: { name: string }) 
 
 export async function getTeamDetail(id: string): Promise<TeamDetail> {
   const { data } = await customApiClient.get<ApiResponse<TeamDetail>>(`/api/groups/teams/${id}`);
+  return data.data;
+}
+
+export async function getTeamMembers(teamId: string, params?: { page?: number; page_size?: number; search?: string }) {
+  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<SubGroupMember>>>(`/api/groups/teams/${teamId}/members`, { params });
+  return data.data;
+}
+
+export async function getTeamCategories(teamId: string, params?: { page?: number; page_size?: number; search?: string }) {
+  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<AssignedCategory>>>(`/api/groups/teams/${teamId}/categories`, { params });
+  return data.data;
+}
+
+export async function getTeamCourseCategories(teamId: string, params?: { page?: number; page_size?: number; search?: string }) {
+  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<AssignedCourseCategory>>>(`/api/groups/teams/${teamId}/course-categories`, { params });
   return data.data;
 }
 

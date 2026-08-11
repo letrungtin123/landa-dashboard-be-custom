@@ -51,7 +51,7 @@ export default function CourseCategoriesPage() {
   // ── Categories list ──
   const { data: catData, isLoading: catLoading } = useQuery({
     queryKey: ['course-categories', activeTenantId],
-    queryFn: getCourseCategories,
+    queryFn: () => getCourseCategories(),
   });
   const categories = catData?.results ?? [];
 
@@ -288,7 +288,7 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
 
   const { data: catData } = useQuery({
     queryKey: ['course-categories'],
-    queryFn: getCourseCategories,
+    queryFn: () => getCourseCategories(),
   });
   const cat = catData?.results?.find((c) => c.id === catId);
 

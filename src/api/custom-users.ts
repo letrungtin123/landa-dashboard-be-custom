@@ -11,6 +11,16 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+export interface UserTeamAssignment {
+  group_id: string;
+  group_name: string;
+  subgroup_id: string;
+  subgroup_name: string;
+  team_id: string;
+  team_name: string;
+  is_current_team?: boolean;
+}
+
 export interface CustomUser {
   id: string;
   username: string;
@@ -28,6 +38,9 @@ export interface CustomUser {
   permission_groups?: { id: string; name: string }[];
   permission_group_id?: string | null;
   permission_group_name?: string | null;
+  team_assignments?: UserTeamAssignment[];
+  team_assignment_count?: number;
+  is_current_team_member?: boolean;
 }
 
 interface PaginatedResponse<T> {
@@ -46,6 +59,8 @@ export async function fetchUsers(params?: {
   role?: string;
   is_active?: string;
   permission_group_id?: string;
+  include_team_assignments?: boolean;
+  current_team_id?: string;
 }) {
   const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<CustomUser>>>("/api/users", { params });
   return data.data;

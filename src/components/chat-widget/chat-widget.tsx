@@ -23,7 +23,7 @@ import { storageUrl } from '@/utils/storage-url';
 import { useAuthStore } from '@/utils/store';
 import {
   fetchActiveBot, fetchConversations, createConversation,
-  deleteConversation, fetchMessages, sendMessageStream, generateChatSpeech,
+  deleteConversation, fetchMessages, sendMessageStream,
   fetchLessonAuthorSettings, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
@@ -444,118 +444,9 @@ export default function ChatWidget() {
     setBotSpeechText('');
   }, [stopBotAudioSource]);
 
-  const playBotSpeech = useCallback(async (text: string, conversationId?: string) => {
-    const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (!cleaned || typeof Audio === 'undefined') return;
-
+  const playBotSpeech = useCallback(async () => {
     cancelBotSpeech();
-    const requestId = botSpeechRequestIdRef.current + 1;
-    botSpeechRequestIdRef.current = requestId;
-    setBotSpeechText(cleaned);
-    setBotSpeechLoading(true);
-    setBotSpeechNeedsTap(false);
-    setBotSpeaking(false);
-
-    const finishSpeech = () => {
-      setBotSpeechLoading(false);
-      setBotSpeechNeedsTap(false);
-      setBotSpeaking(false);
-      setBotSpeechText('');
-    };
-
-    try {
-      const blob = await generateChatSpeech(cleaned, conversationId);
-      if (botSpeechRequestIdRef.current !== requestId) return;
-
-      const context = ensureBotAudioContext();
-      if (context) {
-        try {
-          if (context.state === 'suspended') await context.resume();
-          const audioBuffer = await decodeChatAudioData(context, await blob.arrayBuffer());
-          if (botSpeechRequestIdRef.current !== requestId) return;
-
-          stopBotAudioSource();
-          const source = context.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(botAudioGainRef.current ?? context.destination);
-          botAudioSourceRef.current = source;
-          source.onended = () => {
-            if (botAudioSourceRef.current === source) {
-              source.onended = null;
-              try { source.disconnect(); } catch {}
-              botAudioSourceRef.current = null;
-            }
-            finishSpeech();
-            scheduleVoiceAutoListen(350);
-          };
-          source.start(0);
-          setBotSpeechLoading(false);
-          setBotSpeechNeedsTap(false);
-          setBotSpeaking(true);
-          return;
-        } catch {
-          stopBotAudioSource();
-        }
-      }
-
-      const url = URL.createObjectURL(blob);
-      const audio = ensureBotAudioElement();
-      if (!audio) return;
-      audio.pause();
-      audio.src = url;
-      audio.muted = false;
-      audio.volume = 1;
-      try { audio.load(); } catch {}
-      botAudioRef.current = audio;
-      botAudioUrlRef.current = url;
-
-      const cleanup = () => {
-        if (botAudioRef.current === audio) {
-          audio.onplay = null;
-          audio.onended = null;
-          audio.onerror = null;
-          audio.pause();
-          audio.removeAttribute('src');
-          try { audio.load(); } catch {}
-        }
-        if (botAudioUrlRef.current === url) {
-          URL.revokeObjectURL(url);
-          botAudioUrlRef.current = null;
-        }
-        finishSpeech();
-      };
-
-      audio.onplay = () => {
-        setBotSpeechLoading(false);
-        setBotSpeechNeedsTap(false);
-        setBotSpeaking(true);
-      };
-      audio.onended = () => {
-        cleanup();
-        scheduleVoiceAutoListen(350);
-      };
-      audio.onerror = () => {
-        cleanup();
-        toast.error('Không phát được giọng bot. Vui lòng thử lại.');
-      };
-
-      try {
-        await audio.play();
-      } catch {
-        if (botAudioRef.current !== audio) return;
-        setBotSpeechLoading(false);
-        setBotSpeaking(false);
-        setBotSpeechNeedsTap(true);
-      }
-    } catch (err: any) {
-      if (botSpeechRequestIdRef.current !== requestId) return;
-      setBotSpeechLoading(false);
-      setBotSpeechNeedsTap(false);
-      setBotSpeaking(false);
-      setBotSpeechText('');
-      toast.error(err?.message || 'Không tạo được giọng bot');
-    }
-  }, [cancelBotSpeech, ensureBotAudioContext, ensureBotAudioElement, scheduleVoiceAutoListen, stopBotAudioSource]);
+  }, [cancelBotSpeech]);
 
   const handleResumeBotSpeech = useCallback(async () => {
     const context = ensureBotAudioContext();
@@ -977,13 +868,7 @@ export default function ChatWidget() {
     if (!currentConv || !rawContent.trim() || streaming) return;
     const content = rawContent.trim();
     const isVoiceTurn = source === 'voice' || voiceModeActive;
-    const shouldUseVoicePlayback = isVoiceTurn && !isLessonAuthor;
-    if (shouldUseVoicePlayback) {
-      voiceCallActiveRef.current = true;
-      setVoiceModeActive(true);
-      setVoiceCallStartedAt(prev => prev ?? Date.now());
-      setVoiceModeTranscript(content);
-    } else if (isVoiceTurn && isLessonAuthor) {
+    if (isVoiceTurn) {
       clearVoiceAutoListenTimer();
       voiceCallActiveRef.current = false;
       voiceCallMutedRef.current = false;
@@ -1060,7 +945,6 @@ export default function ChatWidget() {
             created_at: new Date().toISOString(),
           };
           setMessages(msgs => [...msgs, assistantMsg]);
-          if (shouldUseVoicePlayback) void playBotSpeech(full, currentConv.id);
         }
         setStreamText('');
         streamAccRef.current = '';
@@ -1095,7 +979,7 @@ export default function ChatWidget() {
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
       },
     );
-  }, [cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, playBotSpeech, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
@@ -2487,7 +2371,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn outline, + để chọn file KB...' : 'Nhập tin nhắn...'}
                 disabled={streaming}
                 rows={1}
-                className="min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-24"
+                className="chat-widget-input-textarea min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50 max-h-24"
                 style={{ minHeight: '32px' }}
               />
               <Button

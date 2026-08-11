@@ -37,6 +37,7 @@ export interface DocCategory {
   sort_order: number;
   doc_count: number;
   created_at: string;
+  is_assigned_to_team?: boolean;
 }
 
 export interface Document {
@@ -63,7 +64,7 @@ interface PaginatedResponse<T> {
 
 // ── Document Categories ──
 
-export async function getCategories(params?: { page?: number; page_size?: number; search?: string; doc_count?: string }) {
+export async function getCategories(params?: { page?: number; page_size?: number; search?: string; doc_count?: string; assigned_team_id?: string }) {
   const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<DocCategory>>>("/api/library/categories", { params });
   return { categories: data.data.data, total: data.data.total, page: data.data.page, page_size: data.data.pageSize };
 }
