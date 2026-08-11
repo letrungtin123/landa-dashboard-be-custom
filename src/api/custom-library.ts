@@ -50,6 +50,7 @@ export interface Document {
   category_id: string | null;
   category_name: string | null;
   is_visible: boolean;
+  is_public: boolean;
   uploaded_by_name: string | null;
   created_at: string;
 }
@@ -138,7 +139,7 @@ export async function uploadDocumentsBatch(files: File[]): Promise<{ created: nu
   return { created: totalCreated, errors: allErrors };
 }
 
-export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; category_id?: string | null }) {
+export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; is_public?: boolean; category_id?: string | null }) {
   await customApiClient.patch(`/api/library/documents/${docId}`, updates);
   return { success: true };
 }
@@ -148,9 +149,9 @@ export async function deleteDocument(docId: string) {
   return { success: true };
 }
 
-export async function bulkDocumentAction(ids: string[], action: 'show' | 'hide' | 'set_category', categoryId?: string | null) {
+export async function bulkDocumentAction(ids: string[], action: 'show' | 'hide' | 'set_category' | 'make_public' | 'make_private', categoryId?: string | null) {
   const body: Record<string, unknown> = { ids, action };
   if (action === 'set_category') body.category_id = categoryId;
-  const { data } = await customApiClient.post<ApiResponse<{ updated: number }>>("/api/library/documents/bulk", body);
-  return { success: true, updated: data.data.updated };
+  const { data } = await customApiClient.post<ApiResponse<{ updated: number; detached?: number }>>("/api/library/documents/bulk", body);
+  return { success: true, updated: data.data.updated, detached: data.data.detached ?? 0 };
 }

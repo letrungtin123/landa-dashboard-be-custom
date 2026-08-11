@@ -22,9 +22,10 @@ import {
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import { useAuthStore } from '@/utils/store';
+import { getGroupLabelSet } from '@/utils/group-labels';
 import {
   Upload, Trash2, Eye, EyeOff, FileText, FileImage,
-  FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X, Download,
+  FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X, Download, Globe,
 } from 'lucide-react';
 
 const EXT_ICONS: Record<string, React.ElementType> = {
@@ -96,6 +97,9 @@ export default function DocumentsTab() {
   const canAdd = hasPermission('library', 'can_add');
   const canEdit = hasPermission('library', 'can_edit');
   const canDelete = hasPermission('library', 'can_delete');
+  const groupLabels = useAuthStore((s) => s.groupLabels);
+  const labels = getGroupLabelSet(groupLabels);
+  const groupScopeText = `${labels.group}/${labels.subgroup}/${labels.team}`;
 
   useEffect(() => { setPage(1); }, [debouncedSearch, catFilter, extFilter]);
 
@@ -126,7 +130,24 @@ export default function DocumentsTab() {
       updateDocument(id, { is_visible: visible }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
+      queryClient.invalidateQueries({ queryKey: ['landa-categories-all'] });
+      queryClient.invalidateQueries({ queryKey: ['team-detail'] });
       toast.success('Đã cập nhật');
+    },
+  });
+
+  const publicMut = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      updateDocument(id, { is_public: isPublic }),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
+      queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['landa-categories-all'] });
+      queryClient.invalidateQueries({ queryKey: ['team-detail'] });
+      toast.success(variables.isPublic ? 'Đã bật Công khai' : 'Đã tắt Công khai');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Cập nhật Công khai thất bại');
     },
   });
 
@@ -139,14 +160,27 @@ export default function DocumentsTab() {
   });
 
   const bulkMut = useMutation({
-    mutationFn: ({ action, categoryId }: { action: 'show' | 'hide' | 'set_category'; categoryId?: string | null }) =>
+    mutationFn: ({ action, categoryId }: { action: 'show' | 'hide' | 'set_category' | 'make_public' | 'make_private'; categoryId?: string | null }) =>
       bulkDocumentAction(selected, action, categoryId),
-    onSuccess: (_, { action }) => {
+    onSuccess: (result, { action }) => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
+      queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['landa-categories-all'] });
+      queryClient.invalidateQueries({ queryKey: ['team-detail'] });
       setSelected([]);
       setBulkCatId('');
-      if (action === 'set_category') toast.success('Đã gán danh mục');
-      else toast.success(action === 'show' ? 'Đã hiện tài liệu' : 'Đã ẩn tài liệu');
+      if (action === 'set_category') {
+        toast.success(result.detached > 0 ? `Đã gán danh mục, ${result.detached} tài liệu công khai vẫn được đưa về Tài liệu công khai` : 'Đã gán danh mục');
+      } else if (action === 'make_public') {
+        toast.success(result.detached > 0 ? `Đã bật Công khai, ${result.detached} tài liệu được đưa về Tài liệu công khai` : 'Đã bật Công khai');
+      } else if (action === 'make_private') {
+        toast.success('Đã tắt Công khai');
+      } else {
+        toast.success(action === 'show' ? 'Đã hiện tài liệu' : 'Đã ẩn tài liệu');
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Cập nhật hàng loạt thất bại');
     },
   });
 
@@ -197,6 +231,33 @@ export default function DocumentsTab() {
       description: `Xóa "${title}"? Hành động này không thể hoàn tác.`,
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(id),
+    });
+  };
+
+  const handleTogglePublic = (doc: Document) => {
+    if (doc.is_public) {
+      publicMut.mutate({ id: doc.id, isPublic: false });
+      return;
+    }
+
+    confirmDialog({
+      title: 'Bật Công khai tài liệu',
+      description: `Nếu bật tài liệu này công khai, tất cả học viên không phân biệt ${groupScopeText} sẽ đều nhìn thấy và có thể truy cập tài liệu này, hệ thống sẽ tự động xoá tài liệu này ra khỏi danh mục tài liệu đang được phân cho ${groupScopeText} hiện tại.`,
+      confirmText: 'Bật Công khai',
+      cancelText: 'Hủy',
+      variant: 'destructive',
+      onConfirm: () => publicMut.mutate({ id: doc.id, isPublic: true }),
+    });
+  };
+
+  const handleBulkMakePublic = () => {
+    confirmDialog({
+      title: 'Bật Công khai tài liệu',
+      description: `Nếu bật ${selected.length} tài liệu này công khai, tất cả học viên không phân biệt ${groupScopeText} sẽ đều nhìn thấy và có thể truy cập các tài liệu này, hệ thống sẽ tự động xoá các tài liệu này ra khỏi danh mục tài liệu đang được phân cho ${groupScopeText} hiện tại.`,
+      confirmText: 'Bật Công khai',
+      cancelText: 'Hủy',
+      variant: 'destructive',
+      onConfirm: () => bulkMut.mutate({ action: 'make_public' }),
     });
   };
 
@@ -263,7 +324,7 @@ export default function DocumentsTab() {
             size="sm"
             variant="outline"
             onClick={() => bulkMut.mutate({ action: 'show' })}
-            disabled={bulkMut.isPending}
+            disabled={!canEdit || bulkMut.isPending}
             className="h-8 text-xs font-semibold shadow-sm"
           >
             <Eye className="mr-1.5 h-3.5 w-3.5" /> Hiện thị
@@ -274,17 +335,40 @@ export default function DocumentsTab() {
             size="sm"
             variant="outline"
             onClick={() => bulkMut.mutate({ action: 'hide' })}
-            disabled={bulkMut.isPending}
+            disabled={!canEdit || bulkMut.isPending}
             className="h-8 text-xs font-semibold shadow-sm"
           >
             <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Ẩn
           </Button>
 
+          {canEdit && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleBulkMakePublic}
+                disabled={bulkMut.isPending}
+                className="h-8 border-sky-200 bg-sky-50 text-xs font-semibold text-sky-700 shadow-sm hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15"
+              >
+                <Globe className="mr-1.5 h-3.5 w-3.5" /> Công khai
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => bulkMut.mutate({ action: 'make_private' })}
+                disabled={bulkMut.isPending}
+                className="h-8 text-xs font-semibold shadow-sm"
+              >
+                <Globe className="mr-1.5 h-3.5 w-3.5" /> Riêng tư
+              </Button>
+            </>
+          )}
+
           <div className="h-5 w-px bg-border" />
 
           {/* Gán danh mục dropdown + Áp dụng */}
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={bulkCatId} onValueChange={setBulkCatId}>
+            <Select value={bulkCatId} onValueChange={setBulkCatId} disabled={!canEdit || bulkMut.isPending}>
               <SelectTrigger className="h-8 w-[180px] text-xs bg-background border-input">
                 <SelectValue placeholder="Gán danh mục..." />
               </SelectTrigger>
@@ -299,7 +383,7 @@ export default function DocumentsTab() {
               size="sm"
               variant="default"
               onClick={handleBulkApply}
-              disabled={!bulkCatId || bulkMut.isPending}
+              disabled={!canEdit || !bulkCatId || bulkMut.isPending}
               className="h-8 text-xs font-semibold shadow-sm"
             >
               <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Áp dụng
@@ -360,6 +444,11 @@ export default function DocumentsTab() {
                             <div className="mt-1 flex flex-wrap items-center gap-2">
                               <Badge variant="outline" className="text-[10px] font-mono uppercase">{doc.extension}</Badge>
                               <span className="text-xs text-muted-foreground">{formatDocumentFileSize(doc.file_size, doc.file_size_display)}</span>
+                              {doc.is_public && (
+                                <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                                  <Globe className="h-3 w-3" /> Công khai
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -381,6 +470,11 @@ export default function DocumentsTab() {
                           >
                             {doc.is_visible ? 'Hiện' : 'Ẩn'}
                           </Badge>
+                          {doc.is_public && (
+                            <Badge variant="outline" className="mt-1 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                              <Globe className="h-3 w-3" /> Công khai
+                            </Badge>
+                          )}
                         </div>
                         <div>
                           <div className="mb-0.5 text-muted-foreground">Người đăng</div>
@@ -403,6 +497,13 @@ export default function DocumentsTab() {
                           className="text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
                         >
                           {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </Button>}
+                        {canEdit && <Button variant={doc.is_public ? 'secondary' : 'ghost'} size="icon-sm"
+                          onClick={() => handleTogglePublic(doc)}
+                          disabled={publicMut.isPending}
+                          className={doc.is_public ? 'text-sky-700 dark:text-sky-300' : 'text-muted-foreground hover:text-sky-700 dark:hover:text-sky-300'} title={doc.is_public ? 'Tắt Công khai' : 'Bật Công khai'}
+                        >
+                          <Globe className="h-3.5 w-3.5" />
                         </Button>}
                         {canDelete && <Button variant="ghost" size="icon-sm"
                           onClick={() => handleDelete(doc.id, doc.title)}
@@ -490,6 +591,11 @@ export default function DocumentsTab() {
                         >
                           {doc.is_visible ? 'Hiện' : 'Ẩn'}
                         </Badge>
+                        {doc.is_public && (
+                          <Badge variant="outline" className="ml-1 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                            <Globe className="h-3 w-3" /> Công khai
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{doc.uploaded_by_name}</TableCell>
                       <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentCreatedAt(doc.created_at)}</TableCell>
@@ -505,6 +611,13 @@ export default function DocumentsTab() {
                             className="h-8 w-8 text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
                           >
                             {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>}
+                          {canEdit && <Button variant={doc.is_public ? 'secondary' : 'ghost'} size="icon"
+                            onClick={() => handleTogglePublic(doc)}
+                            disabled={publicMut.isPending}
+                            className={doc.is_public ? 'h-8 w-8 text-sky-700 dark:text-sky-300' : 'h-8 w-8 text-muted-foreground hover:text-sky-700 dark:hover:text-sky-300'} title={doc.is_public ? 'Tắt Công khai' : 'Bật Công khai'}
+                          >
+                            <Globe className="h-3.5 w-3.5" />
                           </Button>}
                           {canDelete && <Button variant="ghost" size="icon"
                             onClick={() => handleDelete(doc.id, doc.title)}
