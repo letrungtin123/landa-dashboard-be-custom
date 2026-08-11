@@ -257,15 +257,15 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden bg-background">
-          <div className="hidden border-b border-border/70 bg-muted/20 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[34px_minmax(240px,0.9fr)_minmax(280px,1fr)_150px] sm:gap-4 sm:px-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+          <div className="hidden shrink-0 border-b border-border/70 bg-muted/20 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[34px_minmax(240px,0.9fr)_minmax(280px,1fr)_150px] sm:gap-4 sm:px-6">
             <span />
             <span>Học viên</span>
             <span>Phòng ban hiện tại</span>
             <span className="text-right">Trạng thái</span>
           </div>
 
-          <div className="max-h-[min(56vh,560px)] min-h-[360px] overflow-y-auto divide-y divide-border/70 custom-scrollbar">
+          <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-border/70 custom-scrollbar">
             {isFetching ? (
               <div className="divide-y divide-border/70">
                 {Array.from({ length: Math.min(pageSize, 7) }).map((_, i) => (
@@ -286,7 +286,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                 ))}
               </div>
             ) : users.length === 0 ? (
-              <div className="flex h-[360px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-full min-h-[260px] flex-col items-center justify-center px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/40 text-muted-foreground">
                   <UsersRound className="h-6 w-6" />
                 </div>
