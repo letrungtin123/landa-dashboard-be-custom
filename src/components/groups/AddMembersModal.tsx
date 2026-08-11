@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+﻿import { useState, useCallback, useEffect } from 'react';
 import { storageUrl } from '@/utils/storage-url';
 import { motion } from 'framer-motion';
 import { Search, Loader2, UserCheck, ChevronLeft, ChevronRight, Mail, Info } from 'lucide-react';
@@ -117,7 +117,8 @@ export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange,
           />
         </div>
 
-        <div className="app-liquid-card max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+        <div className="app-liquid-card overflow-hidden border border-border rounded-lg">
+          <div className="max-h-72 overflow-y-auto divide-y divide-border">
           {isFetching ? (
             <div className="divide-y divide-border">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -168,6 +169,7 @@ export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange,
               </div>
             );
           })}
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -258,3 +260,4 @@ export function AddMembersModal({ open, teamId, existingMemberIds, onOpenChange,
     </Dialog>
   );
 }
+

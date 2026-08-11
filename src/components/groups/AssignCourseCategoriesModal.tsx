@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import { Search, Loader2, FolderCheck } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -88,7 +88,8 @@ export function AssignCourseCategoriesModal({ open, teamId, assignedCategoryIds,
           />
         </div>
 
-        <div className="app-liquid-card max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+        <div className="app-liquid-card overflow-hidden border border-border rounded-lg">
+          <div className="max-h-72 overflow-y-auto divide-y divide-border">
           {isFetching ? (
             <div className="flex items-center justify-center h-24">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -129,6 +130,7 @@ export function AssignCourseCategoriesModal({ open, teamId, assignedCategoryIds,
               </div>
             );
           })}
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -157,3 +159,4 @@ export function AssignCourseCategoriesModal({ open, teamId, assignedCategoryIds,
     </Dialog>
   );
 }
+
