@@ -349,7 +349,7 @@ export function TeamDetailPanel({ teamId }: Props) {
   const handleRevokeCourseCategory = (categoryId: string, name: string) => {
     confirmDialog({
       title: 'Thu hồi danh mục khóa học',
-      description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy courses của danh mục này.`,
+      description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy khóa học trong danh mục này.`,
       variant: 'destructive',
       onConfirm: () => revokeCourseCategoryMutation.mutate(categoryId),
     });
@@ -731,7 +731,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
             <FolderKanban className="h-4 w-4 text-primary" />
             {catName}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">{courses.length} courses trong danh mục</p>
+          <p className="text-xs text-muted-foreground">{courses.length} khóa học trong danh mục</p>
         </DialogHeader>
 
         <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
@@ -742,7 +742,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
           ) : courses.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
               <BookOpen className="h-8 w-8 text-muted-foreground/20 mb-2" />
-              <p className="text-sm text-muted-foreground">Chưa có course nào trong danh mục</p>
+              <p className="text-sm text-muted-foreground">Chưa có khóa học nào trong danh mục</p>
             </div>
           ) : (
             courses.map(c => (
@@ -785,7 +785,7 @@ function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string |
             <FolderOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             {catName}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">{files.length} files trong danh mục</p>
+          <p className="text-xs text-muted-foreground">{files.length} tài liệu trong danh mục</p>
         </DialogHeader>
 
         <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
@@ -796,7 +796,7 @@ function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string |
           ) : files.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
               <FileText className="h-8 w-8 text-muted-foreground/20 mb-2" />
-              <p className="text-sm text-muted-foreground">Chưa có file nào trong danh mục</p>
+              <p className="text-sm text-muted-foreground">Chưa có tài liệu nào trong danh mục</p>
             </div>
           ) : (
             files.map(f => {

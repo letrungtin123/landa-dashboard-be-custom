@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Search, Loader2, BookCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -41,13 +41,13 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
   const mutation = useMutation({
     mutationFn: () => assignTeamCourses(teamId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã phân ${res.assigned} course${res.skipped ? ` (${res.skipped} đã bỏ qua)` : ''}`);
+      toast.success(`Đã phân ${res.assigned} khóa học${res.skipped ? ` (${res.skipped} đã bỏ qua)` : ''}`);
       setSelected([]);
       setSearch('');
       onOpenChange(false);
       onSuccess();
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi phân course'),
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi phân khóa học'),
   });
 
   // getCourses trả về { data: LandaCourse[], total, ... }
@@ -79,14 +79,14 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân course cho {targetLabel}</DialogTitle>
+          <DialogTitle>Phân khóa học cho {targetLabel}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Tìm course theo tên..."
+            placeholder="Tìm khóa học theo tên..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -100,7 +100,7 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
             </div>
           ) : courses.length === 0 ? (
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-              Không tìm thấy course
+              Không tìm thấy khóa học
             </div>
           ) : courses.map(c => {
             const isAssigned = assignedCourseIds.includes(c.id);
@@ -151,7 +151,7 @@ export function AssignCoursesModal({ open, teamId, assignedCourseIds, onOpenChan
           </div>
           {selected.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Đã chọn <span className="font-semibold text-emerald-600">{selected.length}</span> course
+              Đã chọn <span className="font-semibold text-emerald-600">{selected.length}</span> khóa học
             </p>
           )}
         </div>

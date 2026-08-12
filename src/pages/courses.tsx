@@ -201,20 +201,6 @@ export default function CoursesPage() {
     onError: () => toast.error('Cập nhật thất bại'),
   });
 
-  const publicMut = useMutation({
-    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
-      updateCourse(id, { is_public: isPublic }),
-    onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
-      queryClient.invalidateQueries({ queryKey: ['course-categories-for-group'] });
-      queryClient.invalidateQueries({ queryKey: ['team-detail'] });
-      toast.success(variables.isPublic ? 'Đã bật Công khai' : 'Đã tắt Công khai');
-    },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Cập nhật Công khai thất bại');
-    },
-  });
-
   // Bulk
   const bulkMut = useMutation({
     mutationFn: ({ action }: { action: 'staff_only' | 'public' }) =>
@@ -283,22 +269,6 @@ export default function CoursesPage() {
       cancelText: 'Hủy',
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(course.id),
-    });
-  }
-
-  function handleTogglePublic(course: CustomCourse) {
-    if (course.is_public) {
-      publicMut.mutate({ id: course.id, isPublic: false });
-      return;
-    }
-
-    confirmDialog({
-      title: 'Bật Công khai khóa học',
-      description: `Nếu bật khoá học này công khai, tất cả học viên không phân biệt ${groupScopeText} sẽ đều nhìn thấy và có thể tham gia khoá học này, hệ thống sẽ tự động xoá khoá học này ra khỏi ${groupScopeText} hiện tại.`,
-      confirmText: 'Bật Công khai',
-      cancelText: 'Hủy',
-      variant: 'destructive',
-      onConfirm: () => publicMut.mutate({ id: course.id, isPublic: true }),
     });
   }
 
@@ -538,17 +508,6 @@ export default function CoursesPage() {
 
                       <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                         {canEdit && (
-                          <Button
-                            size="sm"
-                            variant={course.is_public ? 'secondary' : 'outline'}
-                            onClick={() => handleTogglePublic(course)}
-                            disabled={publicMut.isPending}
-                            className={`h-8 gap-1.5 text-xs ${course.is_public ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15' : ''}`}
-                          >
-                            <Globe className="h-3.5 w-3.5" /> Công khai
-                          </Button>
-                        )}
-                        {canEdit && (
                           <Button size="sm" asChild className="h-8 text-xs">
                             <Link to={`/courses/${course.id}/edit`}>
                               <Edit2 className="h-3.5 w-3.5" />
@@ -606,12 +565,6 @@ export default function CoursesPage() {
                               <DropdownMenuItem onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })} className="gap-2">
                                 {course.visible_to_staff_only ? <ArchiveRestore className="h-4 w-4 text-amber-600" /> : <Archive className="h-4 w-4 text-slate-500" />}
                                 {course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}
-                              </DropdownMenuItem>
-                            )}
-                            {canEdit && (
-                              <DropdownMenuItem onClick={() => handleTogglePublic(course)} className="gap-2">
-                                <Globe className="h-4 w-4 text-sky-600" />
-                                {course.is_public ? 'Tắt Công khai' : 'Bật Công khai'}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
@@ -768,21 +721,6 @@ export default function CoursesPage() {
                             <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
                           </Tooltip>}
 
-                          {canEdit && <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={course.is_public ? 'secondary' : 'ghost'}
-                                size="sm"
-                                onClick={() => handleTogglePublic(course)}
-                                disabled={publicMut.isPending}
-                                className={`h-8 gap-1.5 px-2 ${course.is_public ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15' : 'text-muted-foreground hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30'}`}
-                              >
-                                <Globe className="h-3.5 w-3.5" />
-                                <span className="text-xs">Công khai</span>
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{course.is_public ? 'Tắt Công khai' : 'Bật Công khai'}</TooltipContent>
-                          </Tooltip>}
 
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>

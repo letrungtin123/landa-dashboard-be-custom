@@ -38,6 +38,7 @@ export interface DocCategory {
   doc_count: number;
   created_at: string;
   is_assigned_to_team?: boolean;
+  is_public: boolean;
 }
 
 export interface Document {
@@ -80,8 +81,13 @@ export async function createCategory(name: string, tenant_id?: string) {
   return { success: true, id: data.data.id, slug: data.data.slug };
 }
 
-export async function updateCategory(catId: string, name: string) {
-  await customApiClient.patch(`/api/library/categories/${catId}`, { name });
+export async function getCategoryPublicImpact(catId: string, limit = 30) {
+  const { data } = await customApiClient.get<ApiResponse<{ category: { id: string; name: string; is_public: boolean }; total: number; assignments: Array<{ group_name: string; subgroup_name: string; team_name: string }> }>>(`/api/library/categories/${catId}/public-impact`, { params: { limit } });
+  return data.data;
+}
+
+export async function updateCategory(catId: string, updates: { name?: string; is_public?: boolean }) {
+  await customApiClient.patch(`/api/library/categories/${catId}`, updates);
   return { success: true };
 }
 
@@ -139,7 +145,7 @@ export async function uploadDocumentsBatch(files: File[]): Promise<{ created: nu
   return { created: totalCreated, errors: allErrors };
 }
 
-export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; is_public?: boolean; category_id?: string | null }) {
+export async function updateDocument(docId: string, updates: { title?: string; is_visible?: boolean; category_id?: string | null }) {
   await customApiClient.patch(`/api/library/documents/${docId}`, updates);
   return { success: true };
 }
@@ -149,7 +155,7 @@ export async function deleteDocument(docId: string) {
   return { success: true };
 }
 
-export async function bulkDocumentAction(ids: string[], action: 'show' | 'hide' | 'set_category' | 'make_public' | 'make_private', categoryId?: string | null) {
+export async function bulkDocumentAction(ids: string[], action: 'show' | 'hide' | 'set_category', categoryId?: string | null) {
   const body: Record<string, unknown> = { ids, action };
   if (action === 'set_category') body.category_id = categoryId;
   const { data } = await customApiClient.post<ApiResponse<{ updated: number; detached?: number }>>("/api/library/documents/bulk", body);

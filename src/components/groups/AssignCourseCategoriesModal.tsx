@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -58,7 +58,7 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
   });
 
   const categories = data?.results ?? [];
-  const availableCategories = categories.filter(c => !c.is_assigned_to_team);
+  const availableCategories = categories.filter(c => !c.is_assigned_to_team && !c.is_public);
   const allSelected = availableCategories.length > 0 && availableCategories.every(c => selected.includes(c.id));
   const totalPages = data?.totalPages ?? 1;
 
@@ -107,15 +107,17 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
               </div>
             ) : categories.length === 0 ? (
               <div className="flex h-24 items-center justify-center text-center text-sm text-muted-foreground">
-                {search ? 'Không tìm thấy danh mục' : 'Chưa có danh mục khóa học nào. Hãy tạo trong mục Course Categories.'}
+                {search ? 'Không tìm thấy danh mục' : 'Chưa có danh mục khóa học nào. Hãy tạo trong mục Danh mục khóa học.'}
               </div>
             ) : categories.map(c => {
               const isAssigned = Boolean(c.is_assigned_to_team);
+              const isPublic = Boolean(c.is_public);
+              const isDisabled = isAssigned || isPublic;
               const isSelected = selected.includes(c.id);
               return (
                 <div
                   key={c.id}
-                  onClick={() => !isAssigned && toggle(c.id)}
+                  onClick={() => !isDisabled && toggle(c.id)}
                   className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
                     isAssigned
                       ? 'cursor-not-allowed bg-muted/20 opacity-40'
@@ -131,11 +133,16 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{c.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{c.course_count} courses</p>
+                    <p className="text-[10px] text-muted-foreground">{c.course_count} khóa học</p>
                   </div>
                   {isAssigned && (
                     <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
                       Đã phân
+                    </span>
+                  )}
+                  {isPublic && (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-300">
+                      <Globe className="h-3 w-3" /> Công khai
                     </span>
                   )}
                 </div>

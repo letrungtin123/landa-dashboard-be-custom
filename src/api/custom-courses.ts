@@ -15,6 +15,8 @@ export interface CustomCourse {
   org: string;
   visible_to_staff_only: boolean;
   is_public: boolean;
+  category_id?: string | null;
+  category_name?: string | null;
   start_date: string | null;
   end_date: string | null;
   end?: string | null;
@@ -112,7 +114,7 @@ export async function createCourse(input: { id: string; display_name: string; de
   return data.data;
 }
 
-export async function updateCourse(courseId: string, updates: { visible_to_staff_only?: boolean; is_public?: boolean; display_name?: string; description?: string; image_url?: string }) {
+export async function updateCourse(courseId: string, updates: { visible_to_staff_only?: boolean; display_name?: string; description?: string; image_url?: string }) {
   await customApiClient.patch(`/api/courses/${encodeURIComponent(courseId)}`, updates);
   return { success: true };
 }

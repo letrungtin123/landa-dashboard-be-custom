@@ -15,6 +15,7 @@ export interface CourseCategory {
   course_count: number;
   created_at: string;
   is_assigned_to_team?: boolean;
+  is_public: boolean;
 }
 
 export interface CourseCategoryMembership {
@@ -40,7 +41,7 @@ export async function createCourseCategory(payload: { name: string; description?
   return data.data;
 }
 
-export async function updateCourseCategory(id: string, payload: { name?: string; description?: string; sort_order?: number }) {
+export async function updateCourseCategory(id: string, payload: { name?: string; description?: string; sort_order?: number; is_public?: boolean }) {
   const { data } = await customApiClient.put<ApiResponse<{ id: string; name: string; slug: string }>>(`/api/course-categories/${id}`, payload);
   return data.data;
 }
@@ -54,8 +55,13 @@ export async function getCourseCategoryCourses(categoryId: string) {
   return data.data;
 }
 
+export async function getCourseCategoryPublicImpact(categoryId: string, limit = 30) {
+  const { data } = await customApiClient.get<ApiResponse<{ category: { id: string; name: string; is_public: boolean }; total: number; assignments: Array<{ group_name: string; subgroup_name: string; team_name: string }> }>>(`/api/course-categories/${categoryId}/public-impact`, { params: { limit } });
+  return data.data;
+}
+
 export async function addCoursesToCategory(categoryId: string, courseIds: string[]) {
-  const { data } = await customApiClient.post<ApiResponse<{ assigned: number; skipped: number }>>(`/api/course-categories/${categoryId}/courses`, { course_ids: courseIds });
+  const { data } = await customApiClient.post<ApiResponse<{ assigned: number; skipped: number; conflicts?: Array<{ display_name: string; category_name: string }> }>>(`/api/course-categories/${categoryId}/courses`, { course_ids: courseIds });
   return data.data;
 }
 

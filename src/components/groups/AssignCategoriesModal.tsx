@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -50,7 +50,7 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
   });
 
   const categories = data?.categories ?? [];
-  const availableCategories = categories.filter((c: { id: string; is_assigned_to_team?: boolean }) => !c.is_assigned_to_team);
+  const availableCategories = categories.filter((c: { id: string; is_assigned_to_team?: boolean; is_public?: boolean }) => !c.is_assigned_to_team && !c.is_public);
   const allSelected = availableCategories.length > 0 && availableCategories.every(c => selected.includes(c.id));
 
   const toggle = useCallback((id: string) => {
@@ -100,13 +100,15 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
               Không tìm thấy danh mục
             </div>
-          ) : categories.map((c: { id: string; name: string; is_assigned_to_team?: boolean }) => {
+          ) : categories.map((c: { id: string; name: string; is_assigned_to_team?: boolean; is_public?: boolean }) => {
             const isAssigned = Boolean(c.is_assigned_to_team);
+            const isPublic = Boolean(c.is_public);
+            const isDisabled = isAssigned || isPublic;
             const isSelected = selected.includes(c.id);
             return (
               <div
                 key={c.id}
-                onClick={() => !isAssigned && toggle(c.id)}
+                onClick={() => !isDisabled && toggle(c.id)}
                 className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
                   isAssigned
                     ? 'opacity-40 cursor-not-allowed bg-muted/20'
@@ -126,6 +128,11 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
                 {isAssigned && (
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full shrink-0">
                     Đã phân
+                  </span>
+                )}
+                {isPublic && (
+                  <span className="flex items-center gap-1 text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-300 px-1.5 py-0.5 rounded-full shrink-0">
+                    <Globe className="h-3 w-3" /> Công khai
                   </span>
                 )}
               </div>
