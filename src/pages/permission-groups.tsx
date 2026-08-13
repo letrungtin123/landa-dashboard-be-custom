@@ -40,6 +40,7 @@ import {
 } from "@/api/custom-permissions";
 import { fetchTenants, type Tenant } from "@/api/custom-tenants";
 import { fetchUsers, type CustomUser } from "@/api/custom-users";
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const ACTIONS = ["can_view", "can_add", "can_edit", "can_delete"] as const;
 const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -443,22 +444,22 @@ export default function PermissionGroupsPage() {
                   {(canEdit || canDelete) && (
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                       {canEdit && (
-                        <button
+                        <AppTooltip content="Sửa"><button
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                           onClick={function edit() { setFormName(g.name); setFormDesc(g.description); setEditGroup(g); }}
-                          title="Sửa"
+                          aria-label="Sửa"
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                        </button>
+                        </button></AppTooltip>
                       )}
                       {canDelete && (
-                        <button
+                        <AppTooltip content="Xóa"><button
                           className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                           onClick={function del() { handleDeleteConfirm(g.id); }}
-                          title="Xóa"
+                          aria-label="Xóa"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </button></AppTooltip>
                       )}
                     </div>
                   )}
@@ -596,14 +597,14 @@ export default function PermissionGroupsPage() {
                           const allOn = matrixPerms.every(p => p[action]);
                           return (
                             <TableHead key={action} className="text-center w-24 py-3">
-                              <button
+                              <AppTooltip content={allOn ? "Tắt tất cả" : "Bật tất cả"}><button
                                 className="flex flex-col items-center gap-1 mx-auto group/col cursor-pointer"
                                 onClick={() => toggleAllForAction(action)}
-                                title={allOn ? "Tắt tất cả" : "Bật tất cả"}
+                                aria-label={allOn ? "Tắt tất cả" : "Bật tất cả"}
                               >
                                 <Icon className={`h-3.5 w-3.5 ${meta.color} opacity-70 group-hover/col:opacity-100 transition-opacity`} />
                                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{meta.label}</span>
-                              </button>
+                              </button></AppTooltip>
                             </TableHead>
                           );
                         })}
@@ -641,7 +642,7 @@ export default function PermissionGroupsPage() {
                               );
                             })}
                             <TableCell className="text-center py-2.5">
-                              <button
+                              <AppTooltip content={allOn ? "Tắt tất cả" : "Bật tất cả"}><button
                                 onClick={() => toggleAllForModule(p.code)}
                                 className={`inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
                                   allOn
@@ -650,10 +651,10 @@ export default function PermissionGroupsPage() {
                                       ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
                                       : 'bg-muted/30 text-muted-foreground/40 hover:bg-muted/50'
                                 }`}
-                                title={allOn ? "Tắt tất cả" : "Bật tất cả"}
+                                aria-label={allOn ? "Tắt tất cả" : "Bật tất cả"}
                               >
                                 {enabled}/{ACTIONS.length}
-                              </button>
+                              </button></AppTooltip>
                             </TableCell>
                           </TableRow>
                         );
@@ -704,13 +705,13 @@ export default function PermissionGroupsPage() {
                               <p className="font-medium text-sm text-red-600 dark:text-red-400 truncate line-through opacity-60">{m.full_name || m.username}</p>
                               <p className="text-[10px] text-red-400 dark:text-red-500 truncate">Đánh dấu xóa</p>
                             </div>
-                            <button
+                            <AppTooltip content="Hoàn tác"><button
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
                               onClick={function undo() { undoRemoveMember(m.id); }}
-                              title="Hoàn tác"
+                              aria-label="Hoàn tác"
                             >
                               <Undo2 className="h-3 w-3" /> Hoàn tác
-                            </button>
+                            </button></AppTooltip>
                           </div>
                         );
                       })}
@@ -752,13 +753,13 @@ export default function PermissionGroupsPage() {
                               <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
                             </div>
                             {canEdit && (
-                              <button
+                              <AppTooltip content="Xóa khỏi nhóm"><button
                                 className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
                                 onClick={function remove() { handleRemoveMemberLocal(m.id, m.full_name || m.username); }}
-                                title="Xóa khỏi nhóm"
+                                aria-label="Xóa khỏi nhóm"
                               >
                                 <X className="h-4 w-4" />
-                              </button>
+                              </button></AppTooltip>
                             )}
                           </div>
                         );

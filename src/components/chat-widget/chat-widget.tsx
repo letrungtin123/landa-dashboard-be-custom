@@ -36,6 +36,7 @@ import {
   type CourseIndexSection,
 } from '@/api/custom-course-authoring';
 import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 // ── Types ──
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
@@ -1291,14 +1292,14 @@ export default function ChatWidget() {
     <>
       {/* ═══════ Draggable FAB ═══════ */}
       {!open && (
-        <div
+        <AppTooltip content="Chat với AI"><div
           ref={fabRef}
           onPointerDown={onFabPointerDown}
           onPointerMove={onFabPointerMove}
           onPointerUp={onFabPointerUp}
           style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, touchAction: 'none' }}
           className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25 flex items-center justify-center hover:shadow-xl hover:shadow-primary/30 cursor-grab active:cursor-grabbing select-none"
-          title="Chat với AI"
+
         >
           {botAvatarSrc ? (
             <img src={botAvatarSrc} alt="" className="h-9 w-9 rounded-full object-cover pointer-events-none" draggable={false} />
@@ -1306,7 +1307,7 @@ export default function ChatWidget() {
             <MessageCircle className="h-6 w-6 text-primary-foreground pointer-events-none" />
           )}
           <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-background animate-pulse pointer-events-none" />
-        </div>
+        </div></AppTooltip>
       )}
 
       {/* ═══════ Widget Panel ═══════ */}
@@ -1341,20 +1342,20 @@ export default function ChatWidget() {
               </div>
               <div className="flex items-center gap-1">
                 {isCourseOutline && (
-                  <Button
+                  <AppTooltip content="Chuyên gia bài học"><Button
                     variant={isLessonAuthor ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-8 gap-1.5 px-2 text-xs"
                     onClick={handleSwitchLessonAuthor}
-                    title="Chuyên gia bài học"
+                    aria-label="Chuyên gia bài học"
                   >
                     <BookOpenCheck className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">Chuyên gia</span>
-                  </Button>
+                  </Button></AppTooltip>
                 )}
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} title={fullscreen ? 'Thu nhỏ' : 'Phóng to'}>
+                <AppTooltip content={fullscreen ? 'Thu nhỏ' : 'Phóng to'}><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} aria-label={fullscreen ? 'Thu nhỏ' : 'Phóng to'}>
                   {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                </Button>
+                </Button></AppTooltip>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setOpen(false); setFullscreen(false); }}>
                   <X className="h-4 w-4" />
                 </Button>
@@ -1835,14 +1836,14 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
                 animate={waveActive ? { scale: [0.9, 1.24, 0.9], opacity: [0.52, 0.12, 0.52] } : { scale: 0.96, opacity: 0.16 }}
                 transition={{ duration: waveActive ? 0.86 : 0.2, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
               />
-              <motion.button
+              <AppTooltip content={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}><motion.button
                 type="button"
                 onClick={phase === 'play_blocked' ? onResumeBotSpeech : phase === 'speaking' ? onStopBotSpeech : undefined}
                 disabled={phase !== 'play_blocked' && phase !== 'speaking'}
                 className={`relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border backdrop-blur-xl shadow-2xl disabled:cursor-default ${avatarTone}`}
                 animate={{ scale: waveActive ? [1, 1.035, 1] : 1 }}
                 transition={{ duration: 0.78, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
-                title={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}
+                aria-label={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}
               >
                 {botAvatarSrc ? (
                   <img src={botAvatarSrc} alt="" className="h-full w-full object-cover" />
@@ -1854,7 +1855,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
                     <Play className="h-10 w-10" />
                   </span>
                 )}
-              </motion.button>
+              </motion.button></AppTooltip>
             </div>
 
             <div className="mt-4 flex h-12 items-center justify-center gap-1.5">
@@ -1891,25 +1892,25 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
           <div className="relative z-10 px-5 pb-5">
             <div className="mx-auto grid max-w-xs grid-cols-3 items-end gap-4 rounded-lg border border-border/70 bg-card/85 px-4 py-4 shadow-2xl shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:shadow-black/25">
               <div className="flex flex-col items-center">
-                <Button type="button" variant="ghost" size="icon" className={`h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 ${muted ? 'border-amber-500/40 text-amber-700 dark:border-amber-300/35 dark:text-amber-100' : ''}`} onClick={onToggleMute} title={muted ? 'Bật micro' : 'Tắt micro'}>
+                <AppTooltip content={muted ? 'Bật micro' : 'Tắt micro'}><Button type="button" variant="ghost" size="icon" className={`h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 ${muted ? 'border-amber-500/40 text-amber-700 dark:border-amber-300/35 dark:text-amber-100' : ''}`} onClick={onToggleMute} aria-label={muted ? 'Bật micro' : 'Tắt micro'}>
                   {muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-                </Button>
+                </Button></AppTooltip>
                 <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{muted ? 'Bật mic' : 'Tắt mic'}</span>
               </div>
               <div className="flex flex-col items-center">
-                <Button type="button" size="icon" className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-red-950/35 hover:bg-red-600" onClick={onClose} title="Kết thúc cuộc gọi">
+                <AppTooltip content="Kết thúc cuộc gọi"><Button type="button" size="icon" className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-red-950/35 hover:bg-red-600" onClick={onClose} aria-label="Kết thúc cuộc gọi">
                   <PhoneOff className="h-6 w-6" />
-                </Button>
+                </Button></AppTooltip>
                 <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">Kết thúc</span>
               </div>
               <div className="flex flex-col items-center">
-                <Button type="button" variant="ghost" size="icon" className="h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted disabled:opacity-35 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15" onClick={rightAction} disabled={rightDisabled} title={rightTitle}>
+                <AppTooltip content={rightTitle}><Button type="button" variant="ghost" size="icon" className="h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted disabled:opacity-35 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15" onClick={rightAction} disabled={rightDisabled} aria-label={rightTitle}>
                   {phase === 'play_blocked'
                     ? <Play className="h-5 w-5" />
                     : phase === 'speaking' || phase === 'preparing'
                       ? <VolumeX className="h-5 w-5" />
                       : <Mic className="h-5 w-5" />}
-                </Button>
+                </Button></AppTooltip>
                 <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{rightLabel}</span>
               </div>
             </div>
@@ -2301,17 +2302,17 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   </div>
                 </div>
               )}
-              <Button
+              <AppTooltip content="Chọn file KB làm nguồn"><Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="h-10 w-10 rounded-xl"
                 disabled={streaming}
                 onClick={() => setSourcePickerOpen(open => !open)}
-                title="Chọn file KB làm nguồn"
+                aria-label="Chọn file KB làm nguồn"
               >
                 <Plus className="h-4 w-4" />
-              </Button>
+              </Button></AppTooltip>
             </div>
           )}
           <div className="relative flex-1">
@@ -2374,17 +2375,17 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 className="chat-widget-input-textarea min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50 max-h-24"
                 style={{ minHeight: '32px' }}
               />
-              <Button
+              <AppTooltip content={voiceButtonTitle}><Button
                 type="button"
                 variant={isVoiceListening ? 'default' : 'ghost'}
                 size="icon"
                 className={`h-8 w-8 shrink-0 self-center rounded-lg ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : isBotVoiceActive ? 'text-primary' : 'text-muted-foreground'}`}
                 disabled={streaming || isVoiceRequesting}
                 onClick={onVoiceToggle}
-                title={voiceButtonTitle}
+                aria-label={voiceButtonTitle}
               >
                 {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : isBotVoiceActive ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
-              </Button>
+              </Button></AppTooltip>
             </div>
           </div>
           <Button
@@ -2410,7 +2411,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
 }) {
   const label = getMentionTypeLabel(mention.block_type);
   return (
-    <Badge
+    <AppTooltip content={mention.path || mention.display_name}><Badge
       variant="secondary"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -2423,7 +2424,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
           ? 'border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/20'
           : 'border-primary/15 bg-primary/10 text-primary hover:bg-primary/15'
       }`}
-      title={mention.path || mention.display_name}
+
       onClick={onClick}
       onKeyDown={(event) => {
         if (!onClick) return;
@@ -2449,7 +2450,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
           <X className="h-3 w-3" />
         </button>
       )}
-    </Badge>
+    </Badge></AppTooltip>
   );
 }
 
@@ -2461,7 +2462,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
   inverted?: boolean;
 }) {
   return (
-    <Badge
+    <AppTooltip content={doc.name}><Badge
       variant="secondary"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -2474,7 +2475,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
           ? 'border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/20'
           : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
       }`}
-      title={doc.name}
+
       onClick={onClick}
       onKeyDown={(event) => {
         if (!onClick) return;
@@ -2500,7 +2501,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
           <X className="h-3 w-3" />
         </button>
       )}
-    </Badge>
+    </Badge></AppTooltip>
   );
 }
 

@@ -40,6 +40,7 @@ import {
   createHelpFolder, updateHelpFolder, deleteHelpFolder,
   createHelpPage, deleteHelpPage, reorderHelpFolders, reorderHelpPages,
 } from '@/api/custom-help-docs';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 interface HelpDocsTreeProps {
   folders: HelpFolder[];
@@ -465,9 +466,9 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
         <span className="flex-1 truncate">{page.title}</span>
 
         {/* Published status */}
-        <span className="shrink-0" title={page.is_published ? 'Đã xuất bản' : 'Bản nháp'}>
+        <AppTooltip content={page.is_published ? 'Đã xuất bản' : 'Bản nháp'}><span className="shrink-0" >
           <div className={`w-1.5 h-1.5 rounded-full ${page.is_published ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-        </span>
+        </span></AppTooltip>
 
         {/* Delete action */}
         {canDelete && (

@@ -37,6 +37,7 @@ import { useTheme } from 'next-themes';
 import { useDiagramHistory } from './diagram/useDiagramHistory';
 import { useSmartGuides } from './diagram/useSmartGuides';
 import SmartGuideLines from './diagram/SmartGuideLines';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -72,20 +73,20 @@ function DeletableEdge({
             }}
             className="nodrag nopan flex items-center gap-1"
           >
-            <button
+            <AppTooltip content="Tạo điểm rẽ nhánh (Junction)"><button
               onClick={(e) => { e.stopPropagation(); onSplit?.(id, labelX, labelY); }}
               className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-110 transition-transform cursor-pointer"
-              title="Tạo điểm rẽ nhánh (Junction)"
+              aria-label="Tạo điểm rẽ nhánh (Junction)"
             >
               <Plus className="w-3 h-3" />
-            </button>
-            <button
+            </button></AppTooltip>
+            <AppTooltip content="Xóa đường nối"><button
               onClick={(e) => { e.stopPropagation(); onDelete(id); }}
               className="flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-white shadow-lg hover:scale-110 transition-transform cursor-pointer"
-              title="Xóa đường nối"
+              aria-label="Xóa đường nối"
             >
               <X className="w-3 h-3" />
-            </button>
+            </button></AppTooltip>
           </div>
         </EdgeLabelRenderer>
       )}
@@ -501,15 +502,15 @@ export default function DiagramEditor({
                   {d.name}
                 </button>
                 {diagrams.length > 1 && d.id !== startDiagramId && (
-                  <Button 
+                  <AppTooltip content="Xóa Sơ đồ này"><Button
                     variant="ghost" 
                     size="icon" 
                     className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0" 
                     onClick={(e) => { e.stopPropagation(); deleteDiagram(d.id); }}
-                    title="Xóa Sơ đồ này"
+                    aria-label="Xóa Sơ đồ này"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  </Button></AppTooltip>
                 )}
               </div>
             ))}
@@ -567,16 +568,16 @@ export default function DiagramEditor({
               deleteKeyCode="Delete"
             >
               <Controls>
-                <ControlButton onClick={undo} disabled={!canUndo} title="Undo">
+                <AppTooltip content="Undo"><ControlButton onClick={undo} disabled={!canUndo} aria-label="Undo">
                   <div className="w-full h-full flex items-center justify-center">
                     <Undo2 className="!w-3.5 !h-3.5" style={{ fill: 'none' }} />
                   </div>
-                </ControlButton>
-                <ControlButton onClick={redo} disabled={!canRedo} title="Redo">
+                </ControlButton></AppTooltip>
+                <AppTooltip content="Redo"><ControlButton onClick={redo} disabled={!canRedo} aria-label="Redo">
                   <div className="w-full h-full flex items-center justify-center">
                     <Redo2 className="!w-3.5 !h-3.5" style={{ fill: 'none' }} />
                   </div>
-                </ControlButton>
+                </ControlButton></AppTooltip>
               </Controls>
               <MiniMap />
               <Background gap={12} size={1} />

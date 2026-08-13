@@ -36,6 +36,7 @@ import {
   statusBadge, formatBytes, formatDate, useDebounce,
   PaginationBar, TableSkeleton,
 } from "./ai-chatbot-helpers";
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const TiptapEditor = lazy(() => import("@/components/shared/tiptap-editor"));
 
@@ -347,7 +348,7 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
                 <TableCell><div className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-emerald-500 shrink-0" /><span className="font-medium truncate max-w-[250px]">{doc.name}</span></div></TableCell>
                 <TableCell className="text-center text-sm">{(doc.source_info as any)?.row_count || "—"}</TableCell>
                 <TableCell className="text-center text-sm">{formatBytes(doc.source_info?.size)}</TableCell>
-                <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
+                <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1">
                   {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
@@ -452,7 +453,7 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
                 onClick={() => !isLearning && !restoreLocked && openEdit(doc.id)}
               >
                 <TableCell><div className="flex items-center gap-2"><FileEdit className="h-4 w-4 text-blue-500 shrink-0" /><span className="font-medium truncate max-w-[300px]">{doc.name}</span></div></TableCell>
-                <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
+                <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" disabled={isLearning || restoreLocked} onClick={() => openEdit(doc.id)}><Pencil className="h-4 w-4" /></Button>
@@ -513,7 +514,7 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
               <TableCell><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground shrink-0" /><span className="font-medium truncate max-w-[250px]">{doc.name}</span></div></TableCell>
               <TableCell><Badge variant="outline" className="text-xs">{doc.source_info?.extension || doc.type}</Badge></TableCell>
               <TableCell className="text-center text-sm">{formatBytes(doc.source_info?.size)}</TableCell>
-              <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <span className="text-xs text-destructive max-w-[150px] truncate" title={doc.error_reason}>{doc.error_reason}</span>}</div></TableCell>
+              <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
               <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-1">
                 {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kbId, [doc.id]); toast.success("Retry..."); onRefresh(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}

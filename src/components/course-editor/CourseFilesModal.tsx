@@ -27,6 +27,7 @@ import {
   type CourseAsset
 } from '@/api/custom-course-authoring';
 import { useAuthStore } from '@/utils/store';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 interface CourseFilesModalProps {
   courseId: string;
@@ -411,12 +412,12 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                     {virtual.items.map((asset) => (
                       <TableRow key={asset.id} className="group border-b border-border/40 hover:bg-muted/30" style={virtualRowStyle}>
                         <TableCell className="text-center align-middle">
-                          <Checkbox
+                          <AppTooltip content={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể xoá hoặc chuyển riêng tư.' : undefined}><Checkbox
                             checked={selectedIdSet.has(asset.id)}
                             onCheckedChange={() => toggleOne(asset.id)}
-                            title={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể xoá hoặc chuyển riêng tư.' : undefined}
+                            aria-label={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể xoá hoặc chuyển riêng tư.' : undefined}
                             className="rounded-[4px] border-muted-foreground/30 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                          />
+                          /></AppTooltip>
                         </TableCell>
                         <TableCell className="align-middle">
                           <div className="flex justify-center">
@@ -439,9 +440,9 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         </TableCell>
                         <TableCell className="align-middle py-4">
                           <div className="flex min-w-0 flex-col gap-1.5">
-                            <span className="line-clamp-1 text-[15px] font-semibold tracking-tight text-foreground" title={asset.display_name}>
+                            <AppTooltip content={asset.display_name}><span className="line-clamp-1 text-[15px] font-semibold tracking-tight text-foreground" >
                               {asset.display_name}
-                            </span>
+                            </span></AppTooltip>
                             <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
                               <span className="font-medium text-muted-foreground/80">{formatAssetDate(asset.date_added)}</span>
                             </div>
@@ -477,13 +478,13 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         <TableCell className="text-center align-middle">
                           <div className="flex justify-center">
                             {canEdit ? (
-                              <Checkbox
+                              <AppTooltip content={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể chuyển riêng tư.' : undefined}><Checkbox
                                 checked={asset.is_reference || false}
                                 disabled={refMut.isPending}
-                                title={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể chuyển riêng tư.' : undefined}
+                                aria-label={asset.is_outline_media ? 'Tệp đang dùng trong cây bài học nên không thể chuyển riêng tư.' : undefined}
                                 onCheckedChange={(checked) => refMut.mutate({ assetIds: [asset.id], isReference: !!checked })}
                                 className="rounded-[4px] data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
-                              />
+                              /></AppTooltip>
                             ) : (
                               <Checkbox checked={asset.is_reference || false} disabled className="rounded-[4px]" />
                             )}
@@ -491,16 +492,16 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
                         </TableCell>
                         <TableCell className="text-right align-middle">
                           <div className="flex justify-end gap-1">
-                            <Button
+                            <AppTooltip content="Tải xuống"><Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                               onClick={() => handleDownloadAsset(asset)}
                               aria-label={`Tải xuống ${asset.display_name}`}
-                              title="Tải xuống"
+
                             >
                               <Download className="h-4 w-4" />
-                            </Button>
+                            </Button></AppTooltip>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full opacity-100 transition-opacity hover:bg-muted data-[state=open]:bg-muted md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 md:data-[state=open]:opacity-100">

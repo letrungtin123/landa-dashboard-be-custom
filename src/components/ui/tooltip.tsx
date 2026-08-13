@@ -44,4 +44,29 @@ const TooltipContent = React.forwardRef<
 ))
 TooltipContent.displayName = TooltipPrimitive.Content.displayName
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+type AppTooltipProps = {
+  content: React.ReactNode
+  children: React.ReactElement
+  side?: React.ComponentPropsWithoutRef<typeof TooltipContent>["side"]
+  align?: React.ComponentPropsWithoutRef<typeof TooltipContent>["align"]
+  className?: string
+}
+
+function AppTooltip({ content, children, side = "top", align = "center", className }: AppTooltipProps) {
+  if (content === null || content === undefined || content === "") return children
+
+  const isDisabled = Boolean((children.props as { disabled?: boolean }).disabled)
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {isDisabled ? <span className="inline-flex">{children}</span> : children}
+      </TooltipTrigger>
+      <TooltipContent side={side} align={align} className={className}>
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+export { AppTooltip, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }

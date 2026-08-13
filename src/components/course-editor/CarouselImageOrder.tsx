@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 export interface CarouselOrderImage {
   id: string;
@@ -41,43 +42,43 @@ export default function CarouselImageOrder({ images, onMove, onRemove }: Carouse
               {image.alt || `Ảnh ${index + 1}`}
             </span>
             <div className="flex shrink-0 items-center gap-1">
-              <Button
+              <AppTooltip content="Chuyển ảnh sang trái"><Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => moveImage(index, index - 1)}
                 disabled={index === 0}
-                title="Chuyển ảnh sang trái"
+
                 aria-label={`Move image ${index + 1} left`}
               >
                 <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <Button
+              </Button></AppTooltip>
+              <AppTooltip content="Chuyển ảnh sang phải"><Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => moveImage(index, index + 1)}
                 disabled={index === images.length - 1}
-                title="Chuyển ảnh sang phải"
+
                 aria-label={`Move image ${index + 1} right`}
               >
                 <ArrowRight className="h-4 w-4" />
-              </Button>
+              </Button></AppTooltip>
               {onRemove && (
-                <Button
+                <AppTooltip content="Xóa ảnh"><Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => onRemove(index)}
                   disabled={image.isDeleting}
-                  title="Xóa ảnh"
+
                   aria-label={`Remove image ${index + 1}`}
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </Button></AppTooltip>
               )}
             </div>
           </div>

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Tooltip,
+  AppTooltip, Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
@@ -272,13 +272,13 @@ function SidebarRail({ className, ...props }: React.HTMLAttributes<HTMLButtonEle
   const { toggleSidebar } = useSidebar()
 
   return (
-    <button
+    <AppTooltip content="Toggle Sidebar"><button
       data-sidebar="rail"
       data-slot="sidebar-rail"
       aria-label="Toggle Sidebar"
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Toggle Sidebar"
+
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
@@ -288,7 +288,7 @@ function SidebarRail({ className, ...props }: React.HTMLAttributes<HTMLButtonEle
         className
       )}
       {...props}
-    />
+    /></AppTooltip>
   )
 }
 

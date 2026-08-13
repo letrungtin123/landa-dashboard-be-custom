@@ -13,6 +13,7 @@ import { renameBlock } from '@/api/custom-course-authoring';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 type FocusCourseBlockEventDetail = {
   courseId?: string;
@@ -90,10 +91,10 @@ function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, 
             }}
           />
         ) : (
-          <h2 className="text-base font-bold text-foreground truncate flex-1 min-w-0 flex items-center gap-1.5" title={displayName || 'Tên khóa học'}>
+          <AppTooltip content={displayName || 'Tên khóa học'}><h2 className="text-base font-bold text-foreground truncate flex-1 min-w-0 flex items-center gap-1.5" >
             <BookOpen className="h-4 w-4 shrink-0 text-primary" />
             <span className="truncate">{displayName || 'Tên khóa học'}</span>
-          </h2>
+          </h2></AppTooltip>
         )}
 
         {isRenaming ? (

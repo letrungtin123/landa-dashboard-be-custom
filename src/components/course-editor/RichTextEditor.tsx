@@ -14,6 +14,7 @@ import {
   htmlImagePersistSrc,
   isTransientHtmlImageSrc,
 } from '@/utils/storage-url';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -186,13 +187,13 @@ const MenuBar = ({ editor }: { editor: any }) => {
       <div className="flex-1" />
 
       <div className="flex items-center gap-1 pr-2">
-        <input
+        <AppTooltip content="Màu chữ"><input
           type="color"
           onInput={event => editor.chain().focus().setColor((event.target as HTMLInputElement).value).run()}
           value={editor.getAttributes('textStyle').color || '#000000'}
           className="w-6 h-6 p-0 border-0 rounded cursor-pointer overflow-hidden"
-          title="Màu chữ"
-        />
+          aria-label="Màu chữ"
+        /></AppTooltip>
       </div>
     </div>
   );

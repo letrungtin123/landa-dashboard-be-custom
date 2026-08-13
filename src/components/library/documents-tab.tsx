@@ -27,6 +27,7 @@ import {
   Upload, Trash2, Eye, EyeOff, FileText, FileImage,
   FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X, Download, Globe,
 } from 'lucide-react';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const EXT_ICONS: Record<string, React.ElementType> = {
   pdf: FileText, docx: FileText, doc: FileText,
@@ -317,15 +318,15 @@ export default function DocumentsTab() {
           </div>
 
           {/* Bỏ chọn */}
-          <Button
+          <AppTooltip content="Bỏ chọn tất cả"><Button
             size="icon"
             variant="ghost"
             onClick={() => { setSelected([]); setBulkCatId(''); }}
             className="h-7 w-7 ml-auto text-muted-foreground hover:text-foreground"
-            title="Bỏ chọn tất cả"
+            aria-label="Bỏ chọn tất cả"
           >
             <X className="h-4 w-4" />
-          </Button>
+          </Button></AppTooltip>
         </div>
       )}
 
@@ -413,24 +414,24 @@ export default function DocumentsTab() {
                       </div>
 
                       <div className="mt-3 flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-primary" title="Tải xuống">
+                        <AppTooltip content="Tải xuống"><Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-primary" aria-label="Tải xuống">
                           <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
                             <Download className="h-3.5 w-3.5" />
                           </a>
-                        </Button>
-                        {canEdit && <Button variant="ghost" size="icon-sm"
+                        </Button></AppTooltip>
+                        {canEdit && <AppTooltip content={doc.is_visible ? 'Ẩn' : 'Hiện'}><Button variant="ghost" size="icon-sm"
                           onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
-                          className="text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
+                          className="text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? 'Ẩn' : 'Hiện'}
                         >
                           {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        </Button>}
+                        </Button></AppTooltip>}
 
-                        {canDelete && <Button variant="ghost" size="icon-sm"
+                        {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon-sm"
                           onClick={() => handleDelete(doc.id, doc.title)}
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>}
+                        </Button></AppTooltip>}
                       </div>
                     </div>
                   </div>
@@ -521,24 +522,24 @@ export default function DocumentsTab() {
                       <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentCreatedAt(doc.created_at)}</TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-primary" title="Tải xuống">
+                          <AppTooltip content="Tải xuống"><Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-primary" aria-label="Tải xuống">
                             <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
                               <Download className="h-3.5 w-3.5" />
                             </a>
-                          </Button>
-                          {canEdit && <Button variant="ghost" size="icon"
+                          </Button></AppTooltip>
+                          {canEdit && <AppTooltip content={doc.is_visible ? 'Ẩn' : 'Hiện'}><Button variant="ghost" size="icon"
                             onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground" title={doc.is_visible ? 'Ẩn' : 'Hiện'}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? 'Ẩn' : 'Hiện'}
                           >
                             {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </Button>}
+                          </Button></AppTooltip>}
 
-                          {canDelete && <Button variant="ghost" size="icon"
+                          {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon"
                             onClick={() => handleDelete(doc.id, doc.title)}
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>}
+                          </Button></AppTooltip>}
                         </div>
                       </TableCell>
                     </TableRow>

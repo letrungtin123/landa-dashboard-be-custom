@@ -61,6 +61,7 @@ import {
   type AssignmentFileMeta,
   type AssignmentSubmission,
 } from '@/api/custom-assignments';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const MAX_FEEDBACK_FILES = 5;
 
@@ -385,49 +386,49 @@ export default function CourseAssignmentsPage() {
                   </TableCell>
                   <TableCell className="min-w-0 overflow-hidden text-left">
                     {submission.files.length > 0 ? (
-                      <Button
+                      <AppTooltip content={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}><Button
                         size="sm"
                         variant="outline"
                         className="mx-auto h-8 w-full min-w-0 max-w-[220px] justify-start gap-1.5 px-2"
                         onClick={() => downloadPrivateFile(submission.files[0]).catch(() => toast.error('Không thể tải tệp'))}
-                        title={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}
+                        aria-label={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}
                       >
                         <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate text-left text-xs">{submission.files[0].original_name}</span>
                         {submission.files.length > 1 && (
                           <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">+{submission.files.length - 1}</span>
                         )}
-                      </Button>
+                      </Button></AppTooltip>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
                     )}
                   </TableCell>
                   <TableCell className="overflow-hidden text-center">
                     <div className="flex justify-center gap-1">
-                      <Button
+                      <AppTooltip content="Lịch sử phản hồi"><Button
                         size="icon"
                         variant="outline"
                         className="h-8 w-8"
                         disabled={submission.status === 'not_submitted'}
                         onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
-                        title="Lịch sử phản hồi"
+                        aria-label="Lịch sử phản hồi"
                       >
                         <History className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
+                      </Button></AppTooltip>
+                      <AppTooltip content={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}><Button
                         size="icon"
                         variant={submission.status === 'submitted' ? 'default' : 'outline'}
                         className="h-8 w-8"
                         disabled={submission.status === 'not_submitted'}
                         onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
-                        title={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
+                        aria-label={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
                       >
                         {submission.status === 'not_submitted' ? (
                           <Clock3 className="h-3.5 w-3.5" />
                         ) : (
                           <MessageSquareText className="h-3.5 w-3.5" />
                         )}
-                      </Button>
+                      </Button></AppTooltip>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -503,15 +504,15 @@ export default function CourseAssignmentsPage() {
                     <FileList files={submission.files} compact />
                   </div>
                   <div className="mt-4 grid grid-cols-[44px_1fr] gap-2">
-                    <Button
+                    <AppTooltip content="Lịch sử phản hồi"><Button
                       variant="outline"
                       size="icon"
                       disabled={submission.status === 'not_submitted'}
                       onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
-                      title="Lịch sử phản hồi"
+                      aria-label="Lịch sử phản hồi"
                     >
                       <History className="h-4 w-4" />
-                    </Button>
+                    </Button></AppTooltip>
                     <Button
                       variant={submission.status === 'submitted' ? 'default' : 'outline'}
                       className="w-full gap-1.5"

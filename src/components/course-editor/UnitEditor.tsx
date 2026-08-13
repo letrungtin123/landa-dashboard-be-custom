@@ -78,6 +78,7 @@ import {
 
 import { config } from '@/config/env';
 import { resolvePdfEmbedUrl } from '@/utils/pdf-url';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -567,15 +568,15 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
           {block.has_changes && block.published && (
-            <Button
+            <AppTooltip content="Khôi phục về bản đã công khai"><Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
-              title="Khôi phục về bản đã công khai"
+              aria-label="Khôi phục về bản đã công khai"
               onClick={() => setShowRollbackDialog(true)}
             >
               <Undo2 className="h-3.5 w-3.5" />
-            </Button>
+            </Button></AppTooltip>
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>

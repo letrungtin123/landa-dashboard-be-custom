@@ -13,6 +13,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/utils/utils';
 import { useTenantStore } from '@/utils/tenant-store';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 type ReportChartRequest = Parameters<typeof getReportChart>[0];
 type ChartView = { start: number; end: number };
@@ -656,7 +657,7 @@ export function ReportWindowChart({
   return (
     <div className={cn('app-liquid-card relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-inner', className)} style={{ height }}>
       <div ref={containerRef} className="absolute inset-0">
-        <canvas
+        <AppTooltip content="Kéo ngang để xem dữ liệu trong khoảng đã chọn"><canvas
           ref={canvasRef}
           className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
           onPointerDown={handlePointerDown}
@@ -665,8 +666,8 @@ export function ReportWindowChart({
           onPointerCancel={stopDrag}
           onPointerLeave={() => setTooltip(null)}
           onWheel={handleWheel}
-          title="Kéo ngang để xem dữ liệu trong khoảng đã chọn"
-        />
+
+        /></AppTooltip>
       </div>
 
       <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-2.5 py-1 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur">

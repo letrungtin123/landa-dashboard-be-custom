@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 export default function CourseCategoriesPage() {
   const qc = useQueryClient();
@@ -231,9 +232,9 @@ export default function CourseCategoriesPage() {
                 </div>
                 
                 <div className="flex items-center gap-1.5 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-[opacity,transform] duration-150 ease-out shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {canEdit && <Button variant="outline" size="icon" className={cn("h-8 w-8 rounded-full bg-background shadow-sm", cat.is_public ? "text-sky-600 border-sky-200" : "hover:bg-sky-50 hover:text-sky-600")} onClick={() => handleTogglePublic(cat)} title={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                  {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="outline" size="icon" className={cn("h-8 w-8 rounded-full bg-background shadow-sm", cat.is_public ? "text-sky-600 border-sky-200" : "hover:bg-sky-50 hover:text-sky-600")} onClick={() => handleTogglePublic(cat)} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
                     <Globe className="h-3.5 w-3.5" />
-                  </Button>}
+                  </Button></AppTooltip>}
                   {canEdit && (
                     <Button variant="outline" size="icon" className="h-8 w-8 rounded-full bg-background shadow-sm hover:bg-primary/10 hover:text-primary hover:border-primary/20" onClick={() => openEdit(cat)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -593,13 +594,13 @@ function AddCoursesToCategoryModal({
                     <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{c.id}</p>
                   </div>
                   {isInOtherCategory && (
-                    <Badge
+                    <AppTooltip content={'Đã thuộc ' + existingCategoryName}><Badge
                       variant="secondary"
-                      title={'Đã thuộc ' + existingCategoryName}
+
                       className="max-w-[220px] truncate text-[10px] shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                     >
                       Đã thuộc {existingCategoryName}
-                    </Badge>
+                    </Badge></AppTooltip>
                   )}
                   {isAssigned && (
                     <Badge variant="secondary" className="text-[10px] uppercase tracking-wider shrink-0 bg-muted-foreground/10 text-muted-foreground">

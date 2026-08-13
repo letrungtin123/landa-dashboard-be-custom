@@ -1,15 +1,16 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 function JunctionNode({ data }: NodeProps) {
   const isHidden = data?.hidePorts;
 
   return (
-    <div 
+    <AppTooltip content={isHidden ? undefined : "Điểm nối (Junction)"}><div
       className={`w-3 h-3 rounded-full transition-colors group relative border-background ${
         isHidden ? 'bg-muted-foreground shadow-none' : 'bg-muted-foreground hover:bg-primary shadow-md ring-2 cursor-crosshair hover:scale-125'
       }`}
-      title={isHidden ? undefined : "Điểm nối (Junction)"}
+
     >
       {/* Target handles allow incoming connections */}
       <Handle
@@ -37,7 +38,7 @@ function JunctionNode({ data }: NodeProps) {
         id="right-source"
         className={`w-2 h-2 opacity-0 transition-opacity bg-primary ${!isHidden ? 'group-hover:opacity-100' : ''}`}
       />
-    </div>
+    </div></AppTooltip>
   );
 }
 

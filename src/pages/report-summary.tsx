@@ -57,6 +57,7 @@ import { exportReportExcel } from '@/utils/export-report';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 import { ReportWindowChart } from '@/components/reports/ReportWindowChart';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const cardVariant = {
   hidden: { opacity: 0, y: 20 },
@@ -269,7 +270,7 @@ function CourseCompletionTooltip({
 
   return (
     <div className="rounded-xl border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl min-w-[220px]">
-      <p className="font-bold text-foreground mb-2 max-w-[280px] truncate" title={course.name}>{course.name}</p>
+      <AppTooltip content={course.name}><p className="font-bold text-foreground mb-2 max-w-[280px] truncate" >{course.name}</p></AppTooltip>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground">Tỉ lệ hoàn thành</span>
@@ -505,9 +506,9 @@ function CourseCompletionRankingWidget({
                   <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0 space-y-1">
-                  <CardTitle className="text-base font-bold text-foreground truncate" title={selectedCourseData.name}>
+                  <AppTooltip content={selectedCourseData.name}><CardTitle className="text-base font-bold text-foreground truncate" >
                     {selectedCourseData.name}
-                  </CardTitle>
+                  </CardTitle></AppTooltip>
                   <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold">
                     <span className="text-primary">{selectedCourseData.completion_rate}% hoàn thành</span>
                     <span className="text-emerald-600">{selectedCourseData.completed_count.toLocaleString('en-US')} đã học</span>
@@ -988,9 +989,9 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
                     {/* Course Name Column */}
                     <div className="flex-1 min-w-0">
                       {u.course_name ? (
-                        <p className="text-xs text-foreground truncate" title={u.course_name}>
+                        <AppTooltip content={u.course_name}><p className="text-xs text-foreground truncate" >
                           {u.course_name}
-                        </p>
+                        </p></AppTooltip>
                       ) : (
                         <span className="text-xs text-muted-foreground italic">{u.enrolled_courses > 0 ? `${u.enrolled_courses} khóa học` : 'Chưa ghi danh'}</span>
                       )}
@@ -1542,14 +1543,14 @@ export default function ReportSummaryPage() {
               </div>
             </PopoverContent>
           </Popover>
-          <button
+          <AppTooltip content="Đặt lại khoảng thời gian"><button
             type="button"
             onClick={handleResetDateFilter}
             className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-border bg-background hover:bg-muted transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm shrink-0"
-            title="Đặt lại khoảng thời gian"
+            aria-label="Đặt lại khoảng thời gian"
           >
             <X className="h-3.5 w-3.5" />
-          </button>
+          </button></AppTooltip>
           <button onClick={() => refetch()} className={`inline-flex items-center justify-center h-9 w-9 rounded-full border border-border bg-background hover:bg-muted transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm shrink-0 ${isFetching ? 'animate-spin' : ''}`}>
             <RefreshCcw className="h-3.5 w-3.5" />
           </button>

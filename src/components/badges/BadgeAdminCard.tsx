@@ -11,6 +11,7 @@ import { BADGE_CARD_IMAGES, BADGE_ICONS, BADGE_MOBILE_CARD_IMAGES } from "@/data
 import { storageUrl } from "@/utils/storage-url";
 import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { toast } from "sonner";
+import { AppTooltip } from '@/components/ui/tooltip';
 
 interface BadgeAdminCardProps {
   tenantId: string;
@@ -129,18 +130,18 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
             {isActive ? "Đang bật" : "Đã tắt"}
           </div>
           <div className="flex items-center gap-2">
-            <Button
+            <AppTooltip content="Reset title và mô tả về mặc định"><Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleResetText}
               disabled={!hasTextOverride}
               className="h-7 gap-1.5 rounded-full border-border/70 bg-background/70 px-2.5 text-[11px] font-bold text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/[0.04]"
-              title="Reset title và mô tả về mặc định"
+              aria-label="Reset title và mô tả về mặc định"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Mặc định
-            </Button>
+            </Button></AppTooltip>
             <Switch
               checked={isActive}
               onCheckedChange={() => onToggle(badge.id)}
@@ -214,15 +215,15 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           <div className={assetLabelClass}><ImageIcon className="h-3 w-3" />CARD</div>
 
           {/* Upload button for card */}
-          <button
+          <AppTooltip content="Upload ảnh card mới"><button
             type="button"
             onClick={(e) => { e.stopPropagation(); cardInputRef.current?.click(); }}
             disabled={uploadingCard}
             className={uploadButtonClass}
-            title="Upload ảnh card mới"
+            aria-label="Upload ảnh card mới"
           >
             {uploadingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          </button>
+          </button></AppTooltip>
           <input ref={cardInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleCardUpload} />
         </div>
 
@@ -253,15 +254,15 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           </div>
           <div className={assetLabelClass}><Smartphone className="h-3 w-3" />MOBILE</div>
 
-          <button
+          <AppTooltip content="Upload mobile card"><button
             type="button"
             onClick={(e) => { e.stopPropagation(); mobileCardInputRef.current?.click(); }}
             disabled={uploadingMobileCard}
             className={uploadButtonClass}
-            title="Upload mobile card"
+            aria-label="Upload mobile card"
           >
             {uploadingMobileCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          </button>
+          </button></AppTooltip>
           <input ref={mobileCardInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleMobileCardUpload} />
         </div>
 
@@ -307,15 +308,15 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           <div className="absolute inset-x-0 bottom-3 z-20"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/80 transition-colors group-hover/icon:text-primary">ICON</p></div>
 
           {/* Upload button for icon */}
-          <button
+          <AppTooltip content="Upload ảnh icon mới"><button
             type="button"
             onClick={() => iconInputRef.current?.click()}
             disabled={uploadingIcon}
             className={uploadButtonClass}
-            title="Upload ảnh icon mới"
+            aria-label="Upload ảnh icon mới"
           >
             {uploadingIcon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          </button>
+          </button></AppTooltip>
           <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleIconUpload} />
         </div>
       </div>

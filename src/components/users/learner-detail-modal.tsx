@@ -50,6 +50,7 @@ import badgeDaiSuTinCay from '@/assets/badges/DaiSuTinCay.png';
 import badgeBacThayTN from '@/assets/badges/BacThayToanNang.png';
 import badgeHocGia from '@/assets/badges/HocGiaTocDo.png';
 import badgeNhaThamHiem from '@/assets/badges/NhaThamHiemHeThong.png';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const BADGE_IMAGE_MAP: Record<string, { src: string; name: string }> = {
   perfect_profile: { src: badgeManhGhep, name: 'Mảnh Ghép Hoàn Hảo' },
@@ -512,10 +513,10 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                       const info = BADGE_IMAGE_MAP[b.badge_id];
                       if (!info) return null;
                       return (
-                        <div
+                        <AppTooltip content={`${info.name} — Đạt: ${new Date(b.earned_at).toLocaleDateString('vi-VN')}`}><div
                           key={b.badge_id}
                           className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/20 border border-amber-200/50 dark:border-amber-700/30 text-[10px] sm:text-xs font-medium text-amber-800 dark:text-amber-300 shadow-sm"
-                          title={`${info.name} — Đạt: ${new Date(b.earned_at).toLocaleDateString('vi-VN')}`}
+
                         >
                           <motion.div
                             className="relative flex items-center justify-center shrink-0 w-5 h-5 sm:w-7 sm:h-7"
@@ -544,7 +545,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                             </div>
                           </motion.div>
                           <span className="truncate max-w-[80px] sm:max-w-none">{info.name}</span>
-                        </div>
+                        </div></AppTooltip>
                       );
                     })}
                   </div>

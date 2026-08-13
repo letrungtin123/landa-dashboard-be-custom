@@ -61,6 +61,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles } from 'lucide-react';
 import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfig } from '@/api/custom-courses';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 interface OutlineTreeProps {
   courseId: string;
@@ -463,9 +464,9 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
 
       {/* Status */}
       {!isRenaming && (
-        <span 
+        <AppTooltip content={!node.published ? 'Bản đang sửa' : node.has_changes ? 'Đã công khai, có thay đổi chưa công khai' : 'Đã công khai'}><span
           className="shrink-0" 
-          title={!node.published ? 'Bản đang sửa' : node.has_changes ? 'Đã công khai, có thay đổi chưa công khai' : 'Đã công khai'}
+
         >
           {!node.published ? (
             <EyeOff className="h-3 w-3 text-slate-400" />
@@ -474,7 +475,7 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
           ) : (
             <Globe className="h-3 w-3 text-emerald-500" />
           )}
-        </span>
+        </span></AppTooltip>
       )}
 
       {/* Rename confirm/cancel */}
@@ -735,9 +736,9 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           <ClipboardList className="h-3.5 w-3.5" />
           <span>Bài tập</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} disabled={hasAssignment} title={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}>
+        <AppTooltip content={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}><Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} disabled={hasAssignment} aria-label={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}>
           <Plus className="h-3.5 w-3.5" />
-        </Button>
+        </Button></AppTooltip>
       </div>
 
       {isLoading ? (
@@ -1091,9 +1092,9 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{attachmentFile.name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(attachmentFile.size)}</div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa tệp">
+                      <AppTooltip content="Xóa tệp"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label="Xóa tệp">
                         <X className="h-4 w-4" />
-                      </Button>
+                      </Button></AppTooltip>
                     </div>
                   ) : existingAttachment ? (
                     <div className="app-liquid-card flex min-w-0 items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
@@ -1102,9 +1103,9 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{existingAttachment.original_name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(existingAttachment.size_bytes)}</div>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} title="Xóa tệp">
+                      <AppTooltip content="Xóa tệp"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label="Xóa tệp">
                         <X className="h-4 w-4" />
-                      </Button>
+                      </Button></AppTooltip>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed px-3 py-3 text-xs font-medium text-muted-foreground">
@@ -1273,7 +1274,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
             <Sparkles className="h-5 w-5 text-amber-500" />
             Lời chúc hoàn thành chương
           </DialogTitle>
-          <p className="text-xs text-muted-foreground truncate" title={sectionName}>{sectionName}</p>
+          <AppTooltip content={sectionName}><p className="text-xs text-muted-foreground truncate" >{sectionName}</p></AppTooltip>
         </DialogHeader>
 
         {isLoading ? (

@@ -24,6 +24,7 @@ import { confirmDialog } from '@/utils/confirm-store';
 import { Plus, Pencil, Trash2, FolderOpen, Loader2, X, Globe } from 'lucide-react';
 import { useAuthStore } from '@/utils/store';
 import { getGroupLabelSet } from '@/utils/group-labels';
+import { AppTooltip } from '@/components/ui/tooltip';
 
 export default function CategoriesTab() {
   const queryClient = useQueryClient();
@@ -247,15 +248,15 @@ export default function CategoriesTab() {
             <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Xóa ({selected.length})
           </Button>
 
-          <Button
+          <AppTooltip content="Bỏ chọn tất cả"><Button
             size="icon"
             variant="ghost"
             onClick={() => setSelected([])}
             className="h-7 w-7 ml-auto text-muted-foreground hover:text-foreground"
-            title="Bỏ chọn tất cả"
+            aria-label="Bỏ chọn tất cả"
           >
             <X className="h-4 w-4" />
-          </Button>
+          </Button></AppTooltip>
         </div>
       )}
 
@@ -311,18 +312,18 @@ export default function CategoriesTab() {
                     </div>
 
                     <div className="mt-3 flex items-center justify-end gap-1">
-                      {canEdit && <Button variant="ghost" size="icon-sm" onClick={() => handleTogglePublic(cat)}
-                        className={cat.is_public ? "text-sky-600" : "text-muted-foreground hover:text-sky-600"} title={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                      {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="ghost" size="icon-sm" onClick={() => handleTogglePublic(cat)}
+                        className={cat.is_public ? "text-sky-600" : "text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
                         <Globe className="h-3.5 w-3.5" />
-                      </Button>}
-                      {canEdit && <Button variant="ghost" size="icon-sm" onClick={() => openEdit(cat)}
-                        className="text-muted-foreground hover:text-foreground" title="Sửa">
+                      </Button></AppTooltip>}
+                      {canEdit && <AppTooltip content="Sửa"><Button variant="ghost" size="icon-sm" onClick={() => openEdit(cat)}
+                        className="text-muted-foreground hover:text-foreground" aria-label="Sửa">
                         <Pencil className="h-3.5 w-3.5" />
-                      </Button>}
-                      {canDelete && <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(cat)}
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa">
+                      </Button></AppTooltip>}
+                      {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon-sm" onClick={() => handleDelete(cat)}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa">
                         <Trash2 className="h-3.5 w-3.5" />
-                      </Button>}
+                      </Button></AppTooltip>}
                     </div>
                   </div>
                 </div>
@@ -384,18 +385,18 @@ export default function CategoriesTab() {
                     <TableCell className="text-muted-foreground text-sm">{cat.sort_order}</TableCell>
                     <TableCell className="text-right pr-5">
                       <div className="flex items-center justify-end gap-1">
-                        {canEdit && <Button variant="ghost" size="icon" onClick={() => handleTogglePublic(cat)}
-                          className={cat.is_public ? "h-8 w-8 text-sky-600" : "h-8 w-8 text-muted-foreground hover:text-sky-600"} title={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                        {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="ghost" size="icon" onClick={() => handleTogglePublic(cat)}
+                          className={cat.is_public ? "h-8 w-8 text-sky-600" : "h-8 w-8 text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
                           <Globe className="h-3.5 w-3.5" />
-                        </Button>}
-                        {canEdit && <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Sửa">
+                        </Button></AppTooltip>}
+                        {canEdit && <AppTooltip content="Sửa"><Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label="Sửa">
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>}
-                        {canDelete && <Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Xóa">
+                        </Button></AppTooltip>}
+                        {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa">
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>}
+                        </Button></AppTooltip>}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AppTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { confirmDialog } from '@/utils/confirm-store';
 import {
@@ -516,20 +516,22 @@ export default function CoursesPage() {
                           </Button>
                         )}
 
-                        <Button variant="outline" size="icon-sm"
+                        <AppTooltip content="Quản lý tệp tin"><Button variant="outline" size="icon-sm"
                           onClick={() => setSelectedCourseFiles(course.id)}
                           className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30"
-                          title="Quản lý tệp tin"
+                          aria-label="Quản lý tệp tin"
                         >
                           <FolderOpen className="h-3.5 w-3.5" />
-                        </Button>
+                        </Button></AppTooltip>
 
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon-sm" title="Thao tác khác">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <AppTooltip content="Thao tác khác">
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="icon-sm" aria-label="Thao tác khác">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </AppTooltip>
                           <DropdownMenuContent align="end" className="w-56">
                             <DropdownMenuItem onClick={() => setPreviewCourse(course)} className="gap-2">
                               <LayoutTemplate className="h-4 w-4 text-sky-600" />

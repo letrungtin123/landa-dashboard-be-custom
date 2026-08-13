@@ -28,6 +28,7 @@ import {
   cardVariants, formatDate, useDebounce,
   PaginationBar, BotCardSkeleton,
 } from "./ai-chatbot-helpers";
+import { AppTooltip } from '@/components/ui/tooltip';
 
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 
@@ -136,18 +137,18 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
                           {previews.slice(0, 6).map((m, mi) => {
                             const color = MASCOT_COLORS[mi % MASCOT_COLORS.length];
                             return (
-                              <div
+                              <AppTooltip content={m.name}><div
                                 key={mi}
                                 className="h-6 w-6 rounded-full overflow-hidden border-2 border-card flex items-center justify-center shadow-sm"
                                 style={!m.avatar_url ? { backgroundColor: color + '15', borderColor: 'var(--card)' } : {}}
-                                title={m.name}
+
                               >
                                 {m.avatar_url ? (
                                   <img src={storageUrl(m.avatar_url)} alt={m.name} className="h-full w-full object-cover" />
                                 ) : (
                                   <span className="text-[8px] font-bold" style={{ color }}>{m.name.charAt(0)}</span>
                                 )}
-                              </div>
+                              </div></AppTooltip>
                             );
                           })}
                         </div>
