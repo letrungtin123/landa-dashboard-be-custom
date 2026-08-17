@@ -273,20 +273,20 @@ function CourseCompletionTooltip({
       <AppTooltip content={course.name}><p className="font-bold text-foreground mb-2 max-w-[280px] truncate" >{course.name}</p></AppTooltip>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Tỉ lệ hoàn thành</span>
+          <span className="text-muted-foreground">Tỷ lệ hoàn thành</span>
           <span className="font-bold text-primary">{course.completion_rate}%</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-amber-600">Đang học</span>
-          <span className="font-semibold">{course.learning_count.toLocaleString('en-US')}</span>
+          <span className="text-muted-foreground">Lượt ghi danh</span>
+          <span className="font-semibold">{course.total_enrollments.toLocaleString('vi-VN')}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-emerald-600">Đã học</span>
-          <span className="font-semibold">{course.completed_count.toLocaleString('en-US')}</span>
+          <span className="text-emerald-600">Đã hoàn thành</span>
+          <span className="font-semibold">{course.completed_enrollments.toLocaleString('vi-VN')}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-slate-500">Chưa học</span>
-          <span className="font-semibold">{course.not_started_count.toLocaleString('en-US')}</span>
+          <span className="text-slate-500">Chưa hoàn thành</span>
+          <span className="font-semibold">{course.incomplete_enrollments.toLocaleString('vi-VN')}</span>
         </div>
       </div>
     </div>
@@ -511,9 +511,8 @@ function CourseCompletionRankingWidget({
                   </CardTitle></AppTooltip>
                   <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold">
                     <span className="text-primary">{selectedCourseData.completion_rate}% hoàn thành</span>
-                    <span className="text-emerald-600">{selectedCourseData.completed_count.toLocaleString('en-US')} đã học</span>
-                    <span className="text-amber-600">{selectedCourseData.learning_count.toLocaleString('en-US')} đang học</span>
-                    <span className="text-slate-500">{selectedCourseData.not_started_count.toLocaleString('en-US')} chưa học</span>
+                    <span className="text-emerald-600">{selectedCourseData.completed_enrollments.toLocaleString('vi-VN')}/{selectedCourseData.total_enrollments.toLocaleString('vi-VN')} lượt đã hoàn thành</span>
+                    <span className="text-slate-500">{selectedCourseData.incomplete_enrollments.toLocaleString('vi-VN')} lượt chưa hoàn thành</span>
                   </div>
                 </div>
               </div>
@@ -536,7 +535,7 @@ function CourseCompletionRankingWidget({
                   <BookOpen className="h-4 w-4 text-primary" />
                   Bảng xếp hạng tỉ lệ hoàn thành từng khóa học
                 </CardTitle>
-                <p className="text-[11px] text-muted-foreground">Tính theo số học viên được phân khóa học trong bộ lọc hiện tại.</p>
+                <p className="text-[11px] text-muted-foreground">Tính theo các lượt ghi danh phát sinh trong khoảng thời gian và phạm vi đang lọc.</p>
               </div>
               <div className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
                 <Percent className="h-3 w-3 text-primary" />
@@ -623,17 +622,10 @@ function CourseCompletionRankingWidget({
                                 <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                               </div>
                             </div>
-                            <div className="min-w-0">
-                              {u.status !== 'not_started' && (
-                                <>
-                                  <div className="flex justify-between text-[10px] mb-1">
-                                    <span className="font-medium">{formatPercent(u.progress)}</span>
-                                  </div>
-                                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                    <div className={`h-full rounded-full ${cfg.barClass}`} style={{ width: `${clampPercent(u.progress)}%` }} />
-                                  </div>
-                                </>
-                              )}
+                            <div className="min-w-0 text-[10px] text-muted-foreground">
+                              {u.completed_at
+                                ? `Hoàn thành ngày ${new Date(u.completed_at).toLocaleDateString('vi-VN')}`
+                                : 'Chưa hoàn thành trong kỳ'}
                             </div>
                             <span className={`justify-self-end text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter shrink-0 ${cfg.badgeClass}`}>
                               {cfg.label}
@@ -968,11 +960,11 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    className="flex items-center p-4 hover:bg-muted/50 transition-all cursor-pointer group gap-4"
+                    className="flex items-center p-4 hover:bg-muted/50 transition-all cursor-pointer group gap-6"
                     onClick={() => onSelectLearner(u.username)}
                   >
                     {/* User Info Column */}
-                    <div className="flex items-center gap-3 w-[30%] min-w-[140px] shrink-0">
+                    <div className="flex items-center gap-3 w-[32%] min-w-[140px] shrink-0">
                       {u.avatar ? (
                         <img src={u.avatar} alt={u.username} className="h-8 w-8 rounded-full object-cover border border-border shrink-0" />
                       ) : (
@@ -986,32 +978,20 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
                       </div>
                     </div>
 
-                    {/* Course Name Column */}
-                    <div className="flex-1 min-w-0">
-                      {u.course_name ? (
-                        <AppTooltip content={u.course_name}><p className="text-xs text-foreground truncate" >
-                          {u.course_name}
-                        </p></AppTooltip>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">{u.enrolled_courses > 0 ? `${u.enrolled_courses} khóa học` : 'Chưa ghi danh'}</span>
-                      )}
-                    </div>
-
-                    {/* Progress Column */}
-                    <div className="w-[15%] min-w-[60px] shrink-0 flex flex-col justify-center">
+                    <div className="flex-1 min-w-[140px] flex flex-col justify-center">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-medium text-foreground">{formatPercent(u.progress)}</span>
+                        <span className="text-[10px] font-medium text-foreground">{formatPercent(u.completion_rate)}</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                         <div
                           className={`h-full rounded-full ${cfg.barClass}`}
-                          style={{ width: `${clampPercent(u.progress)}%` }}
+                          style={{ width: `${clampPercent(u.completion_rate)}%` }}
                         />
                       </div>
                     </div>
 
                     {/* Status Column */}
-                    <div className="w-[20%] min-w-[90px] shrink-0 text-right flex flex-col items-end justify-center">
+                    <div className="w-[20%] min-w-[100px] shrink-0 text-right flex flex-col items-end justify-center">
                       <div className="flex items-center justify-end gap-1 mb-1">
                         <Clock className="h-2.5 w-2.5 text-muted-foreground" />
                         <span className="text-[10px] text-muted-foreground">
@@ -1289,7 +1269,7 @@ export default function ReportSummaryPage() {
   const overview = data.overview;
 
   const calculateTrend = (current: number | string, previous: number | string | undefined, isAbsolute: boolean = false, suffix: string = '%') => {
-    if (previous === undefined || previous === null) return { text: '', type: 'up' as const };
+    if (previous === undefined) return { text: '', type: 'up' as const };
 
     const cur = Number(current) || 0;
     const prev = Number(previous) || 0;
@@ -1319,10 +1299,10 @@ export default function ReportSummaryPage() {
   const enrollmentsTrend = calculateTrend(overview.total_enrollments, prevOverview?.total_enrollments, true, '');
 
   const stats = [
-    { title: 'Tổng học viên', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '' },
-    { title: 'Học viên đang hoạt động', value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '' },
-    { title: 'Tỷ lệ hoàn thành', value: overview.completion_rate, icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%' },
-    { title: 'Lượt ghi danh', value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '' },
+    { title: 'Tổng học viên', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: 'Tổng số tài khoản học viên được tạo trong khoảng thời gian đã chọn và thuộc phạm vi nhóm đang lọc. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
+    { title: 'Học viên có hoạt động học', value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: 'Số học viên có ít nhất một lần học hoặc hoàn thành nội dung học trong khoảng thời gian đã chọn. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
+    { title: 'Tỷ lệ hoàn thành khóa học', value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: 'Tỷ lệ số khóa học đã hoàn thành trên tổng số khóa học được ghi danh trong kỳ. Ví dụ: hoàn thành 1 trong 2 khóa học thì tỷ lệ là 50%.', supportingText: '', notice: '', disabled: false },
+    { title: 'Lượt ghi danh trong kỳ', value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: 'Số lần học viên được ghi danh vào khóa học trong khoảng thời gian đã chọn. Một học viên được ghi danh nhiều khóa sẽ có nhiều lượt ghi danh.', supportingText: '', notice: '', disabled: false },
   ];
 
   return (
@@ -1581,8 +1561,10 @@ export default function ReportSummaryPage() {
         {stats.map((stat) => (
           <motion.div key={stat.title} variants={cardVariant}>
             <Card
-              className="shadow-sm border-border/60 hover:border-border transition-all cursor-pointer overflow-hidden relative bg-card"
-              onClick={() => setChartMetric({ key: stat.key, title: stat.title })}
+              className={`shadow-sm border-border/60 transition-all overflow-hidden relative bg-card ${stat.disabled ? 'cursor-default' : 'hover:border-border cursor-pointer'}`}
+              onClick={() => {
+                if (!stat.disabled) setChartMetric({ key: stat.key, title: stat.title });
+              }}
             >
               <CardContent className="p-5 flex flex-col gap-4">
                 <div className="flex items-center justify-between w-full">
@@ -1592,9 +1574,14 @@ export default function ReportSummaryPage() {
                     </div>
                     <span className="text-[13px] font-medium text-muted-foreground">{stat.title}</span>
                   </div>
-                  <div className="w-5 h-5 rounded-full bg-muted/50 flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
-                    !
-                  </div>
+                  <AppTooltip content={stat.description}>
+                    <div
+                      className="w-5 h-5 rounded-full bg-muted/50 flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      !
+                    </div>
+                  </AppTooltip>
                 </div>
 
                 <div className="min-w-0">
@@ -1602,16 +1589,25 @@ export default function ReportSummaryPage() {
                     {typeof stat.value === 'number' ? stat.value.toLocaleString('en-US') : stat.value}{stat.suffix}
                   </div>
 
-                  {stat.trend && (
-                    <div className="inline-flex max-w-full">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full truncate ${stat.trendType === 'up'
-                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
-                        : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
-                        }`}>
-                        {stat.trend} so với khoảng trước
+                  <div className="flex min-h-[22px] flex-col items-start gap-1.5">
+                    {stat.supportingText && (
+                      <span className="max-w-full text-[10px] font-semibold text-muted-foreground truncate">{stat.supportingText}</span>
+                    )}
+                    {stat.notice ? (
+                      <span className="inline-flex max-w-full text-[10px] font-semibold text-amber-700 dark:text-amber-400 truncate">
+                        {stat.notice}
                       </span>
-                    </div>
-                  )}
+                    ) : stat.trend && (
+                      <div className="inline-flex max-w-full">
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full truncate ${stat.trendType === 'up'
+                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+                          : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
+                          }`}>
+                          {stat.trend} so với khoảng trước
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
               </CardContent>

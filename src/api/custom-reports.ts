@@ -24,6 +24,8 @@ export interface ReportSummaryResponse {
     active_learners: number;
     completion_rate: number;
     total_enrollments: number;
+    completed_enrollments: number;
+    incomplete_enrollments: number;
   };
 }
 
@@ -77,10 +79,9 @@ export type ReportCourseCompletionStatus = 'all' | 'not_started' | 'learning' | 
 export interface ReportCourseCompletionRanking {
   course_id: string;
   name: string;
-  visible_learners: number;
-  learning_count: number;
-  completed_count: number;
-  not_started_count: number;
+  total_enrollments: number;
+  completed_enrollments: number;
+  incomplete_enrollments: number;
   completion_rate: number;
 }
 
@@ -101,8 +102,8 @@ export interface ReportLearnerStatus {
   email: string;
   avatar?: string | null;
   last_completion_at: string | null;
-  progress: number;
-  course_name: string;
+  completion_rate: number;
+  completed_courses: number;
   status: 'not_started' | 'learning' | 'completed';
   enrolled_courses: number;
 }
