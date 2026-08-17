@@ -75,6 +75,7 @@ export interface ReportTopCourse {
 }
 
 export type ReportCourseCompletionStatus = 'all' | 'not_started' | 'learning' | 'completed';
+export type LearnerDetailDataScope = 'report_filter' | 'learner_history';
 
 export interface ReportCourseCompletionRanking {
   course_id: string;
@@ -306,6 +307,9 @@ export async function getLearnerDetail(params: {
   subgroup_id?: number | string;
   team_id?: number | string;
   status?: ReportCourseCompletionStatus;
+  data_scope?: LearnerDetailDataScope;
+  date_from?: string;
+  date_to?: string;
 }): Promise<LearnerDetailResponse> {
   const { data } = await customApiClient.get<ApiResponse<LearnerDetailResponse>>(`${BASE}/learner-detail`, {
     params,

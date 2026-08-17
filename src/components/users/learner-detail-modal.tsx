@@ -33,6 +33,7 @@ import {
   getAdminUserBadges,
   getAdminUserStudyTime,
   type LearnerDetailResult,
+  type LearnerDetailDataScope,
   type ReportCourseCompletionStatus,
   type StudyTimeGranularity,
 } from '@/api/custom-reports';
@@ -210,6 +211,10 @@ const COURSE_STATUS_OPTIONS: Array<{ value: ReportCourseCompletionStatus; label:
   { value: 'not_started', label: 'Chưa học' },
 ];
 
+const COURSE_DATA_SCOPE_OPTIONS: Array<{ value: LearnerDetailDataScope; label: string }> = [
+  { value: 'report_filter', label: 'Lọc theo bộ lọc báo cáo' },
+  { value: 'learner_history', label: 'Tất cả khóa học học viên từng học' },
+];
 const normalizeScopeId = (value?: string | 'all' | null) => {
   if (!value || value === 'all') return undefined;
   return value;
@@ -222,13 +227,16 @@ interface Props {
   groupId?: string | 'all' | null;
   subgroupId?: string | 'all' | null;
   teamId?: string | 'all' | null;
+  reportDateFrom?: string;
+  reportDateTo?: string;
 }
 
-export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId }: Props) {
+export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId, reportDateFrom, reportDateTo }: Props) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [coursePage, setCoursePage] = useState(1);
   const [courseStatus, setCourseStatus] = useState<ReportCourseCompletionStatus>('all');
+  const [courseDataScope, setCourseDataScope] = useState<LearnerDetailDataScope>('report_filter');
   const [filterOpen, setFilterOpen] = useState(false);
   const [momentumFilter, setMomentumFilter] = useState<MomentumFilterState>(() => createDefaultMomentumFilter());
 
@@ -237,6 +245,8 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
   const scopedGroupId = normalizeScopeId(groupId);
   const scopedSubgroupId = normalizeScopeId(subgroupId);
   const scopedTeamId = normalizeScopeId(teamId);
+  const hasReportContext = Boolean(reportDateFrom && reportDateTo);
+  const selectedCourseDataScope = COURSE_DATA_SCOPE_OPTIONS.find((option) => option.value === courseDataScope) || COURSE_DATA_SCOPE_OPTIONS[0];
   const selectedCourseStatus = COURSE_STATUS_OPTIONS.find((option) => option.value === courseStatus) || COURSE_STATUS_OPTIONS[0];
 
   useEffect(() => {
@@ -244,8 +254,9 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
     setSearch('');
     setDebouncedSearch('');
     setCourseStatus('all');
+    if (hasReportContext) setCourseDataScope('report_filter');
     setCoursePage(1);
-  }, [username, isOpen]);
+  }, [username, isOpen, hasReportContext]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -254,7 +265,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
 
   useEffect(() => {
     setCoursePage(1);
-  }, [username, debouncedSearch, courseStatus, scopedGroupId, scopedSubgroupId, scopedTeamId]);
+  }, [username, debouncedSearch, courseStatus, courseDataScope, reportDateFrom, reportDateTo, scopedGroupId, scopedSubgroupId, scopedTeamId]);
 
   const {
     data,
@@ -269,6 +280,9 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
       coursePage,
       debouncedSearch,
       courseStatus,
+      courseDataScope,
+      reportDateFrom,
+      reportDateTo,
       scopedGroupId,
       scopedSubgroupId,
       scopedTeamId,
@@ -283,6 +297,11 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
         group_id: scopedGroupId,
         subgroup_id: scopedSubgroupId,
         team_id: scopedTeamId,
+        ...(hasReportContext ? {
+          data_scope: courseDataScope,
+          date_from: reportDateFrom,
+          date_to: reportDateTo,
+        } : {}),
       }),
     enabled: !!username && isOpen,
     placeholderData: (previousData) => previousData,
@@ -441,7 +460,11 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                   </div>
                 )}
                 <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 hidden sm:block">
-                  Danh sách khóa học được phân và tiến độ học tập.
+                  {hasReportContext
+                    ? courseDataScope === 'report_filter'
+                      ? 'Danh sách khóa học theo bộ lọc Báo cáo tổng hợp.'
+                      : 'Danh sách các khóa học học viên đã ghi danh.'
+                    : 'Danh sách khóa học được phân và tiến độ học tập.'}
                 </DialogDescription>
               </div>
             </div>
@@ -482,6 +505,32 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+              {hasReportContext && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={`app-liquid-field h-9 sm:h-10 w-full justify-between rounded-xl border-border bg-background px-3 text-xs font-semibold shadow-sm sm:w-[248px] ${courseDataScope !== 'report_filter' ? 'app-liquid-filter-active' : ''}`}
+                    >
+                      {selectedCourseDataScope.label}
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[248px]">
+                    {COURSE_DATA_SCOPE_OPTIONS.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => setCourseDataScope(option.value)}
+                        className="cursor-pointer justify-between text-xs font-medium"
+                      >
+                        {option.label}
+                        {courseDataScope === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 

@@ -273,7 +273,7 @@ function CourseCompletionTooltip({
       <AppTooltip content={course.name}><p className="font-bold text-foreground mb-2 max-w-[280px] truncate" >{course.name}</p></AppTooltip>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Tỷ lệ hoàn thành</span>
+          <span className="text-muted-foreground">Tiến độ trung bình</span>
           <span className="font-bold text-primary">{course.completion_rate}%</span>
         </div>
         <div className="flex items-center justify-between gap-4">
@@ -510,7 +510,7 @@ function CourseCompletionRankingWidget({
                     {selectedCourseData.name}
                   </CardTitle></AppTooltip>
                   <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold">
-                    <span className="text-primary">{selectedCourseData.completion_rate}% hoàn thành</span>
+                    <span className="text-primary">{selectedCourseData.completion_rate}% tiến độ trung bình</span>
                     <span className="text-emerald-600">{selectedCourseData.completed_enrollments.toLocaleString('vi-VN')}/{selectedCourseData.total_enrollments.toLocaleString('vi-VN')} lượt đã hoàn thành</span>
                     <span className="text-slate-500">{selectedCourseData.incomplete_enrollments.toLocaleString('vi-VN')} lượt chưa hoàn thành</span>
                   </div>
@@ -533,9 +533,9 @@ function CourseCompletionRankingWidget({
               <div className="space-y-1">
                 <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                   <BookOpen className="h-4 w-4 text-primary" />
-                  Bảng xếp hạng tỉ lệ hoàn thành từng khóa học
+                  Bảng xếp hạng tiến độ trung bình từng khóa học
                 </CardTitle>
-                <p className="text-[11px] text-muted-foreground">Tính theo các lượt ghi danh phát sinh trong khoảng thời gian và phạm vi đang lọc.</p>
+                <p className="text-[11px] text-muted-foreground">Tiến độ học trung bình của các lượt ghi danh trong khoảng thời gian và phạm vi đang lọc.</p>
               </div>
               <div className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
                 <Percent className="h-3 w-3 text-primary" />
@@ -1299,9 +1299,9 @@ export default function ReportSummaryPage() {
   const enrollmentsTrend = calculateTrend(overview.total_enrollments, prevOverview?.total_enrollments, true, '');
 
   const stats = [
-    { title: 'Tổng học viên', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: 'Tổng số tài khoản học viên được tạo trong khoảng thời gian đã chọn và thuộc phạm vi nhóm đang lọc. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
+    { title: 'Tổng học viên đã tạo', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: 'Tổng số tài khoản học viên được tạo trong khoảng thời gian đã chọn và thuộc phạm vi nhóm đang lọc. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
     { title: 'Học viên có hoạt động học', value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: 'Số học viên có ít nhất một lần học hoặc hoàn thành nội dung học trong khoảng thời gian đã chọn. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
-    { title: 'Tỷ lệ hoàn thành khóa học', value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: 'Tỷ lệ số khóa học đã hoàn thành trên tổng số khóa học được ghi danh trong kỳ. Ví dụ: hoàn thành 1 trong 2 khóa học thì tỷ lệ là 50%.', supportingText: '', notice: '', disabled: false },
+    { title: 'Tỷ lệ hoàn thành trung bình', value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: 'Tiến độ của mỗi khóa được lấy theo phần trăm học hiện tại. Mỗi học viên lấy trung bình tiến độ các khóa của mình, sau đó lấy trung bình các học viên. Vì vậy, trung bình các thanh tiến độ trong danh sách bằng con số này.', supportingText: '', notice: '', disabled: false },
     { title: 'Lượt ghi danh trong kỳ', value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: 'Số lần học viên được ghi danh vào khóa học trong khoảng thời gian đã chọn. Một học viên được ghi danh nhiều khóa sẽ có nhiều lượt ghi danh.', supportingText: '', notice: '', disabled: false },
   ];
 
@@ -1315,6 +1315,8 @@ export default function ReportSummaryPage() {
         groupId={selectedGroupId}
         subgroupId={selectedSubGroupId}
         teamId={selectedTeamId}
+        reportDateFrom={dateFrom}
+        reportDateTo={dateTo}
       />
 
       <ChartTrendModal
