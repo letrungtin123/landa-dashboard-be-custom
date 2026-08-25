@@ -10,6 +10,7 @@ import {
   COURSE_ASSET_MAX_UPLOAD_BYTES,
   createCourseAssetUploadSizeError,
 } from '../utils/course-asset-upload';
+import type { CourseComponentPermissionType } from '@/utils/course-component-permissions';
 
 // ── Types ──
 
@@ -126,6 +127,10 @@ export interface Course {
   end?: string;
 }
 
+export interface CourseComponentPermissions {
+  allowed_component_types: CourseComponentPermissionType[];
+}
+
 export interface CreateXBlockPayload {
   type?: string;
   category?: string;
@@ -211,6 +216,13 @@ export async function createBlock(
   displayName?: string,
 ): Promise<{ locator: string; courseKey: string }> {
   return createXBlock({ parent_locator: parentLocator, category, display_name: displayName });
+}
+
+export async function fetchCurrentTenantCourseComponentPermissions(): Promise<CourseComponentPermissions> {
+  const { data } = await customApiClient.get<ApiResponse<CourseComponentPermissions>>(
+    `${BASE}/component-permissions`,
+  );
+  return data.data;
 }
 
 export async function updateXBlock(

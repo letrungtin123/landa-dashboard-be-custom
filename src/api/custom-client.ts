@@ -38,7 +38,7 @@ customApiClient.interceptors.request.use(async (req) => {
     const tenantStore = await getTenantStore();
     const { activeTenantId } = tenantStore.getState();
     if (activeTenantId) {
-      req.headers['X-Tenant-Id'] = activeTenantId;
+      req.headers['X-Tenant-Id'] ||= activeTenantId;
     }
   }
 

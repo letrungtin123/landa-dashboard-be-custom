@@ -41,6 +41,7 @@ import EmailTemplatesPage from '@/pages/email-templates';
 import AiChatbotPage from '@/pages/ai-chatbot';
 import PromptTemplatesPage from '@/pages/prompt-templates';
 import BadgesPage from './pages/badges';
+import TenantBadgesPage from '@/pages/tenant-badges';
 import SsoManagementPage from '@/pages/sso-management';
 import DemoLoginSettingsPage from '@/pages/demo-login-settings';
 
@@ -78,6 +79,7 @@ function AppRoutes() {
           <Route path="/email-templates" element={<ModuleGuard module="email_templates"><EmailTemplatesPage /></ModuleGuard>} />
           <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><AiChatbotPage /></ModuleGuard>} />
           <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
+          <Route path="/badge-management" element={<ModuleGuard module="badge_management"><TenantBadgesPage /></ModuleGuard>} />
           <Route path="/badges" element={<ModuleGuard module="superadmin_only"><BadgesPage /></ModuleGuard>} />
           <Route path="/sso-management" element={<ModuleGuard module="superadmin_only"><SsoManagementPage /></ModuleGuard>} />
           <Route path="/demo-login-settings" element={<ModuleGuard module="superadmin_only"><DemoLoginSettingsPage /></ModuleGuard>} />

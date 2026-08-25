@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Award, Save, Loader2 } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
@@ -16,26 +16,51 @@ export default function BadgesPage() {
   const [badges, setBadges] = useState<BadgeSetting[]>([]);
   const [loadingBadges, setLoadingBadges] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
+  const activeTenantIdRef = useRef(activeTenantId);
+  const loadSequenceRef = useRef(0);
+  const saveSequenceRef = useRef(0);
 
-  // Load Badges when global Tenant is selected
+  activeTenantIdRef.current = activeTenantId;
+  const tenantReady = Boolean(activeTenantId && loadedTenantId === activeTenantId);
+
+  // Scope every response to the tenant that initiated it.
   useEffect(() => {
-    if (!activeTenantId) {
-      setBadges([]);
-      return;
+    const tenantId = activeTenantId;
+    const sequence = ++loadSequenceRef.current;
+    let cancelled = false;
+
+    saveSequenceRef.current += 1;
+    setSaving(false);
+    setBadges([]);
+    setLoadedTenantId(null);
+
+    if (!tenantId) {
+      setLoadingBadges(false);
+      return () => { cancelled = true; };
     }
+
+    const requestedTenantId: string = tenantId;
+    setLoadingBadges(true);
     async function loadBadges() {
-      if (!activeTenantId) return;
-      setLoadingBadges(true);
       try {
-        const result = await badgesApi.getTenantBadges(activeTenantId);
+        const result = await badgesApi.getTenantBadges(requestedTenantId);
+        if (cancelled || sequence !== loadSequenceRef.current) return;
         setBadges(result.data);
-      } catch (err) {
-        toast.error("Không thể tải cấu hình danh hiệu");
+        setLoadedTenantId(requestedTenantId);
+      } catch {
+        if (!cancelled && sequence === loadSequenceRef.current) {
+          toast.error("Không thể tải cấu hình danh hiệu");
+        }
       } finally {
-        setLoadingBadges(false);
+        if (!cancelled && sequence === loadSequenceRef.current) setLoadingBadges(false);
       }
     }
-    loadBadges();
+
+    void loadBadges();
+    return () => {
+      cancelled = true;
+    };
   }, [activeTenantId]);
 
   function toggleBadge(badgeId: string) {
@@ -50,24 +75,53 @@ export default function BadgesPage() {
     );
   }
   async function handleSave() {
-    if (!activeTenantId) return;
+    if (!activeTenantId || loadedTenantId !== activeTenantId) return;
+    const tenantId = loadedTenantId;
+    const saveSequence = ++saveSequenceRef.current;
     setSaving(true);
     try {
-      const payload = badges.map(b => ({
-        badge_id: b.id,
-        is_active: b.is_active,
-        name: b.name,
-        description: b.description,
+      const payload = badges.map((badge) => ({
+        badge_id: badge.id,
+        is_active: badge.is_active,
+        name: badge.name,
+        description: badge.description,
       }));
-      await badgesApi.updateTenantBadges(activeTenantId, payload);
-      const result = await badgesApi.getTenantBadges(activeTenantId);
+      await badgesApi.updateTenantBadges(tenantId, payload);
+      if (activeTenantIdRef.current !== tenantId || saveSequence !== saveSequenceRef.current) return;
+
+      const loadSequence = ++loadSequenceRef.current;
+      const result = await badgesApi.getTenantBadges(tenantId);
+      if (activeTenantIdRef.current !== tenantId || loadSequence !== loadSequenceRef.current) return;
       setBadges(result.data);
+      setLoadedTenantId(tenantId);
       toast.success("Đã lưu cấu hình danh hiệu thành công");
-    } catch (err) {
-      toast.error("Lỗi khi lưu cấu hình danh hiệu");
+    } catch {
+      if (activeTenantIdRef.current === tenantId && saveSequence === saveSequenceRef.current) {
+        toast.error("Lỗi khi lưu cấu hình danh hiệu");
+      }
     } finally {
-      setSaving(false);
+      if (saveSequence === saveSequenceRef.current) setSaving(false);
     }
+  }
+
+  function handleImageUploaded(tenantId: string) {
+    if (activeTenantIdRef.current !== tenantId || loadedTenantId !== tenantId) return;
+    const sequence = ++loadSequenceRef.current;
+    setLoadingBadges(true);
+    badgesApi.getTenantBadges(tenantId)
+      .then((result) => {
+        if (activeTenantIdRef.current !== tenantId || sequence !== loadSequenceRef.current) return;
+        setBadges(result.data);
+        setLoadedTenantId(tenantId);
+      })
+      .catch(() => {
+        if (activeTenantIdRef.current === tenantId && sequence === loadSequenceRef.current) {
+          toast.error("Không thể tải lại ảnh danh hiệu");
+        }
+      })
+      .finally(() => {
+        if (sequence === loadSequenceRef.current) setLoadingBadges(false);
+      });
   }
 
   return (
@@ -78,7 +132,7 @@ export default function BadgesPage() {
         description="Bật/tắt các danh hiệu (Badges) cho tenant hiện tại"
         actions={
           <div className="flex items-center gap-3">
-            {activeTenantId && (
+            {tenantReady && (
               <Button onClick={handleSave} disabled={saving || loadingBadges} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Lưu thay đổi
@@ -94,7 +148,7 @@ export default function BadgesPage() {
         </div>
       ) : (
         <div className="pt-4">
-          {loadingBadges ? (
+          {loadingBadges || !tenantReady ? (
             <div className="flex justify-center items-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -118,18 +172,20 @@ export default function BadgesPage() {
               <AnimatePresence>
                 {badges.map((b) => (
                   <motion.div
-                    key={b.id}
+                    key={`${loadedTenantId}:${b.id}`}
                     variants={{
                       hidden: { opacity: 0, y: 20 },
                       visible: { opacity: 1, y: 0 }
                     }}
                     transition={{ type: "spring", stiffness: 300, damping: 24 }}
                   >
-                    <BadgeAdminCard tenantId={activeTenantId} badge={b} onToggle={toggleBadge} onTextChange={updateBadgeText} onImageUploaded={() => {
-                      // Reload badges to get new image URLs
-                      if (!activeTenantId) return;
-                      badgesApi.getTenantBadges(activeTenantId).then(result => setBadges(result.data)).catch(() => {});
-                    }} />
+                    <BadgeAdminCard
+                      tenantId={loadedTenantId!}
+                      badge={b}
+                      onToggle={toggleBadge}
+                      onTextChange={updateBadgeText}
+                      onImageUploaded={() => handleImageUploaded(loadedTenantId!)}
+                    />
                   </motion.div>
                 ))}
               </AnimatePresence>

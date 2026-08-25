@@ -47,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: 'Thư viện', url: '/library', module: 'library', fallbackIcon: 'Library' },
       { title: 'Khóa học', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
       { title: 'Danh mục khóa học', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
+      { title: 'Quản lý huy hiệu', url: '/badge-management', module: 'badge_management', fallbackIcon: 'Award' },
       { title: 'AI Chatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
     ],
   },
@@ -124,7 +125,7 @@ export function AppSidebar() {
     if (item.module === 'tenant_management' || item.module === 'superadmin_only') return false;
 
     // Kiểm tra module có được bật cho tenant không
-    if (tenantModules.length > 0 && !tenantModules.includes(item.module)) {
+    if (!tenantModules.includes(item.module)) {
       return false;
     }
 

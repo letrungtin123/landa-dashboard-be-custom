@@ -54,9 +54,12 @@ export function Header() {
   }, [isSuperadmin, fetchTenants, refreshGroupLabels, refreshRoleLabels]);
 
   const handleTenantChange = async (tenantId: string, tenantName: string) => {
+    if (tenantId === activeTenantId) return;
+    await qc.cancelQueries();
+    qc.removeQueries();
     setActiveTenant(tenantId, tenantName);
     await Promise.all([refreshRoleLabels(), refreshGroupLabels()]);
-    qc.invalidateQueries();
+    await qc.invalidateQueries();
   };
 
   const handleLogout = async () => {

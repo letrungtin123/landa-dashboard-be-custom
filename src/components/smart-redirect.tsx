@@ -14,6 +14,7 @@ const MODULE_ROUTES: { module: string; path: string }[] = [
   { module: 'account', path: '/accounts' },
   { module: 'groups', path: '/groups' },
   { module: 'course_categories', path: '/course-categories' },
+  { module: 'badge_management', path: '/badge-management' },
   { module: 'permission_groups', path: '/permission-groups' },
   { module: 'ai_chatbot', path: '/ai-chatbot' },
   { module: 'help_docs', path: '/help-docs' },
@@ -26,8 +27,8 @@ export function SmartRedirect() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const user = useAuthStore((s) => s.user);
 
-  // superadmin/superuser → mặc định /library
-  if (user?.role === 'superadmin' || user?.role === 'superuser') {
+  // superadmin luôn có thể vào library; các role khác phải qua feature gate.
+  if (user?.role === 'superadmin') {
     return <Navigate to="/library" replace />;
   }
 

@@ -2,12 +2,12 @@
  * UnitEditor.tsx — Hiển thị và chỉnh sửa components trong một Unit
  * Hỗ trợ: video, html, problem (5 dạng), la_crossword, la_sortable
  */
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, discardDraft, reorderChildren,
-  deleteCourseAssetByStoragePath,
+  deleteCourseAssetByStoragePath, fetchCurrentTenantCourseComponentPermissions,
 } from '@/api/custom-course-authoring';
 import {
   DndContext,
@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Trash2, GripVertical, Plus, Video, Type, HelpCircle,
-  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft
+  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
@@ -51,6 +51,11 @@ import MediaQuizEditor, {
   type MediaQuizData,
   type MediaQuizQuestion,
 } from './editors/MediaQuizEditor';
+import ScenarioChatEditor, {
+  getScenarioChatValidationError,
+  normalizeScenarioChatData,
+  type ScenarioChatData,
+} from './editors/ScenarioChatEditor';
 import CrosswordEditor, { CrosswordWord } from './editors/CrosswordEditor';
 import SortableEditor, { SortableItem } from './editors/SortableEditor';
 import FaqEditor, { FaqItem } from './editors/FaqEditor';
@@ -79,6 +84,8 @@ import {
 import { config } from '@/config/env';
 import { resolvePdfEmbedUrl } from '@/utils/pdf-url';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTenantStore } from '@/utils/tenant-store';
+import { normalizeCourseComponentPermissionTypes } from '@/utils/course-component-permissions';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -202,6 +209,11 @@ const COMPONENT_TYPES: ComponentType[] = [
     colorClass: 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/30 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
   },
   {
+    id: 'la_scenario_chat', category: 'la_scenario_chat', label: 'Giao tiếp tình huống', desc: 'Chat kịch bản',
+    icon: <MessageSquareText className="h-6 w-6" />,
+    colorClass: 'border-sky-200 bg-sky-50 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/30 dark:hover:bg-sky-900/40 text-sky-700 dark:text-sky-300',
+  },
+  {
     id: 'la_crossword', category: 'la_crossword', label: 'Ô chữ', desc: 'Trò chơi tương tác',
     icon: <Puzzle className="h-6 w-6" />,
     colorClass: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
@@ -275,6 +287,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
 }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [subTypeSelector, setSubTypeSelector] = useState<ComponentType | null>(null);
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
 
   const { data: unitChildren, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['unit-children', unitId],
@@ -287,6 +300,19 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
     if (!isError || !isBlockNotFoundError(error)) return;
     onMissingUnit?.();
   }, [error, isError, onMissingUnit]);
+
+  const { data: componentPermissions, isLoading: componentPermissionsLoading } = useQuery({
+    queryKey: ['course-component-permissions', courseId || 'current-course', activeTenantId || 'current-tenant'],
+    queryFn: fetchCurrentTenantCourseComponentPermissions,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const availableComponentTypes = useMemo(() => {
+    const allowedTypes = normalizeCourseComponentPermissionTypes(componentPermissions?.allowed_component_types);
+    const allowedSet = new Set<string>(allowedTypes);
+    return COMPONENT_TYPES.filter(type => allowedSet.has(type.category));
+  }, [componentPermissions?.allowed_component_types]);
 
   const children: ChildBlock[] = unitChildren?.children || [];
 
@@ -434,18 +460,27 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
                   ← Quay lại
                 </Button>
               </div>
+            ) : componentPermissionsLoading && !componentPermissions ? (
+              <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-sm">Đang tải quyền component...</p>
+              </div>
+            ) : availableComponentTypes.length === 0 ? (
+              <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                Doanh nghiệp này chưa được bật loại nội dung nào để thêm vào khóa học.
+              </div>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
-                {COMPONENT_TYPES.map(type => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {availableComponentTypes.map(type => (
                   <button
                     key={type.id}
                     onClick={() => handleSelectType(type)}
                     disabled={addMut.isPending}
-                    className={`flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all disabled:opacity-50 ${type.colorClass}`}
+                    className={`flex min-h-[132px] flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all disabled:opacity-50 ${type.colorClass}`}
                   >
                     {type.icon}
                     <div className="text-center">
-                      <div className="font-bold text-sm">{type.label}</div>
+                      <div className="font-bold text-sm leading-tight">{type.label}</div>
                       <div className="text-xs text-muted-foreground mt-0.5 leading-tight">{type.desc}</div>
                     </div>
                     {type.subTypes && <ChevronDown className="h-3 w-3 opacity-50" />}
@@ -783,6 +818,499 @@ function SortablePreviewInteractive({ parsed, questionText }: { parsed: any, que
 }
 
 
+type ScenarioChatPreviewHistoryItem =
+  | { id: string; kind: 'status'; text: string }
+  | { id: string; kind: 'bubble'; side: 'left' | 'right'; name: string; description: string; text: string }
+  | { id: string; kind: 'explanation'; status: 'correct' | 'incorrect'; text: string };
+
+type ScenarioChatPreviewRoundState = {
+  correctChoiceId?: string;
+  correctHistoryLength?: number;
+  exploredChoiceIds: string[];
+};
+
+type ScenarioChatPreviewRoundStateMap = Record<string, ScenarioChatPreviewRoundState>;
+
+const SCENARIO_CHAT_PREVIEW_TYPING_DELAY_MS = 2000;
+
+function scenarioChatPreviewWait(ms: number) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function buildScenarioChatPreviewIntroItems(round: ScenarioChatData['rounds'][number], scenario: ScenarioChatData, includeContext: boolean): ScenarioChatPreviewHistoryItem[] {
+  const items: ScenarioChatPreviewHistoryItem[] = [];
+  if (includeContext && scenario.context_description.trim()) {
+    items.push({ id: `scenario-context-${items.length}`, kind: 'status', text: scenario.context_description });
+  }
+  items.push({
+    id: `${round.id}-scenario-${items.length}`,
+    kind: 'bubble',
+    side: 'left',
+    name: scenario.participant.name,
+    description: round.scenario_message.description || scenario.participant.description,
+    text: round.scenario_message.text || 'Chưa nhập bong bóng tình huống.',
+  });
+  return items;
+}
+
+function trimScenarioChatPreviewHistory(history: ScenarioChatPreviewHistoryItem[], cutoff: number | null): ScenarioChatPreviewHistoryItem[] {
+  if (typeof cutoff === 'number' && Number.isFinite(cutoff)) {
+    return history.slice(0, Math.max(0, Math.min(cutoff, history.length)));
+  }
+
+  const lastLearnerBubbleIndex = [...history]
+    .map((item, index) => ({ item, index }))
+    .reverse()
+    .find(({ item }) => item.kind === 'bubble' && item.side === 'right')?.index;
+
+  return typeof lastLearnerBubbleIndex === 'number'
+    ? history.slice(0, lastLearnerBubbleIndex)
+    : history;
+}
+
+function markScenarioChatPreviewCorrectChoice(state: ScenarioChatPreviewRoundStateMap, roundId: string, choiceId: string, correctHistoryLength: number): ScenarioChatPreviewRoundStateMap {
+  const current = state[roundId] || { exploredChoiceIds: [] };
+  return {
+    ...state,
+    [roundId]: {
+      correctChoiceId: choiceId,
+      correctHistoryLength,
+      exploredChoiceIds: current.exploredChoiceIds.filter(id => id !== choiceId),
+    },
+  };
+}
+
+function markScenarioChatPreviewExploredChoice(state: ScenarioChatPreviewRoundStateMap, roundId: string, choiceId: string): ScenarioChatPreviewRoundStateMap {
+  const current = state[roundId] || { exploredChoiceIds: [] };
+  if (current.correctChoiceId === choiceId || current.exploredChoiceIds.includes(choiceId)) return state;
+  return {
+    ...state,
+    [roundId]: {
+      ...current,
+      exploredChoiceIds: [...current.exploredChoiceIds, choiceId],
+    },
+  };
+}
+
+function scenarioChatPreviewCorrectBranchStart(history: ScenarioChatPreviewHistoryItem[], round: ScenarioChatData['rounds'][number], state: ScenarioChatPreviewRoundState | undefined): number {
+  if (typeof state?.correctHistoryLength === 'number' && Number.isFinite(state.correctHistoryLength)) {
+    return Math.max(0, Math.min(state.correctHistoryLength, history.length));
+  }
+
+  const correctChoice = round.choices.find(choice => choice.id === state?.correctChoiceId);
+  if (!correctChoice) return history.length;
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const item = history[index];
+    if (item.kind === 'bubble' && item.side === 'right' && item.text === correctChoice.text) return index;
+  }
+
+  return history.length;
+}
+
+function ScenarioChatPreviewTypingIndicator({ name }: { name: string }) {
+  return (
+    <div className="max-w-[90%] sm:max-w-[72%]">
+      <div className="inline-flex max-w-full items-center gap-2 rounded-2xl rounded-bl-md bg-white px-3 py-2 shadow-sm ring-1 ring-border dark:bg-slate-900">
+        <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">{name} đang nhập</span>
+        <span className="flex shrink-0 items-center gap-1">
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.2s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.1s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioChatPreviewHistoryItemView({ item }: { item: ScenarioChatPreviewHistoryItem }) {
+  if (item.kind === 'status') {
+    return (
+      <div className="flex justify-center px-2 py-1">
+        <div className="inline-flex max-w-full rounded-2xl border border-amber-300 bg-amber-100 px-3 py-1.5 text-center text-xs font-semibold leading-relaxed text-amber-800 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
+          <span className="whitespace-pre-wrap break-words">{item.text}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind === 'explanation') {
+    return (
+      <div className={`rounded-xl border px-3 py-2.5 text-sm leading-relaxed shadow-sm ${item.status === 'correct' ? 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
+        <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase">
+          {item.status === 'correct' ? <Check className="h-4 w-4 shrink-0" /> : <Undo2 className="h-4 w-4 shrink-0" />}
+          <span>Giải thích</span>
+        </div>
+        <div className="whitespace-pre-wrap break-words">{item.text}</div>
+      </div>
+    );
+  }
+
+  const isRight = item.side === 'right';
+  return (
+    <div className={`flex ${isRight ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[90%] sm:max-w-[72%] ${isRight ? 'text-right' : ''}`}>
+        <div className={`inline-block max-w-full rounded-2xl px-3.5 py-2.5 text-left text-sm font-medium leading-relaxed shadow-sm whitespace-pre-wrap break-words ${isRight ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-white text-foreground ring-1 ring-border dark:bg-slate-900'}`}>
+          {item.text}
+        </div>
+        <div className="mt-1 px-1 text-xs text-muted-foreground truncate">
+          {item.name}{item.description ? ` - ${item.description}` : ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioChatPreviewInteractive({ data }: { data: ScenarioChatData }) {
+  const scenario = useMemo(() => normalizeScenarioChatData(data), [data]);
+  const previewFingerprint = useMemo(() => JSON.stringify(scenario), [scenario]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeIndex = Math.min(activeIndex, Math.max(scenario.rounds.length - 1, 0));
+  const currentRound = scenario.rounds[safeIndex];
+  const [history, setHistory] = useState<ScenarioChatPreviewHistoryItem[]>([]);
+  const [visibleChoices, setVisibleChoices] = useState(false);
+  const [pendingTyping, setPendingTyping] = useState<'scenario' | 'response' | 'status' | null>(null);
+  const [awaitingRetry, setAwaitingRetry] = useState(false);
+  const [awaitingNextRound, setAwaitingNextRound] = useState(false);
+  const [retryHistoryLength, setRetryHistoryLength] = useState<number | null>(null);
+  const [completed, setCompleted] = useState(false);
+  const [roundState, setRoundState] = useState<ScenarioChatPreviewRoundStateMap>({});
+  const [transientHistory, setTransientHistory] = useState<ScenarioChatPreviewHistoryItem[] | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const requestSeqRef = useRef(0);
+  const mountedRef = useRef(true);
+  const currentRoundState = currentRound ? roundState[currentRound.id] : undefined;
+  const currentCorrectChoiceId = currentRoundState?.correctChoiceId || '';
+  const currentExploredChoiceIds = currentRoundState?.exploredChoiceIds || [];
+  const hasCorrectChoiceForRound = currentCorrectChoiceId.length > 0;
+  const explorationChoices = currentRound && hasCorrectChoiceForRound
+    ? currentRound.choices.filter(choice => choice.id !== currentCorrectChoiceId && !currentExploredChoiceIds.includes(choice.id))
+    : [];
+
+  const revealScenarioRound = async (roundIndex: number) => {
+    const round = scenario.rounds[roundIndex];
+    if (!round) return;
+
+    const seq = requestSeqRef.current + 1;
+    requestSeqRef.current = seq;
+    setActiveIndex(roundIndex);
+    setVisibleChoices(false);
+    setAwaitingRetry(false);
+    setAwaitingNextRound(false);
+    setRetryHistoryLength(null);
+    setTransientHistory(null);
+    setPendingTyping('scenario');
+
+    await scenarioChatPreviewWait(SCENARIO_CHAT_PREVIEW_TYPING_DELAY_MS);
+    if (!mountedRef.current || requestSeqRef.current !== seq) return;
+
+    setHistory(prev => [...prev, ...buildScenarioChatPreviewIntroItems(round, scenario, roundIndex === 0)]);
+    setPendingTyping(null);
+    setVisibleChoices(true);
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestSeqRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    requestSeqRef.current += 1;
+    setActiveIndex(0);
+    setHistory([]);
+    setVisibleChoices(false);
+    setPendingTyping(null);
+    setAwaitingRetry(false);
+    setAwaitingNextRound(false);
+    setRetryHistoryLength(null);
+    setCompleted(false);
+    setRoundState({});
+    setTransientHistory(null);
+    void revealScenarioRound(0);
+  }, [previewFingerprint]);
+
+  const displayedHistory = transientHistory || history;
+
+  useEffect(() => {
+    function scrollToBottom() {
+      const node = chatScrollRef.current;
+      if (!node) return;
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+    }
+
+    const frame = window.requestAnimationFrame(scrollToBottom);
+    const timeout = window.setTimeout(scrollToBottom, 80);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [awaitingNextRound, awaitingRetry, completed, displayedHistory.length, pendingTyping, transientHistory, visibleChoices]);
+
+  const handleChoiceClick = async (event: React.MouseEvent<HTMLButtonElement>, choice: ScenarioChatData['rounds'][number]['choices'][number]) => {
+    event.stopPropagation();
+    if (!currentRound || pendingTyping || awaitingRetry) return;
+
+    const roundProgress = roundState[currentRound.id] || { exploredChoiceIds: [] };
+    const correctChoiceId = roundProgress.correctChoiceId || '';
+    const isExploration = Boolean(correctChoiceId) && choice.id !== correctChoiceId;
+    const alreadyViewed = choice.id === correctChoiceId || roundProgress.exploredChoiceIds.includes(choice.id);
+    if (alreadyViewed) return;
+    if ((awaitingNextRound || completed) && !isExploration) return;
+
+    const canonicalCutoff = history.length;
+    const explorationBase = isExploration
+      ? history.slice(0, scenarioChatPreviewCorrectBranchStart(history, currentRound, roundProgress))
+      : null;
+    const appendTransientItem = (item: ScenarioChatPreviewHistoryItem) => {
+      setTransientHistory(prev => [...(prev || explorationBase || []), item]);
+    };
+    const appendCanonicalItem = (item: ScenarioChatPreviewHistoryItem) => {
+      setHistory(prev => [...prev, item]);
+    };
+    const appendChatItem = isExploration ? appendTransientItem : appendCanonicalItem;
+    const seq = requestSeqRef.current + 1;
+    requestSeqRef.current = seq;
+    setVisibleChoices(false);
+    setAwaitingRetry(false);
+    if (!isExploration) {
+      setAwaitingNextRound(false);
+      setTransientHistory(null);
+    } else {
+      setTransientHistory(explorationBase || []);
+    }
+    setRetryHistoryLength(null);
+    appendChatItem({
+      id: `${currentRound.id}-${choice.id}-learner-${Date.now()}`,
+      kind: 'bubble',
+      side: 'right',
+      name: scenario.learner.name,
+      description: scenario.learner.description,
+      text: choice.text || 'Chưa nhập câu trả lời.',
+    });
+    setPendingTyping('response');
+
+    await scenarioChatPreviewWait(SCENARIO_CHAT_PREVIEW_TYPING_DELAY_MS);
+    if (!mountedRef.current || requestSeqRef.current !== seq) return;
+
+    const correct = choice.correct === true;
+    const characterStatus = (choice.character_status || '').trim();
+    appendChatItem({
+      id: `${currentRound.id}-${choice.id}-response-${Date.now()}`,
+      kind: 'bubble',
+      side: 'left',
+      name: scenario.participant.name,
+      description: choice.response_description || scenario.participant.description,
+      text: choice.response_message || (correct ? 'Chính xác!' : 'Chưa đúng, hãy thử lại.'),
+    });
+
+    if (characterStatus) {
+      setPendingTyping('status');
+      await scenarioChatPreviewWait(SCENARIO_CHAT_PREVIEW_TYPING_DELAY_MS);
+      if (!mountedRef.current || requestSeqRef.current !== seq) return;
+      appendChatItem({
+        id: `${currentRound.id}-${choice.id}-character-status-${Date.now()}`,
+        kind: 'status',
+        text: characterStatus,
+      });
+    }
+
+    appendChatItem({
+      id: `${currentRound.id}-${choice.id}-explain-${Date.now()}`,
+      kind: 'explanation',
+      status: correct ? 'correct' : 'incorrect',
+      text: choice.explanation || (correct ? 'Câu trả lời này phù hợp với tình huống.' : 'Câu trả lời này chưa phù hợp, hãy thử lại.'),
+    });
+    setPendingTyping(null);
+
+    if (isExploration) {
+      setRoundState(prev => markScenarioChatPreviewExploredChoice(prev, currentRound.id, choice.id));
+      setRetryHistoryLength(null);
+      setAwaitingRetry(false);
+      return;
+    }
+
+    if (!correct) {
+      setRetryHistoryLength(canonicalCutoff);
+      setAwaitingRetry(true);
+      return;
+    }
+
+    setRoundState(prev => markScenarioChatPreviewCorrectChoice(prev, currentRound.id, choice.id, canonicalCutoff));
+    setRetryHistoryLength(null);
+    if (safeIndex >= scenario.rounds.length - 1) {
+      setCompleted(true);
+      return;
+    }
+
+    setAwaitingNextRound(true);
+  };
+  const handleRetry = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setHistory(prev => trimScenarioChatPreviewHistory(prev, retryHistoryLength));
+    setRetryHistoryLength(null);
+    setAwaitingRetry(false);
+    setAwaitingNextRound(false);
+    setPendingTyping(null);
+    setVisibleChoices(true);
+  };
+
+  const handleNextRound = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setTransientHistory(null);
+    void revealScenarioRound(Math.min(safeIndex + 1, scenario.rounds.length - 1));
+  };
+
+  const handleShowCorrectBranch = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setTransientHistory(null);
+  };
+
+  if (!currentRound) {
+    return <div className="text-sm text-muted-foreground">Giao tiếp tình huống chưa có lượt hội thoại.</div>;
+  }
+
+  return (
+    <div className="rounded-3xl border-2 border-primary/10 bg-[#F4F9FF] p-2 shadow-sm dark:bg-slate-900/50 sm:p-3">
+      <div className="overflow-hidden rounded-2xl border border-primary/10 bg-white/80 dark:bg-slate-950/60">
+        <div className="border-b border-primary/10 bg-white/90 px-3 py-3 backdrop-blur dark:bg-slate-950/70 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <MessageSquareText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-foreground">{scenario.participant.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{scenario.participant.description || 'Chat tình huống'}</div>
+              </div>
+            </div>
+            <div className="shrink-0 rounded-full bg-[#43FDD7] px-3 py-1 text-xs font-bold text-black">
+              Lượt {safeIndex + 1}/{scenario.rounds.length}
+            </div>
+          </div>
+        </div>
+
+        <div ref={chatScrollRef} className="max-h-[52vh] min-h-[260px] overflow-y-auto px-3 py-4 sm:min-h-[340px] sm:px-5">
+          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {displayedHistory.map(item => <ScenarioChatPreviewHistoryItemView key={item.id} item={item} />)}
+            {(pendingTyping === 'scenario' || pendingTyping === 'response') && <ScenarioChatPreviewTypingIndicator name={scenario.participant.name} />}
+          </div>
+        </div>
+
+        <div className="border-t border-primary/10 bg-white/95 px-3 py-3 dark:bg-slate-950/80 sm:px-5">
+          <div className="mx-auto max-w-3xl">
+            {visibleChoices && !pendingTyping && !completed && !awaitingRetry && !awaitingNextRound && !hasCorrectChoiceForRound && (
+              <div className="grid gap-2 md:grid-cols-3">
+                {currentRound.choices.map((choice: ScenarioChatData['rounds'][number]['choices'][number], index: number) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    onClick={(event) => void handleChoiceClick(event, choice)}
+                    className="group flex min-h-[64px] w-full items-start gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-primary/5 active:scale-[0.99]"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground">
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                    <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed text-foreground">
+                      {choice.text || `Câu trả lời ${index + 1}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {hasCorrectChoiceForRound && !pendingTyping && !awaitingRetry && (
+              <div className="mb-3 rounded-2xl border border-green-200 bg-green-50/80 p-3 shadow-sm dark:border-green-500/20 dark:bg-green-500/10">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-green-600 px-3 py-1 text-xs font-bold text-white">
+                    <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    Đã chọn đúng
+                  </div>
+                  <div className="text-xs font-semibold text-green-700 dark:text-green-300">
+                    {explorationChoices.length > 0 ? `Còn ${explorationChoices.length} phản hồi khác` : 'Đã xem đủ kịch bản lượt này'}
+                  </div>
+                </div>
+
+                {explorationChoices.length > 0 && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {explorationChoices.map((choice: ScenarioChatData['rounds'][number]['choices'][number]) => {
+                      const optionIndex = currentRound.choices.findIndex(item => item.id === choice.id);
+                      return (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          onClick={(event) => void handleChoiceClick(event, choice)}
+                          className="group flex min-h-[56px] w-full items-start gap-2.5 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-left shadow-sm transition-all hover:border-amber-400 hover:bg-amber-50 active:scale-[0.99] dark:border-amber-500/25 dark:bg-slate-950 dark:hover:bg-amber-500/10"
+                        >
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-xs font-bold text-amber-800 group-hover:bg-amber-400 group-hover:text-amber-950 dark:bg-amber-500/20 dark:text-amber-200">
+                            {String.fromCharCode(65 + Math.max(optionIndex, 0))}
+                          </span>
+                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed text-foreground">
+                            {choice.text || `Câu trả lời ${Math.max(optionIndex, 0) + 1}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {pendingTyping && (
+              <div className="flex items-center justify-center gap-2 py-3 text-sm font-semibold text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {pendingTyping === 'status' ? 'Đang cập nhật trạng thái...' : 'Đang chờ phản hồi...'}
+              </div>
+            )}
+
+            {awaitingRetry && !pendingTyping && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-secondary px-6 text-sm font-bold text-secondary-foreground shadow-sm transition-all hover:bg-secondary/80 active:scale-[0.97]"
+                >
+                  <Undo2 className="h-4 w-4" />
+                  Thử lại
+                </button>
+              </div>
+            )}
+
+            {awaitingNextRound && !pendingTyping && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleNextRound}
+                  className="h-11 rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.97]"
+                >
+                  Tiếp tục
+                </button>
+              </div>
+            )}
+
+            {completed && (
+              <div className="flex flex-wrap items-center justify-end gap-2 py-2 text-green-600 dark:text-green-400">
+                {transientHistory && (
+                  <button
+                    type="button"
+                    onClick={handleShowCorrectBranch}
+                    className="h-10 rounded-full border border-green-200 bg-white px-4 text-sm font-bold text-green-700 shadow-sm transition-all hover:bg-green-50 active:scale-[0.97] dark:border-green-500/25 dark:bg-slate-950 dark:text-green-300 dark:hover:bg-green-500/10"
+                  >
+                    Xem đáp án đúng
+                  </button>
+                )}
+                <Check className="h-5 w-5 stroke-[3]" />
+                <span className="text-sm font-bold">Đã hoàn thành</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── ComponentPreview ─────────────────────────────────────────────────────────
 
 function parseMaybeJson(raw: any): any {
@@ -1057,6 +1585,11 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
     case 'la_media_quiz': {
       const quiz = normalizeMediaQuizData(parseMaybeJson(blockData?.data));
       return <MediaQuizPreviewInteractiveV2 quiz={quiz} />;
+    }
+
+    case 'la_scenario_chat': {
+      const scenario = normalizeScenarioChatData(parseMaybeJson(blockData?.data));
+      return <ScenarioChatPreviewInteractive data={scenario} />;
     }
 
     case 'la_crossword': {
@@ -2140,6 +2673,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     return normalizeMediaQuizData(parseMaybeJson(blockInfo?.data), metaMode);
   });
   const [mediaQuizData, setMediaQuizData] = useState<MediaQuizData>(initialMediaQuizData);
+  const [initialScenarioChatData] = useState<ScenarioChatData>(() => normalizeScenarioChatData(parseMaybeJson(blockInfo?.data)));
+  const [scenarioChatData, setScenarioChatData] = useState<ScenarioChatData>(initialScenarioChatData);
   const savedMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
   const currentMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
   const mediaQuizSaveInFlightRef = useRef(0);
@@ -2276,6 +2811,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
         } finally {
           mediaQuizSaveInFlightRef.current = Math.max(0, mediaQuizSaveInFlightRef.current - 1);
         }
+      }
+      if (category === 'la_scenario_chat') {
+        const payloadData = normalizeScenarioChatData(scenarioChatData);
+        const validationError = getScenarioChatValidationError(payloadData);
+        if (validationError) throw new Error(validationError);
+        return updateXBlock(id, {
+          metadata: { ...effectiveMetadata, display_name: displayName },
+          data: payloadData,
+        });
       }
       if (category === 'la_crossword') {
         const kwCoords = cwWords.map((_, idx) => ({ row: idx, col: cwKeywordCol }));
@@ -2460,6 +3004,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onDataChange={(next) => setMediaQuizData(next)}
             courseId={courseId || ''}
             onAutoSave={autoSaveMediaQuizDraft}
+          />
+        );
+      case 'la_scenario_chat':
+        return (
+          <ScenarioChatEditor
+            displayName={displayName}
+            onDisplayNameChange={setDisplayName}
+            data={scenarioChatData}
+            onDataChange={setScenarioChatData}
           />
         );
       case 'la_crossword':

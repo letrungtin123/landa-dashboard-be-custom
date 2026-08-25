@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
@@ -23,7 +24,8 @@ import {
 
 import {
   fetchTenants, createTenant, updateTenant, deleteTenant,
-  fetchTenantModules, updateTenantModules, fetchTenantRoleLabels, updateTenantRoleLabels,
+  fetchTenantModules, updateTenantModules, fetchTenantCourseComponentPermissions, updateTenantCourseComponentPermissions,
+  fetchTenantRoleLabels, updateTenantRoleLabels,
   fetchTenantGroupLabels, updateTenantGroupLabels,
   fetchTenantSmtpConfig, updateTenantSmtpConfig,
   type Tenant, type TenantModule,
@@ -42,6 +44,12 @@ import {
   type RoleLabelMap,
   type UserRole,
 } from "@/utils/role-labels";
+import {
+  COURSE_COMPONENT_PERMISSION_OPTIONS,
+  DEFAULT_COURSE_COMPONENT_PERMISSION_TYPES,
+  normalizeCourseComponentPermissionTypes,
+  type CourseComponentPermissionType,
+} from "@/utils/course-component-permissions";
 
 const ROLE_LABEL_FIELD_LABELS: Record<UserRole, string> = {
   superadmin: "Quản trị hệ thống",
@@ -79,6 +87,9 @@ export default function TenantManagementPage() {
   const [modulesTenant, setModulesTenant] = useState<Tenant | null>(null);
   const [modules, setModules] = useState<TenantModule[]>([]);
   const [modulesLoading, setModulesLoading] = useState(false);
+  const [courseComponentPermissions, setCourseComponentPermissions] = useState<CourseComponentPermissionType[]>(
+    DEFAULT_COURSE_COMPONENT_PERMISSION_TYPES,
+  );
   const [smtpTenant, setSmtpTenant] = useState<Tenant | null>(null);
   const [smtpLoading, setSmtpLoading] = useState(false);
   const [smtpHasPassword, setSmtpHasPassword] = useState(false);
@@ -305,9 +316,14 @@ export default function TenantManagementPage() {
   async function openModules(tenant: Tenant) {
     setModulesTenant(tenant);
     setModulesLoading(true);
+    setCourseComponentPermissions(DEFAULT_COURSE_COMPONENT_PERMISSION_TYPES);
     try {
-      const mods = await fetchTenantModules(tenant.id);
+      const [mods, componentPermissions] = await Promise.all([
+        fetchTenantModules(tenant.id),
+        fetchTenantCourseComponentPermissions(tenant.id),
+      ]);
       setModules(mods);
+      setCourseComponentPermissions(normalizeCourseComponentPermissionTypes(componentPermissions.allowed_component_types));
     } catch { toast.error("Lỗi tải tính năng"); }
     finally { setModulesLoading(false); }
   }
@@ -320,14 +336,26 @@ export default function TenantManagementPage() {
     });
   }
 
+  function setCourseComponentEnabled(componentType: CourseComponentPermissionType, enabled: boolean) {
+    setCourseComponentPermissions(function update(prev) {
+      const selected = new Set(prev);
+      if (enabled) selected.add(componentType);
+      else selected.delete(componentType);
+      return DEFAULT_COURSE_COMPONENT_PERMISSION_TYPES.filter(type => selected.has(type));
+    });
+  }
+
   async function saveModules() {
     if (!modulesTenant) return;
     setSaving(true);
     try {
-      await updateTenantModules(
-        modulesTenant.id,
-        modules.map(function mapMod(m) { return { module_id: m.module_id, is_enabled: m.is_enabled }; })
-      );
+      await Promise.all([
+        updateTenantModules(
+          modulesTenant.id,
+          modules.map(function mapMod(m) { return { module_id: m.module_id, is_enabled: m.is_enabled }; })
+        ),
+        updateTenantCourseComponentPermissions(modulesTenant.id, courseComponentPermissions),
+      ]);
       toast.success("Cập nhật tính năng thành công");
       setModulesTenant(null);
     } catch { toast.error("Lỗi cập nhật tính năng"); }
@@ -846,37 +874,85 @@ export default function TenantManagementPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 {modules.map(function renderMod(m) {
                   const Icon = getIconComponent(m.icon);
+                  const moduleName = getModuleDisplayName(m.code, m.name);
+                  const isCoursesModule = m.code === 'courses';
                   return (
                     <motion.div 
                       key={m.module_id} 
                       className={cn(
-                        "relative flex items-start gap-3 md:gap-4 p-4 md:p-5 rounded-[16px] md:rounded-[20px] border transition-all duration-300",
+                        "relative flex flex-col gap-4 p-4 md:p-5 rounded-[16px] md:rounded-[20px] border transition-all duration-300",
+                        isCoursesModule && "md:col-span-2",
                         m.is_enabled 
                           ? "border-primary/40 bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-primary/60" 
                           : "border-border/60 bg-muted/30 opacity-85 hover:opacity-100 hover:bg-muted/50"
                       )}
                       layout
                     >
-                      <div className={cn(
-                        "p-2.5 md:p-3.5 rounded-[12px] md:rounded-[14px] shadow-inner border shrink-0",
-                        m.is_enabled ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-muted-foreground border-border/50"
-                      )}>
-                        <Icon className="w-5 h-5 md:w-6 md:h-6" />
-                      </div>
-                      <div className="flex-1 min-w-0 pt-0.5">
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <h4 className={cn("font-bold text-[14px] md:text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
-                              {getModuleDisplayName(m.code, m.name)}
-                            </h4>
+                      <div className="flex items-start gap-3 md:gap-4">
+                        <div className={cn(
+                          "p-2.5 md:p-3.5 rounded-[12px] md:rounded-[14px] shadow-inner border shrink-0",
+                          m.is_enabled ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-muted-foreground border-border/50"
+                        )}>
+                          <Icon className="w-5 h-5 md:w-6 md:h-6" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <h4 className={cn("font-bold text-[14px] md:text-[15px] truncate", m.is_enabled ? "text-foreground" : "text-muted-foreground")}>
+                                {moduleName}
+                              </h4>
+                            </div>
+                            <Switch
+                              checked={m.is_enabled}
+                              onCheckedChange={function toggle() { toggleModule(m.module_id); }}
+                              className={cn("mt-0.5 scale-90 md:scale-110 shadow-sm shrink-0", m.is_enabled && "data-[state=checked]:bg-emerald-500")}
+                            />
                           </div>
-                          <Switch 
-                            checked={m.is_enabled} 
-                            onCheckedChange={function toggle() { toggleModule(m.module_id); }} 
-                            className={cn("mt-0.5 scale-90 md:scale-110 shadow-sm shrink-0", m.is_enabled && "data-[state=checked]:bg-emerald-500")}
-                          />
                         </div>
                       </div>
+
+                      {isCoursesModule && (
+                        <div className={cn(
+                          "rounded-xl border border-border/70 bg-background/70 p-3 md:p-4 space-y-3",
+                          !m.is_enabled && "opacity-60"
+                        )}>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-foreground">Component trong cây outline</div>
+                              <p className="text-xs text-muted-foreground">Chọn loại nội dung doanh nghiệp được phép thêm vào khóa học.</p>
+                            </div>
+                            <Badge variant="outline" className="w-fit rounded-full border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                              {courseComponentPermissions.length} / {COURSE_COMPONENT_PERMISSION_OPTIONS.length}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {COURSE_COMPONENT_PERMISSION_OPTIONS.map(function renderCourseComponent(option) {
+                              const checked = courseComponentPermissions.includes(option.type);
+                              return (
+                                <label
+                                  key={option.type}
+                                  className={cn(
+                                    "flex min-w-0 items-start gap-3 rounded-lg border bg-card/80 p-3 text-left transition-colors",
+                                    m.is_enabled ? "cursor-pointer hover:border-primary/50 hover:bg-primary/5" : "cursor-not-allowed opacity-70"
+                                  )}
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    disabled={!m.is_enabled || saving}
+                                    onCheckedChange={function change(value) { setCourseComponentEnabled(option.type, value === true); }}
+                                    className="mt-0.5"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-semibold leading-tight text-foreground">{option.label}</span>
+                                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{option.description}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}

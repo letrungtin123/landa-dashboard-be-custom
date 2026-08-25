@@ -41,12 +41,14 @@ export function TenantFilter({ className }: TenantFilterProps) {
   // Không hiển thị nếu không phải superadmin
   if (!canSwitch) return null;
 
-  const handleChange = (tenantId: string) => {
+  const handleChange = async (tenantId: string) => {
+    if (tenantId === activeTenantId) return;
     const tenant = tenants.find(t => t.id === tenantId);
     if (tenant) {
+      await qc.cancelQueries();
+      qc.removeQueries();
       setActiveTenant(tenant.id, tenant.name);
-      // Invalidate ALL queries để re-fetch với tenant mới
-      qc.invalidateQueries();
+      await qc.invalidateQueries();
     }
   };
 

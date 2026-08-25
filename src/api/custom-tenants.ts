@@ -6,6 +6,7 @@
 import { customApiClient } from "./custom-client";
 import type { GroupLabelMap } from "@/utils/group-labels";
 import type { RoleLabelMap } from "@/utils/role-labels";
+import type { CourseComponentPermissionType } from "@/utils/course-component-permissions";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -41,6 +42,10 @@ export interface TenantModule {
   icon: string;
   sort_order: number;
   is_enabled: boolean;
+}
+
+export interface TenantCourseComponentPermissions {
+  allowed_component_types: CourseComponentPermissionType[];
 }
 
 export interface TenantSmtpConfig {
@@ -105,6 +110,24 @@ export async function fetchTenantModules(tenantId: string) {
 /** Cập nhật modules toggle cho tenant */
 export async function updateTenantModules(tenantId: string, modules: { module_id: string; is_enabled: boolean }[]) {
   await customApiClient.put(`/api/tenants/${tenantId}/modules`, { modules });
+}
+
+export async function fetchTenantCourseComponentPermissions(tenantId: string): Promise<TenantCourseComponentPermissions> {
+  const { data } = await customApiClient.get<ApiResponse<TenantCourseComponentPermissions>>(
+    `/api/tenants/${tenantId}/course-component-permissions`,
+  );
+  return data.data;
+}
+
+export async function updateTenantCourseComponentPermissions(
+  tenantId: string,
+  allowedComponentTypes: CourseComponentPermissionType[],
+): Promise<TenantCourseComponentPermissions> {
+  const { data } = await customApiClient.put<ApiResponse<TenantCourseComponentPermissions>>(
+    `/api/tenants/${tenantId}/course-component-permissions`,
+    { allowed_component_types: allowedComponentTypes },
+  );
+  return data.data;
 }
 
 /** Lấy danh sách tenants mà user được quản lý */

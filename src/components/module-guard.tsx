@@ -38,7 +38,7 @@ export function ModuleGuard({ module, children }: ModuleGuardProps) {
   if (user.role === 'superadmin') return <>{children}</>;
 
   // Check if module is enabled for the tenant
-  if (tenantModules.length > 0 && !tenantModules.includes(module)) {
+  if (!tenantModules.includes(module)) {
     return <NotFoundPage />;
   }
 

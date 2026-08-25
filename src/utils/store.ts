@@ -274,11 +274,14 @@ export const useAuthStore = create<AuthState>()(
       hasPermission: (moduleCode, action) => {
         const state = get();
 
-        // superadmin & superuser bypass
-        if (state.user?.role === 'superadmin' || state.user?.role === 'superuser') return true;
+        // superadmin bypass cross-tenant feature allocation.
+        if (state.user?.role === 'superadmin') return true;
 
-        // Kiểm tra module có được bật cho tenant không
-        if (state.tenantModules.length > 0 && !state.tenantModules.includes(moduleCode)) return false;
+        // Mảng rỗng nghĩa là tenant không được cấp module nào, không phải full access.
+        if (!state.tenantModules.includes(moduleCode)) return false;
+
+        // superuser toàn quyền nhưng chỉ trong các module tenant đã được cấp.
+        if (state.user?.role === 'superuser') return true;
 
         const perm = state.permissions?.[moduleCode];
         if (!perm) return false;
