@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import {
   tenantBadgesApi,
   type TenantBadgeConfiguration,
+  type TenantBadgeCourseMapping,
 } from '@/api/tenant-badges';
 import { BADGE_ICONS } from '@/data/badgeImages';
 import { PageHeader } from '@/components/shared/page-header';
@@ -54,6 +55,24 @@ function useDebouncedValue(value: string, delay = 300): string {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+function uniqueValidCourses(courses: TenantBadgeCourseMapping[]): TenantBadgeCourseMapping[] {
+  const seen = new Set<string>();
+  return courses.filter((course) => {
+    if (!course.course_id || course.is_deleted) return false;
+    if (seen.has(course.course_id)) return false;
+    seen.add(course.course_id);
+    return true;
+  });
+}
+
+function countDeletedCourses(courses: TenantBadgeCourseMapping[]): number {
+  return courses.filter((course) => !course.course_id || course.is_deleted).length;
+}
+
+function courseRequirementMessage(requiredCount: number): string {
+  return `Cần chọn đúng ${requiredCount} khóa học trước khi bật huy hiệu`;
 }
 
 export default function TenantBadgesPage() {
@@ -103,7 +122,7 @@ export default function TenantBadgesPage() {
   const handleToggle = (badge: TenantBadgeConfiguration, checked: boolean) => {
     if (!canEdit || !tenantScope) return;
     if (checked && badge.requires_courses && !badge.is_config_valid) {
-      toast.warning(`Cần chọn ít nhất ${badge.minimum_required_courses} khóa học trước khi bật huy hiệu`);
+      toast.warning(courseRequirementMessage(badge.minimum_required_courses));
       setEditingBadge(badge);
       return;
     }
@@ -148,15 +167,17 @@ export default function TenantBadgesPage() {
         <div className="overflow-hidden rounded-lg border bg-card">
           {badgeQuery.data?.map((badge, index) => {
             const iconUrl = badge.icon_image_url ? storageUrl(badge.icon_image_url) : BADGE_ICONS[badge.id];
-            const validCourses = badge.courses.filter((course) => course.course_id && !course.is_deleted);
-            const deletedCount = badge.courses.length - validCourses.length;
+            const validCourses = uniqueValidCourses(badge.courses);
+            const deletedCount = countDeletedCourses(badge.courses);
+            const requiredCourseCount = badge.minimum_required_courses;
+            const courseCountLabel = `Đã chọn ${validCourses.length}/${requiredCourseCount} khóa học`;
             const isUpdating = updateMutation.isPending && updateMutation.variables?.badgeId === badge.id;
 
             return (
               <div
                 key={badge.id}
                 className={cn(
-                  'grid gap-4 px-4 py-4 md:grid-cols-[56px_minmax(0,1fr)_minmax(220px,0.8fr)_auto] md:items-center',
+                  'grid gap-4 px-4 py-4 md:grid-cols-[56px_minmax(280px,1fr)_minmax(280px,0.85fr)_156px] md:items-start',
                   index > 0 && 'border-t',
                 )}
               >
@@ -164,24 +185,24 @@ export default function TenantBadgesPage() {
                   {iconUrl ? <img src={iconUrl} alt="" className="h-10 w-10 object-contain" /> : <Award className="h-5 w-5 text-muted-foreground" />}
                 </div>
 
-                <div className="min-w-0">
+                <div className="min-w-0 md:pt-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate text-sm font-semibold">{badge.name}</h2>
                     {!badge.is_config_valid && (
                       <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
-                        Thiếu cấu hình
+                        Chưa đúng cấu hình
                       </Badge>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{badge.rule_summary}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{badge.rule_summary}</p>
                 </div>
 
-                <div className="min-w-0">
+                <div className="min-w-0 md:pt-1">
                   {badge.requires_courses ? (
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-1.5">
+                    <div className="min-h-12 space-y-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                         {validCourses.slice(0, 3).map((course) => (
-                          <Badge key={course.course_id} variant="secondary" className="max-w-48 truncate font-normal">
+                          <Badge key={course.course_id} variant="secondary" className="max-w-full truncate font-normal md:max-w-48">
                             {course.display_name}
                           </Badge>
                         ))}
@@ -193,13 +214,21 @@ export default function TenantBadgesPage() {
                           <AlertTriangle className="h-3.5 w-3.5" /> {deletedCount} khóa học đã bị xóa
                         </p>
                       )}
+                      <p className={cn(
+                        'text-xs',
+                        badge.is_config_valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-300',
+                      )}>
+                        {courseCountLabel}
+                      </p>
                     </div>
                   ) : (
-                    <span className="text-xs text-muted-foreground">Hệ thống tự tính</span>
+                    <div className="flex min-h-12 items-start">
+                      <span className="text-xs leading-5 text-muted-foreground">Hệ thống tự tính</span>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between gap-3 md:justify-end">
+                <div className="flex items-center justify-between gap-3 md:min-h-12 md:justify-end md:self-start">
                   {badge.requires_courses && (
                     <Button
                       variant="outline"
@@ -305,11 +334,17 @@ function CoursePickerDialog({
   });
 
   const selectedCount = selectedIds.size;
-  const minimumRequiredCourses = badge?.minimum_required_courses || 0;
-  const isBelowRequiredCourseCount = selectedCount < minimumRequiredCourses;
+  const requiredCourseCount = badge?.minimum_required_courses || 0;
+  const isAboveRequiredCourseCount = selectedCount > requiredCourseCount;
+  const isExactRequiredCourseCount = selectedCount === requiredCourseCount;
+  const isAtCourseLimit = Boolean(badge?.requires_courses && requiredCourseCount > 0 && selectedCount >= requiredCourseCount);
   const totalPages = coursesQuery.data?.total_pages || 1;
   const courses = coursesQuery.data?.data || [];
   const toggleCourse = (courseId: string) => {
+    if (!selectedIds.has(courseId) && isAtCourseLimit) {
+      toast.warning(`Chỉ được chọn đúng ${requiredCourseCount} khóa học cho huy hiệu này`);
+      return;
+    }
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(courseId)) next.delete(courseId);
@@ -346,15 +381,17 @@ function CoursePickerDialog({
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Không tìm thấy khóa học</div>
             ) : courses.map((course) => {
               const selected = selectedIds.has(course.id);
+              const disabledByLimit = !selected && isAtCourseLimit;
               return (
                 <label
                   key={course.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-3 border-b px-4 py-3 last:border-b-0 hover:bg-muted/40',
+                    'flex items-center gap-3 border-b px-4 py-3 last:border-b-0',
+                    disabledByLimit || !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-muted/40',
                     selected && 'bg-primary/5',
                   )}
                 >
-                  <Checkbox checked={selected} onCheckedChange={() => toggleCourse(course.id)} disabled={!canEdit} />
+                  <Checkbox checked={selected} onCheckedChange={() => toggleCourse(course.id)} disabled={!canEdit || disabledByLimit} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{course.display_name}</p>
                     <p className="truncate font-mono text-[11px] text-muted-foreground">{course.id}</p>
@@ -366,8 +403,12 @@ function CoursePickerDialog({
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              Đã chọn {selectedCount}{minimumRequiredCourses > 0 ? ` / tối thiểu ${minimumRequiredCourses}` : ''} khóa học
+            <span className={cn(
+              'text-xs',
+              isExactRequiredCourseCount ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
+              isAboveRequiredCourseCount && 'text-amber-700 dark:text-amber-300',
+            )}>
+              Đã chọn {selectedCount}{requiredCourseCount > 0 ? ` / đúng ${requiredCourseCount}` : ''} khóa học
             </span>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
@@ -389,12 +430,16 @@ function CoursePickerDialog({
               saveMutation.mutate({
                 badgeId: badge.id,
                 isEnabled: badge.is_enabled,
-                courseIds: [...selectedIds],
+                courseIds: Array.from(selectedIds),
                 tenantScope,
                 requestTenant: requestTenantId,
               });
             }}
-            disabled={!canEdit || !tenantScope || saveMutation.isPending || (Boolean(badge?.is_enabled) && isBelowRequiredCourseCount)}
+            disabled={!canEdit
+              || !tenantScope
+              || saveMutation.isPending
+              || isAboveRequiredCourseCount
+              || (Boolean(badge?.is_enabled) && !isExactRequiredCourseCount)}
           >
             {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Lưu

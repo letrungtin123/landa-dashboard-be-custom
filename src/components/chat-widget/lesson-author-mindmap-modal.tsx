@@ -24,6 +24,7 @@ import {
   FileText,
   GitBranch,
   HelpCircle,
+  Image as ImageIcon,
   Layers3,
   Map as MapIcon,
   Network,
@@ -144,6 +145,7 @@ function getBlockLabel(blockType: string): string {
 function getComponentTypeLabel(type: string): string {
   if (type === 'html') return 'Nội dung lý thuyết';
   if (type === 'problem') return 'Câu hỏi kiểm tra';
+  if (type === 'la_image_choice_quiz') return 'Câu hỏi đáp án hình ảnh';
   if (type === 'la_faq') return 'Hỏi đáp';
   if (type === 'la_sortable') return 'Sắp xếp ô chữ';
   if (type === 'la_crossword') return 'Đố vui ô chữ';
@@ -155,6 +157,7 @@ function getComponentIcon(type: string) {
   if (type === 'course') return Network;
   if (type === 'html') return FileText;
   if (type === 'problem') return HelpCircle;
+  if (type === 'la_image_choice_quiz') return ImageIcon;
   if (type === 'la_faq') return BookOpenCheck;
   if (type === 'la_sortable') return Shuffle;
   if (type === 'la_crossword') return Layers3;

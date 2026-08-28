@@ -38,12 +38,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Trash2, GripVertical, Plus, Video, Type, HelpCircle,
-  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft, Loader2, Eye
+  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft, Loader2, Eye, Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
 import HtmlEditor from './editors/HtmlEditor';
-import ProblemEditor, { PROBLEM_TYPES, parseProblemXml } from './editors/ProblemEditor';
+import ProblemEditor, { PROBLEM_TYPES, normalizeProblemXmlForStorage, parseProblemXml } from './editors/ProblemEditor';
 import MediaQuizEditor, {
   getMediaQuizDraftValidationError,
   getMediaQuizValidationError,
@@ -51,6 +51,13 @@ import MediaQuizEditor, {
   type MediaQuizData,
   type MediaQuizQuestion,
 } from './editors/MediaQuizEditor';
+import ImageChoiceQuizEditor, {
+  getImageChoiceQuizDraftValidationError,
+  getImageChoiceQuizValidationError,
+  imageChoiceQuizStoragePaths,
+  normalizeImageChoiceQuizData,
+  type ImageChoiceQuizData,
+} from './editors/ImageChoiceQuizEditor';
 import ScenarioChatEditor, {
   getScenarioChatValidationError,
   normalizeScenarioChatData,
@@ -168,6 +175,18 @@ async function cleanupCourseMediaQuizAssets(courseId: string | undefined, storag
   );
 }
 
+function removedImageChoiceQuizStoragePaths(before: any, after: any): string[] {
+  const afterPaths = new Set(imageChoiceQuizStoragePaths(after));
+  return imageChoiceQuizStoragePaths(before).filter((path) => !afterPaths.has(path));
+}
+
+async function cleanupCourseImageChoiceQuizAssets(courseId: string | undefined, storagePaths: string[]): Promise<void> {
+  if (!courseId || storagePaths.length === 0) return;
+  await Promise.all(
+    Array.from(new Set(storagePaths)).map((path) => deleteCourseAssetByStoragePath(courseId, path)),
+  );
+}
+
 // ─── Component type registry ──────────────────────────────────────────────────
 
 interface ComponentType {
@@ -207,6 +226,11 @@ const COMPONENT_TYPES: ComponentType[] = [
     id: 'la_media_quiz', category: 'la_media_quiz', label: 'Câu hỏi kèm hình ảnh / video', desc: 'Trả lời tuần tự',
     icon: <Video className="h-6 w-6" />,
     colorClass: 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/30 dark:hover:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
+  },
+  {
+    id: 'la_image_choice_quiz', category: 'la_image_choice_quiz', label: 'Câu hỏi đáp án hình ảnh', desc: 'Chọn 1 đáp án có ảnh',
+    icon: <ImageIcon className="h-6 w-6" />,
+    colorClass: 'border-fuchsia-200 bg-fuchsia-50 hover:bg-fuchsia-100 dark:border-fuchsia-800 dark:bg-fuchsia-950/30 dark:hover:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-300',
   },
   {
     id: 'la_scenario_chat', category: 'la_scenario_chat', label: 'Giao tiếp tình huống', desc: 'Chat kịch bản',
@@ -1622,6 +1646,11 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       return <MediaQuizPreviewInteractiveV2 quiz={quiz} />;
     }
 
+    case 'la_image_choice_quiz': {
+      const quiz = normalizeImageChoiceQuizData(parseMaybeJson(blockData?.data));
+      return <ImageChoiceQuizPreviewInteractive quiz={quiz} />;
+    }
+
     case 'la_scenario_chat': {
       const scenario = normalizeScenarioChatData(parseMaybeJson(blockData?.data));
       return <ScenarioChatPreviewInteractive data={scenario} />;
@@ -1837,6 +1866,222 @@ function ProblemPreviewDropdown({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ImageChoiceQuizPreviewInteractive({ quiz }: { quiz: ImageChoiceQuizData }) {
+  const normalized = normalizeImageChoiceQuizData(quiz);
+  const [selectedId, setSelectedId] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const fingerprint = useMemo(
+    () => JSON.stringify({
+      prompt: normalized.prompt_html,
+      hints: normalized.hints,
+      choices: normalized.choices.map(choice => ({
+        id: choice.id,
+        html: choice.html,
+        image: choice.image.storage_path,
+        correct: choice.correct,
+      })),
+    }),
+    [normalized],
+  );
+
+  useEffect(() => {
+    setSelectedId('');
+    setSubmitted(false);
+    setShowHint(false);
+  }, [fingerprint]);
+
+  const correctChoice = normalized.choices.find(choice => choice.correct);
+  const isCorrect = submitted && !!selectedId && selectedId === correctChoice?.id;
+  const hints = normalized.hints?.filter(hint => hint.trim().length > 0) ?? [];
+
+  if (!normalized.choices.length) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ImageIcon className="h-4 w-4" />
+        <span>Câu hỏi đáp án hình ảnh chưa có nội dung.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <div className="app-liquid-card rounded-2xl border border-border bg-card p-5 shadow-sm space-y-5">
+        <div
+          className="text-[20px] font-bold leading-snug text-foreground"
+          dangerouslySetInnerHTML={{ __html: rewriteHtml(normalized.prompt_html) }}
+        />
+
+        <div className="flex items-center gap-2 text-[14px] font-medium text-muted-foreground bg-muted/30 w-fit px-3 py-1.5 rounded-md border border-border/50">
+          <HelpCircle className="h-4 w-4 text-muted-foreground" />
+          <span>Chọn một đáp án đúng.</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {normalized.choices.map((choice, index) => {
+            const imageUrl = choice.image.storage_path ? storageUrl(choice.image.storage_path) : '';
+            const selected = selectedId === choice.id;
+            const labelLetter = String.fromCharCode(65 + index);
+            const wrongSelection = submitted && selected && !isCorrect;
+            const correctSelection = submitted && selected && isCorrect;
+
+            return (
+              <button
+                type="button"
+                key={choice.id}
+                disabled={submitted}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedId(choice.id);
+                  setShowHint(false);
+                }}
+                className={`group flex aspect-square min-w-0 flex-col overflow-hidden rounded-2xl border p-3 text-left transition-all ${
+                  wrongSelection
+                    ? 'border-red-500 bg-red-500/5'
+                    : correctSelection
+                      ? 'border-green-500 bg-green-500/5'
+                      : selected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-muted/30 hover:border-primary/50 hover:bg-muted/60'
+                } ${submitted ? 'cursor-default' : 'cursor-pointer'}`}
+              >
+                <div className="flex min-h-0 items-start gap-3">
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                      wrongSelection
+                        ? 'bg-red-500 text-white'
+                        : correctSelection
+                          ? 'bg-green-500 text-white'
+                          : selected
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-background text-foreground'
+                    }`}
+                  >
+                    {labelLetter}
+                  </div>
+                  <div
+                    className="min-w-0 flex-1 overflow-hidden text-sm font-semibold leading-snug text-foreground line-clamp-2 [&_p]:m-0"
+                    dangerouslySetInnerHTML={{ __html: rewriteHtml(choice.html) }}
+                  />
+                  {selected && (
+                    wrongSelection
+                      ? <X className="h-5 w-5 shrink-0 text-red-500 stroke-[3]" />
+                      : <Check className={`h-5 w-5 shrink-0 ${submitted ? 'text-green-500' : 'text-primary'} stroke-[3]`} />
+                  )}
+                </div>
+                <div className="mt-3 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-border bg-background p-2">
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={choice.image.alt || `Ảnh đáp án ${index + 1}`}
+                      className="h-full max-h-full w-full max-w-full rounded-lg object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-center text-xs font-medium text-muted-foreground">
+                      Chưa upload ảnh
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {showHint && hints.length > 0 && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5">
+            <div className="mb-3 flex items-center gap-2 text-amber-600 dark:text-amber-300">
+              <Lightbulb className="h-5 w-5" />
+              <span className="text-sm font-bold uppercase tracking-wide">Gợi ý</span>
+            </div>
+            <div className="space-y-3">
+              {hints.map((hint, index) => (
+                <div key={`image-choice-preview-hint-${index}`} className="text-sm leading-relaxed text-foreground/90">
+                  <div className="font-semibold">Gợi ý {index + 1}:</div>
+                  <div dangerouslySetInnerHTML={{ __html: rewriteHtml(hint) }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {submitted && !isCorrect && (
+          <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
+            <X className="h-5 w-5 shrink-0 text-red-500 stroke-[3]" />
+            <p className="text-sm font-medium text-foreground">Chưa đúng, hãy thử lại.</p>
+          </div>
+        )}
+
+        {submitted && isCorrect && normalized.explanation_html && (
+          <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-5">
+            <div className="mb-3 flex items-center gap-2 text-green-600">
+              <HelpCircle className="h-5 w-5" />
+              <span className="text-sm font-bold uppercase tracking-wide">Giải thích</span>
+            </div>
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-foreground/90"
+              dangerouslySetInnerHTML={{ __html: rewriteHtml(normalized.explanation_html) }}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            {hints.length > 0 && !isCorrect ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="gap-2 px-0 text-amber-600 hover:bg-transparent hover:text-amber-700 dark:text-amber-300"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setShowHint(prev => !prev);
+                }}
+              >
+                <Lightbulb className="h-4 w-4" />
+                {showHint ? 'Ẩn gợi ý' : 'Xem gợi ý'}
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-3">
+            {!submitted ? (
+              <Button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setShowHint(false);
+                  if (selectedId) setSubmitted(true);
+                }}
+                disabled={!selectedId}
+                className="rounded-full px-6"
+              >
+                Xác nhận
+              </Button>
+            ) : !isCorrect ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedId('');
+                  setSubmitted(false);
+                  setShowHint(false);
+                }}
+                className="rounded-full px-6"
+              >
+                Thử lại
+              </Button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-2 text-green-600">
+                <Check className="h-5 w-5 stroke-[3]" />
+                <span className="text-sm font-bold">Đã hoàn thành</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2708,16 +2953,25 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     return normalizeMediaQuizData(parseMaybeJson(blockInfo?.data), metaMode);
   });
   const [mediaQuizData, setMediaQuizData] = useState<MediaQuizData>(initialMediaQuizData);
+  const [initialImageChoiceQuizData] = useState<ImageChoiceQuizData>(() => normalizeImageChoiceQuizData(parseMaybeJson(blockInfo?.data)));
+  const [imageChoiceQuizData, setImageChoiceQuizData] = useState<ImageChoiceQuizData>(initialImageChoiceQuizData);
   const [initialScenarioChatData] = useState<ScenarioChatData>(() => normalizeScenarioChatData(parseMaybeJson(blockInfo?.data)));
   const [scenarioChatData, setScenarioChatData] = useState<ScenarioChatData>(initialScenarioChatData);
   const savedMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
   const currentMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
+  const savedImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialImageChoiceQuizData);
+  const currentImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialImageChoiceQuizData);
+  const uploadedImageChoiceQuizPathsRef = useRef<Set<string>>(new Set());
   const mediaQuizSaveInFlightRef = useRef(0);
+  const imageChoiceQuizSaveInFlightRef = useRef(0);
   const metadataRef = useRef<any>(metadata);
 
   useEffect(() => {
     currentMediaQuizDataRef.current = mediaQuizData;
   }, [mediaQuizData]);
+  useEffect(() => {
+    currentImageChoiceQuizDataRef.current = imageChoiceQuizData;
+  }, [imageChoiceQuizData]);
   useEffect(() => {
     metadataRef.current = metadata;
   }, [metadata]);
@@ -2740,10 +2994,34 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     };
   }, [category, courseId]);
 
+  useEffect(() => {
+    if (category !== 'la_image_choice_quiz') return;
+
+    return () => {
+      if (imageChoiceQuizSaveInFlightRef.current > 0) return;
+
+      const savedPaths = new Set(imageChoiceQuizStoragePaths(savedImageChoiceQuizDataRef.current));
+      const unsavedPaths = Array.from(new Set([
+        ...removedImageChoiceQuizStoragePaths(
+          currentImageChoiceQuizDataRef.current,
+          savedImageChoiceQuizDataRef.current,
+        ),
+        ...Array.from(uploadedImageChoiceQuizPathsRef.current).filter((path) => !savedPaths.has(path)),
+      ]));
+      if (unsavedPaths.length === 0) return;
+
+      cleanupCourseImageChoiceQuizAssets(courseId, unsavedPaths).catch((err) => {
+        console.warn('Failed to cleanup unsaved Image Choice Quiz assets:', err);
+      });
+    };
+  }, [category, courseId]);
+
   const saveMut = useMutation({
     mutationFn: async (options?: {
       keepOpen?: boolean;
       mediaQuizData?: MediaQuizData;
+      imageChoiceQuizData?: ImageChoiceQuizData;
+      imageChoiceQuizAllowIncomplete?: boolean;
       metadataOverride?: any;
       pdfUrlOverride?: string;
       silent?: boolean;
@@ -2812,7 +3090,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
 
         return updateXBlock(id, {
           metadata: payloadMetadata,
-          data: problemXml,
+          data: normalizeProblemXmlForStorage(problemXml),
         });
       }
       if (category === 'la_media_quiz') {
@@ -2845,6 +3123,44 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
           return updated;
         } finally {
           mediaQuizSaveInFlightRef.current = Math.max(0, mediaQuizSaveInFlightRef.current - 1);
+        }
+      }
+      if (category === 'la_image_choice_quiz') {
+        const payloadData = normalizeImageChoiceQuizData(options?.imageChoiceQuizData ?? imageChoiceQuizData);
+        const validationError = options?.imageChoiceQuizAllowIncomplete
+          ? getImageChoiceQuizDraftValidationError(payloadData)
+          : getImageChoiceQuizValidationError(payloadData);
+        if (validationError) throw new Error(validationError);
+
+        imageChoiceQuizSaveInFlightRef.current += 1;
+        try {
+          const updated = await updateXBlock(id, {
+            metadata: { ...effectiveMetadata, display_name: displayName },
+            data: payloadData,
+          });
+
+          const payloadPaths = new Set(imageChoiceQuizStoragePaths(payloadData));
+          const removedPaths = Array.from(new Set([
+            ...removedImageChoiceQuizStoragePaths(savedImageChoiceQuizDataRef.current, payloadData),
+            ...Array.from(uploadedImageChoiceQuizPathsRef.current).filter((path) => !payloadPaths.has(path)),
+          ]));
+          if (removedPaths.length > 0) {
+            try {
+              await cleanupCourseImageChoiceQuizAssets(courseId, removedPaths);
+            } catch (err) {
+              console.warn('Failed to cleanup removed Image Choice Quiz assets:', err);
+              toast.warning('Đã lưu câu hỏi đáp án hình ảnh nhưng chưa xoá được một số ảnh khỏi nơi lưu trữ.');
+            }
+          }
+
+          savedImageChoiceQuizDataRef.current = payloadData;
+          currentImageChoiceQuizDataRef.current = payloadData;
+          uploadedImageChoiceQuizPathsRef.current = new Set(
+            Array.from(uploadedImageChoiceQuizPathsRef.current).filter((path) => payloadPaths.has(path)),
+          );
+          return updated;
+        } finally {
+          imageChoiceQuizSaveInFlightRef.current = Math.max(0, imageChoiceQuizSaveInFlightRef.current - 1);
         }
       }
       if (category === 'la_scenario_chat') {
@@ -2913,7 +3229,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       setShouldAutoSave(false);
       saveMut.mutate({ keepOpen: true });
     }
-  }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, mediaQuizData, saveMut]);
+  }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, mediaQuizData, imageChoiceQuizData, saveMut]);
 
   const triggerAutoSave = () => setShouldAutoSave(true);
   const buildVideoPayload = (nextMetadata: any) => {
@@ -2982,6 +3298,15 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     }
   };
 
+  const autoSaveImageChoiceQuizDraft = async (nextData?: ImageChoiceQuizData) => {
+    await saveMut.mutateAsync({
+      keepOpen: true,
+      imageChoiceQuizData: nextData ?? imageChoiceQuizData,
+      imageChoiceQuizAllowIncomplete: true,
+      silent: true,
+    });
+  };
+
   const autoSavePdfDraft = async (nextPdfUrl: string) => {
     const id = blockInfo?.id;
     if (!id) throw new Error('Block ID không hợp lệ');
@@ -3039,6 +3364,20 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onDataChange={(next) => setMediaQuizData(next)}
             courseId={courseId || ''}
             onAutoSave={autoSaveMediaQuizDraft}
+          />
+        );
+      case 'la_image_choice_quiz':
+        return (
+          <ImageChoiceQuizEditor
+            displayName={displayName}
+            onDisplayNameChange={setDisplayName}
+            data={imageChoiceQuizData}
+            onDataChange={setImageChoiceQuizData}
+            courseId={courseId || ''}
+            onAssetUploaded={(storagePath) => {
+              uploadedImageChoiceQuizPathsRef.current.add(storagePath);
+            }}
+            onAutoSave={autoSaveImageChoiceQuizDraft}
           />
         );
       case 'la_scenario_chat':

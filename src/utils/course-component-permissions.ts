@@ -3,6 +3,7 @@ export const COURSE_COMPONENT_PERMISSION_OPTIONS = [
   { type: 'html', label: 'Văn bản', description: 'Văn bản + hình ảnh' },
   { type: 'problem', label: 'Câu hỏi', description: '5 dạng câu hỏi' },
   { type: 'la_media_quiz', label: 'Câu hỏi kèm hình ảnh / video', description: 'Trả lời tuần tự' },
+  { type: 'la_image_choice_quiz', label: 'Câu hỏi đáp án hình ảnh', description: 'Chọn 1 đáp án có ảnh' },
   { type: 'la_scenario_chat', label: 'Giao tiếp tình huống', description: 'Chat kịch bản' },
   { type: 'la_crossword', label: 'Ô chữ', description: 'Trò chơi tương tác' },
   { type: 'la_sortable', label: 'Sắp xếp', description: 'Kéo thả thứ tự' },

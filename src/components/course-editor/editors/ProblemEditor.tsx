@@ -112,15 +112,98 @@ interface ProblemState {
   hints: string[];
 }
 
+const XML_VOID_TAGS = [
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+] as const;
+
+const xmlVoidTagPattern = XML_VOID_TAGS.join('|');
+const xmlVoidOpenTagRegex = new RegExp(`<(${xmlVoidTagPattern})(\\s[^<>]*?)?>`, 'gi');
+const xmlVoidCloseTagRegex = new RegExp(`</(${xmlVoidTagPattern})\\s*>`, 'gi');
+
+function stripXhtmlNamespaces(value: string): string {
+  return value.replace(/\s+xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/g, '');
+}
+
+function normalizeXmlVoidTags(value: string): string {
+  if (!value) return '';
+
+  return value
+    .replace(xmlVoidOpenTagRegex, (match, tag, attrs = '') => {
+      if (/\/\s*>$/.test(match)) return match;
+      return `<${String(tag).toLowerCase()}${attrs} />`;
+    })
+    .replace(xmlVoidCloseTagRegex, '');
+}
+
+function normalizeXmlEntities(value: string): string {
+  return value.replace(/&nbsp;/gi, '&#160;');
+}
+
+function normalizeHtmlFragmentForProblemXml(html: string): string {
+  if (!html) return '';
+  const fallback = normalizeXmlEntities(normalizeXmlVoidTags(html));
+
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return fallback;
+  }
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const serialized = Array.from(doc.body.childNodes)
+      .map(node => new XMLSerializer().serializeToString(node))
+      .join('');
+
+    return normalizeXmlVoidTags(stripXhtmlNamespaces(serialized));
+  } catch {
+    return fallback;
+  }
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, '\u00a0')
+    .replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeXmlAttribute(value: string): string {
+  return escapeXmlText(value)
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+export function normalizeProblemXmlForStorage(xmlStr: string): string {
+  if (!xmlStr || typeof xmlStr !== 'string') return '';
+  return normalizeXmlVoidTags(normalizeXmlEntities(xmlStr));
+}
+
 export function parseProblemXml(xmlStr: string): ProblemState | null {
   if (!xmlStr || typeof xmlStr !== 'string' || xmlStr.trim() === '') return null;
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return null;
+
   const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlStr, 'text/xml');
+  const doc = parser.parseFromString(normalizeProblemXmlForStorage(xmlStr), 'text/xml');
+
+  if (doc.querySelector('parsererror')) return null;
   
   const root = doc.querySelector('problem');
   if (!root) return null;
 
-  const rootAttrs = Array.from(root.attributes).map(a => `${a.name}="${a.value}"`).join(' ');
+  const rootAttrs = Array.from(root.attributes).map(a => `${a.name}="${escapeXmlAttribute(a.value)}"`).join(' ');
 
   const typeNode = root.querySelector('multiplechoiceresponse, choiceresponse, numericalresponse, stringresponse, optionresponse'); 
   if (!typeNode) return null;
@@ -237,40 +320,41 @@ function serializeProblemXml(state: ProblemState): string {
   if (state.type === 'multiplechoiceresponse' || state.type === 'choiceresponse') {
     const isMulti = state.type === 'choiceresponse';
     const groupTag = isMulti ? 'checkboxgroup' : 'choicegroup';
-    const choicesXml = state.choices.map(c => `      <choice correct="${c.correct ? 'true' : 'false'}">${c.html}</choice>`).join('\n');
+    const choicesXml = state.choices.map(c => `      <choice correct="${c.correct ? 'true' : 'false'}">${normalizeHtmlFragmentForProblemXml(c.html)}</choice>`).join('\n');
     innerResponseXml = `    <${groupTag}>\n${choicesXml}\n    </${groupTag}>`;
   } else if (state.type === 'numericalresponse' || state.type === 'stringresponse') {
-    const additionalAnswers = state.choices.slice(1).map(c => `    <additional_answer answer="${c.html.replace(/"/g, '&quot;')}" />`).join('\n');
+    const additionalAnswers = state.choices.slice(1).map(c => `    <additional_answer answer="${escapeXmlAttribute(c.html)}" />`).join('\n');
     
     if (state.type === 'numericalresponse') {
-      innerResponseXml = `${additionalAnswers ? additionalAnswers + '\n' : ''}${state.tolerance ? `    <responseparam type="tolerance" default="${state.tolerance.replace(/"/g, '&quot;')}" />\n` : ''}    <formulaequationinput />`;
+      innerResponseXml = `${additionalAnswers ? additionalAnswers + '\n' : ''}${state.tolerance ? `    <responseparam type="tolerance" default="${escapeXmlAttribute(state.tolerance)}" />\n` : ''}    <formulaequationinput />`;
     } else {
       innerResponseXml = `${additionalAnswers ? additionalAnswers + '\n' : ''}    <textline size="30"/>`;
     }
   } else if (state.type === 'optionresponse') {
-    const optionsXml = state.choices.map(c => `      <option correct="${c.correct ? 'true' : 'false'}">${c.html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`).join('\n');
+    const optionsXml = state.choices.map(c => `      <option correct="${c.correct ? 'true' : 'false'}">${escapeXmlText(c.html)}</option>`).join('\n');
     innerResponseXml = `    <optioninput>\n${optionsXml}\n    </optioninput>`;
   }
 
   const responseAttrs = (state.type === 'numericalresponse' || state.type === 'stringresponse') 
-    ? ` answer="${(state.choices[0]?.html || '').replace(/"/g, '&quot;')}"${state.type === 'stringresponse' ? ' type="ci"' : ''}` 
+    ? ` answer="${escapeXmlAttribute(state.choices[0]?.html || '')}"${state.type === 'stringresponse' ? ' type="ci"' : ''}` 
     : '';
 
   let solutionXml = '';
-  const cleanExp = state.explanationHtml.trim();
-  if (cleanExp && cleanExp !== '<p><br></p>') {
-    solutionXml = `\n    <solution>\n<div class="detailed-solution">\n${state.explanationHtml}\n</div>\n    </solution>`;
+  const safeExplanationHtml = normalizeHtmlFragmentForProblemXml(state.explanationHtml);
+  const cleanExp = safeExplanationHtml.trim();
+  if (cleanExp && cleanExp !== '<p><br></p>' && cleanExp !== '<p><br /></p>') {
+    solutionXml = `\n    <solution>\n<div class="detailed-solution">\n${safeExplanationHtml}\n</div>\n    </solution>`;
   }
 
   let hintsXml = '';
   const validHints = state.hints.filter(h => h.trim());
   if (validHints.length > 0) {
-    const hintsList = validHints.map(h => `      <hint>${h}</hint>`).join('\n');
+    const hintsList = validHints.map(h => `      <hint>${escapeXmlText(h)}</hint>`).join('\n');
     hintsXml = `\n    <demandhint>\n${hintsList}\n    </demandhint>`;
   }
 
   return `<problem${state.rootAttrs ? ' ' + state.rootAttrs : ''}>
-${state.questionHtml}
+${normalizeHtmlFragmentForProblemXml(state.questionHtml)}
   <${state.type}${responseAttrs}>
 ${innerResponseXml}
   </${state.type}>${solutionXml}${hintsXml}
