@@ -42,8 +42,8 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
     ? storageUrl(badge.mobile_card_image_url)
     : (BADGE_MOBILE_CARD_IMAGES[badge.id] || BADGE_MOBILE_CARD_IMAGES["onboarding_warrior"]);
   const isActive = badge.is_active;
-  const uploadButtonClass = "absolute right-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/45 text-white/80 opacity-0 shadow-lg backdrop-blur-md transition-all hover:bg-black/70 hover:text-white group-hover/card:opacity-100 group-hover/mobile:opacity-100 group-hover/icon:opacity-100";
-  const assetLabelClass = "pointer-events-none absolute left-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-md";
+  const uploadButtonClass = "absolute right-1.5 top-1.5 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/45 text-white/80 opacity-100 shadow-lg backdrop-blur-md transition-all hover:bg-black/70 hover:text-white sm:right-2 sm:top-2 sm:h-8 sm:w-8 sm:opacity-0 group-hover/card:opacity-100 group-hover/mobile:opacity-100 group-hover/icon:opacity-100";
+  const assetLabelClass = "pointer-events-none absolute left-1.5 top-1.5 z-20 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/45 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-md sm:left-2 sm:top-2 sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-[10px]";
   const defaultName = badge.default_name || "";
   const defaultDescription = badge.default_description || "";
   const hasTextOverride = (badge.name || "").trim() !== defaultName.trim()
@@ -112,7 +112,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
   return (
     <motion.div
       className={cn(
-        "relative mx-auto flex w-full max-w-[560px] flex-col overflow-hidden rounded-[28px] border bg-card/95 shadow-[0_18px_70px_rgba(15,23,42,0.10)] transition-all dark:bg-[#070b16]/95 dark:shadow-[0_18px_80px_rgba(0,0,0,0.35)]",
+        "relative mx-auto flex w-full min-w-0 max-w-[560px] flex-col overflow-hidden rounded-2xl border bg-card/95 shadow-[0_18px_70px_rgba(15,23,42,0.10)] transition-all dark:bg-[#070b16]/95 dark:shadow-[0_18px_80px_rgba(0,0,0,0.35)] sm:rounded-[28px]",
         isActive
           ? cn("border-primary/25 shadow-primary/10", !showPreview && "hover:border-primary/45 hover:shadow-primary/15 hover:-translate-y-1")
           : "border-border/50 opacity-85 grayscale"
@@ -120,23 +120,23 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
       layout
     >
       {/* Header */}
-      <div className="relative z-30 border-b border-border/50 bg-muted/20 px-5 py-5 dark:border-white/10 dark:bg-white/[0.025]">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="relative z-30 border-b border-border/50 bg-muted/20 px-4 py-4 dark:border-white/10 dark:bg-white/[0.025] sm:px-5 sm:py-5">
+        <div className="mb-4 flex flex-col items-stretch gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
           <div className={cn(
-            "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider",
+            "inline-flex w-fit items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider",
             isActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
           )}>
             <BadgeCheck className="h-3.5 w-3.5" />
             {isActive ? "Đang bật" : "Đã tắt"}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 min-[420px]:justify-end">
             <AppTooltip content="Reset title và mô tả về mặc định"><Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleResetText}
               disabled={!hasTextOverride}
-              className="h-7 gap-1.5 rounded-full border-border/70 bg-background/70 px-2.5 text-[11px] font-bold text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/[0.04]"
+              className="h-7 gap-1.5 whitespace-nowrap rounded-full border-border/70 bg-background/70 px-2.5 text-[11px] font-bold text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/[0.04]"
               aria-label="Reset title và mô tả về mặc định"
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -182,7 +182,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
       </div>
 
       {/* Assets Showcase */}
-      <div className="z-10 flex h-[252px] justify-center gap-4 bg-muted/20 p-5 dark:bg-white/[0.025]">
+      <div className="z-10 flex h-40 justify-center gap-3 bg-muted/20 p-3 dark:bg-white/[0.025] sm:h-48 sm:gap-4 sm:p-5 min-[1800px]:h-[252px]">
         {/* Card Preview */}
         <div 
           className="relative h-full aspect-[4/6.5] cursor-pointer overflow-hidden rounded-2xl border border-border/30 bg-background/60 shadow-[0_12px_30px_rgba(15,23,42,0.14)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.04] group/card"
@@ -210,7 +210,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           )}
 
           <div className="absolute inset-0 bg-black/0 group-hover/card:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/card:opacity-100 z-20">
-            <Maximize2 className="w-8 h-8 text-white drop-shadow-md" />
+            <Maximize2 className="h-6 w-6 text-white drop-shadow-md sm:h-8 sm:w-8" />
           </div>
           <div className={assetLabelClass}><ImageIcon className="h-3 w-3" />CARD</div>
 
@@ -250,7 +250,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           )}
 
           <div className="absolute inset-0 bg-black/0 group-hover/mobile:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/mobile:opacity-100 z-20">
-            <Maximize2 className="w-8 h-8 text-white drop-shadow-md" />
+            <Maximize2 className="h-6 w-6 text-white drop-shadow-md sm:h-8 sm:w-8" />
           </div>
           <div className={assetLabelClass}><Smartphone className="h-3 w-3" />MOBILE</div>
 
@@ -273,7 +273,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
               src={iconSrc} 
               alt="Icon preview"
               loading="lazy"
-              className="w-32 h-32 object-contain filter drop-shadow-[0_0_25px_rgba(255,215,0,0.6)]"
+              className="h-16 w-16 object-contain filter drop-shadow-[0_0_25px_rgba(255,215,0,0.6)] sm:h-20 sm:w-20 min-[1800px]:h-32 min-[1800px]:w-32"
               animate={{ 
                 y: [-6, 6, -6],
                 rotateZ: [-3, 3, -3],
@@ -290,7 +290,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
               src={iconSrc} 
               alt="Icon preview"
               loading="lazy"
-              className="w-32 h-32 object-contain filter drop-shadow-md transition-transform duration-500 group-hover/icon:scale-110 group-hover/icon:-translate-y-2" 
+              className="h-16 w-16 object-contain filter drop-shadow-md transition-transform duration-500 group-hover/icon:scale-110 group-hover/icon:-translate-y-2 sm:h-20 sm:w-20 min-[1800px]:h-32 min-[1800px]:w-32"
             />
           )}
 
@@ -323,8 +323,8 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
 
       {/* Inactive Overlay */}
       {!isActive && (
-        <div className="absolute inset-0 z-20 pointer-events-none rounded-[28px] bg-background/55 backdrop-blur-[1.5px] flex items-center justify-center">
-           <div className="bg-black/75 text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-xl backdrop-blur-md flex items-center gap-3 border border-white/10">
+        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center rounded-2xl bg-background/55 backdrop-blur-[1.5px] sm:rounded-[28px]">
+           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/75 px-4 py-2 text-xs font-semibold text-white shadow-xl backdrop-blur-md sm:gap-3 sm:px-5 sm:py-2.5 sm:text-sm">
               <span className="relative flex h-3 w-3">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
@@ -339,14 +339,14 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
         <AnimatePresence>
           {showPreview && (
             <motion.div 
-              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm cursor-zoom-out"
+              className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => { setShowPreview(false); setPreviewImageSrc(null); }}
             >
               <motion.div
-                className="relative max-h-[85vh] max-w-[90vw] rounded-[32px] overflow-hidden shadow-2xl cursor-default"
+                className="relative max-h-[85vh] max-w-[90vw] cursor-default overflow-hidden rounded-2xl shadow-2xl sm:rounded-[32px]"
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
@@ -355,9 +355,9 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
               >
                 <button 
                   onClick={() => { setShowPreview(false); setPreviewImageSrc(null); }}
-                  className="absolute top-4 right-4 z-10 p-3 bg-black/40 text-white/90 rounded-full hover:bg-black/80 hover:text-white backdrop-blur-md transition-colors"
+                  className="absolute right-2 top-2 z-10 rounded-full bg-black/40 p-2 text-white/90 backdrop-blur-md transition-colors hover:bg-black/80 hover:text-white sm:right-4 sm:top-4 sm:p-3"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="h-5 w-5 sm:h-6 sm:w-6" />
                 </button>
                 <img 
                   src={previewImageSrc || imgSrc}

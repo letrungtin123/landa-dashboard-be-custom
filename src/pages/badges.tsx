@@ -125,15 +125,15 @@ export default function BadgesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         icon={Award}
         title="Quản lý Danh hiệu"
         description="Bật/tắt các danh hiệu (Badges) cho tenant hiện tại"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {tenantReady && (
-              <Button onClick={handleSave} disabled={saving || loadingBadges} className="gap-2">
+              <Button onClick={handleSave} disabled={saving || loadingBadges} className="gap-2 whitespace-nowrap">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Lưu thay đổi
               </Button>
@@ -147,7 +147,7 @@ export default function BadgesPage() {
           Vui lòng chọn Tenant từ thanh điều hướng (Header) để tiếp tục
         </div>
       ) : (
-        <div className="pt-4">
+        <div className="min-w-0 pt-2 sm:pt-4">
           {loadingBadges || !tenantReady ? (
             <div className="flex justify-center items-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -157,8 +157,8 @@ export default function BadgesPage() {
               Không có danh hiệu nào
             </div>
           ) : (
-            <motion.div 
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-8"
+            <motion.div
+              className="grid min-w-0 grid-cols-1 gap-4 min-[1180px]:grid-cols-2 min-[1800px]:grid-cols-3 xl:gap-6"
               initial="hidden"
               animate="visible"
               variants={{
