@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import { getCategories } from '@/api/custom-library';
 import { assignTeamCategories } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface Props {
   open: boolean;
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }: Props) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -40,13 +43,13 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
   const mutation = useMutation({
     mutationFn: () => assignTeamCategories(teamId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã phân ${res.assigned} danh mục${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
+      toast.success(t('groups.assignCategoriesSuccess', { count: res.assigned, skipped: res.skipped ? t('groups.skippedExisting', { count: res.skipped }) : '' }));
       setSelected([]);
       setSearch('');
       onOpenChange(false);
       onSuccess();
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi phân danh mục'),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.assignCategoriesFailed'))),
   });
 
   const categories = data?.categories ?? [];
@@ -77,14 +80,14 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Phân danh mục cho {targetLabel}</DialogTitle>
+          <DialogTitle>{t('groups.assignCategoriesTitle', { target: targetLabel })}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Tìm danh mục theo tên..."
+            placeholder={t('groups.searchCategories')}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -98,7 +101,7 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
             </div>
           ) : categories.length === 0 ? (
             <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-              Không tìm thấy danh mục
+              {t('groups.noCategories')}
             </div>
           ) : categories.map((c: { id: string; name: string; is_assigned_to_team?: boolean; is_public?: boolean }) => {
             const isAssigned = Boolean(c.is_assigned_to_team);
@@ -127,12 +130,12 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
                 </div>
                 {isAssigned && (
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full shrink-0">
-                    Đã phân
+                    {t('groups.assigned')}
                   </span>
                 )}
                 {isPublic && (
                   <span className="flex items-center gap-1 text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-300 px-1.5 py-0.5 rounded-full shrink-0">
-                    <Globe className="h-3 w-3" /> Công khai
+                    <Globe className="h-3 w-3" /> {t('groups.public')}
                   </span>
                 )}
               </div>
@@ -144,11 +147,11 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Checkbox checked={allSelected} onCheckedChange={toggleAll} disabled={availableCategories.length === 0} id="select-all-categories-add" />
-            <label htmlFor="select-all-categories-add" className="text-xs font-medium cursor-pointer">Chọn tất cả trang này</label>
+            <label htmlFor="select-all-categories-add" className="text-xs font-medium cursor-pointer">{t('groups.selectAllPage')}</label>
           </div>
           {selected.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Đã chọn <span className="font-semibold text-emerald-600">{selected.length}</span> danh mục
+              {t('groups.selectedItems', { count: selected.length, item: t('groups.categories') })}
             </p>
           )}
         </div>
@@ -157,21 +160,21 @@ export function AssignCategoriesModal({ open, teamId, onOpenChange, onSuccess }:
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="h-7 w-7 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground">Trang {page} / {Math.max(1, Math.ceil((data?.total || 0) / 30))}</span>
+          <span className="text-xs text-muted-foreground">{t('groups.page', { page, total: Math.max(1, Math.ceil((data?.total || 0) / 30))})}</span>
           <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil((data?.total || 0) / 30)} className="h-7 w-7 p-0">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>Hủy</Button>
+          <Button variant="outline" onClick={handleClose}>{t('common.cancel')}</Button>
           <Button
             disabled={selected.length === 0 || mutation.isPending}
             onClick={() => mutation.mutate()}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             {mutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Phân {selected.length > 0 ? `(${selected.length})` : ''}
+            {t('groups.assign')} {selected.length > 0 ? `(${selected.length})` : ''}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { storageUrl } from '@/utils/storage-url';
+import { useTranslation } from 'react-i18next';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { Link } from 'react-router-dom';
@@ -36,6 +37,9 @@ import FacebookIcon from '@/assets/SocialIcon/facebook.png';
 import InstagramIcon from '@/assets/SocialIcon/instagram.png';
 import ZaloIcon from '@/assets/SocialIcon/zalo.png';
 import { Label } from '@/components/ui/label';
+import i18n, { type AppLocale } from '@/i18n';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { getLocalizedApiError } from '@/utils/localized-error';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,18 +49,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 function getCourseMentorDisplayName(course: CustomCourse): string {
-  return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || 'Chưa có người phụ trách';
+  return course.mentor?.full_name || course.mentor?.username || course.mentor?.email || i18n.t('courses.noMentor');
 }
 
 function getCourseCreatorDisplayName(course: CustomCourse): string {
-  return course.creator_display_name?.trim() || 'Chưa có tên hiển thị';
+  return course.creator_display_name?.trim() || i18n.t('courses.noCreator');
 }
 
 function formatCourseUpdatedAt(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('vi-VN', {
+  return formatLocaleDate(date, (i18n.language === 'en' ? 'en' : 'vi') as AppLocale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -76,7 +80,8 @@ function dateInputToLocalIso(value: string, endExclusive = false): string | unde
 }
 
 export default function CoursesPage() {
-  useHeaderInfo('Khóa Học');
+  const { t } = useTranslation();
+  useHeaderInfo(t('courses.title'));
 
   const queryClient = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
@@ -121,13 +126,13 @@ export default function CoursesPage() {
       start: '2020-01-01T00:00:00Z',
     }),
     onSuccess: (data) => {
-      toast.success(`Đã tạo khóa học: ${data.display_name}`);
+      toast.success(t('courses.created', { name: data.display_name }));
       setShowCreate(false);
       setNewNumber(''); setNewName(''); setNewDescription('');
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
     },
-    onError: (err: any) => {
-      toast.error('Tạo thất bại: ' + (err?.response?.data?.error || err.message));
+    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('courses.createFailed')));
     },
   });
 
@@ -145,15 +150,15 @@ export default function CoursesPage() {
       const uploadResult = await uploadCourseAsset(courseId, file);
 
       const display_name = uploadResult?.display_name || file.name;
-      if (!display_name) throw new Error("Không nhận được tên file từ server");
+      if (!display_name) throw new Error(t('courses.fileNameMissing'));
 
       // 2. Update Course image via custom courses API
       await updateCourse(courseId, { image_url: uploadResult?.url || '' });
 
-      toast.success('Đã cập nhật ảnh đại diện khóa học!');
+      toast.success(t('courses.imageUpdated'));
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
-    } catch (err: any) {
-      toast.error('Cập nhật ảnh thất bại: ' + (err?.response?.data?.error || err.message));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('courses.imageUpdateFailed')));
     } finally {
       setUploadingCourseId(null);
     }
@@ -196,9 +201,9 @@ export default function CoursesPage() {
       updateCourse(id, { visible_to_staff_only: visible }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
-      toast.success('Đã cập nhật');
+      toast.success(t('courses.updated'));
     },
-    onError: () => toast.error('Cập nhật thất bại'),
+    onError: () => toast.error(t('courses.updateFailed')),
   });
 
   // Bulk
@@ -208,9 +213,9 @@ export default function CoursesPage() {
     onSuccess: (result, { action }) => {
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
       setSelected([]);
-      toast.success(`Đã chuyển ${result.updated} khóa học sang trạng thái ${action === 'public' ? 'hiển thị' : 'lưu trữ'}`);
+      toast.success(t('courses.bulkUpdated', { count: result.updated, status: action === 'public' ? t('courses.visibleStatus') : t('courses.archivedStatus') }));
     },
-    onError: () => toast.error('Cập nhật hàng loạt thất bại'),
+    onError: () => toast.error(t('courses.bulkUpdateFailed')),
   });
 
   // Delete course
@@ -247,14 +252,14 @@ export default function CoursesPage() {
       return { previousCourses, previousSelected };
     },
     onSuccess: () => {
-      toast.success('Đã xóa khóa học');
+      toast.success(t('courses.deleted'));
     },
-    onError: (err: any, _courseId, context) => {
+    onError: (err: unknown, _courseId, context) => {
       context?.previousCourses.forEach(([queryKey, value]) => {
         queryClient.setQueryData(queryKey, value);
       });
       if (context?.previousSelected) setSelected(context.previousSelected);
-      toast.error(err?.response?.data?.error || 'Xóa thất bại');
+      toast.error(getLocalizedApiError(err, t('courses.deleteFailed')));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
@@ -263,10 +268,10 @@ export default function CoursesPage() {
 
   function handleDeleteCourse(course: CustomCourse) {
     confirmDialog({
-      title: 'Xóa khóa học',
-      description: `Bạn có chắc muốn xóa "${course.display_name}"? Sau khi xác nhận, khóa học sẽ không còn hiển thị trong danh sách.`,
-      confirmText: 'Xóa',
-      cancelText: 'Hủy',
+      title: t('courses.deleteTitle'),
+      description: t('courses.deleteDescription', { name: course.display_name }),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(course.id),
     });
@@ -283,54 +288,54 @@ export default function CoursesPage() {
 
       <PageHeader
         icon={GraduationCap}
-        title="Khóa học"
-        description="Quản lý khóa học, nội dung và cấu hình cho học viên"
+        title={t('courses.title')}
+        description={t('courses.description')}
       />
       {/* Dialog tạo course */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl">Tạo Khóa Học Mới</DialogTitle>
+            <DialogTitle className="text-xl">{t('courses.createTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <label className="text-sm font-medium">Tên khóa học</label>
-              <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ví dụ: Văn hóa doanh nghiệp L&A" />
+              <label className="text-sm font-medium">{t('courses.courseName')}</label>
+              <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('courses.courseNameExample')} />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">Mô tả <span className="text-red-500">*</span></label>
+              <label className="text-sm font-medium">{t('courses.descriptionLabel')} <span className="text-red-500">*</span></label>
               <textarea
                 className="flex min-h-[96px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={newDescription}
                 onChange={e => setNewDescription(e.target.value)}
                 maxLength={5000}
-                placeholder="Nhập mô tả ngắn gọn về mục tiêu, nội dung hoặc đối tượng phù hợp của khóa học"
+                placeholder={t('courses.descriptionPlaceholder')}
               />
               {!newDescription.trim() && (
-                <p className="text-xs text-red-500">Bắt buộc nhập mô tả khóa học trước khi lưu.</p>
+                <p className="text-xs text-red-500">{t('courses.descriptionRequired')}</p>
               )}
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Tổ chức</label>
+                <label className="text-sm font-medium">{t('courses.organization')}</label>
                 <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newOrg} onChange={e => setNewOrg(e.target.value)} placeholder="LAndA2" />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Mã khóa học</label>
+                <label className="text-sm font-medium">{t('courses.courseCode')}</label>
                 <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newNumber} onChange={e => setNewNumber(e.target.value)} placeholder="000010" />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Đợt (năm)</label>
+                <label className="text-sm font-medium">{t('courses.runYear')}</label>
                 <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newRun} onChange={e => setNewRun(e.target.value)} placeholder="2026" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Mã khóa học sẽ là: <span className="font-mono font-semibold">course-v1:{newOrg}+{newNumber}+{newRun}</span></p>
-            <p className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-2 rounded-md">💡 Ngày bắt đầu được đặt là 01/01/2020 để khóa học tự động xuất bản và hiển thị cho học viên.</p>
+            <p className="text-xs text-muted-foreground">{t('courses.courseCodePreview')} <span className="font-mono font-semibold">course-v1:{newOrg}+{newNumber}+{newRun}</span></p>
+            <p className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-2 rounded-md">{t('courses.startDateHint')}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Hủy</Button>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>{t('common.cancel')}</Button>
             <Button onClick={() => createMut.mutate()} disabled={createMut.isPending || !canSubmitCreateCourse}>
-              {createMut.isPending ? 'Đang tạo...' : 'Tạo khóa học'}
+              {createMut.isPending ? t('courses.creating') : t('courses.createCourse')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -340,7 +345,7 @@ export default function CoursesPage() {
       <Dialog open={!!previewCourse} onOpenChange={(o) => !o && setPreviewCourse(null)}>
         <DialogContent className="sm:max-w-[380px] p-5 border-border bg-background gap-0">
           <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[13px] font-medium leading-[18px]">
-            💡 Phần này chỉ có chức năng xem trước giao diện tĩnh của card khóa học ở phía người học và không thể click tương tác
+            {t('courses.previewHint')}
           </div>
 
           <div className="app-liquid-card w-full rounded-[28px] border border-border bg-card p-2 pb-4 shadow-sm">
@@ -371,7 +376,7 @@ export default function CoursesPage() {
                 <button
                   className="w-fit rounded-full bg-primary px-8 py-3 text-[15px] font-bold leading-[18px] text-white transition-colors hover:bg-primary/90"
                 >
-                  Bắt đầu học
+                  {t('courses.startLearning')}
                 </button>
               </div>
             </div>
@@ -390,14 +395,14 @@ export default function CoursesPage() {
       <TableToolbar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm khóa học..."
+        searchPlaceholder={t('courses.searchPlaceholder')}
         filters={[
           {
             key: 'visibility',
-            placeholder: 'Trạng thái',
+            placeholder: t('courses.status'),
             options: [
-              { value: 'public', label: 'Đang hoạt động' },
-              { value: 'staff_only', label: 'Đã lưu trữ' },
+              { value: 'public', label: t('courses.active') },
+              { value: 'staff_only', label: t('courses.archived') },
             ],
           },
         ]}
@@ -411,15 +416,15 @@ export default function CoursesPage() {
             {selected.length > 0 && canEdit && (
               <>
                 <Button size="sm" variant="outline" onClick={() => bulkMut.mutate({ action: 'public' })} className="h-8 text-xs">
-                  <Globe className="mr-1 h-3.5 w-3.5" /> Hiển thị ({selected.length})
+                  <Globe className="mr-1 h-3.5 w-3.5" /> {t('courses.showSelected', { count: selected.length })}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => bulkMut.mutate({ action: 'staff_only' })} className="h-8 text-xs text-slate-600">
-                  <Archive className="mr-1 h-3.5 w-3.5" /> Lưu trữ ({selected.length})
+                  <Archive className="mr-1 h-3.5 w-3.5" /> {t('courses.archiveSelected', { count: selected.length })}
                 </Button>
               </>
             )}
             {canAdd && <Button size="sm" onClick={() => setShowCreate(true)} className="h-8 text-xs gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> Tạo khóa học
+              <Plus className="h-3.5 w-3.5" /> {t('courses.createCourse')}
             </Button>}
           </div>
         }
@@ -451,7 +456,7 @@ export default function CoursesPage() {
             ) : courses.length === 0 ? (
               <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
                 <GraduationCap className="mb-2 h-8 w-8 opacity-20" />
-                <p className="text-sm">Chưa có khóa học</p>
+                <p className="text-sm">{t('courses.empty')}</p>
               </div>
             ) : (
               courses.map((course) => (
@@ -475,11 +480,11 @@ export default function CoursesPage() {
                               : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
                             }
                           >
-                            {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
+                            {course.visible_to_staff_only ? t('courses.archived') : t('courses.active')}
                           </Badge>
                           {course.is_public && (
                             <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                              <Globe className="h-3 w-3" /> Công khai
+                              <Globe className="h-3 w-3" /> {t('courses.public')}
                             </Badge>
                           )}
                         </div>
@@ -487,21 +492,21 @@ export default function CoursesPage() {
 
                       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Người tạo</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('courses.creator')}</div>
                           <div className="flex min-w-0 items-center gap-1.5 font-medium">
                             <Users className="h-3.5 w-3.5 shrink-0 text-indigo-600/70" />
                             <span className="truncate">{getCourseCreatorDisplayName(course)}</span>
                           </div>
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Người phụ trách</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('courses.mentor')}</div>
                           <div className="flex min-w-0 items-center gap-1.5 font-medium">
                             <UserRound className="h-3.5 w-3.5 shrink-0 text-cyan-600/70" />
                             <span className="truncate">{getCourseMentorDisplayName(course)}</span>
                           </div>
                         </div>
                         <div className="col-span-2">
-                          <div className="mb-0.5 text-muted-foreground">Cập nhật</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('courses.updatedAt')}</div>
                           <div className="font-medium">{formatCourseUpdatedAt(course.updated_at)}</div>
                         </div>
                       </div>
@@ -511,23 +516,23 @@ export default function CoursesPage() {
                           <Button size="sm" asChild className="h-8 text-xs">
                             <Link to={`/courses/${course.id}/edit`}>
                               <Edit2 className="h-3.5 w-3.5" />
-                              Chỉnh sửa
+                              {t('courses.editContent')}
                             </Link>
                           </Button>
                         )}
 
-                        <AppTooltip content="Quản lý tệp tin"><Button variant="outline" size="icon-sm"
+                        <AppTooltip content={t('courses.manageFiles')}><Button variant="outline" size="icon-sm"
                           onClick={() => setSelectedCourseFiles(course.id)}
                           className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/30"
-                          aria-label="Quản lý tệp tin"
+                          aria-label={t('courses.manageFiles')}
                         >
                           <FolderOpen className="h-3.5 w-3.5" />
                         </Button></AppTooltip>
 
                         <DropdownMenu>
-                          <AppTooltip content="Thao tác khác">
+                          <AppTooltip content={t('courses.moreActions')}>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="icon-sm" aria-label="Thao tác khác">
+                              <Button variant="outline" size="icon-sm" aria-label={t('courses.moreActions')}>
                                 <MoreHorizontal className="h-3.5 w-3.5" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -535,50 +540,50 @@ export default function CoursesPage() {
                           <DropdownMenuContent align="end" className="w-56">
                             <DropdownMenuItem onClick={() => setPreviewCourse(course)} className="gap-2">
                               <LayoutTemplate className="h-4 w-4 text-sky-600" />
-                              Xem thẻ preview
+                              {t('courses.previewCard')}
                             </DropdownMenuItem>
                             {canEdit && (
                               <DropdownMenuItem onClick={() => setCourseInfoCourse(course)} className="gap-2">
                                 <FileText className="h-4 w-4 text-emerald-600" />
-                                Chỉnh thông tin
+                                {t('courses.editInfo')}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
                               <DropdownMenuItem asChild className="gap-2">
                                 <Link to={`/courses/${course.id}/assignments`}>
                                   <ClipboardList className="h-4 w-4 text-violet-600" />
-                                  Bài tập
+                                  {t('courses.assignments')}
                                 </Link>
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
                               <DropdownMenuItem onClick={() => triggerUpload(course.id)} disabled={uploadingCourseId === course.id} className="gap-2">
                                 {uploadingCourseId === course.id ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <ImagePlus className="h-4 w-4 text-indigo-600" />}
-                                Đổi ảnh đại diện
+                                {t('courses.changeImage')}
                               </DropdownMenuItem>
                             )}
                             {canManageMentors && (
                               <DropdownMenuItem onClick={() => setMentorCourse(course)} className="gap-2">
                                 <UserRound className="h-4 w-4 text-cyan-600" />
-                                Người phụ trách
+                                {t('courses.mentor')}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
                               <DropdownMenuItem onClick={() => toggleVis.mutate({ id: course.id, visible: !course.visible_to_staff_only })} className="gap-2">
                                 {course.visible_to_staff_only ? <ArchiveRestore className="h-4 w-4 text-amber-600" /> : <Archive className="h-4 w-4 text-slate-500" />}
-                                {course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}
+                                {course.visible_to_staff_only ? t('courses.restoreVisibility') : t('courses.archiveCourse')}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
                               <DropdownMenuItem onClick={() => setNotifyCourseId(course.id)} className="gap-2">
                                 <Bell className="h-4 w-4 text-amber-600" />
-                                Gửi thông báo
+                                {t('courses.sendNotification')}
                               </DropdownMenuItem>
                             )}
                             {canEdit && (
                               <DropdownMenuItem onClick={() => setModalConfigCourseId(course.id)} className="gap-2">
                                 <Settings2 className="h-4 w-4 text-violet-600" />
-                                Cấu hình hộp thoại
+                                {t('courses.modalConfiguration')}
                               </DropdownMenuItem>
                             )}
                             {canDelete && (
@@ -588,7 +593,7 @@ export default function CoursesPage() {
                                 className="gap-2 text-red-600 focus:text-red-600"
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Xóa vĩnh viễn
+                                {t('courses.permanentDelete')}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
@@ -608,13 +613,13 @@ export default function CoursesPage() {
                   <TableHead className="w-10 pl-4">
                     <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
                   </TableHead>
-                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Khóa học</TableHead>
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người tạo</TableHead>
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
+                  <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('courses.courseColumn')}</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('courses.creator')}</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('courses.status')}</TableHead>
 
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Người phụ trách</TableHead>
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">Cập nhật</TableHead>
-                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider pr-5">Thao tác</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('courses.mentor')}</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('courses.updatedAt')}</TableHead>
+                  <TableHead className="text-center font-medium text-xs text-muted-foreground uppercase tracking-wider pr-5">{t('courses.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className={isFetching && courses.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
@@ -636,7 +641,7 @@ export default function CoursesPage() {
                     <TableCell colSpan={7} className="h-32 text-center">
                       <div className="flex flex-col items-center text-muted-foreground">
                         <GraduationCap className="w-8 h-8 mb-2 opacity-20" />
-                        <p className="text-sm">Chưa có khóa học</p>
+                        <p className="text-sm">{t('courses.empty')}</p>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -670,11 +675,11 @@ export default function CoursesPage() {
                               : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
                             }
                           >
-                            {course.visible_to_staff_only ? 'Đã lưu trữ' : 'Đang hoạt động'}
+                            {course.visible_to_staff_only ? t('courses.archived') : t('courses.active')}
                           </Badge>
                           {course.is_public && (
                             <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                              <Globe className="h-3 w-3" /> Công khai
+                              <Globe className="h-3 w-3" /> {t('courses.public')}
                             </Badge>
                           )}
                         </div>
@@ -696,7 +701,7 @@ export default function CoursesPage() {
                                 </Link>
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Chỉnh sửa nội dung</TooltipContent>
+                            <TooltipContent>{t('courses.editContentTooltip')}</TooltipContent>
                           </Tooltip>}
 
                           <Tooltip>
@@ -708,7 +713,7 @@ export default function CoursesPage() {
                                 <FolderOpen className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Quản lý tệp tin</TooltipContent>
+                            <TooltipContent>{t('courses.manageFiles')}</TooltipContent>
                           </Tooltip>
 
                           {canEdit && <Tooltip>
@@ -720,7 +725,7 @@ export default function CoursesPage() {
                                 {course.visible_to_staff_only ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>{course.visible_to_staff_only ? 'Khôi phục hiển thị' : 'Lưu trữ khóa học'}</TooltipContent>
+                            <TooltipContent>{course.visible_to_staff_only ? t('courses.restoreVisibility') : t('courses.archiveCourse')}</TooltipContent>
                           </Tooltip>}
 
 
@@ -737,13 +742,13 @@ export default function CoursesPage() {
                             <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuItem onClick={() => setPreviewCourse(course)}>
                                 <LayoutTemplate className="h-4 w-4 text-sky-600" />
-                                Xem thẻ xem trước
+                                {t('courses.previewCardTooltip')}
                               </DropdownMenuItem>
 
                               {canEdit && (
                                 <DropdownMenuItem onClick={() => setCourseInfoCourse(course)}>
                                   <FileText className="h-4 w-4 text-emerald-600" />
-                                  Chỉnh thông tin khóa học
+                                  {t('courses.editInfo')}
                                 </DropdownMenuItem>
                               )}
 
@@ -757,7 +762,7 @@ export default function CoursesPage() {
                                   ) : (
                                     <ImagePlus className="h-4 w-4 text-indigo-600" />
                                   )}
-                                  Đổi ảnh đại diện
+                                  {t('courses.changeImage')}
                                 </DropdownMenuItem>
                               )}
 
@@ -765,7 +770,7 @@ export default function CoursesPage() {
                                 <DropdownMenuItem asChild>
                                   <Link to={`/courses/${course.id}/assignments`}>
                                     <ClipboardList className="h-4 w-4 text-fuchsia-600" />
-                                    Bài tập
+                                    {t('courses.assignments')}
                                   </Link>
                                 </DropdownMenuItem>
                               )}
@@ -773,21 +778,21 @@ export default function CoursesPage() {
                               {canManageMentors && (
                                 <DropdownMenuItem onClick={() => setMentorCourse(course)}>
                                   <UserRound className="h-4 w-4 text-cyan-600" />
-                                  Người phụ trách
+                                  {t('courses.mentor')}
                                 </DropdownMenuItem>
                               )}
 
                               {canEdit && (
                                 <DropdownMenuItem onClick={() => setNotifyCourseId(course.id)}>
                                   <Bell className="h-4 w-4 text-amber-600" />
-                                  Gửi thông báo
+                                  {t('courses.sendNotification')}
                                 </DropdownMenuItem>
                               )}
 
                               {canEdit && (
                                 <DropdownMenuItem onClick={() => setModalConfigCourseId(course.id)}>
                                   <Settings2 className="h-4 w-4 text-violet-600" />
-                                  Cấu hình hộp thoại
+                                  {t('courses.modalConfiguration')}
                                 </DropdownMenuItem>
                               )}
 
@@ -800,7 +805,7 @@ export default function CoursesPage() {
                                     className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
                                   >
                                     <Trash2 className="h-4 w-4" />
-                                    Xóa vĩnh viễn
+                                    {t('courses.permanentDelete')}
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -815,7 +820,7 @@ export default function CoursesPage() {
             </Table>
           </div>
 
-          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="khóa học" />
+          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t('courses.paginationLabel')} />
         </div>
       </TooltipProvider>
 
@@ -866,6 +871,7 @@ export default function CoursesPage() {
 // ── Course Modal Config Dialog (tách ra làm component riêng bên dưới) ──
 
 function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState(course.display_name);
   const [description, setDescription] = useState(course.description ?? '');
@@ -882,12 +888,12 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
       description: description.trim(),
     }),
     onSuccess: () => {
-      toast.success('Đã cập nhật thông tin khóa học');
+      toast.success(t('courses.infoUpdated'));
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
       onClose();
     },
-    onError: (err: any) => {
-      toast.error('Cập nhật thất bại: ' + (err?.response?.data?.error || err?.response?.data?.message || err.message));
+    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('courses.infoUpdateFailed')));
     },
   });
 
@@ -897,36 +903,36 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Thông tin khóa học</DialogTitle>
+          <DialogTitle>{t('courses.courseInfoTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label>Tên khóa học <span className="text-red-500">*</span></Label>
+            <Label>{t('courses.courseName')} <span className="text-red-500">*</span></Label>
             <input
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               maxLength={500}
-              placeholder="Nhập tên khóa học"
+              placeholder={t('courses.namePlaceholder')}
             />
             {!displayName.trim() && (
-              <p className="text-xs text-red-500">Bắt buộc nhập tên khóa học.</p>
+              <p className="text-xs text-red-500">{t('courses.nameRequired')}</p>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <Label>Mô tả <span className="text-red-500">*</span></Label>
+            <Label>{t('courses.descriptionLabel')} <span className="text-red-500">*</span></Label>
             <textarea
               className="flex min-h-[132px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={5000}
-              placeholder="Nhập mô tả khóa học"
+              placeholder={t('courses.descriptionInputPlaceholder')}
             />
             <div className="flex items-center justify-between gap-3">
               {!description.trim() ? (
-                <p className="text-xs text-red-500">Bắt buộc nhập mô tả khóa học trước khi lưu.</p>
+                <p className="text-xs text-red-500">{t('courses.descriptionRequired')}</p>
               ) : (
                 <span />
               )}
@@ -936,10 +942,10 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saveMut.isPending}>Hủy</Button>
+          <Button variant="outline" onClick={onClose} disabled={saveMut.isPending}>{t('common.cancel')}</Button>
           <Button onClick={() => saveMut.mutate()} disabled={!canSave}>
             {saveMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Lưu thông tin
+            {t('courses.saveInfo')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -948,6 +954,7 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
 }
 
 function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const roleLabels = useAuthStore((s) => s.roleLabels);
   const [search, setSearch] = useState('');
@@ -1024,41 +1031,41 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
   const updateMut = useMutation({
     mutationFn: (mentorId: string | null) => updateCourseMentor(course.id, mentorId),
     onSuccess: (mentor) => {
-      toast.success(mentor ? 'Đã cập nhật người phụ trách' : 'Đã gỡ người phụ trách');
+      toast.success(mentor ? t('courses.mentorUpdated') : t('courses.mentorRemoved'));
       queryClient.setQueryData(['course-mentor', course.id], mentor);
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
       queryClient.invalidateQueries({ queryKey: ['course-mentor-history', course.id] });
       setHistoryPage(1);
       if (mentor) onClose();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Cập nhật người phụ trách thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.mentorUpdateFailed'))),
   });
 
   const updateSectionMut = useMutation({
     mutationFn: () => updateCourseMentorSection(course.id, { description: description.trim() || null }),
     onSuccess: (section) => {
       queryClient.setQueryData(['course-mentor-section', course.id], section);
-      toast.success('Đã lưu thông tin hiển thị');
+      toast.success(t('courses.mentorSectionSaved'));
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Lưu thông tin thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.mentorSectionSaveFailed'))),
   });
 
   const uploadLogoMut = useMutation({
     mutationFn: (args: { mode: 'light' | 'dark'; file: File }) => uploadCourseMentorSectionLogo(course.id, args.mode, args.file),
     onSuccess: (section) => {
       queryClient.setQueryData(['course-mentor-section', course.id], section);
-      toast.success('Đã tải logo lên');
+      toast.success(t('courses.logoUploaded'));
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Tải logo thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.logoUploadFailed'))),
   });
 
   const deleteLogoMut = useMutation({
     mutationFn: (mode: 'light' | 'dark') => deleteCourseMentorSectionLogo(course.id, mode),
     onSuccess: (section) => {
       queryClient.setQueryData(['course-mentor-section', course.id], section);
-      toast.success('Đã xóa logo');
+      toast.success(t('courses.logoDeleted'));
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.response?.data?.error || 'Xóa logo thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.logoDeleteFailed'))),
   });
 
   const rows = candidates?.mentors ?? [];
@@ -1066,7 +1073,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
   const total = candidates?.total ?? 0;
 
   const avatarUrl = (mentor: CourseMentor | null | undefined) => storageUrl(mentor?.avatar || '') || null;
-  const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || 'Chưa có người phụ trách';
+  const mentorName = (mentor: CourseMentor | null | undefined) => mentor?.full_name || mentor?.username || mentor?.email || t('courses.noMentor');
   const mentorRoleLabel = (mentor: CourseMentor | null | undefined) => {
     const apiLabel = mentor?.role_label?.trim();
     if (apiLabel) return apiLabel;
@@ -1095,18 +1102,18 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
   const handleLogoFile = (mode: 'light' | 'dark', file: File | undefined) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('File quá lớn. Tối đa 5MB');
+      toast.error(t('courses.logoTooLarge'));
       return;
     }
     if (!validLogoTypes.includes(file.type)) {
-      toast.error('Định dạng không hỗ trợ. Chấp nhận JPEG, PNG, WEBP, SVG, GIF');
+      toast.error(t('courses.logoTypeUnsupported'));
       return;
     }
     uploadLogoMut.mutate({ mode, file });
   };
   const logoSlots = [
-    { mode: 'light' as const, label: 'Logo sáng', hint: 'Dùng cho giao diện sáng', icon: Sun, path: mentorSection?.logo_light, inputRef: lightLogoInputRef },
-    { mode: 'dark' as const, label: 'Logo tối', hint: 'Dùng cho giao diện tối', icon: Moon, path: mentorSection?.logo_dark, inputRef: darkLogoInputRef },
+    { mode: 'light' as const, label: t('courses.lightLogo'), hint: t('courses.lightLogoHint'), icon: Sun, path: mentorSection?.logo_light, inputRef: lightLogoInputRef },
+    { mode: 'dark' as const, label: t('courses.darkLogo'), hint: t('courses.darkLogoHint'), icon: Moon, path: mentorSection?.logo_dark, inputRef: darkLogoInputRef },
   ];
 
   return (
@@ -1118,7 +1125,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             <DialogHeader className="min-w-0 flex-1">
               <DialogTitle className="flex items-center gap-2 pr-8 text-lg leading-6 sm:text-xl">
                 <UserRound className="h-5 w-5 text-cyan-600" />
-                Chọn người phụ trách cho khóa học
+                {t('courses.selectMentorTitle')}
               </DialogTitle>
               <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
             </DialogHeader>
@@ -1130,19 +1137,19 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                   size="icon"
                   className="h-9 w-9 shrink-0"
                   onClick={openHistory}
-                  aria-label="Xem lịch sử chỉ định người phụ trách"
+                  aria-label={t('courses.viewMentorHistory')}
                 >
                   <History className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Lịch sử chỉ định</TooltipContent>
+              <TooltipContent>{t('courses.mentorHistory')}</TooltipContent>
             </Tooltip>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:space-y-5 sm:px-6 sm:py-5">
           <div className="app-liquid-card rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người phụ trách hiện tại</div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('courses.currentMentor')}</div>
             {loadingCurrent ? (
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11 rounded-full" />
@@ -1185,7 +1192,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                   className="w-full shrink-0 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 sm:w-auto"
                 >
                   {updateMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                  Gỡ người phụ trách
+                  {t('courses.removeMentor')}
                 </Button>
               </div>
             ) : (
@@ -1193,7 +1200,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                   <UserRound className="h-5 w-5" />
                 </div>
-                Khóa học này chưa có người phụ trách. Chọn một nhân sự phù hợp bên dưới để gán.
+                {t('courses.noMentorDescription')}
               </div>
             )}
           </div>
@@ -1201,8 +1208,8 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           <div className="app-liquid-card rounded-lg border border-border bg-background p-3 sm:rounded-xl sm:p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thông tin hiển thị trên mục Người phụ trách ở trang học viên</div>
-                <p className="mt-1 text-xs text-muted-foreground">Mô tả và logo sáng/tối cho mục Người phụ trách của riêng khóa học này.</p>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('courses.mentorSectionTitle')}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{t('courses.mentorSectionDescription')}</p>
               </div>
               <Button
                 type="button"
@@ -1212,7 +1219,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 className="h-8 w-full text-xs sm:w-auto"
               >
                 {updateSectionMut.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
-                Lưu mô tả
+                {t('courses.saveDescription')}
               </Button>
             </div>
 
@@ -1231,7 +1238,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     maxLength={2000}
-                    placeholder="Nhập mô tả công ty hoặc thông tin người phụ trách..."
+                    placeholder={t('courses.mentorDescriptionPlaceholder')}
                     className="min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24"
                   />
                   <div className="mt-1 text-right text-[11px] text-muted-foreground">{description.length}/2000</div>
@@ -1277,10 +1284,10 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                           {url ? (
                             <img src={url} alt={slot.label} className="max-h-12 max-w-full object-contain" />
                           ) : (
-                            <div className="text-center text-xs text-current">Chưa có logo</div>
+                            <div className="text-center text-xs text-current">{t('courses.noLogo')}</div>
                           )}
                           <span className={`absolute bottom-1.5 right-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${previewLabelClass}`}>
-                            {slot.mode === 'dark' ? 'Nền tối' : 'Nền sáng'}
+                            {slot.mode === 'dark' ? t('courses.darkBackground') : t('courses.lightBackground')}
                           </span>
                         </div>
 
@@ -1294,7 +1301,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                             onClick={() => slot.inputRef.current?.click()}
                           >
                             {uploading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="mr-1.5 h-3.5 w-3.5" />}
-                            {url ? 'Đổi ảnh' : 'Tải lên'}
+                            {url ? t('courses.changeLogo') : t('courses.upload')}
                           </Button>
                           {url && (
                             <Button
@@ -1323,7 +1330,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm người phụ trách theo tên, email hoặc username..."
+                placeholder={t('courses.searchMentors')}
                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
@@ -1344,7 +1351,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               ) : rows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-4 py-10 text-center text-sm text-muted-foreground">
                   <UserRound className="mb-2 h-8 w-8 opacity-30" />
-                  Không tìm thấy người phụ trách phù hợp.
+                  {t('courses.noMatchingMentors')}
                 </div>
               ) : (
                 <div className={isFetching ? 'divide-y divide-border opacity-60' : 'divide-y divide-border'}>
@@ -1383,11 +1390,11 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                         </div>
                         {active ? (
                           <span className="ml-[52px] inline-flex w-fit items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300 sm:ml-0 sm:shrink-0">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Đang chọn
+                            <CheckCircle2 className="h-3.5 w-3.5" /> {t('courses.selected')}
                           </span>
                         ) : (
                           <span className="ml-[52px] w-fit rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground sm:ml-0 sm:shrink-0">
-                            Chọn
+                            {t('courses.select')}
                           </span>
                         )}
                       </button>
@@ -1398,14 +1405,14 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             </div>
 
             <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>{total > 0 ? `${total} người phụ trách phù hợp` : 'Không có người phù hợp'}</span>
+              <span>{total > 0 ? t('courses.matchingMentors', { count: total }) : t('courses.noAvailableMentors')}</span>
               <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                 <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                  Trước
+                  {t('courses.previous')}
                 </Button>
-                <span className="min-w-16 text-center">Trang {page}/{totalPages}</span>
+                <span className="min-w-16 text-center">{t('courses.pageOf', { page, totalPages })}</span>
                 <Button variant="outline" size="sm" className="h-8 text-xs" disabled={page >= totalPages || isFetching} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                  Sau
+                  {t('courses.next')}
                 </Button>
               </div>
             </div>
@@ -1413,7 +1420,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
         </div>
 
         <DialogFooter className="m-0 shrink-0 rounded-none border-t border-border bg-muted/20 px-4 py-3 sm:px-6 sm:py-4">
-          <Button variant="outline" className="w-full sm:w-auto" onClick={onClose}>Đóng</Button>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={onClose}>{t('courses.close')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1429,7 +1436,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <History className="h-5 w-5 text-cyan-600" />
-              Lịch sử thay đổi người phụ trách
+              {t('courses.mentorChangeHistory')}
             </DialogTitle>
             <p className="text-xs text-muted-foreground font-mono break-all">{course.id}</p>
           </DialogHeader>
@@ -1443,7 +1450,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
             className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]"
           >
             <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
-              <span>Tìm người dùng</span>
+              <span>{t('courses.searchUsers')}</span>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -1452,13 +1459,13 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                     setHistorySearch(event.target.value);
                     resetHistoryPaging();
                   }}
-                  placeholder="Tên người thao tác hoặc người phụ trách"
+                  placeholder={t('courses.historySearchPlaceholder')}
                   className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
             </label>
             <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
-              <span>Từ ngày</span>
+              <span>{t('courses.fromDate')}</span>
               <input
                 type="date"
                 value={historyDateFrom}
@@ -1471,7 +1478,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               />
             </label>
             <label className="min-w-0 space-y-1.5 text-xs font-medium text-muted-foreground">
-              <span>Đến ngày</span>
+              <span>{t('courses.toDate')}</span>
               <input
                 type="date"
                 value={historyDateTo}
@@ -1496,7 +1503,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 className="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-muted-foreground"
               >
                 <AlertCircle className="mb-2 h-8 w-8 opacity-40" />
-                {historySearchTooShort ? 'Nhập ít nhất 2 ký tự để tìm kiếm theo tên hiển thị.' : 'Khoảng ngày lọc chưa hợp lệ.'}
+                {historySearchTooShort ? t('courses.historySearchTooShort') : t('courses.invalidDateRange')}
               </motion.div>
             ) : loadingFirstHistoryPage ? (
               <motion.div
@@ -1531,7 +1538,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 className="flex flex-col items-center justify-center px-4 py-12 text-center text-sm text-muted-foreground"
               >
                 <History className="mb-2 h-8 w-8 opacity-30" />
-                {historyHasActiveFilters ? 'Không có lịch sử phù hợp với bộ lọc.' : 'Chưa có lịch sử thay đổi người phụ trách.'}
+                {historyHasActiveFilters ? t('courses.noMatchingHistory') : t('courses.noMentorHistory')}
               </motion.div>
             ) : (
               <motion.div
@@ -1543,9 +1550,9 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                 className="overflow-hidden rounded-xl border border-border"
               >
                 <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_160px] gap-3 border-b border-border bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
-                  <div>Người thao tác</div>
-                  <div>Nội dung thay đổi</div>
-                  <div>Thời gian</div>
+                  <div>{t('courses.operator')}</div>
+                  <div>{t('courses.changeDetails')}</div>
+                  <div>{t('courses.time')}</div>
                 </div>
                 <div className="divide-y divide-border">
                   {historyItems.map((item, index) => {
@@ -1559,26 +1566,26 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
                         className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_160px] sm:gap-3"
                       >
                         <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Người thao tác</div>
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">{t('courses.operator')}</div>
                           <div className="truncate font-medium text-foreground">{item.assigned_by_name}</div>
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Nội dung thay đổi</div>
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">{t('courses.changeDetails')}</div>
                           <div className="flex min-w-0 items-center gap-2">
                             <Badge
                               variant={isAssign ? 'secondary' : 'destructive'}
                               size="sm"
                               className={isAssign ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : undefined}
                             >
-                              {isAssign ? 'Chỉ định' : 'Gỡ'}
+                              {isAssign ? t('courses.assigned') : t('courses.removed')}
                             </Badge>
                             <div className={isAssign ? 'truncate font-medium text-foreground' : 'truncate font-medium text-red-600 dark:text-red-400'}>
-                              {isAssign ? item.assigned_to_name || 'Không xác định' : 'Không còn người phụ trách'}
+                              {isAssign ? item.assigned_to_name || t('courses.unknown') : t('courses.noMentorAssigned')}
                             </div>
                           </div>
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">Thời gian</div>
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:hidden">{t('courses.time')}</div>
                           <div className="whitespace-nowrap text-muted-foreground">{formatCourseUpdatedAt(item.assigned_at)}</div>
                         </div>
                       </motion.div>
@@ -1603,7 +1610,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
               total={historyTotal}
               totalPages={historyTotalPages}
               limitOptions={[5, 10, 15, 20]}
-              label="lịch sử"
+              label={t('courses.history')}
               onPageChange={setHistoryPage}
               onLimitChange={setHistoryPageSize}
             />
@@ -1616,7 +1623,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
           transition={{ duration: 0.2, delay: 0.04 }}
         >
           <DialogFooter className="m-0 shrink-0 rounded-none border-t border-border bg-muted/20 px-4 py-3 sm:px-6">
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setHistoryOpen(false)}>Đóng</Button>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setHistoryOpen(false)}>{t('courses.close')}</Button>
           </DialogFooter>
         </motion.div>
       </DialogContent>
@@ -1626,6 +1633,7 @@ function CourseMentorDialog({ course, open, onClose }: { course: CustomCourse; o
 }
 
 function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<Partial<CourseModalConfig>>({
     welcome_enabled: true,
@@ -1680,11 +1688,11 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
   const saveMut = useMutation({
     mutationFn: () => updateCourseModalConfig(courseId, form),
     onSuccess: () => {
-      toast.success('Đã lưu cấu hình modal');
+      toast.success(t('courses.modalConfigSaved'));
       queryClient.invalidateQueries({ queryKey: ['course-modal-config', courseId] });
       onClose();
     },
-    onError: () => toast.error('Lưu thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.saveFailed'))),
   });
 
   const updateField = (key: string, value: unknown) => setForm(prev => ({ ...prev, [key]: value }));
@@ -1693,7 +1701,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">Cấu hình hộp thoại — Khóa học</DialogTitle>
+          <DialogTitle className="text-xl">{t('courses.modalConfigTitle')}</DialogTitle>
           <p className="text-xs text-muted-foreground font-mono break-all">{courseId}</p>
         </DialogHeader>
 
@@ -1708,7 +1716,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
             {/* ── Welcome Modal ── */}
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Hộp thoại chào mừng</Label>
+                <Label className="text-sm font-semibold">{t('courses.welcomeModal')}</Label>
                 <Switch
                   checked={form.welcome_enabled}
                   onCheckedChange={(v) => updateField('welcome_enabled', v)}
@@ -1716,12 +1724,12 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
               </div>
               <div className="space-y-2">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Tiêu đề {form.welcome_enabled && <span className="text-red-500">*</span>}</label>
-                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder="Chào mừng bạn đến với khóa học!" value={form.welcome_title || ''} onChange={e => updateField('welcome_title', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldTitle')} {form.welcome_enabled && <span className="text-red-500">*</span>}</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder={t('courses.welcomeTitlePlaceholder')} value={form.welcome_title || ''} onChange={e => updateField('welcome_title', e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Mô tả {form.welcome_enabled && <span className="text-red-500">*</span>}</label>
-                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder="Chúc bạn có một trải nghiệm học tập thật tốt..." value={form.welcome_description || ''} onChange={e => updateField('welcome_description', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldDescription')} {form.welcome_enabled && <span className="text-red-500">*</span>}</label>
+                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder={t('courses.welcomeDescriptionPlaceholder')} value={form.welcome_description || ''} onChange={e => updateField('welcome_description', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -1729,7 +1737,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
             {/* ── Confirm Modal ── */}
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Hộp thoại xác nhận khi hoàn thành</Label>
+                <Label className="text-sm font-semibold">{t('courses.confirmModal')}</Label>
                 <Switch
                   checked={form.confirm_enabled}
                   onCheckedChange={(v) => updateField('confirm_enabled', v)}
@@ -1737,16 +1745,16 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
               </div>
               <div className="space-y-2">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Tiêu đề {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
-                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder="Hoàn thành khóa học!" value={form.confirm_title || ''} onChange={e => updateField('confirm_title', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldTitle')} {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder={t('courses.confirmTitlePlaceholder')} value={form.confirm_title || ''} onChange={e => updateField('confirm_title', e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Mô tả {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
-                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder="Cảm ơn bạn đã nỗ lực hoàn thành chương trình đào tạo..." value={form.confirm_description || ''} onChange={e => updateField('confirm_description', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldDescription')} {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
+                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder={t('courses.confirmDescriptionPlaceholder')} value={form.confirm_description || ''} onChange={e => updateField('confirm_description', e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Nội dung ô đánh dấu {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
-                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder="Tôi xác nhận đã hoàn thành khóa học..." value={form.confirm_checkbox_text || ''} onChange={e => updateField('confirm_checkbox_text', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.checkboxText')} {form.confirm_enabled && <span className="text-red-500">*</span>}</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder={t('courses.confirmCheckboxPlaceholder')} value={form.confirm_checkbox_text || ''} onChange={e => updateField('confirm_checkbox_text', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -1754,7 +1762,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
             {/* ── Completion Modal ── */}
             <div className="space-y-3 rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Hộp thoại hoàn thành (100% tiến độ)</Label>
+                <Label className="text-sm font-semibold">{t('courses.completionModal')}</Label>
                 <Switch
                   checked={form.completion_enabled}
                   onCheckedChange={(v) => updateField('completion_enabled', v)}
@@ -1762,17 +1770,17 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
               </div>
               <div className="space-y-2">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Tiêu đề {form.completion_enabled && <span className="text-red-500">*</span>}</label>
-                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder="Chúc mừng!" value={form.completion_title || ''} onChange={e => updateField('completion_title', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldTitle')} {form.completion_enabled && <span className="text-red-500">*</span>}</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" placeholder={t('courses.completionTitlePlaceholder')} value={form.completion_title || ''} onChange={e => updateField('completion_title', e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Mô tả {form.completion_enabled && <span className="text-red-500">*</span>}</label>
-                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder="Trở thành đối tác chiến lược..." value={form.completion_description || ''} onChange={e => updateField('completion_description', e.target.value)} />
+                  <label className="text-xs text-muted-foreground">{t('courses.fieldDescription')} {form.completion_enabled && <span className="text-red-500">*</span>}</label>
+                  <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" placeholder={t('courses.completionDescriptionPlaceholder')} value={form.completion_description || ''} onChange={e => updateField('completion_description', e.target.value)} />
                 </div>
                 {form.completion_enabled && (
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border mt-2">
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Loại mạng xã hội</label>
+                      <label className="text-xs text-muted-foreground">{t('courses.socialType')}</label>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-primary/30 hover:bg-muted/50 transition-colors">
@@ -1789,7 +1797,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
                                 {form.completion_social_type === 'zaloOA' ? 'Zalo OA' :
                                   form.completion_social_type === 'facebook' ? 'Facebook' :
                                     form.completion_social_type === 'website' ? 'Website' :
-                                      form.completion_social_type === 'instagram' ? 'Instagram' : 'Không dùng'}
+                                      form.completion_social_type === 'instagram' ? 'Instagram' : t('courses.notUsed')}
                               </span>
                             </div>
                             <ChevronDown className="h-4 w-4 opacity-50" />
@@ -1797,7 +1805,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px] rounded-lg">
                           {[
-                            { value: '', label: 'Không dùng', icon: <Ban className="w-5 h-5 text-muted-foreground/50" /> },
+                            { value: '', label: t('courses.notUsed'), icon: <Ban className="w-5 h-5 text-muted-foreground/50" /> },
                             { value: 'zaloOA', label: 'Zalo OA', icon: <img src={ZaloIcon} alt="Zalo" className="w-5 h-5 object-contain" /> },
                             { value: 'facebook', label: 'Facebook', icon: <img src={FacebookIcon} alt="Facebook" className="w-5 h-5 object-contain" /> },
                             { value: 'website', label: 'Website', icon: <Globe className="w-5 h-5 text-slate-500" /> },
@@ -1824,7 +1832,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
                       </DropdownMenu>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Đường dẫn</label>
+                      <label className="text-xs text-muted-foreground">{t('courses.url')}</label>
                       <input
                         className={`flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm ${!isValidUrl(form.completion_social_link || '') ? 'border-red-500 focus-visible:ring-red-500/30 text-red-600' : 'border-input'}`}
                         placeholder="https://..."
@@ -1832,7 +1840,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
                         onChange={e => updateField('completion_social_link', e.target.value)}
                         disabled={!form.completion_social_type}
                       />
-                      {!isValidUrl(form.completion_social_link || '') && <p className="text-[10px] text-red-500 mt-1">Đường dẫn không hợp lệ</p>}
+                      {!isValidUrl(form.completion_social_link || '') && <p className="text-[10px] text-red-500 mt-1">{t('courses.invalidUrl')}</p>}
                     </div>
                   </div>
                 )}
@@ -1842,7 +1850,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             onClick={() => saveMut.mutate()}
             disabled={
@@ -1854,7 +1862,7 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
               (form.completion_enabled && !isValidUrl(form.completion_social_link || ''))
             }
           >
-            {saveMut.isPending ? 'Đang lưu...' : 'Lưu cấu hình'}
+            {saveMut.isPending ? t('courses.saving') : t('courses.saveConfiguration')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1865,27 +1873,25 @@ function CourseModalConfigDialog({ courseId, open, onClose }: { courseId: string
 // ── Send Notification Dialog ──
 
 function formatNotificationDate(value: string | null | undefined): string {
-  if (!value) return 'Chưa có thời gian';
+  if (!value) return i18n.t('courses.noTime');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Chưa có thời gian';
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  if (Number.isNaN(date.getTime())) return i18n.t('courses.noTime');
+  return formatLocaleDate(date, (i18n.language === 'en' ? 'en' : 'vi') as AppLocale, {
+    dateStyle: 'short',
+    timeStyle: 'short',
   });
 }
 
 function emailStatusLabel(status: string | null | undefined): string {
-  if (status === 'done') return 'Đã gửi mail';
-  if (status === 'running') return 'Đang gửi tuần tự';
-  if (status === 'pending') return 'Chờ gửi tuần tự';
-  if (status === 'failed') return 'Lỗi email';
-  return 'Không gửi mail';
+  if (status === 'done') return i18n.t('courses.emailDone');
+  if (status === 'running') return i18n.t('courses.emailRunning');
+  if (status === 'pending') return i18n.t('courses.emailPending');
+  if (status === 'failed') return i18n.t('courses.emailFailed');
+  return i18n.t('courses.emailNotSent');
 }
 
 function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseId: string; isPublic: boolean; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const groupLabels = useAuthStore((s) => s.groupLabels);
@@ -1906,13 +1912,13 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
   });
   const smtpStatus = smtpQuery.data;
   const emailAutomationReady = Boolean(smtpStatus?.can_send_email);
-  const emailBadgeText = emailAutomationReady ? 'Email tự động đang bật' : 'Chỉ tạo thông báo trong hệ thống';
+  const emailBadgeText = emailAutomationReady ? t('courses.emailAutomationEnabled') : t('courses.systemNotificationOnly');
   const emailDescription = emailAutomationReady
-    ? 'Hệ thống sẽ tự gửi email cho học viên sau khi thao tác hoàn tất.'
-    : 'Chưa cấu hình email gửi đi nên học viên chỉ thấy thông báo trong hệ thống.';
+    ? t('courses.emailAutomationDescription')
+    : t('courses.noEmailDescription');
   const emailTooltip = smtpQuery.isError
-    ? 'Không kiểm tra được cấu hình email gửi đi. Hệ thống sẽ chỉ tạo thông báo trong hệ thống cho đến khi kiểm tra lại thành công.'
-    : 'Chưa cấu hình email gửi đi cho đơn vị này. Vui lòng vào phần cấu hình email để bật gửi email tự động.';
+    ? t('courses.emailStatusCheckFailed')
+    : t('courses.emailNotConfigured');
 
   const historyQuery = useQuery({
     queryKey: ['course-notification-history', activeTenantId, courseId, historyPage, historyLimit],
@@ -1949,9 +1955,9 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
     }),
     onSuccess: (data) => {
       const emailText = data.email_requested
-        ? (data.email_job_queued ? ' Email đang được gửi tự động.' : ' Không có email nào cần gửi.')
+        ? (data.email_job_queued ? ` ${t('courses.emailsSending', { count: data.recipients })}` : ` ${t('courses.noEmailsNeeded')}`)
         : '';
-      toast.success(`Đã gửi thông báo cho ${data.recipients} học viên.${emailText}`);
+      toast.success(`${t('courses.notificationSent', { count: data.recipients })}${emailText}`);
       setTitle('');
       setMessage('');
       setActiveTab('history');
@@ -1959,10 +1965,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
       setSelectedHistoryItem(null);
       queryClient.invalidateQueries({ queryKey: ['course-notification-history', activeTenantId, courseId] });
     },
-    onError: (err: any) => {
-      const errMsg = err.response?.data?.error || err.response?.data?.message;
-      toast.error(errMsg || 'Gửi thông báo thất bại');
-    },
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courses.notificationSendFailed'))),
   });
 
   return (
@@ -1974,7 +1977,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/12 text-amber-600 ring-1 ring-amber-500/20">
                 <Bell className="h-5 w-5" />
               </span>
-              <span>Gửi thông báo khóa học</span>
+              <span>{t('courses.sendNotificationTitle')}</span>
             </DialogTitle>
             <p className="font-mono text-xs text-muted-foreground break-all">{courseId}</p>
           </DialogHeader>
@@ -1985,11 +1988,11 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="compose" className="gap-2">
                 <Send className="h-4 w-4" />
-                Gửi thông báo
+                {t('courses.sendNotification')}
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <History className="h-4 w-4" />
-                Lịch sử
+                {t('courses.historyTab')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -2008,20 +2011,20 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                   >
                     <div className="grid gap-4">
                       <div className="space-y-1.5">
-                        <label className="text-sm font-semibold">Tiêu đề <span className="text-red-500">*</span></label>
+                        <label className="text-sm font-semibold">{t('courses.notificationTitle')} <span className="text-red-500">*</span></label>
                         <input
                           className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm outline-none transition focus:border-primary/60 focus:ring-4 focus:ring-primary/10"
-                          placeholder="Nhập tiêu đề thông báo..."
+                          placeholder={t('courses.notificationTitlePlaceholder')}
                           value={title}
                           maxLength={180}
                           onChange={e => setTitle(e.target.value)}
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-sm font-semibold">Nội dung <span className="text-red-500">*</span></label>
+                        <label className="text-sm font-semibold">{t('courses.notificationContent')} <span className="text-red-500">*</span></label>
                         <textarea
                           className="flex min-h-[132px] w-full resize-none rounded-xl border border-input bg-background px-4 py-3 text-sm leading-6 outline-none transition focus:border-primary/60 focus:ring-4 focus:ring-primary/10"
-                          placeholder="Nhập nội dung thông báo..."
+                          placeholder={t('courses.notificationContentPlaceholder')}
                           value={message}
                           maxLength={4000}
                           onChange={e => setMessage(e.target.value)}
@@ -2052,7 +2055,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                                   <button
                                     type="button"
                                     className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 transition hover:bg-red-500/15 dark:text-red-300"
-                                    aria-label="Vì sao email tự động chưa bật?"
+                                    aria-label={t('courses.emailAutomationWhy')}
                                   >
                                     <Info className="h-3.5 w-3.5" />
                                   </button>
@@ -2079,8 +2082,8 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                         <Users className="mt-0.5 h-4 w-4 shrink-0" />
                         <p>
                           {isPublic
-                            ? 'Thông báo sẽ gửi cho toàn bộ học viên đang hoạt động trong hệ thống. Hệ thống không yêu cầu học viên đã ghi danh khóa học.'
-                            : <>Thông báo sẽ gửi cho học viên thuộc {teamLabelLower} được phân khóa học này. Hệ thống không yêu cầu học viên đã ghi danh khóa học.</>}
+                            ? t('courses.publicRecipientsDescription')
+                            : t('courses.assignedRecipientsDescription', { group: teamLabelLower })}
                         </p>
                       </div>
                     </div>
@@ -2113,7 +2116,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                             onClick={() => setSelectedHistoryItem(null)}
                           >
                             <ArrowLeft className="h-4 w-4" />
-                            Quay lại
+                            {t('courses.back')}
                           </Button>
                           <Badge variant="secondary" className="rounded-full">
                             {formatNotificationDate(selectedHistoryItem.created_at)}
@@ -2122,13 +2125,13 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                         <div className="app-liquid-card min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-sm">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chi tiết thông báo</p>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('courses.notificationDetails')}</p>
                               <h3 className="mt-2 text-xl font-bold leading-7 text-foreground">{selectedHistoryItem.title}</h3>
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-2">
                               <Badge variant="secondary" className="gap-1.5 rounded-full">
                                 <Users className="h-3.5 w-3.5" />
-                                {selectedHistoryItem.recipient_count} học viên
+                                {t('courses.recipientCount', { count: selectedHistoryItem.recipient_count })}
                               </Badge>
                               <Badge
                                 variant="outline"
@@ -2142,27 +2145,27 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
 
                           <div className="app-liquid-card mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm sm:grid-cols-2">
                             <div>
-                              <p className="text-xs text-muted-foreground">Người gửi</p>
-                              <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.sent_by_display_name || 'Không xác định'}</p>
+                              <p className="text-xs text-muted-foreground">{t('courses.sender')}</p>
+                              <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.sent_by_display_name || t('courses.unknown')}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Thời gian gửi</p>
+                              <p className="text-xs text-muted-foreground">{t('courses.sentAt')}</p>
                               <p className="mt-1 font-semibold text-foreground">{formatNotificationDate(selectedHistoryItem.created_at)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Trạng thái email</p>
+                              <p className="text-xs text-muted-foreground">{t('courses.emailStatus')}</p>
                               <p className="mt-1 font-semibold text-foreground">{emailStatusLabel(selectedHistoryItem.email_status)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Email đã ghi nhận</p>
+                              <p className="text-xs text-muted-foreground">{t('courses.trackedEmails')}</p>
                               <p className="mt-1 font-semibold text-foreground">{selectedHistoryItem.email_queued_count || 0}</p>
                             </div>
                           </div>
 
                           <div className="mt-5">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nội dung</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('courses.content')}</p>
                             <div className="app-liquid-card mt-2 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-sm leading-6 text-foreground">
-                              {selectedHistoryItem.message || 'Không có nội dung'}
+                              {selectedHistoryItem.message || t('courses.noContent')}
                             </div>
                           </div>
 
@@ -2189,9 +2192,9 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                     ) : historyItems.length === 0 ? (
                       <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 text-center">
                         <Bell className="h-10 w-10 text-muted-foreground/40" />
-                        <p className="mt-3 text-sm font-semibold">Chưa có thông báo nào</p>
+                        <p className="mt-3 text-sm font-semibold">{t('courses.noNotifications')}</p>
                         <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-                          Các thông báo đã gửi cho khóa học này sẽ xuất hiện tại đây.
+                          {t('courses.noNotificationsDescription')}
                         </p>
                       </div>
                     ) : (
@@ -2212,12 +2215,12 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="min-w-0">
                                     <p className="line-clamp-1 text-sm font-semibold text-foreground">{item.title}</p>
-                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.message || 'Không có nội dung'}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.message || t('courses.noContent')}</p>
                                   </div>
                                   <div className="flex shrink-0 flex-wrap gap-2">
                                     <Badge variant="secondary" className="gap-1.5 rounded-full">
                                       <Users className="h-3.5 w-3.5" />
-                                      {item.recipient_count} học viên
+                                      {t('courses.recipientCount', { count: item.recipient_count })}
                                     </Badge>
                                     <Badge
                                       variant="outline"
@@ -2233,8 +2236,8 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                                     <Clock3 className="h-3.5 w-3.5" />
                                     {formatNotificationDate(item.created_at)}
                                   </span>
-                                  {item.sent_by_display_name && <span>Người gửi: {item.sent_by_display_name}</span>}
-                                  {item.email_queued_count > 0 && <span>{item.email_queued_count} email đã ghi nhận gửi</span>}
+                                  {item.sent_by_display_name && <span>{t('courses.sender')}: {item.sent_by_display_name}</span>}
+                                  {item.email_queued_count > 0 && <span>{t('courses.emailsTracked', { count: item.email_queued_count })}</span>}
                                   {item.email_last_error && (
                                     <span className="inline-flex items-center gap-1.5 text-red-600">
                                       <AlertCircle className="h-3.5 w-3.5" />
@@ -2253,7 +2256,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                             total={historyTotal}
                             totalPages={totalPages}
                             limitOptions={[5]}
-                            label="thông báo"
+                            label={t('courses.notifications')}
                             onPageChange={(nextPage) => {
                               setSelectedHistoryItem(null);
                               setHistoryPage(nextPage);
@@ -2273,7 +2276,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
           </div>
 
           <DialogFooter className="m-0 border-t border-border bg-muted/20 px-5 py-4 sm:px-6">
-            <Button variant="outline" onClick={closeDialog}>Đóng</Button>
+            <Button variant="outline" onClick={closeDialog}>{t('courses.close')}</Button>
             {activeTab === 'compose' && (
               <Button
                 onClick={() => sendMut.mutate()}
@@ -2281,7 +2284,7 @@ function SendNotificationDialog({ courseId, isPublic, open, onClose }: { courseI
                 className="gap-2 bg-amber-600 text-white hover:bg-amber-700"
               >
                 {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {sendMut.isPending ? 'Đang gửi...' : 'Gửi thông báo'}
+                {sendMut.isPending ? t('courses.sending') : t('courses.sendNotification')}
               </Button>
             )}
           </DialogFooter>

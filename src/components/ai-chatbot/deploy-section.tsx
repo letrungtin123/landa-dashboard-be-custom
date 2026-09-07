@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Rocket, Bot, Loader2, Database, Drama, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,14 +21,16 @@ import {
   type BotAssignment, type ChatTarget, type LessonAuthorSettings,
 } from "@/api/custom-chat";
 import { storageUrl } from "@/utils/storage-url";
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 const TARGETS = [
-  { key: "admin" as const, label: "FE Admin (Dashboard)", desc: "Bot trò chuyện trên trang quản trị" },
-  { key: "learner" as const, label: "FE Learner (Học viên)", desc: "Bot trò chuyện trên trang học viên" },
-  { key: "lesson_author" as const, label: "Chuyên gia tạo bài học", desc: "Bot trong widget course editor, dùng KB active riêng" },
+  { key: "admin" as const, labelKey: "aiChatbot.targetAdmin", descriptionKey: "aiChatbot.targetAdminDescription" },
+  { key: "learner" as const, labelKey: "aiChatbot.targetLearner", descriptionKey: "aiChatbot.targetLearnerDescription" },
+  { key: "lesson_author" as const, labelKey: "aiChatbot.targetLessonAuthor", descriptionKey: "aiChatbot.targetLessonAuthorDescription" },
 ];
 
 export function DeploySection() {
+  const { t } = useTranslation();
   const [assignments, setAssignments] = useState<BotAssignment[]>([]);
   const [bots, setBots] = useState<Chatbot[]>([]);
   const [kbs, setKbs] = useState<Knowledgebase[]>([]);
@@ -50,9 +53,9 @@ export function DeploySection() {
       setBots(botData.data);
       setKbs(kbData.data);
       setLessonSettings(settingsData);
-    } catch { toast.error("Lỗi tải dữ liệu triển khai"); }
+    } catch { toast.error(t("aiChatbot.deployLoadFailed")); }
     finally { setLoading(false); }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -61,13 +64,13 @@ export function DeploySection() {
     try {
       if (checked) {
         await assignBot(target, botId);
-        toast.success("Đã gán bot");
+        toast.success(t("aiChatbot.botAssigned"));
       } else {
         await unassignBot(target);
-        toast.success("Đã bỏ gán bot");
+        toast.success(t("aiChatbot.botUnassigned"));
       }
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setTogglingTarget(null); }
   }
 
@@ -75,9 +78,9 @@ export function DeploySection() {
     setSelectingTarget(target);
     try {
       await assignBot(target, botId);
-      toast.success("Đã gán bot");
+      toast.success(t("aiChatbot.botAssigned"));
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSelectingTarget(null); }
   }
 
@@ -85,9 +88,9 @@ export function DeploySection() {
     setSelectingKb(true);
     try {
       await assignLessonAuthorKb(kbId);
-      toast.success("Đã gán KB chuyên gia bài học");
+      toast.success(t("aiChatbot.lessonAuthorKbAssigned"));
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSelectingKb(false); }
   }
 
@@ -95,9 +98,9 @@ export function DeploySection() {
     setSelectingKb(true);
     try {
       await unassignLessonAuthorKb();
-      toast.success("Đã bỏ gán KB chuyên gia bài học");
+      toast.success(t("aiChatbot.lessonAuthorKbUnassigned"));
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSelectingKb(false); }
   }
 
@@ -115,15 +118,15 @@ export function DeploySection() {
     <div className="space-y-5">
       <div>
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Rocket className="h-5 w-5 text-primary" /> Triển khai Bot
+          <Rocket className="h-5 w-5 text-primary" /> {t("aiChatbot.deployBots")}
         </h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Gán bot cho từng FE. Mỗi FE chỉ active được 1 bot cùng lúc.
+          {t("aiChatbot.deployDescription")}
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {TARGETS.map(({ key, label, desc }) => {
+        {TARGETS.map(({ key, labelKey, descriptionKey }) => {
           const current = assignments.find(a => a.target === key);
           const isToggling = togglingTarget === key;
           const isSelecting = selectingTarget === key;
@@ -137,8 +140,8 @@ export function DeploySection() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-semibold text-sm">{label}</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                  <h4 className="font-semibold text-sm">{t(labelKey)}</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t(descriptionKey)}</p>
                 </div>
                 {current && (
                   <Switch
@@ -161,14 +164,14 @@ export function DeploySection() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{current.bot_name}</p>
                     <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] mt-0.5">
-                      Đang active
+                      {t("aiChatbot.active")}
                     </Badge>
                   </div>
                   {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Chưa có bot nào — chọn bot để triển khai:</p>
+                  <p className="text-xs text-muted-foreground">{t("aiChatbot.noBotSelectToDeploy")}</p>
                   <Select
                     value=""
                     onValueChange={(v) => handleSelectBot(key, v)}
@@ -176,14 +179,14 @@ export function DeploySection() {
                   >
                     <SelectTrigger className="w-full">
                       {isSelecting ? (
-                        <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Đang gán...</span>
+                        <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> {t("aiChatbot.assigning")}</span>
                       ) : (
-                        <SelectValue placeholder="Chọn bot..." />
+                        <SelectValue placeholder={t("aiChatbot.selectBot")} />
                       )}
                     </SelectTrigger>
                     <SelectContent>
                       {bots.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-muted-foreground">Chưa có bot nào. Tạo bot trước.</div>
+                        <div className="px-3 py-2 text-xs text-muted-foreground">{t("aiChatbot.noBotsCreateFirst")}</div>
                       ) : (
                         bots.map(bot => (
                           <SelectItem key={bot.id} value={bot.id}>
@@ -209,7 +212,7 @@ export function DeploySection() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-xs font-medium">
                         <Database className="h-3.5 w-3.5 text-primary" />
-                        KB active
+                        {t("aiChatbot.activeKnowledgeBase")}
                       </div>
                       {lessonSettings?.active_kb && (
                         <button
@@ -218,7 +221,7 @@ export function DeploySection() {
                           onClick={handleClearKb}
                           className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
                         >
-                          Bỏ gán
+                          {t("aiChatbot.unassign")}
                         </button>
                       )}
                     </div>
@@ -229,14 +232,14 @@ export function DeploySection() {
                     >
                       <SelectTrigger className="w-full h-9">
                         {selectingKb ? (
-                          <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Đang gán...</span>
+                          <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> {t("aiChatbot.assigning")}</span>
                         ) : (
-                          <SelectValue placeholder="Chọn KB..." />
+                          <SelectValue placeholder={t("aiChatbot.selectKnowledgeBaseShort")} />
                         )}
                       </SelectTrigger>
                       <SelectContent>
                         {kbs.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-muted-foreground">Chưa có KB nào.</div>
+                          <div className="px-3 py-2 text-xs text-muted-foreground">{t("aiChatbot.noKnowledgeBasesShort")}</div>
                         ) : (
                           kbs.map(kb => (
                             <SelectItem key={kb.id} value={kb.id}>
@@ -251,17 +254,17 @@ export function DeploySection() {
                     </Select>
                     {lessonSettings?.active_kb && (
                       <div className="flex flex-wrap gap-1 text-[10px]">
-                        <Badge variant="outline">{lessonSettings.active_kb.document_count} docs</Badge>
-                        <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} learned</Badge>
-                        {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} learning</Badge>}
-                        {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} error</Badge>}
+                        <Badge variant="outline">{t("aiChatbot.docs", { count: lessonSettings.active_kb.document_count })}</Badge>
+                        <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} {t("aiChatbot.learned").toLowerCase()}</Badge>
+                        {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} {t("aiChatbot.learning").toLowerCase()}</Badge>}
+                        {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} {t("aiChatbot.error").toLowerCase()}</Badge>}
                       </div>
                     )}
                   </div>
                   <div className="app-liquid-card rounded-lg border bg-muted/20 p-3 space-y-2">
                     <div className="flex items-center gap-2 text-xs font-medium">
                       <Drama className="h-3.5 w-3.5 text-amber-600" />
-                      Nhân cách chuyên gia
+                      {t("aiChatbot.expertPersona")}
                     </div>
                     {lessonSettings?.active_persona ? (
                       <div className="flex items-center gap-3">
@@ -280,7 +283,7 @@ export function DeploySection() {
                     ) : (
                       <div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-[11px] text-amber-700">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        Superadmin chưa chọn mascot chuyên gia bài học trong Prompt hệ thống.
+                        {t("aiChatbot.expertPersonaMissing")}
                       </div>
                     )}
                   </div>

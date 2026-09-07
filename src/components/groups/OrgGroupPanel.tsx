@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, ChevronRight, FolderOpen } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -12,6 +13,7 @@ import {
   getOrgGroups, createOrgGroup, updateOrgGroup, deleteOrgGroup,
   type OrgGroup,
 } from '@/api/custom-groups';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface Props {
   selectedId: string | null;
@@ -19,6 +21,7 @@ interface Props {
 }
 
 export function OrgGroupPanel({ selectedId, onSelect }: Props) {
+  const { t } = useTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('groups', 'can_add');
   const canEdit = hasPermission('groups', 'can_edit');
@@ -42,40 +45,40 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createOrgGroup({ name: newName.trim() }),
     onSuccess: () => {
-      toast.success(`Đã tạo ${groupLabelLower}`);
+      toast.success(t('groups.created', { label: groupLabelLower }));
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || `Lỗi tạo ${groupLabelLower}`),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.createFailed', { label: groupLabelLower }))),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateOrgGroup(id, { name }),
     onSuccess: () => {
-      toast.success('Đã cập nhật');
+      toast.success(t('groups.updated'));
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       setEditId(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi cập nhật'),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.updateFailed'))),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteOrgGroup(id),
     onSuccess: (_, id) => {
-      toast.success(`Đã xóa ${groupLabelLower}`);
+      toast.success(t('groups.deleted', { label: groupLabelLower }));
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error(`Lỗi xóa ${groupLabelLower}`),
+    onError: () => toast.error(t('groups.deleteFailed', { label: groupLabelLower })),
   });
 
   const groups: OrgGroup[] = data?.groups ?? [];
 
   const handleDelete = (g: OrgGroup) => {
     confirmDialog({
-      title: `Xóa ${labels.group}`,
-      description: `Xóa "${g.name}" sẽ xóa toàn bộ ${subgroupLabelLower} và ${teamLabelLower} bên trong. Không thể hoàn tác.`,
+      title: t('groups.deleteTitle', { label: labels.group }),
+      description: t('groups.deleteGroupDescription', { name: g.name, subgroup: subgroupLabelLower, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(g.id),
     });
@@ -86,7 +89,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{labels.group}</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
-          <Plus className="h-3.5 w-3.5" /> Tạo mới
+          <Plus className="h-3.5 w-3.5" /> {t('groups.createNew')}
         </Button>}
       </div>
 
@@ -94,7 +97,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder={`Tên ${groupLabelLower}...`}
+            placeholder={t('groups.namePlaceholder', { label: groupLabelLower })}
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -105,7 +108,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
           />
           <Button size="sm" className="h-8 px-3" disabled={!newName.trim() || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
-            Tạo
+            {t('groups.create')}
           </Button>
         </div>
       )}
@@ -118,7 +121,7 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
         ) : groups.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <FolderOpen className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có {groupLabelLower} nào</p>
+            <p className="text-xs text-muted-foreground">{t('groups.none', { label: groupLabelLower })}</p>
           </div>
         ) : groups.map(g => (
           <div

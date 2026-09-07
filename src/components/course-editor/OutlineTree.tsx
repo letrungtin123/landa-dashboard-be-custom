@@ -62,6 +62,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sparkles } from 'lucide-react';
 import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfig } from '@/api/custom-courses';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
+import i18n from '@/i18n';
 
 interface OutlineTreeProps {
   courseId: string;
@@ -100,6 +103,7 @@ function nodeContainsId(node: CourseIndexSection, targetId: string): boolean {
 }
 
 export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange }: OutlineTreeProps) {
+  const { t } = useTranslation();
   const { data: outline, isLoading, isError, refetch } = useQuery({
     queryKey: ['course-outline-index', courseId],
     queryFn: () => getCourseOutlineIndex(courseId),
@@ -115,7 +119,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
     mutationFn: ({ parentId, childIds }: { parentId: string; childIds: string[] }) => reorderChildren(parentId, childIds),
     onSuccess: () => refetch(),
     onError: () => {
-      toast.error('Thay đổi vị trí thất bại');
+      toast.error(t('courseOutline.reorderFailed'));
       refetch();
     },
   });
@@ -139,7 +143,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
   if (isError || !structure) {
     return (
       <div className="p-3 text-xs text-destructive bg-destructive/10 rounded-md m-2">
-        Lỗi tải mục lục. Kiểm tra lại kết nối hệ thống.
+        {t('courseOutline.loadFailed')}
       </div>
     );
   }
@@ -167,7 +171,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
       <AddNodeButton
         parentId={structure.id}
         category="chapter"
-        label="Thêm chương"
+        label={t('courseOutline.addChapter')}
         onStructureChange={notifyStructureChange}
       />
       <AssignmentOutlineSection courseId={courseId} />
@@ -276,7 +280,7 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBloc
           <AddNodeButton
             parentId={node.id}
             category="sequential"
-            label="Thêm mục"
+            label={i18n.t('courseOutline.addSection')}
             onStructureChange={onStructureChange}
             small
           />
@@ -337,7 +341,7 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, on
           <AddNodeButton
             parentId={node.id}
             category="vertical"
-            label="Thêm bài học"
+            label={i18n.t('courseOutline.addUnit')}
             onStructureChange={onStructureChange}
             small
           />
@@ -403,11 +407,11 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
   const renameMut = useMutation({
     mutationFn: () => renameBlock(node.id, renameValue),
     onSuccess: () => {
-      toast.success('Đã đổi tên');
+      toast.success(i18n.t('courseOutline.renamed'));
       setIsRenaming(false);
       onStructureChange();
     },
-    onError: () => toast.error('Đổi tên thất bại'),
+    onError: () => toast.error(i18n.t('courseOutline.renameFailed')),
   });
 
   const hasChildren = !isSelectable && !!node.children?.length;
@@ -459,12 +463,12 @@ function NodeRow({ node, courseId, depth, icon, expanded, onToggle, isSelectable
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="flex-1 truncate text-sm">{node.display_name || 'Không tên'}</span>
+        <span className="flex-1 truncate text-sm">{node.display_name || i18n.t('courseOutline.unnamed')}</span>
       )}
 
       {/* Status */}
       {!isRenaming && (
-        <AppTooltip content={!node.published ? 'Bản đang sửa' : node.has_changes ? 'Đã công khai, có thay đổi chưa công khai' : 'Đã công khai'}><span
+        <AppTooltip content={!node.published ? i18n.t('courseOutline.draft') : node.has_changes ? i18n.t('courseOutline.publishedWithChanges') : i18n.t('courseOutline.published')}><span
           className="shrink-0" 
 
         >
@@ -541,12 +545,12 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 
       return { previousOutline };
     },
-    onSuccess: () => { toast.success('Đã xóa'); },
+    onSuccess: () => { toast.success(i18n.t('courseOutline.deleted')); },
     onError: (_err, _variables, context) => {
       if (courseId && context?.previousOutline) {
         queryClient.setQueryData(['course-outline-index', courseId], context.previousOutline);
       }
-      toast.error('Xóa thất bại');
+      toast.error(i18n.t('courseOutline.deleteFailed'));
     },
     onSettled: () => {
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
@@ -556,19 +560,19 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
 
   const publishMut = useMutation({
     mutationFn: () => publishBlock(node.id),
-    onSuccess: () => { toast.success('Đã công khai'); onStructureChange(); },
-    onError: () => toast.error('Công khai thất bại'),
+    onSuccess: () => { toast.success(i18n.t('courseOutline.publishedSuccess')); onStructureChange(); },
+    onError: () => toast.error(i18n.t('courseOutline.publishFailed')),
   });
 
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(node.id),
     onSuccess: () => {
-      toast.success('Đã khôi phục về bản đã công khai');
+      toast.success(i18n.t('courseOutline.restored'));
       onStructureChange();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-outline-index', courseId] });
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
     },
-    onError: () => toast.error('Khôi phục thất bại'),
+    onError: () => toast.error(i18n.t('courseOutline.restoreFailed')),
   });
 
   return (
@@ -581,28 +585,28 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={onRename}>
-            <Pencil className="h-3.5 w-3.5 mr-2" /> Đổi tên
+            <Pencil className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.rename')}
           </DropdownMenuItem>
           {depth === 0 && (
             <DropdownMenuItem onClick={() => setShowSectionModal(true)}>
-              <Sparkles className="h-3.5 w-3.5 mr-2" /> Lời chúc hoàn thành
+              <Sparkles className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.completionMessage')}
             </DropdownMenuItem>
           )}
           {(!node.published || node.has_changes) && (
             <DropdownMenuItem onClick={() => publishMut.mutate()}>
-              <Globe className="h-3.5 w-3.5 mr-2" /> Công khai
+              <Globe className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.publish')}
             </DropdownMenuItem>
           )}
           {node.published && node.has_changes && (
             <DropdownMenuItem onClick={() => setShowRollbackDialog(true)}>
-              <Undo2 className="h-3.5 w-3.5 mr-2" /> Khôi phục
+              <Undo2 className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.restore')}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={() => setShowDeleteDialog(true)}
           >
-            <Trash2 className="h-3.5 w-3.5 mr-2" /> Xóa
+            <Trash2 className="h-3.5 w-3.5 mr-2" /> {i18n.t('common.delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -610,18 +614,18 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+            <AlertDialogTitle>{i18n.t('courseOutline.confirmDelete')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc muốn xóa <span className="font-semibold text-foreground">"{node.display_name}"</span>? Hành động này không thể hoàn tác.
+              {i18n.t('courseOutline.deleteNodeDescription', { name: node.display_name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{i18n.t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => delMut.mutate()}
             >
-              Xóa
+              {i18n.t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -630,15 +634,15 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
       <AlertDialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Khôi phục về bản đã công khai</AlertDialogTitle>
+            <AlertDialogTitle>{i18n.t('courseOutline.restorePublished')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Nội dung đang sửa của <span className="font-semibold text-foreground">"{node.display_name}"</span> sẽ được đưa về bản đã công khai gần nhất. Các thay đổi chưa công khai sẽ bị mất.
+              {i18n.t('courseOutline.restorePublishedDescription', { name: node.display_name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{i18n.t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => rollbackMut.mutate()}>
-              Khôi phục
+              {i18n.t('courseOutline.restore')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -675,7 +679,7 @@ function formatAssignmentDeadline(value?: string | null): string {
 }
 
 function assignmentUnlockModeLabel(mode?: AssignmentSubmissionUnlockMode): string {
-  return mode === 'anytime' ? 'Được nộp khi chưa học xong' : 'Học xong nội dung mới được nộp';
+  return mode === 'anytime' ? i18n.t('courseOutline.submitAnytime') : i18n.t('courseOutline.submitAfterContent');
 }
 
 const MAX_ASSIGNMENT_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
@@ -713,20 +717,20 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
     mutationFn: ({ id, payload }: { id: string; payload: AssignmentUpdatePayload }) =>
       updateCourseAssignment(id, payload),
     onSuccess: () => {
-      toast.success('Đã cập nhật bài tập');
+      toast.success(i18n.t('courseOutline.assignmentUpdated'));
       invalidate();
     },
-    onError: () => toast.error('Cập nhật bài tập thất bại'),
+    onError: () => toast.error(i18n.t('courseOutline.assignmentUpdateFailed')),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteCourseAssignment(id),
     onSuccess: () => {
-      toast.success('Đã xóa bài tập');
+      toast.success(i18n.t('courseOutline.assignmentDeleted'));
       setDeleting(null);
       invalidate();
     },
-    onError: () => toast.error('Xóa bài tập thất bại'),
+    onError: () => toast.error(i18n.t('courseOutline.assignmentDeleteFailed')),
   });
 
   return (
@@ -734,9 +738,9 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
       <div className="mb-1.5 flex items-center justify-between px-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <ClipboardList className="h-3.5 w-3.5" />
-          <span>Bài tập</span>
+          <span>{i18n.t('courseOutline.assignment')}</span>
         </div>
-        <AppTooltip content={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}><Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} disabled={hasAssignment} aria-label={hasAssignment ? 'Mỗi khóa học chỉ có 1 bài tập' : 'Thêm bài tập'}>
+        <AppTooltip content={hasAssignment ? i18n.t('courseOutline.onlyOneAssignment') : i18n.t('courseOutline.addAssignment')}><Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsCreating(true)} disabled={hasAssignment} aria-label={hasAssignment ? i18n.t('courseOutline.onlyOneAssignment') : i18n.t('courseOutline.addAssignment')}>
           <Plus className="h-3.5 w-3.5" />
         </Button></AppTooltip>
       </div>
@@ -752,7 +756,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
           className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
-          Thêm bài tập đầu tiên
+          {i18n.t('courseOutline.addFirstAssignment')}
         </button>
       ) : (
         <div className="space-y-0.5">
@@ -765,31 +769,31 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="truncate text-sm font-medium">{assignment.title}</div>
                 <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-4 text-muted-foreground">
-                  <span className="whitespace-nowrap">{assignment.submitted_count || 0} đã nộp</span>
-                  <span className="whitespace-nowrap">{assignment.feedback_count || 0} phản hồi</span>
+                  <span className="whitespace-nowrap">{i18n.t('courseOutline.submittedCount', { count: assignment.submitted_count || 0 })}</span>
+                  <span className="whitespace-nowrap">{i18n.t('courseOutline.feedbackCount', { count: assignment.feedback_count || 0 })}</span>
                   {assignment.deadline_mode === 'absolute' && assignment.deadline_at && (
                     <span className={`whitespace-nowrap ${isAssignmentExpired(assignment) ? 'font-semibold text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>
-                      Hạn {formatAssignmentDeadline(assignment.deadline_at)}
+                      {i18n.t('courseOutline.deadline', { date: formatAssignmentDeadline(assignment.deadline_at) })}
                     </span>
                   )}
                   {assignment.deadline_mode === 'relative_to_enrollment' && assignment.deadline_after_days && (
                     <span className="whitespace-nowrap text-amber-600 dark:text-amber-400">
-                      Hạn sau {assignment.deadline_after_days} ngày
+                      {i18n.t('courseOutline.deadlineAfterDays', { count: assignment.deadline_after_days })}
                     </span>
                   )}
                   {assignment.deadline_mode === 'none' && (
-                    <span className="whitespace-nowrap text-muted-foreground">Không có thời hạn</span>
+                    <span className="whitespace-nowrap text-muted-foreground">{i18n.t('courseOutline.noDeadline')}</span>
                   )}
                   <span className="whitespace-nowrap">
                     {assignmentUnlockModeLabel(assignment.submission_unlock_mode)}
                   </span>
                   {assignment.grading_enabled && (
-                    <span className="whitespace-nowrap font-semibold text-emerald-600 dark:text-emerald-400">Có điểm</span>
+                    <span className="whitespace-nowrap font-semibold text-emerald-600 dark:text-emerald-400">{i18n.t('courseOutline.graded')}</span>
                   )}
                   {assignment.attachment_file && (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap">
                       <Paperclip className="h-3 w-3" />
-                      Có tệp đính kèm
+                      {i18n.t('courseOutline.attachmentAvailable')}
                     </span>
                   )}
                 </div>
@@ -802,7 +806,7 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuItem onClick={() => setEditing(assignment)}>
-                    <Pencil className="mr-2 h-3.5 w-3.5" /> Sửa bài tập
+                    <Pencil className="mr-2 h-3.5 w-3.5" /> {i18n.t('courseOutline.editAssignment')}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => updateMut.mutate({
@@ -811,10 +815,10 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
                     })}
                   >
                     <Undo2 className="mr-2 h-3.5 w-3.5" />
-                    {assignment.allow_resubmission ? 'Tắt nộp lại' : 'Cho phép nộp lại'}
+                    {assignment.allow_resubmission ? i18n.t('courseOutline.disableResubmission') : i18n.t('courseOutline.enableResubmission')}
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(assignment)}>
-                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Xóa
+                    <Trash2 className="mr-2 h-3.5 w-3.5" /> {i18n.t('common.delete')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -838,18 +842,18 @@ function AssignmentOutlineSection({ courseId }: { courseId: string }) {
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xóa bài tập</AlertDialogTitle>
+            <AlertDialogTitle>{i18n.t('courseOutline.deleteAssignment')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Bài tập "{deleting?.title}" sẽ được xóa khỏi mục lục và không còn tính vào tiến độ học viên.
+              {i18n.t('courseOutline.deleteAssignmentDescription', { title: deleting?.title })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{i18n.t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleting && deleteMut.mutate(deleting.id)}
             >
-              Xóa
+              {i18n.t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -912,7 +916,7 @@ function AssignmentDialog({
     event.target.value = '';
     if (!file) return;
     if (file.size > MAX_ASSIGNMENT_ATTACHMENT_SIZE_BYTES) {
-      toast.error('Tệp đính kèm không được vượt quá 25MB');
+      toast.error(i18n.t('courseOutline.attachmentMaxSize'));
       return;
     }
     setAttachmentFile(file);
@@ -937,10 +941,10 @@ function AssignmentDialog({
       attachment_file: attachmentFile,
     }),
     onSuccess: () => {
-      toast.success('Đã tạo bài tập');
+      toast.success(i18n.t('courseOutline.assignmentCreated'));
       onSaved();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Tạo bài tập thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, i18n.t('courseOutline.assignmentCreateFailed'))),
   });
 
   const updateMut = useMutation({
@@ -953,10 +957,10 @@ function AssignmentDialog({
       remove_attachment: removeAttachment || undefined,
     }),
     onSuccess: () => {
-      toast.success('Đã lưu bài tập');
+      toast.success(i18n.t('courseOutline.assignmentSaved'));
       onSaved();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Lưu bài tập thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, i18n.t('courseOutline.assignmentSaveFailed'))),
   });
 
   const pending = createMut.isPending || updateMut.isPending;
@@ -967,46 +971,46 @@ function AssignmentDialog({
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden p-0 sm:h-[680px] sm:max-h-[calc(100dvh-3rem)] sm:max-w-2xl">
         <DialogHeader className="border-b px-4 py-4 sm:px-6">
-          <DialogTitle>{assignment ? 'Sửa bài tập' : 'Thêm bài tập'}</DialogTitle>
+          <DialogTitle>{assignment ? i18n.t('courseOutline.editAssignment') : i18n.t('courseOutline.addAssignment')}</DialogTitle>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Tiêu đề</label>
+              <label className="text-sm font-medium">{i18n.t('courseOutline.assignmentTitle')}</label>
               <input
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Bài tập cuối khóa"
+                placeholder={i18n.t('courseOutline.assignmentTitlePlaceholder')}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Câu hỏi</label>
+              <label className="text-sm font-medium">{i18n.t('courseOutline.assignmentQuestion')}</label>
               <textarea
                 className="min-h-[132px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Nhập yêu cầu bài tập cho học viên..."
+                placeholder={i18n.t('courseOutline.assignmentQuestionPlaceholder')}
               />
             </div>
 
             <div className="app-liquid-card grid gap-3 rounded-lg border bg-muted/10 p-3">
               <div className="flex items-center justify-between gap-3">
-                <Label className="text-sm">Cho phép nộp lại</Label>
+                <Label className="text-sm">{i18n.t('courseOutline.allowResubmission')}</Label>
                 <Switch checked={allowResubmission} onCheckedChange={setAllowResubmission} />
               </div>
 
               <div className="app-liquid-card rounded-lg border bg-background/60 p-3">
-                <div className="mb-2 text-sm font-medium">Điều kiện nộp bài</div>
+                <div className="mb-2 text-sm font-medium">{i18n.t('courseOutline.submissionCondition')}</div>
                 <Select value={submissionUnlockMode} onValueChange={(value) => setSubmissionUnlockMode(value as AssignmentSubmissionUnlockMode)}>
                   <SelectTrigger className="h-10 rounded-lg bg-background font-semibold">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="after_content_complete">Học xong nội dung mới được nộp</SelectItem>
-                    <SelectItem value="anytime">Được nộp khi chưa học xong</SelectItem>
+                    <SelectItem value="after_content_complete">{i18n.t('courseOutline.submitAfterContent')}</SelectItem>
+                    <SelectItem value="anytime">{i18n.t('courseOutline.submitAnytime')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1014,7 +1018,7 @@ function AssignmentDialog({
               <div className="app-liquid-card rounded-lg border bg-background/60 p-3">
                 <Label className="flex items-center gap-2 text-sm">
                   <CalendarClock className="h-4 w-4 text-amber-500" />
-                  Thời hạn nộp bài
+                  {i18n.t('courseOutline.submissionDeadline')}
                 </Label>
                 <Select
                   value={deadlineMode}
@@ -1025,14 +1029,14 @@ function AssignmentDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="relative_to_enrollment">Hạn sau X ngày</SelectItem>
-                    <SelectItem value="none">Không có thời hạn</SelectItem>
+                    <SelectItem value="relative_to_enrollment">{i18n.t('courseOutline.deadlineAfterDaysOption')}</SelectItem>
+                    <SelectItem value="none">{i18n.t('courseOutline.noDeadline')}</SelectItem>
                   </SelectContent>
                 </Select>
 
                 {isRelativeDeadline ? (
                   <div className="app-liquid-card mt-3 rounded-lg border bg-muted/20 p-3">
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Số ngày tính từ mốc bắt đầu</div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{i18n.t('courseOutline.daysFromStart')}</div>
                     <input
                       type="number"
                       min={1}
@@ -1044,20 +1048,20 @@ function AssignmentDialog({
                     />
                     {assignment ? (
                       <div className="mt-2 text-xs font-medium text-muted-foreground">
-                        Không thể đổi thời hạn sau khi bài tập đã được tạo.
+                        {i18n.t('courseOutline.deadlineCannotChange')}
                       </div>
                     ) : !hasValidRelativeDeadline ? (
                       <div className="mt-2 text-xs font-medium text-destructive">
-                        Vui lòng nhập số ngày từ 1 đến 3650.
+                        {i18n.t('courseOutline.daysRangeHint')}
                       </div>
                     ) : null}
                     <div className="mt-2 text-xs font-medium text-muted-foreground">
-                      Học viên đã ghi danh trước sẽ được tính từ lúc bài tập được tạo; học viên ghi danh sau sẽ được tính từ lúc ghi danh.
+                      {i18n.t('courseOutline.enrollmentDeadlineHint')}
                     </div>
                   </div>
                 ) : (
                   <div className="mt-3 rounded-lg border border-dashed bg-muted/20 px-3 py-3 text-xs font-medium text-muted-foreground">
-                    Bài tập không có thời hạn nộp.
+                    {i18n.t('courseOutline.noDeadlineHint')}
                   </div>
                 )}
               </div>
@@ -1073,14 +1077,14 @@ function AssignmentDialog({
                   <div className="min-w-0">
                     <Label className="flex items-center gap-2 text-sm">
                       <Paperclip className="h-4 w-4 text-primary" />
-                      Tệp đính kèm
+                      {i18n.t('courseOutline.attachment')}
                     </Label>
                     <div className="mt-1 text-xs font-medium text-muted-foreground">
-                      Chỉ 1 tệp, tối đa 25MB, hỗ trợ mọi loại tệp.
+                      {i18n.t('courseOutline.attachmentHint')}
                     </div>
                   </div>
                   <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => attachmentInputRef.current?.click()}>
-                    Chọn tệp
+                    {i18n.t('courseOutline.selectFile')}
                   </Button>
                 </div>
 
@@ -1092,7 +1096,7 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{attachmentFile.name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(attachmentFile.size)}</div>
                       </div>
-                      <AppTooltip content="Xóa tệp"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label="Xóa tệp">
+                      <AppTooltip content={i18n.t('courseOutline.deleteFile')}><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label={i18n.t('courseOutline.deleteFile')}>
                         <X className="h-4 w-4" />
                       </Button></AppTooltip>
                     </div>
@@ -1103,13 +1107,13 @@ function AssignmentDialog({
                         <div className="truncate text-sm font-semibold">{existingAttachment.original_name}</div>
                         <div className="text-xs text-muted-foreground">{formatAssignmentFileSize(existingAttachment.size_bytes)}</div>
                       </div>
-                      <AppTooltip content="Xóa tệp"><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label="Xóa tệp">
+                      <AppTooltip content={i18n.t('courseOutline.deleteFile')}><Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={clearAttachment} aria-label={i18n.t('courseOutline.deleteFile')}>
                         <X className="h-4 w-4" />
                       </Button></AppTooltip>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed px-3 py-3 text-xs font-medium text-muted-foreground">
-                      Chưa có tệp đính kèm.
+                      {i18n.t('courseOutline.noAttachment')}
                     </div>
                   )}
                 </div>
@@ -1119,17 +1123,17 @@ function AssignmentDialog({
                 <div className="app-liquid-card flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
                   <Label className="flex min-w-0 items-center gap-2 text-sm">
                     <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">Chấm điểm từng học viên</span>
+                    <span className="truncate">{i18n.t('courseOutline.gradeEachLearner')}</span>
                   </Label>
                   <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    {assignment.grading_enabled ? 'Đang bật' : 'Đang tắt'}
+                    {assignment.grading_enabled ? i18n.t('courseOutline.enabled') : i18n.t('courseOutline.disabled')}
                   </span>
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 p-3">
                   <Label className="flex items-center gap-2 text-sm">
                     <Trophy className="h-4 w-4 text-emerald-500" />
-                    Chấm điểm từng học viên
+                    {i18n.t('courseOutline.gradeEachLearner')}
                   </Label>
                   <Switch checked={gradingEnabled} onCheckedChange={setGradingEnabled} />
                 </div>
@@ -1139,9 +1143,9 @@ function AssignmentDialog({
         </div>
 
         <DialogFooter className="border-t px-4 pb-5 pt-3 sm:px-6 sm:pb-5">
-          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button variant="outline" onClick={onClose}>{i18n.t('common.cancel')}</Button>
           <Button disabled={!canSave} onClick={() => assignment ? updateMut.mutate() : createMut.mutate()}>
-            {pending ? 'Đang lưu...' : 'Lưu'}
+            {pending ? i18n.t('courseOutline.saving') : i18n.t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1159,24 +1163,24 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
   const typeLabel = category === 'chapter'
-    ? 'chương'
+    ? i18n.t('courseOutline.chapter')
     : category === 'sequential'
-      ? 'mục'
+      ? i18n.t('courseOutline.section')
       : category === 'vertical'
-        ? 'bài học'
-        : 'nội dung';
+        ? i18n.t('courseOutline.unit')
+        : i18n.t('courseOutline.content');
 
   const addMut = useMutation({
     mutationFn: () => createBlock(parentId, category, name || undefined),
     onSuccess: () => {
-      toast.success('Đã thêm thành công');
+      toast.success(i18n.t('courseOutline.added'));
       setIsAdding(false);
       setName('');
       onStructureChange();
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.error || err?.message || 'Lỗi không xác định';
-      toast.error(`Thêm thất bại: ${msg}`);
+    onError: (err: unknown) => {
+      const msg = getLocalizedApiError(err, i18n.t('courseOutline.unknownError'));
+      toast.error(i18n.t('courseOutline.addFailed', { message: msg }));
     },
   });
 
@@ -1186,7 +1190,7 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
         <input
           autoFocus
           className="flex h-7 flex-1 rounded border border-input bg-background px-2 text-xs shadow-sm"
-          placeholder={`Tên ${typeLabel}...`}
+          placeholder={i18n.t('courseOutline.namePlaceholder', { type: typeLabel })}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -1195,10 +1199,10 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
           }}
         />
         <Button size="sm" className="h-7 text-xs" onClick={() => addMut.mutate()} disabled={addMut.isPending}>
-          Lưu
+          {i18n.t('common.save')}
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsAdding(false)}>
-          Hủy
+          {i18n.t('common.cancel')}
         </Button>
       </div>
     );
@@ -1257,11 +1261,11 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
       description: form.description ?? '',
     }),
     onSuccess: () => {
-      toast.success('Đã lưu lời chúc hoàn thành');
+      toast.success(i18n.t('courseOutline.completionMessageSaved'));
       queryClient.invalidateQueries({ queryKey: ['section-modal-config', courseId, sectionId] });
       onClose();
     },
-    onError: () => toast.error('Lưu thất bại'),
+    onError: () => toast.error(i18n.t('courseOutline.saveFailed')),
   });
 
   const updateField = (key: string, value: unknown) => setForm(prev => ({ ...prev, [key]: value }));
@@ -1272,7 +1276,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
         <DialogHeader>
           <DialogTitle className="text-lg flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-amber-500" />
-            Lời chúc hoàn thành chương
+            {i18n.t('courseOutline.completionMessageTitle')}
           </DialogTitle>
           <AppTooltip content={sectionName}><p className="text-xs text-muted-foreground truncate" >{sectionName}</p></AppTooltip>
         </DialogHeader>
@@ -1285,7 +1289,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
         ) : (
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Hiện lời chúc khi hoàn thành</Label>
+              <Label className="text-sm font-semibold">{i18n.t('courseOutline.showCompletionMessage')}</Label>
               <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => updateField('enabled', v)}
@@ -1293,22 +1297,22 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">
-                Tiêu đề {form.enabled && <span className="text-red-500">*</span>}
+                {i18n.t('courseOutline.title')} {form.enabled && <span className="text-red-500">*</span>}
               </label>
               <input
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                placeholder="Chúc mừng bạn đã hoàn thành!"
+                placeholder={i18n.t('courseOutline.completionTitlePlaceholder')}
                 value={form.title || ''}
                 onChange={e => updateField('title', e.target.value)}
               />
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">
-                Nội dung khích lệ {form.enabled && <span className="text-red-500">*</span>}
+                {i18n.t('courseOutline.encouragement')} {form.enabled && <span className="text-red-500">*</span>}
               </label>
               <textarea
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-                placeholder="Bạn đã nỗ lực tuyệt vời để hoàn thành phần này..."
+                placeholder={i18n.t('courseOutline.encouragementPlaceholder')}
                 value={form.description || ''}
                 onChange={e => updateField('description', e.target.value)}
               />
@@ -1317,7 +1321,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button variant="outline" onClick={onClose}>{i18n.t('common.cancel')}</Button>
           <Button
             onClick={() => saveMut.mutate()}
             disabled={
@@ -1325,7 +1329,7 @@ function SectionModalConfigDialog({ courseId, sectionId, sectionName, open, onCl
               (form.enabled && (!form.title?.trim() || !form.description?.trim()))
             }
           >
-            {saveMut.isPending ? 'Đang lưu...' : 'Lưu'}
+            {saveMut.isPending ? i18n.t('courseOutline.saving') : i18n.t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

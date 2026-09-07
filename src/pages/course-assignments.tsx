@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ElementTyp
 import { Link, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -62,15 +63,18 @@ import {
   type AssignmentSubmission,
 } from '@/api/custom-assignments';
 import { AppTooltip } from '@/components/ui/tooltip';
+import i18n, { type AppLocale } from '@/i18n';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 const MAX_FEEDBACK_FILES = 5;
 
 function formatDate(value?: string | null): string {
   if (!value) return '-';
-  return new Intl.DateTimeFormat('vi-VN', {
+  return formatLocaleDate(value, (i18n.language === 'en' ? 'en' : 'vi') as AppLocale, {
     dateStyle: 'short',
     timeStyle: 'short',
-  }).format(new Date(value));
+  });
 }
 
 function formatBytes(value?: number): string {
@@ -86,7 +90,7 @@ function formatBytes(value?: number): string {
 }
 
 function displayLearner(submission: AssignmentSubmission): string {
-  return submission.learner_name || submission.learner_username || submission.learner_email || 'Học viên';
+  return submission.learner_name || submission.learner_username || submission.learner_email || i18n.t('courseAssignments.learner');
 }
 
 function displayFeedbackBy(submission: AssignmentSubmission): string {
@@ -94,7 +98,7 @@ function displayFeedbackBy(submission: AssignmentSubmission): string {
 }
 
 function displayScore(submission: AssignmentSubmission): string {
-  if (!submission.grading_enabled) return 'Không chấm';
+  if (!submission.grading_enabled) return i18n.t('courseAssignments.notGraded');
   return typeof submission.score === 'number' ? `${submission.score}/100` : '-';
 }
 
@@ -103,7 +107,7 @@ function statusBadge(status: AssignmentSubmission['status']) {
     return (
       <Badge className="gap-1.5 border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        Đã phản hồi
+        {i18n.t('courseAssignments.feedbackGiven')}
       </Badge>
     );
   }
@@ -111,14 +115,14 @@ function statusBadge(status: AssignmentSubmission['status']) {
     return (
       <Badge variant="outline" className="gap-1.5 border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
         <Clock3 className="h-3.5 w-3.5" />
-        Chưa nộp
+        {i18n.t('courseAssignments.notSubmitted')}
       </Badge>
     );
   }
   return (
     <Badge variant="outline" className="gap-1.5 border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
       <Clock3 className="h-3.5 w-3.5" />
-      Đã nộp
+      {i18n.t('courseAssignments.submitted')}
     </Badge>
   );
 }
@@ -136,7 +140,7 @@ async function downloadPrivateFile(file: AssignmentFileMeta) {
 }
 
 function FileList({ files, compact = false }: { files: AssignmentFileMeta[]; compact?: boolean }) {
-  if (!files.length) return <span className="text-xs text-muted-foreground">Không có tệp</span>;
+  if (!files.length) return <span className="text-xs text-muted-foreground">{i18n.t('courseAssignments.noFiles')}</span>;
   return (
     <div className={cn('flex flex-wrap gap-1.5', !compact && 'max-w-[260px]')}>
       {files.map((file) => (
@@ -145,7 +149,7 @@ function FileList({ files, compact = false }: { files: AssignmentFileMeta[]; com
           variant="outline"
           size="sm"
           className="h-8 max-w-[240px] justify-start gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs shadow-sm hover:border-primary/40 hover:bg-primary/5"
-          onClick={() => downloadPrivateFile(file).catch(() => toast.error('Không thể tải tệp'))}
+          onClick={() => downloadPrivateFile(file).catch(() => toast.error(i18n.t('courseAssignments.fileDownloadFailed')))}
         >
           <Download className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">{file.original_name}</span>
@@ -177,6 +181,7 @@ function StatTile({ icon: Icon, label, value, tone }: { icon: ElementType; label
 }
 
 export default function CourseAssignmentsPage() {
+  const { t } = useTranslation();
   const { courseId } = useParams<{ courseId: string }>();
   const queryClient = useQueryClient();
   const roleLabels = useAuthStore((s) => s.roleLabels);
@@ -223,13 +228,13 @@ export default function CourseAssignmentsPage() {
     <div className="space-y-5 p-4 md:p-6">
       <PageHeader
         icon={ClipboardList}
-        title="Bài tập"
+        title={t('courseAssignments.title')}
         description={selectedAssignment?.title || courseName}
         actions={
           <Button variant="outline" asChild className="gap-2">
             <Link to="/courses">
               <ArrowLeft className="h-4 w-4" />
-              Khóa học
+              {t('courseAssignments.courses')}
             </Link>
           </Button>
         }
@@ -241,9 +246,9 @@ export default function CourseAssignmentsPage() {
         transition={{ duration: 0.24 }}
         className="grid gap-3 sm:grid-cols-3"
       >
-        <StatTile icon={ClipboardList} label="Số bài tập" value={assignments.length} tone="primary" />
-        <StatTile icon={FileCheck2} label="Lượt đã nộp" value={submittedCount} tone="muted" />
-        <StatTile icon={MessageSquareText} label="Đã phản hồi" value={feedbackCount} tone="success" />
+        <StatTile icon={ClipboardList} label={t('courseAssignments.assignmentCount')} value={assignments.length} tone="primary" />
+        <StatTile icon={FileCheck2} label={t('courseAssignments.submissionCount')} value={submittedCount} tone="muted" />
+        <StatTile icon={MessageSquareText} label={t('courseAssignments.feedbackCount')} value={feedbackCount} tone="success" />
       </motion.div>
 
       <motion.div
@@ -254,7 +259,7 @@ export default function CourseAssignmentsPage() {
       >
         <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Filter className="h-3.5 w-3.5" />
-          Bộ lọc
+          {t('courseAssignments.filters')}
         </div>
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative min-w-0 flex-1">
@@ -262,16 +267,16 @@ export default function CourseAssignmentsPage() {
             <Input
               value={search}
               onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-              placeholder="Tìm học viên..."
+              placeholder={t('courseAssignments.searchLearners')}
               className="pl-9"
             />
           </div>
           <Select value={assignmentFilter} onValueChange={(value) => { setAssignmentFilter(value); setPage(1); }}>
             <SelectTrigger className="w-full md:w-[260px]">
-              <SelectValue placeholder="Bài tập" />
+              <SelectValue placeholder={t('courseAssignments.assignment')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả bài tập</SelectItem>
+              <SelectItem value="all">{t('courseAssignments.allAssignments')}</SelectItem>
               {assignments.map((assignment) => (
                 <SelectItem key={assignment.id} value={assignment.id}>{assignment.title}</SelectItem>
               ))}
@@ -279,13 +284,13 @@ export default function CourseAssignmentsPage() {
           </Select>
           <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
             <SelectTrigger className="w-full md:w-[190px]">
-              <SelectValue placeholder="Trạng thái" />
+              <SelectValue placeholder={t('courseAssignments.status')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="not_submitted">Chưa nộp</SelectItem>
-              <SelectItem value="submitted">Đã nộp</SelectItem>
-              <SelectItem value="feedback_given">Đã phản hồi</SelectItem>
+              <SelectItem value="all">{t('courseAssignments.allStatuses')}</SelectItem>
+              <SelectItem value="not_submitted">{t('courseAssignments.notSubmitted')}</SelectItem>
+              <SelectItem value="submitted">{t('courseAssignments.submitted')}</SelectItem>
+              <SelectItem value="feedback_given">{t('courseAssignments.feedbackGiven')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -309,12 +314,12 @@ export default function CourseAssignmentsPage() {
             </colgroup>
             <TableHeader className="bg-muted/30">
               <TableRow>
-                <TableHead className="text-center">Học viên</TableHead>
-                <TableHead className="text-left">Bài tập</TableHead>
-                <TableHead className="text-left">Trạng thái</TableHead>
-                <TableHead className="text-left">Thời gian</TableHead>
-                <TableHead className="text-center">Tệp</TableHead>
-                <TableHead className="text-center">Thao tác</TableHead>
+                <TableHead className="text-center">{t('courseAssignments.learnerColumn')}</TableHead>
+                <TableHead className="text-left">{t('courseAssignments.assignment')}</TableHead>
+                <TableHead className="text-left">{t('courseAssignments.status')}</TableHead>
+                <TableHead className="text-left">{t('courseAssignments.time')}</TableHead>
+                <TableHead className="text-center">{t('courseAssignments.files')}</TableHead>
+                <TableHead className="text-center">{t('courseAssignments.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -334,7 +339,7 @@ export default function CourseAssignmentsPage() {
                   <TableCell colSpan={6} className="h-36 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <ClipboardList className="h-8 w-8 opacity-30" />
-                      <p className="text-sm">Chưa có học viên nộp bài</p>
+                      <p className="text-sm">{t('courseAssignments.emptySubmissions')}</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -349,7 +354,7 @@ export default function CourseAssignmentsPage() {
                         <div className="truncate font-medium">{displayLearner(submission)}</div>
                         <div className="truncate text-xs text-muted-foreground">{submission.learner_email}</div>
                         <Badge variant="outline" className="mt-1 h-5 max-w-full border-primary/20 bg-primary/5 px-1.5 text-[10px] leading-none text-primary">
-                          <span className="truncate">{getRoleLabel(submission.learner_role, roleLabels, 'Học viên')}</span>
+                          <span className="truncate">{getRoleLabel(submission.learner_role, roleLabels, t('courseAssignments.learner'))}</span>
                         </Badge>
                       </div>
                     </div>
@@ -379,19 +384,19 @@ export default function CourseAssignmentsPage() {
                   </TableCell>
                   <TableCell className="min-w-0 overflow-hidden text-left text-xs text-muted-foreground">
                     <div className="w-full max-w-[180px] text-left">
-                      <div className="truncate"><span className="font-medium text-foreground">Nộp:</span> {formatDate(submission.submitted_at)}</div>
-                      <div className="truncate"><span className="font-medium text-foreground">Phản hồi:</span> {formatDate(submission.feedback_at)}</div>
-                      <div className="truncate"><span className="font-medium text-foreground">Bởi:</span> {displayFeedbackBy(submission)}</div>
+                      <div className="truncate"><span className="font-medium text-foreground">{t('courseAssignments.submittedAt')}</span> {formatDate(submission.submitted_at)}</div>
+                      <div className="truncate"><span className="font-medium text-foreground">{t('courseAssignments.feedbackAt')}</span> {formatDate(submission.feedback_at)}</div>
+                      <div className="truncate"><span className="font-medium text-foreground">{t('courseAssignments.by')}</span> {displayFeedbackBy(submission)}</div>
                     </div>
                   </TableCell>
                   <TableCell className="min-w-0 overflow-hidden text-left">
                     {submission.files.length > 0 ? (
-                      <AppTooltip content={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}><Button
+                      <AppTooltip content={submission.files.length === 1 ? submission.files[0].original_name : t('courseAssignments.submittedFiles', { count: submission.files.length })}><Button
                         size="sm"
                         variant="outline"
                         className="mx-auto h-8 w-full min-w-0 max-w-[220px] justify-start gap-1.5 px-2"
-                        onClick={() => downloadPrivateFile(submission.files[0]).catch(() => toast.error('Không thể tải tệp'))}
-                        aria-label={submission.files.length === 1 ? submission.files[0].original_name : `${submission.files.length} tệp đã nộp`}
+                        onClick={() => downloadPrivateFile(submission.files[0]).catch(() => toast.error(t('courseAssignments.fileDownloadFailed')))}
+                        aria-label={submission.files.length === 1 ? submission.files[0].original_name : t('courseAssignments.submittedFiles', { count: submission.files.length })}
                       >
                         <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate text-left text-xs">{submission.files[0].original_name}</span>
@@ -405,23 +410,23 @@ export default function CourseAssignmentsPage() {
                   </TableCell>
                   <TableCell className="overflow-hidden text-center">
                     <div className="flex justify-center gap-1">
-                      <AppTooltip content="Lịch sử phản hồi"><Button
+                      <AppTooltip content={t('courseAssignments.feedbackHistory')}><Button
                         size="icon"
                         variant="outline"
                         className="h-8 w-8"
                         disabled={submission.status === 'not_submitted'}
                         onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
-                        aria-label="Lịch sử phản hồi"
+                        aria-label={t('courseAssignments.feedbackHistory')}
                       >
                         <History className="h-3.5 w-3.5" />
                       </Button></AppTooltip>
-                      <AppTooltip content={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}><Button
+                      <AppTooltip content={submission.status === 'feedback_given' ? t('courseAssignments.replyAgain') : submission.status === 'not_submitted' ? t('courseAssignments.notSubmitted') : t('courseAssignments.reply')}><Button
                         size="icon"
                         variant={submission.status === 'submitted' ? 'default' : 'outline'}
                         className="h-8 w-8"
                         disabled={submission.status === 'not_submitted'}
                         onClick={() => submission.status !== 'not_submitted' && setFeedbackTarget(submission)}
-                        aria-label={submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
+                        aria-label={submission.status === 'feedback_given' ? t('courseAssignments.replyAgain') : submission.status === 'not_submitted' ? t('courseAssignments.notSubmitted') : t('courseAssignments.reply')}
                       >
                         {submission.status === 'not_submitted' ? (
                           <Clock3 className="h-3.5 w-3.5" />
@@ -449,7 +454,7 @@ export default function CourseAssignmentsPage() {
           ) : submissions.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 text-center text-muted-foreground">
               <ClipboardList className="mb-2 h-8 w-8 opacity-30" />
-              <p className="text-sm">Chưa có học viên nộp bài</p>
+              <p className="text-sm">{t('courseAssignments.emptySubmissions')}</p>
             </div>
           ) : (
             <AnimatePresence>
@@ -470,7 +475,7 @@ export default function CourseAssignmentsPage() {
                   </div>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-                      {getRoleLabel(submission.learner_role, roleLabels, 'Học viên')}
+                      {getRoleLabel(submission.learner_role, roleLabels, t('courseAssignments.learner'))}
                     </Badge>
                     <Badge
                       variant="outline"
@@ -492,11 +497,11 @@ export default function CourseAssignmentsPage() {
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
                     <div className="flex items-center justify-between gap-3">
-                      <span>Đã phản hồi</span>
+                      <span>{t('courseAssignments.feedbackGiven')}</span>
                       <span className="text-right font-medium text-foreground">{formatDate(submission.feedback_at)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span>Phản hồi bởi</span>
+                      <span>{t('courseAssignments.feedbackBy')}</span>
                       <span className="text-right font-medium text-foreground">{displayFeedbackBy(submission)}</span>
                     </div>
                   </div>
@@ -504,12 +509,12 @@ export default function CourseAssignmentsPage() {
                     <FileList files={submission.files} compact />
                   </div>
                   <div className="mt-4 grid grid-cols-[44px_1fr] gap-2">
-                    <AppTooltip content="Lịch sử phản hồi"><Button
+                    <AppTooltip content={t('courseAssignments.feedbackHistory')}><Button
                       variant="outline"
                       size="icon"
                       disabled={submission.status === 'not_submitted'}
                       onClick={() => submission.status !== 'not_submitted' && setHistoryTarget(submission)}
-                      aria-label="Lịch sử phản hồi"
+                      aria-label={t('courseAssignments.feedbackHistory')}
                     >
                       <History className="h-4 w-4" />
                     </Button></AppTooltip>
@@ -524,7 +529,7 @@ export default function CourseAssignmentsPage() {
                       ) : (
                         <MessageSquareText className="h-4 w-4" />
                       )}
-                      {submission.status === 'feedback_given' ? 'Phản hồi lại' : submission.status === 'not_submitted' ? 'Chưa nộp' : 'Phản hồi'}
+                      {submission.status === 'feedback_given' ? t('courseAssignments.replyAgain') : submission.status === 'not_submitted' ? t('courseAssignments.notSubmitted') : t('courseAssignments.reply')}
                     </Button>
                   </div>
                 </motion.div>
@@ -540,13 +545,13 @@ export default function CourseAssignmentsPage() {
           totalPages={submissionsQuery.data?.totalPages || 1}
           onPageChange={setPage}
           onLimitChange={setLimit}
-          label="bản ghi"
+          label={t('courseAssignments.records')}
         />
       </motion.div>
 
       <FeedbackDialog
         submission={feedbackTarget}
-        roleLabel={feedbackTarget ? getRoleLabel(feedbackTarget.learner_role, roleLabels, 'Học viên') : ''}
+        roleLabel={feedbackTarget ? getRoleLabel(feedbackTarget.learner_role, roleLabels, t('courseAssignments.learner')) : ''}
         open={!!feedbackTarget}
         onClose={() => setFeedbackTarget(null)}
         onSaved={() => {
@@ -580,6 +585,7 @@ function FeedbackHistoryDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const historyQuery = useQuery({
     queryKey: ['assignment-feedback-history', submission?.id],
     queryFn: () => getAssignmentFeedbackHistory(submission!.id),
@@ -599,7 +605,7 @@ function FeedbackHistoryDialog({
               <History className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <DialogTitle>Lịch sử phản hồi</DialogTitle>
+              <DialogTitle>{t('courseAssignments.historyTitle')}</DialogTitle>
               <DialogDescription className="mt-1 truncate">
                 {displayLearner(submission)} · {submission.assignment_title}
               </DialogDescription>
@@ -621,7 +627,7 @@ function FeedbackHistoryDialog({
           ) : history.length === 0 ? (
             <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 text-center text-muted-foreground">
               <History className="mb-2 h-8 w-8 opacity-40" />
-              <div className="text-sm font-medium">Chưa có lịch sử phản hồi</div>
+              <div className="text-sm font-medium">{t('courseAssignments.noFeedbackHistory')}</div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -641,7 +647,7 @@ function FeedbackHistoryDialog({
                           index === 0 && 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
                         )}
                       >
-                        {index === 0 ? 'Mới nhất' : `Lần ${history.length - index}`}
+                        {index === 0 ? t('courseAssignments.latest') : t('courseAssignments.attempt', { count: history.length - index })}
                       </Badge>
                       {submission.grading_enabled && (
                         <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -655,7 +661,7 @@ function FeedbackHistoryDialog({
                   <div className="whitespace-pre-wrap rounded-lg bg-muted/20 p-3 text-sm leading-6 text-foreground">
                     {item.feedback_text}
                   </div>
-                  <div className="mt-2 text-xs text-muted-foreground">Bởi {displayHistoryFeedbackBy(item)}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">{t('courseAssignments.by')} {displayHistoryFeedbackBy(item)}</div>
                   {item.feedback_files.length > 0 && (
                     <div className="mt-3">
                       <FileList files={item.feedback_files} compact />
@@ -685,6 +691,7 @@ function FeedbackDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [score, setScore] = useState('');
@@ -704,13 +711,13 @@ function FeedbackDialog({
       feedback_files: files,
     }),
     onSuccess: () => {
-      toast.success('Đã gửi phản hồi');
+      toast.success(t('courseAssignments.feedbackSent'));
       setFeedbackText('');
       setScore('');
       setFiles([]);
       onSaved();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Gửi phản hồi thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courseAssignments.feedbackSendFailed'))),
   });
 
   if (!submission) return null;
@@ -740,7 +747,7 @@ function FeedbackDialog({
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <MessageSquareText className="h-5 w-5" />
                   </span>
-                  Phản hồi bài tập
+                  {t('courseAssignments.feedbackTitle')}
                 </DialogTitle>
                 <DialogDescription className="mt-2">
                   {submission.course_name}
@@ -749,12 +756,12 @@ function FeedbackDialog({
               {hasFeedback ? (
                 <Badge className="w-fit gap-1.5 border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Phản hồi lại
+                  {t('courseAssignments.replyAgain')}
                 </Badge>
               ) : (
                 <Badge className="w-fit gap-1.5 border border-primary/20 bg-primary/10 px-3 py-1 text-primary">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Quản trị viên duyệt
+                  {t('courseAssignments.administratorReview')}
                 </Badge>
               )}
             </div>
@@ -769,7 +776,7 @@ function FeedbackDialog({
                       <GraduationCap className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Học viên</div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('courseAssignments.learner')}</div>
                       <div className="mt-1 font-semibold text-foreground">{displayLearner(submission)}</div>
                       <div className="text-xs text-muted-foreground">{submission.learner_email}</div>
                     </div>
@@ -778,25 +785,25 @@ function FeedbackDialog({
                 </div>
 
                 <div className="app-liquid-card rounded-xl border bg-card p-4 shadow-sm">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bài tập</div>
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('courseAssignments.assignment')}</div>
                   <h3 className="text-base font-semibold text-foreground">{submission.assignment_title}</h3>
                   <div className="app-liquid-card mt-3 rounded-lg border bg-muted/20 p-3">
-                    <div className="mb-1 text-xs font-medium text-muted-foreground">Câu hỏi</div>
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">{t('courseAssignments.question')}</div>
                     <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-foreground">
-                      {submission.assignment_question || 'Không có câu hỏi'}
+                      {submission.assignment_question || t('courseAssignments.noQuestion')}
                     </div>
                   </div>
                 </div>
 
                 <div className="app-liquid-card rounded-xl border bg-card p-4 shadow-sm">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bài làm của học viên</div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('courseAssignments.learnerWork')}</div>
                   <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted/20 p-3 text-sm leading-6 text-foreground">
-                    {submission.answer_text || 'Không có nội dung text'}
+                    {submission.answer_text || t('courseAssignments.noAnswerText')}
                   </div>
                   <div className="mt-4">
                     <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       <Paperclip className="h-3.5 w-3.5" />
-                      Tệp học viên
+                      {t('courseAssignments.learnerFiles')}
                     </div>
                     <FileList files={submission.files} compact />
                   </div>
@@ -811,8 +818,8 @@ function FeedbackDialog({
                         <Trophy className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-foreground">Điểm bài tập</div>
-                        <div className="text-xs text-muted-foreground">Thang điểm tối đa 100</div>
+                        <div className="text-sm font-semibold text-foreground">{t('courseAssignments.assignmentScore')}</div>
+                        <div className="text-xs text-muted-foreground">{t('courseAssignments.scoreOutOf100')}</div>
                       </div>
                     </div>
                     <Input
@@ -822,11 +829,11 @@ function FeedbackDialog({
                       step={1}
                       value={score}
                       onChange={(event) => setScore(event.target.value)}
-                      placeholder="Nhập điểm 0-100"
+                      placeholder={t('courseAssignments.scorePlaceholder')}
                       className="h-11 rounded-xl bg-background text-base font-semibold"
                     />
                     {!scoreValid && (
-                      <div className="mt-2 text-xs font-medium text-destructive">Điểm phải là số nguyên từ 0 đến 100.</div>
+                      <div className="mt-2 text-xs font-medium text-destructive">{t('courseAssignments.scoreInvalid')}</div>
                     )}
                   </div>
                 )}
@@ -834,11 +841,11 @@ function FeedbackDialog({
                 {submission.feedback_text && (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/20">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="font-semibold text-emerald-700 dark:text-emerald-300">Phản hồi hiện tại</div>
+                      <div className="font-semibold text-emerald-700 dark:text-emerald-300">{t('courseAssignments.currentFeedback')}</div>
                       <span className="text-xs text-muted-foreground">{formatDate(submission.feedback_at)}</span>
                     </div>
                     <div className="whitespace-pre-wrap rounded-lg bg-background/70 p-3 text-foreground">{submission.feedback_text}</div>
-                    <div className="mt-2 text-xs text-muted-foreground">Bởi {displayFeedbackBy(submission)}</div>
+                    <div className="mt-2 text-xs text-muted-foreground">{t('courseAssignments.by')} {displayFeedbackBy(submission)}</div>
                     {submission.feedback_files.length > 0 && (
                       <div className="mt-3">
                         <FileList files={submission.feedback_files} compact />
@@ -848,11 +855,11 @@ function FeedbackDialog({
                 )}
 
                 <div className="app-liquid-card rounded-xl border bg-card p-4 shadow-sm">
-                  <label className="mb-2 block text-sm font-semibold">{hasFeedback ? 'Phản hồi mới nhất' : 'Lời nhận xét'}</label>
+                  <label className="mb-2 block text-sm font-semibold">{hasFeedback ? t('courseAssignments.latestFeedback') : t('courseAssignments.comments')}</label>
                   <Textarea
                     value={feedbackText}
                     onChange={(event) => setFeedbackText(event.target.value)}
-                    placeholder="Nhập phản hồi cho học viên..."
+                    placeholder={t('courseAssignments.feedbackPlaceholder')}
                     className="min-h-[180px] resize-y rounded-xl"
                   />
                 </div>
@@ -868,9 +875,9 @@ function FeedbackDialog({
                         <UploadCloud className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-foreground">Tệp phản hồi mới</div>
+                        <div className="text-sm font-semibold text-foreground">{t('courseAssignments.newFeedbackFiles')}</div>
                         <div className="text-xs text-muted-foreground">
-                          {files.length}/{MAX_FEEDBACK_FILES} tệp{hasFeedback ? ' · không chọn tệp mới sẽ giữ tệp hiện tại' : ''}
+                          {t('courseAssignments.fileCount', { count: files.length, max: MAX_FEEDBACK_FILES })}{hasFeedback ? t('courseAssignments.keepExistingFiles') : ''}
                         </div>
                       </div>
                     </div>
@@ -880,7 +887,7 @@ function FeedbackDialog({
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <UploadCloud className="h-4 w-4" />
-                      Tải tệp lên
+                      {t('courseAssignments.uploadFiles')}
                     </Button>
                   </div>
                   {files.length > 0 && (
@@ -909,10 +916,10 @@ function FeedbackDialog({
           </div>
 
           <DialogFooter className="mx-0 mb-0 shrink-0 border-t bg-muted/30 px-3 pt-3 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:px-6 sm:pb-5 [&>button]:w-full sm:[&>button]:w-auto">
-            <Button variant="outline" onClick={onClose}>Hủy</Button>
+            <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
             <Button disabled={!canSend} onClick={() => feedbackMut.mutate()} className="gap-2">
               {feedbackMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {hasFeedback ? 'Gửi phản hồi lại' : 'Gửi phản hồi'}
+              {hasFeedback ? t('courseAssignments.sendFeedbackAgain') : t('courseAssignments.sendFeedback')}
             </Button>
           </DialogFooter>
         </motion.div>

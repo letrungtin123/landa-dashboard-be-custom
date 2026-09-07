@@ -1,6 +1,8 @@
 import { ArrowDown, ArrowUp, CheckCircle2, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
+import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
 
 export interface ScenarioChatPerson {
   name: string;
@@ -162,20 +164,20 @@ export function normalizeScenarioChatData(raw: any): ScenarioChatData {
 }
 
 export function getScenarioChatValidationError(data: ScenarioChatData): string | null {
-  if (!data.participant.name.trim()) return 'Cần nhập tên nhân vật tình huống.';
-  if (!data.learner.name.trim()) return 'Cần nhập tên học viên.';
-  if (!data.rounds.length) return 'Cần ít nhất một lượt hội thoại.';
+  if (!data.participant.name.trim()) return i18n.t('courseEditorForms.scenarioParticipantNameRequired');
+  if (!data.learner.name.trim()) return i18n.t('courseEditorForms.scenarioLearnerNameRequired');
+  if (!data.rounds.length) return i18n.t('courseEditorForms.scenarioRoundRequired');
 
   for (let index = 0; index < data.rounds.length; index += 1) {
     const round = data.rounds[index];
-    if (!round.scenario_message.text.trim()) return `Lượt ${index + 1} cần nội dung bong bóng tình huống.`;
-    if (round.choices.length !== 3) return `Lượt ${index + 1} phải có đúng 3 câu trả lời.`;
-    if (round.choices.filter(choice => choice.correct).length !== 1) return `Lượt ${index + 1} phải có đúng 1 câu trả lời đúng.`;
+    if (!round.scenario_message.text.trim()) return i18n.t('courseEditorForms.scenarioBubbleRequired', { round: index + 1 });
+    if (round.choices.length !== 3) return i18n.t('courseEditorForms.scenarioExactlyThreeResponses', { round: index + 1 });
+    if (round.choices.filter(choice => choice.correct).length !== 1) return i18n.t('courseEditorForms.scenarioExactlyOneCorrectResponse', { round: index + 1 });
     for (let choiceIndex = 0; choiceIndex < round.choices.length; choiceIndex += 1) {
       const choice = round.choices[choiceIndex];
-      if (!choice.text.trim()) return `Lượt ${index + 1}, câu ${choiceIndex + 1} cần nội dung câu trả lời.`;
-      if (!choice.response_message.trim()) return `Lượt ${index + 1}, câu ${choiceIndex + 1} cần bong bóng phản hồi.`;
-      if (!choice.explanation.trim()) return `Lượt ${index + 1}, câu ${choiceIndex + 1} cần giải thích.`;
+      if (!choice.text.trim()) return i18n.t('courseEditorForms.scenarioResponseContentRequired', { round: index + 1, response: choiceIndex + 1 });
+      if (!choice.response_message.trim()) return i18n.t('courseEditorForms.scenarioResponseBubbleRequired', { round: index + 1, response: choiceIndex + 1 });
+      if (!choice.explanation.trim()) return i18n.t('courseEditorForms.scenarioResponseExplanationRequired', { round: index + 1, response: choiceIndex + 1 });
     }
   }
 
@@ -188,6 +190,7 @@ export default function ScenarioChatEditor({
   data,
   onDataChange,
 }: ScenarioChatEditorProps) {
+  const { t } = useTranslation();
   const scenario = normalizeScenarioChatData(data);
   const validationError = getScenarioChatValidationError(scenario);
 
@@ -247,14 +250,14 @@ export default function ScenarioChatEditor({
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-primary font-bold">
             <MessageSquareText className="h-5 w-5" />
-            <span>Giao tiếp tình huống</span>
+            <span>{t('courseEditorForms.scenarioChatTitle')}</span>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Học viên bắt đầu chat, đọc tình huống, chọn 1 trong đúng 3 phản hồi và hoàn thành toàn bộ các lượt.
+            {t('courseEditorForms.scenarioChatDescription')}
           </p>
         </div>
         <div className="w-full lg:w-[360px]">
-          <Field label="Tên hiển thị">
+          <Field label={t('courseUnit.displayName')}>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={displayName}
@@ -272,8 +275,8 @@ export default function ScenarioChatEditor({
 
       <div className="grid min-w-0 gap-3 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2.5">
-          <div className="text-sm font-bold">Nhân vật bên trái</div>
-          <Field label="Tên người chat">
+          <div className="text-sm font-bold">{t('courseEditorForms.scenarioParticipantLeft')}</div>
+          <Field label={t('courseEditorForms.scenarioChatName')}>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={scenario.participant.name}
@@ -283,7 +286,7 @@ export default function ScenarioChatEditor({
               }))}
             />
           </Field>
-          <Field label="Mô tả dưới bong bóng">
+          <Field label={t('courseEditorForms.scenarioBubbleDescription')}>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={scenario.participant.description}
@@ -296,8 +299,8 @@ export default function ScenarioChatEditor({
         </div>
 
         <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2.5">
-          <div className="text-sm font-bold">Học viên bên phải</div>
-          <Field label="Tên người chat">
+          <div className="text-sm font-bold">{t('courseEditorForms.scenarioLearnerRight')}</div>
+          <Field label={t('courseEditorForms.scenarioChatName')}>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={scenario.learner.name}
@@ -307,7 +310,7 @@ export default function ScenarioChatEditor({
               }))}
             />
           </Field>
-          <Field label="Mô tả dưới bong bóng">
+          <Field label={t('courseEditorForms.scenarioBubbleDescription')}>
             <input
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={scenario.learner.description}
@@ -321,7 +324,7 @@ export default function ScenarioChatEditor({
       </div>
 
       <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2.5">
-        <Field label="Mô tả bối cảnh">
+        <Field label={t('courseEditorForms.scenarioContextDescription')}>
           <textarea
             className="min-h-[84px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
             value={scenario.context_description}
@@ -335,8 +338,8 @@ export default function ScenarioChatEditor({
           <div key={round.id} className="rounded-lg border border-border bg-card p-3 shadow-sm space-y-3 sm:p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-sm font-bold">Lượt hội thoại {roundIndex + 1}</div>
-                <div className="text-xs text-muted-foreground">Typing 2 giây trước mỗi bong bóng trên learner UI.</div>
+                <div className="text-sm font-bold">{t('courseEditorForms.scenarioConversationRound', { count: roundIndex + 1 })}</div>
+                <div className="text-xs text-muted-foreground">{t('courseEditorForms.scenarioTypingDelay')}</div>
               </div>
               <div className="flex items-center gap-1">
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveRound(roundIndex, -1)} disabled={roundIndex === 0}>
@@ -352,7 +355,7 @@ export default function ScenarioChatEditor({
             </div>
 
             <div className="space-y-3">
-              <Field label="Bong bóng tình huống bên trái">
+              <Field label={t('courseEditorForms.scenarioBubble')}>
                 <textarea
                   className="min-h-[72px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
                   value={round.scenario_message.text}
@@ -362,7 +365,7 @@ export default function ScenarioChatEditor({
                   }))}
                 />
               </Field>
-              <Field label="Mô tả dưới bong bóng tình huống">
+              <Field label={t('courseEditorForms.scenarioBubbleDescription')}>
                 <input
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={round.scenario_message.description}
@@ -377,8 +380,8 @@ export default function ScenarioChatEditor({
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-bold">3 câu trả lời của học viên</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Cố định đúng 3 câu, chỉ có 1 câu đúng.</p>
+                  <h3 className="text-sm font-bold">{t('courseEditorForms.scenarioLearnerResponses')}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.scenarioFixedThreeResponses')}</p>
                 </div>
               </div>
 
@@ -393,39 +396,39 @@ export default function ScenarioChatEditor({
                         onChange={() => setCorrectChoice(round.id, choice.id)}
                         className="h-4 w-4 accent-primary"
                       />
-                      <span>Câu {choiceIndex + 1}</span>
+                      <span>{t('courseEditorForms.scenarioResponse', { count: choiceIndex + 1 })}</span>
                       {choice.correct && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                     </label>
-                    <Field label="Nội dung học viên chọn">
+                    <Field label={t('courseEditorForms.scenarioLearnerChoiceContent')}>
                       <textarea
                         className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
                         value={choice.text}
                         onChange={event => updateChoice(round.id, choice.id, current => ({ ...current, text: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Bong bóng phản hồi">
+                    <Field label={t('courseEditorForms.scenarioResponseBubble')}>
                       <textarea
                         className="min-h-[64px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
                         value={choice.response_message}
                         onChange={event => updateChoice(round.id, choice.id, current => ({ ...current, response_message: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Mô tả dưới bong bóng phản hồi">
+                    <Field label={t('courseEditorForms.scenarioResponseBubbleDescription')}>
                       <input
                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                         value={choice.response_description}
                         onChange={event => updateChoice(round.id, choice.id, current => ({ ...current, response_description: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Trạng thái nhân vật (tuỳ chọn)">
+                    <Field label={t('courseEditorForms.scenarioCharacterStatusOptional')}>
                       <input
                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                         value={choice.character_status}
-                        placeholder="VD: Tuấn đã rời khỏi đoạn chat"
+                        placeholder={t('courseEditorForms.scenarioCharacterStatusPlaceholder')}
                         onChange={event => updateChoice(round.id, choice.id, current => ({ ...current, character_status: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Giải thích hiển thị trong chat">
+                    <Field label={t('courseEditorForms.scenarioChatExplanation')}>
                       <textarea
                         className="min-h-[72px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
                         value={choice.explanation}
@@ -442,7 +445,7 @@ export default function ScenarioChatEditor({
 
       <Button type="button" variant="outline" className="w-full border-dashed gap-2" onClick={addRound}>
         <Plus className="h-4 w-4" />
-        Thêm lượt hội thoại
+        {t('courseEditorForms.scenarioAddConversationRound')}
       </Button>
     </div>
   );

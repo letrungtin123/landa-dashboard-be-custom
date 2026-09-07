@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FolderTree, Users, MousePointerClick, UsersRound, ChevronRight, Building2, Network } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 
@@ -16,6 +17,7 @@ import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
 
 export default function GroupsPage() {
+  const { t } = useTranslation();
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [selectedSubGroupId, setSelectedSubGroupId] = useState<string>('');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
@@ -47,8 +49,8 @@ export default function GroupsPage() {
       <div className="px-6 py-4 border-b border-border/50 shrink-0 bg-card/50">
         <PageHeader
           icon={FolderTree}
-          title="Quản lý nhóm"
-          description={`Sắp xếp học viên theo ${labels.group} → ${labels.subgroup} → ${labels.team} và phân quyền xem khóa học`}
+          title={t('groups.title')}
+          description={t('groups.description', labels)}
         />
       </div>
 
@@ -72,7 +74,7 @@ export default function GroupsPage() {
           {labels.team}
         </button>
         <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
-        <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>Chi tiết</span>
+        <span className={selectedTeamId ? 'text-primary font-medium' : 'text-muted-foreground/50'}>{t('groups.details')}</span>
       </div>
 
       {/* 4-Panel Layout */}
@@ -97,7 +99,7 @@ export default function GroupsPage() {
             <EmptyHint
               icon={<Building2 className="h-7 w-7" />}
               title={labels.subgroup}
-              text={`Chọn một ${labels.group} ở panel bên trái`}
+              text={t('groups.selectParentGroup', { group: labels.group })}
             />
           )}
         </div>
@@ -114,7 +116,7 @@ export default function GroupsPage() {
             <EmptyHint
               icon={<Network className="h-7 w-7" />}
               title={labels.team}
-              text={selectedGroupId ? `Chọn một ${labels.subgroup}` : ''}
+              text={selectedGroupId ? t('groups.selectSubgroup', { subgroup: labels.subgroup }) : ''}
             />
           )}
         </div>
@@ -126,13 +128,13 @@ export default function GroupsPage() {
           ) : (
             <EmptyHint
               icon={<MousePointerClick className="h-7 w-7" />}
-              title={`Chi tiết ${labels.team}`}
+              title={t('groups.detailOf', { team: labels.team })}
               text={
                 selectedSubGroupId
-                  ? `Chọn một ${labels.team} để xem chi tiết`
+                  ? t('groups.selectTeamToView', { team: labels.team })
                   : selectedGroupId
-                    ? `Chọn ${labels.subgroup} → ${labels.team}`
-                    : `Chọn ${labels.group} → ${labels.subgroup} → ${labels.team}`
+                    ? t('groups.selectSubgroupThenTeam', { subgroup: labels.subgroup, team: labels.team })
+                    : t('groups.selectHierarchy', labels)
               }
               large
             />

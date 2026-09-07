@@ -25,6 +25,8 @@ import {
   type PromptTemplate, type TemplateListResult,
 } from "@/api/custom-prompt-templates";
 import { storageUrl } from "@/utils/storage-url";
+import { getLocalizedApiError } from "@/utils/localized-error";
+import { useTranslation } from "react-i18next";
 
 // ── Default mascot colors (matching BE) ──
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
@@ -41,6 +43,7 @@ const cardVariants = {
 };
 
 export default function PromptTemplatesPage() {
+  const { t } = useTranslation();
   const [result, setResult] = useState<TemplateListResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -68,9 +71,9 @@ export default function PromptTemplatesPage() {
     try {
       const data = await fetchTemplates();
       setResult(data);
-    } catch { toast.error("Lỗi tải dữ liệu"); }
+    } catch { toast.error(t("promptTemplates.loadFailed")); }
     finally { setLoading(false); }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -89,8 +92,8 @@ export default function PromptTemplatesPage() {
   }
 
   async function handleSave() {
-    if (!formName.trim()) { toast.error("Tên mascot trống"); return; }
-    if (!formPrompt.trim()) { toast.error("Prompt trống"); return; }
+    if (!formName.trim()) { toast.error(t("promptTemplates.nameRequired")); return; }
+    if (!formPrompt.trim()) { toast.error(t("promptTemplates.promptRequired")); return; }
     setSaving(true);
     try {
       if (editTpl) {
@@ -102,7 +105,7 @@ export default function PromptTemplatesPage() {
           is_active: formLessonAuthor ? false : formActive,
           is_lesson_author: formLessonAuthor,
         });
-        toast.success("Cập nhật thành công");
+        toast.success(t("promptTemplates.updated"));
       } else {
         await createTemplate({
           name: formName,
@@ -112,52 +115,52 @@ export default function PromptTemplatesPage() {
           is_active: formLessonAuthor ? false : formActive,
           is_lesson_author: formLessonAuthor,
         });
-        toast.success("Tạo thành công");
+        toast.success(t("promptTemplates.created"));
       }
       setShowForm(false); loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("promptTemplates.saveFailed"))); }
     finally { setSaving(false); }
   }
 
   async function handleDelete() {
     if (!deletingId) return;
-    try { await deleteTemplate(deletingId); toast.success("Đã xoá"); setDeletingId(null); loadData(); }
-    catch { toast.error("Lỗi xoá"); }
+    try { await deleteTemplate(deletingId); toast.success(t("promptTemplates.deleted")); setDeletingId(null); loadData(); }
+    catch { toast.error(t("promptTemplates.deleteFailed")); }
   }
 
   async function handleToggleActive(tpl: PromptTemplate) {
     if (tpl.is_lesson_author) {
-      toast.error("Mascot chuyên gia bài học không hiển thị trong AI Chatbot");
+      toast.error(t("promptTemplates.expertNotInChatbot"));
       return;
     }
     try {
       await updateTemplate(tpl.id, { is_active: !tpl.is_active });
-      toast.success(tpl.is_active ? "Đã tắt" : "Đã bật");
+      toast.success(tpl.is_active ? t("promptTemplates.disabled") : t("promptTemplates.enabled"));
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("promptTemplates.toggleFailed"))); }
   }
 
   async function handleToggleLessonAuthor(tpl: PromptTemplate) {
     try {
       await updateTemplate(tpl.id, { is_lesson_author: !tpl.is_lesson_author });
-      toast.success(tpl.is_lesson_author ? "Đã tắt chuyên gia bài học" : "Đã chọn chuyên gia bài học");
+      toast.success(tpl.is_lesson_author ? t("promptTemplates.expertDisabled") : t("promptTemplates.expertSelected"));
       loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("promptTemplates.toggleFailed"))); }
   }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file || !targetUploadId) return;
     setUploadingAvatar(targetUploadId);
-    try { await uploadTemplateAvatar(targetUploadId, file); toast.success("Avatar đã cập nhật"); loadData(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi upload"); }
+    try { await uploadTemplateAvatar(targetUploadId, file); toast.success(t("promptTemplates.avatarUpdated")); loadData(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("promptTemplates.uploadFailed"))); }
     finally { setUploadingAvatar(null); setTargetUploadId(null); if (avatarInputRef.current) avatarInputRef.current.value = ""; }
   }
 
   async function handleFullbodyUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file || !targetUploadId) return;
     setUploadingFullbody(targetUploadId);
-    try { await uploadTemplateFullbody(targetUploadId, file); toast.success("Ảnh full-body đã cập nhật"); loadData(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi upload"); }
+    try { await uploadTemplateFullbody(targetUploadId, file); toast.success(t("promptTemplates.fullBodyUpdated")); loadData(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("promptTemplates.uploadFailed"))); }
     finally { setUploadingFullbody(null); setTargetUploadId(null); if (fullbodyInputRef.current) fullbodyInputRef.current.value = ""; }
   }
 
@@ -171,16 +174,16 @@ export default function PromptTemplatesPage() {
       <input ref={fullbodyInputRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFullbodyUpload} />
 
       <div className="flex items-center justify-between">
-        <PageHeader icon={Drama} title="System Prompts" description="Quản lý nhân cách (mascot) mặc định cho chatbot" />
-        <div className="flex items-center gap-3">
+        <PageHeader icon={Drama} title={t("promptTemplates.title")} description={t("promptTemplates.description")} />
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Badge variant={lessonAuthorTemplate ? "default" : "outline"} className="text-sm px-3 py-1 gap-1.5">
             <Flag className="h-3.5 w-3.5" />
-            {lessonAuthorTemplate ? "Đã chọn chuyên gia" : "Chưa chọn chuyên gia"}
+            {lessonAuthorTemplate ? t("promptTemplates.expertSelected") : t("promptTemplates.noExpertSelected")}
           </Badge>
           <Badge variant={activeCount >= 6 ? "destructive" : "secondary"} className="text-sm px-3 py-1">
-            {activeCount}/6 đang bật
+            {t("promptTemplates.activeCount", { count: activeCount })}
           </Badge>
-          <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" /> Tạo Mascot</Button>
+          <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" /> {t("promptTemplates.createMascot")}</Button>
         </div>
       </div>
 
@@ -198,7 +201,7 @@ export default function PromptTemplatesPage() {
         )) : templates.length === 0 ? (
           <div className="col-span-full text-center py-16 text-muted-foreground">
             <Drama className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Chưa có mascot nào. Tạo mới để bắt đầu!</p>
+            <p className="text-sm">{t("promptTemplates.empty")}</p>
           </div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -224,7 +227,7 @@ export default function PromptTemplatesPage() {
                     onClick={() => { setTargetUploadId(tpl.id); fullbodyInputRef.current?.click(); }}
                   >
                     <div className="flex items-center gap-2 text-white text-sm font-medium">
-                      <Image className="h-4 w-4" /> Upload ảnh full-body
+                      <Image className="h-4 w-4" /> {t("promptTemplates.uploadFullBody")}
                     </div>
                   </button>
                 </div>
@@ -260,7 +263,7 @@ export default function PromptTemplatesPage() {
                         <h4 className="font-semibold truncate">{tpl.name}</h4>
                         {tpl.is_lesson_author && (
                           <Badge className="shrink-0 bg-amber-500/15 text-amber-700 border-amber-500/30 gap-1 text-[10px]">
-                            <Flag className="h-3 w-3" /> Chuyên gia
+                            <Flag className="h-3 w-3" /> {t("promptTemplates.expert")}
                           </Badge>
                         )}
                       </div>
@@ -268,10 +271,10 @@ export default function PromptTemplatesPage() {
                     </div>
 
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(tpl)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t("common.edit")} onClick={() => openEdit(tpl)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeletingId(tpl.id)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label={t("common.delete")} onClick={() => setDeletingId(tpl.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -285,7 +288,7 @@ export default function PromptTemplatesPage() {
                   {tpl.voice_prompt && (
                     <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
                       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-primary">
-                        <Volume2 className="h-3.5 w-3.5" /> Voice prompt
+                        <Volume2 className="h-3.5 w-3.5" /> {t("promptTemplates.voicePrompt")}
                       </div>
                       <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{tpl.voice_prompt}</p>
                     </div>
@@ -300,23 +303,23 @@ export default function PromptTemplatesPage() {
                         disabled={tpl.is_lesson_author || (!tpl.is_active && activeCount >= 6)}
                       />
                       <span className={`text-xs font-medium ${tpl.is_active ? "text-emerald-600" : "text-muted-foreground"}`}>
-                        {tpl.is_active ? "Đang bật" : "Đã tắt"}
+                        {tpl.is_active ? t("promptTemplates.enabled") : t("promptTemplates.disabled")}
                       </span>
                     </div>
                     {tpl.is_lesson_author ? (
-                      <span className="text-xs text-amber-600">Dùng riêng cho chuyên gia</span>
+                      <span className="text-xs text-amber-600">{t("promptTemplates.expertOnly")}</span>
                     ) : !tpl.is_active && activeCount >= 6 && (
-                      <span className="text-xs text-destructive">Đã đủ 6/6</span>
+                      <span className="text-xs text-destructive">{t("promptTemplates.capacityFull")}</span>
                     )}
                   </div>
                   <div className="flex items-center justify-between border-t pt-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 text-xs font-medium">
                         <Flag className="h-3.5 w-3.5 text-amber-600" />
-                        Chuyên gia bài học
+                        {t("promptTemplates.lessonExpert")}
                       </div>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Chỉ superadmin chọn, mỗi thời điểm tối đa 1 mascot.
+                        {t("promptTemplates.lessonExpertHint")}
                       </p>
                     </div>
                     <Switch
@@ -335,59 +338,59 @@ export default function PromptTemplatesPage() {
       <Dialog open={showForm} onOpenChange={() => setShowForm(false)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editTpl ? "Sửa Mascot" : "Tạo Mascot mới"}</DialogTitle>
-            <DialogDescription>Mỗi mascot = 1 nhân cách AI với tên, mô tả và system prompt riêng.</DialogDescription>
+            <DialogTitle>{editTpl ? t("promptTemplates.editMascot") : t("promptTemplates.createMascotTitle")}</DialogTitle>
+            <DialogDescription>{t("promptTemplates.formDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Tên mascot <span className="text-destructive">*</span></label>
-                <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="VD: Tư vấn bán hàng" />
+                <label className="text-sm font-medium">{t("promptTemplates.mascotName")} <span className="text-destructive">*</span></label>
+                <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder={t("promptTemplates.mascotNamePlaceholder")} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Mô tả</label>
-                <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Mô tả ngắn về nhân cách" />
+                <label className="text-sm font-medium">{t("promptTemplates.mascotDescription")}</label>
+                <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder={t("promptTemplates.descriptionPlaceholder")} />
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">System Prompt <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("promptTemplates.systemPrompt")} <span className="text-destructive">*</span></label>
               <Textarea
                 value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
-                placeholder="Bạn là trợ lý AI chuyên tư vấn bán hàng. Phong cách: thân thiện, chuyên nghiệp..."
+                placeholder={t("promptTemplates.systemPromptPlaceholder")}
                 rows={6} className="resize-none font-mono text-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Voice Prompt</label>
+              <label className="text-sm font-medium">{t("promptTemplates.voicePrompt")}</label>
               <Textarea
                 value={formVoicePrompt} onChange={e => setFormVoicePrompt(e.target.value)}
-                placeholder="VD: Nói giọng nữ miền Nam, ấm áp, tốc độ vừa phải, ngắt nghỉ tự nhiên."
+                placeholder={t("promptTemplates.voicePromptPlaceholder")}
                 rows={4} className="resize-none text-sm"
               />
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={formActive} onCheckedChange={setFormActive}
                 disabled={formLessonAuthor || (!editTpl?.is_active && !formActive && activeCount >= 6)} />
-              <label className="text-sm">Bật mascot thường {!editTpl?.is_active && activeCount >= 6 && !formLessonAuthor && "(đã đủ 6/6)"}</label>
+              <label className="text-sm">{t("promptTemplates.enableRegularMascot")} {!editTpl?.is_active && activeCount >= 6 && !formLessonAuthor && `(${t("promptTemplates.capacityFull")})`}</label>
             </div>
             <div className="app-liquid-card flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-3">
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Flag className="h-4 w-4 text-amber-600" />
-                  Chuyên gia bài học
+                  {t("promptTemplates.lessonExpert")}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Mascot này sẽ được widget course outline sử dụng. Chỉ có 1 mascot chuyên gia được active.
+                  {t("promptTemplates.lessonExpertFormHint")}
                 </p>
               </div>
               <Switch checked={formLessonAuthor} onCheckedChange={handleFormLessonAuthorChange} />
             </div>
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
             <Button onClick={handleSave} disabled={saving} className="gap-1.5">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {editTpl ? "Cập nhật" : "Tạo"}
+              {editTpl ? t("common.edit") : t("promptTemplates.createMascot")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -397,12 +400,12 @@ export default function PromptTemplatesPage() {
       <Dialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Xoá Mascot</DialogTitle>
-            <DialogDescription>Mascot sẽ bị xoá khỏi hệ thống và tất cả bot đang dùng nhân cách này.</DialogDescription>
+            <DialogTitle>{t("promptTemplates.deleteMascot")}</DialogTitle>
+            <DialogDescription>{t("promptTemplates.deleteDescription")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose>
-            <Button variant="destructive" onClick={handleDelete}>Xoá</Button>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
+            <Button variant="destructive" onClick={handleDelete}>{t("common.delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

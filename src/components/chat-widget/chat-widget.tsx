@@ -37,6 +37,9 @@ import {
 } from '@/api/custom-course-authoring';
 import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
 import { AppTooltip } from '@/components/ui/tooltip';
+import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 // ── Types ──
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
@@ -99,11 +102,11 @@ function decodeChatAudioData(context: AudioContext, audioData: ArrayBuffer): Pro
 
 
 function getVoiceErrorMessage(error?: string): string {
-  if (error === 'not-allowed' || error === 'service-not-allowed') return 'Trình duyệt chưa được cấp quyền micro.';
-  if (error === 'no-speech') return 'Không nghe rõ câu nói. Vui lòng thử lại.';
-  if (error === 'audio-capture') return 'Không tìm thấy micro khả dụng.';
-  if (error === 'network') return 'Nhận diện giọng nói đang bị gián đoạn.';
-  return 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói.';
+  if (error === 'not-allowed' || error === 'service-not-allowed') return i18n.t('chatWidget.microphonePermission');
+  if (error === 'no-speech') return i18n.t('chatWidget.speechUnclear');
+  if (error === 'audio-capture') return i18n.t('chatWidget.microphoneUnavailable');
+  if (error === 'network') return i18n.t('chatWidget.speechInterrupted');
+  return i18n.t('chatWidget.speechUnsupported');
 }
 function formatCallDuration(totalSeconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -142,7 +145,7 @@ function flattenOutlineMentions(
   depth = 0,
   ancestors: OutlineAncestor[] = [],
 ): OutlineMentionOption[] {
-  const name = node.display_name || '(Không tên)';
+  const name = node.display_name || i18n.t('chatWidget.unnamed');
   const isCourseRoot = node.block_type === 'course';
   const pathParts = isCourseRoot ? parents : [...parents, name];
   const children = getOutlineChildren(node);
@@ -177,7 +180,7 @@ function getMessageOutlineMentions(metadata: unknown): OutlineMention[] {
     .map(item => ({
       block_id: typeof item.block_id === 'string' ? item.block_id : '',
       block_type: typeof item.block_type === 'string' ? item.block_type : 'unknown',
-      display_name: typeof item.display_name === 'string' ? item.display_name : 'Không tên',
+      display_name: typeof item.display_name === 'string' ? item.display_name : i18n.t('chatWidget.unnamed'),
       path: typeof item.path === 'string' ? item.path : '',
       unit_id: typeof item.unit_id === 'string' ? item.unit_id : null,
       ancestor_ids: Array.isArray(item.ancestor_ids) ? item.ancestor_ids.filter((id): id is string => typeof id === 'string') : [],
@@ -233,6 +236,7 @@ function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorPro
 
 // ── Main Component ──
 export default function ChatWidget() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [surface, setSurface] = useState<ChatSurface>('admin');
@@ -356,8 +360,8 @@ export default function ChatWidget() {
     const source = botAudioSourceRef.current;
     if (!source) return;
     source.onended = null;
-    try { source.stop(); } catch {}
-    try { source.disconnect(); } catch {}
+    try { source.stop(); } catch { /* The source may already be stopped. */ }
+    try { source.disconnect(); } catch { /* The source may already be disconnected. */ }
     botAudioSourceRef.current = null;
   }, []);
 
@@ -374,7 +378,7 @@ export default function ChatWidget() {
           source.connect(botAudioGainRef.current ?? context.destination);
           source.start(0);
           botAudioPrimedRef.current = true;
-        } catch {}
+        } catch { /* Audio priming is best-effort. */ }
       })();
     }
 
@@ -391,7 +395,7 @@ export default function ChatWidget() {
         void playPromise
           .then(() => {
             audio.pause();
-            try { audio.currentTime = 0; } catch {}
+            try { audio.currentTime = 0; } catch { /* Resetting a detached audio element is best-effort. */ }
             audio.muted = false;
             audio.volume = 1;
             botAudioPrimedRef.current = true;
@@ -433,7 +437,7 @@ export default function ChatWidget() {
       audio.onerror = null;
       audio.pause();
       audio.removeAttribute('src');
-      try { audio.load(); } catch {}
+      try { audio.load(); } catch { /* The audio element may already be detached. */ }
     }
     if (botAudioUrlRef.current) {
       URL.revokeObjectURL(botAudioUrlRef.current);
@@ -452,13 +456,13 @@ export default function ChatWidget() {
   const handleResumeBotSpeech = useCallback(async () => {
     const context = ensureBotAudioContext();
     if (context?.state === 'suspended') {
-      try { await context.resume(); } catch {}
+      try { await context.resume(); } catch { /* Browser autoplay policy can reject this attempt. */ }
     }
 
     const audio = botAudioRef.current;
     if (!audio || !audio.src) {
       setBotSpeechNeedsTap(false);
-      toast.error('Không tìm thấy audio bot. Vui lòng gửi lại tin nhắn.');
+      toast.error(i18n.t('chatWidget.audioNotFound'));
       return;
     }
 
@@ -470,7 +474,7 @@ export default function ChatWidget() {
     } catch {
       setBotSpeechNeedsTap(true);
       setBotSpeaking(false);
-      toast.error('Trình duyệt vẫn đang chặn phát audio. Vui lòng thử lại.');
+      toast.error(i18n.t('chatWidget.audioPlaybackBlocked'));
     }
   }, [ensureBotAudioContext]);
   const stopVoiceCapture = useCallback((discard = false) => {
@@ -686,7 +690,7 @@ export default function ChatWidget() {
       })));
     } catch {
       setSourceDocumentOptions([]);
-      toast.error('Không tải được danh sách file KB');
+      toast.error(i18n.t('chatWidget.loadKnowledgeFilesFailed'));
     } finally {
       setLoadingSourceDocuments(false);
     }
@@ -731,7 +735,7 @@ export default function ChatWidget() {
     d.active = false;
     const fab = fabRef.current;
     if (!fab) return;
-    try { fab.releasePointerCapture(e.pointerId); } catch {}
+    try { fab.releasePointerCapture(e.pointerId); } catch { /* The pointer may already be released. */ }
 
     if (!d.moved) {
       setOpen(true);
@@ -757,7 +761,7 @@ export default function ChatWidget() {
     try {
       const activePersonaId = isLessonAuthor ? lessonSettings?.active_persona?.persona_id : personaId;
       if (!activePersonaId) {
-        toast.error('Chưa cấu hình nhân cách chuyên gia bài học');
+        toast.error(i18n.t('chatWidget.lessonExpertPersonaMissing'));
         return;
       }
       const conv = await createConversation(activePersonaId, {
@@ -772,8 +776,8 @@ export default function ChatWidget() {
       setProposalEvent(null);
       resetMindmapState();
       setState('chat');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || err.message);
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, i18n.t('chatWidget.loadPersonasFailed')));
     }
   };
 
@@ -791,7 +795,7 @@ export default function ChatWidget() {
       setProposalEvent(getLatestPendingProposalEvent(result.messages));
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
-    } catch { toast.error('Không tải được tin nhắn'); }
+    } catch { toast.error(i18n.t('chatWidget.loadMessagesFailed')); }
     setLoadingMessages(false);
     scrollChatToBottom('auto');
   };
@@ -807,7 +811,7 @@ export default function ChatWidget() {
       setMessages(prev => [...result.messages, ...prev]);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
-    } catch { toast.error('Lỗi tải thêm tin nhắn'); }
+    } catch { toast.error(i18n.t('chatWidget.loadMoreMessagesFailed')); }
     setLoadingMore(false);
   };
 
@@ -827,7 +831,7 @@ export default function ChatWidget() {
       setState('persona-picker');
     } catch {
       setState('conversations');
-      toast.error('Không tải được nhân cách');
+      toast.error(i18n.t('chatWidget.loadPersonasFailed'));
     }
   };
 
@@ -844,15 +848,15 @@ export default function ChatWidget() {
       } else if (currentConv?.id === confirmDeleteId) {
         setState('conversations');
       }
-      toast.success('Đã xoá');
-    } catch { toast.error('Lỗi khi xoá'); }
+      toast.success(i18n.t('chatWidget.deleted'));
+    } catch { toast.error(i18n.t('chatWidget.deleteFailed')); }
     finally { setDeleting(false); setConfirmDeleteId(null); }
   };
 
   // ── New conversation ──
   const handleNewConvFromList = async () => {
     if (!activeBot) return;
-    if (conversations.length >= 10) { toast.error('Tối đa 10 cuộc hội thoại'); return; }
+    if (conversations.length >= 10) { toast.error(i18n.t('chatWidget.maxConversations')); return; }
     if (isLessonAuthor) {
       await handleCreateConversation();
       return;
@@ -861,7 +865,7 @@ export default function ChatWidget() {
       const p = await fetchBotPersonas(activeBot.bot_id);
       setPersonas(p);
       setState('persona-picker');
-    } catch { toast.error('Không tải được nhân cách'); }
+    } catch { toast.error(i18n.t('chatWidget.loadPersonasFailed')); }
   };
 
   // ── Send message ──
@@ -995,13 +999,13 @@ export default function ChatWidget() {
     if (voiceCaptureState === 'requesting' || streaming) return;
     primeBotAudioPlayback();
     if (!currentConv) {
-      toast.error('Vui lòng tạo hội thoại trước khi dùng micro.');
+      toast.error(i18n.t('chatWidget.createConversationBeforeMicrophone'));
       return;
     }
 
     const SpeechRecognition = getSpeechRecognitionCtor();
     if (!SpeechRecognition) {
-      toast.error('Trình duyệt này chưa hỗ trợ nhận diện giọng nói.');
+      toast.error(i18n.t('chatWidget.speechUnsupported'));
       return;
     }
 
@@ -1024,7 +1028,7 @@ export default function ChatWidget() {
       setVoiceModeTranscript('');
       setVoiceCallStartedAt(null);
       setVoiceCallMuted(false);
-      toast.error('Trình duyệt chưa được cấp quyền micro.');
+      toast.error(i18n.t('chatWidget.microphonePermission'));
       return;
     }
 
@@ -1092,7 +1096,7 @@ export default function ChatWidget() {
         voiceCallMutedRef.current = true;
         setVoiceCallMuted(true);
         setVoiceModeTranscript('');
-        if (!voiceErrorRef.current) toast.error('Không nghe rõ câu nói. Vui lòng thử lại.');
+        if (!voiceErrorRef.current) toast.error(i18n.t('chatWidget.speechUnclear'));
         return;
       }
       setInputValue(transcript);
@@ -1105,7 +1109,7 @@ export default function ChatWidget() {
       recognition.start();
       setVoiceCaptureState('listening');
       voiceListenTimerRef.current = window.setTimeout(() => {
-        try { recognition.stop(); } catch {}
+        try { recognition.stop(); } catch { /* Recognition may already have stopped. */ }
       }, VOICE_MAX_LISTEN_MS);
     } catch {
       recognitionRef.current = null;
@@ -1116,7 +1120,7 @@ export default function ChatWidget() {
       setVoiceModeTranscript('');
       setVoiceCallStartedAt(null);
       setVoiceCallMuted(false);
-      toast.error('Không thể bật micro trên trình duyệt này.');
+      toast.error(i18n.t('chatWidget.microphoneStartFailed'));
     }
   }, [cancelBotSpeech, clearVoiceAutoListenTimer, clearVoiceListenTimer, currentConv, primeBotAudioPlayback, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
 
@@ -1200,11 +1204,11 @@ export default function ChatWidget() {
 
   const handleOpenMindmap = async () => {
     if (!proposalEvent) {
-      toast.error('Chưa có kế hoạch bài học để xem mindmap');
+      toast.error(i18n.t('chatWidget.noLessonPlan'));
       return;
     }
     if (!courseId) {
-      toast.error('Không xác định được khóa học hiện tại');
+      toast.error(i18n.t('chatWidget.currentCourseMissing'));
       return;
     }
 
@@ -1222,7 +1226,7 @@ export default function ChatWidget() {
       });
       setMindmapOutline(outline);
     } catch {
-      setMindmapError('Không tải được outline hiện tại. Vui lòng thử lại.');
+      setMindmapError(i18n.t('chatWidget.mindmapLoadFailed'));
     } finally {
       setMindmapLoading(false);
     }
@@ -1233,7 +1237,7 @@ export default function ChatWidget() {
     setApplyingProposal(true);
     try {
       const result = await applyLessonAuthorJob(proposalEvent.job_id);
-      toast.success(`Đã tạo ${result.created_count} block, cập nhật ${result.updated_count} block`);
+      toast.success(i18n.t('chatWidget.proposalApplied', { created: result.created_count, updated: result.updated_count }));
       setProposalEvent(null);
       resetMindmapState();
       const queryKey = ['course-outline-index', courseId] as const;
@@ -1254,8 +1258,8 @@ export default function ChatWidget() {
         setHasMore(refreshed.has_more);
         setNextCursor(refreshed.next_cursor);
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Không áp dụng được đề xuất');
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, i18n.t('chatWidget.proposalApplyFailed')));
     } finally {
       setApplyingProposal(false);
     }
@@ -1283,16 +1287,16 @@ export default function ChatWidget() {
     ? (lessonSettings?.active_persona?.persona_avatar_url || activeBot?.bot_avatar_url)
     : activeBot?.bot_avatar_url;
   const botAvatarSrc = activeAvatarUrl ? storageUrl(activeAvatarUrl) : null;
-  const headerTitle = isLessonAuthor ? 'Chuyên gia bài học' : (activeBot?.bot_name || 'AI Assistant');
+  const headerTitle = isLessonAuthor ? t('chatWidget.lessonExpert') : (activeBot?.bot_name || 'AI Assistant');
   const headerSubtitle = isLessonAuthor
-    ? (lessonSettings?.active_kb?.kb_name || 'Lesson author')
-    : (streaming ? 'Đang trả lời...' : 'Online');
+    ? (lessonSettings?.active_kb?.kb_name || t('chatWidget.lessonAuthor'))
+    : (streaming ? t('chatWidget.responding') : t('chatWidget.online'));
 
   return (
     <>
       {/* ═══════ Draggable FAB ═══════ */}
       {!open && (
-        <AppTooltip content="Chat với AI"><div
+        <AppTooltip content={t('chatWidget.chatWithAi')}><div
           ref={fabRef}
           onPointerDown={onFabPointerDown}
           onPointerMove={onFabPointerMove}
@@ -1342,18 +1346,18 @@ export default function ChatWidget() {
               </div>
               <div className="flex items-center gap-1">
                 {isCourseOutline && (
-                  <AppTooltip content="Chuyên gia bài học"><Button
+                  <AppTooltip content={t('chatWidget.lessonExpert')}><Button
                     variant={isLessonAuthor ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-8 gap-1.5 px-2 text-xs"
                     onClick={handleSwitchLessonAuthor}
-                    aria-label="Chuyên gia bài học"
+                    aria-label={t('chatWidget.lessonExpert')}
                   >
                     <BookOpenCheck className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Chuyên gia</span>
+                    <span className="hidden sm:inline">{t('chatWidget.expert')}</span>
                   </Button></AppTooltip>
                 )}
-                <AppTooltip content={fullscreen ? 'Thu nhỏ' : 'Phóng to'}><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} aria-label={fullscreen ? 'Thu nhỏ' : 'Phóng to'}>
+                <AppTooltip content={fullscreen ? t('chatWidget.minimize') : t('chatWidget.maximize')}><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} aria-label={fullscreen ? t('chatWidget.minimize') : t('chatWidget.maximize')}>
                   {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button></AppTooltip>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setOpen(false); setFullscreen(false); }}>
@@ -1470,15 +1474,15 @@ export default function ChatWidget() {
                   <AlertTriangle className="h-5 w-5 text-destructive" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">Xoá hội thoại</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">Tin nhắn sẽ bị xoá vĩnh viễn và không thể khôi phục.</p>
+                  <h4 className="font-semibold text-sm">{t('chatWidget.deleteConversation')}</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('chatWidget.deleteConversationDescription')}</p>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <Button variant="outline" size="sm" onClick={() => setConfirmDeleteId(null)} disabled={deleting}>Huỷ</Button>
+                <Button variant="outline" size="sm" onClick={() => setConfirmDeleteId(null)} disabled={deleting}>{t('common.cancel')}</Button>
                 <Button variant="destructive" size="sm" onClick={confirmDelete} disabled={deleting} className="gap-1.5">
                   {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  Xoá
+                  {t('common.delete')}
                 </Button>
               </div>
             </motion.div>
@@ -1494,37 +1498,40 @@ export default function ChatWidget() {
 // ═══════════════════════════════════════════════════════════════
 
 function LoadingState() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6">
       <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
-      <p className="text-sm text-muted-foreground">Đang kết nối...</p>
+      <p className="text-sm text-muted-foreground">{t('chatWidget.connecting')}</p>
     </div>
   );
 }
 
 function NoBotState() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
       <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center">
         <Bot className="h-8 w-8 text-muted-foreground/50" />
       </div>
-      <p className="text-sm text-muted-foreground">Chưa có bot nào được kích hoạt cho trang này.</p>
-      <p className="text-xs text-muted-foreground/60">Vào AI Chatbot → Triển khai → Chọn bot cho FE Admin.</p>
+      <p className="text-sm text-muted-foreground">{t('chatWidget.noActiveBot')}</p>
+      <p className="text-xs text-muted-foreground/60">{t('chatWidget.noActiveBotHint')}</p>
     </div>
   );
 }
 
 function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | null }) {
+  const { t } = useTranslation();
   const missing: string[] = [];
-  if (!settings?.active_bot) missing.push('Chatbot chuyên gia bài học');
-  if (!settings?.active_kb) missing.push('KB chuyên gia bài học');
-  if (!settings?.active_persona) missing.push('Mascot nhân cách chuyên gia bài học');
+  if (!settings?.active_bot) missing.push(t('chatWidget.missingExpertBot'));
+  if (!settings?.active_kb) missing.push(t('chatWidget.missingExpertKb'));
+  if (!settings?.active_persona) missing.push(t('chatWidget.missingExpertMascot'));
   if (
     settings?.active_bot &&
     settings?.active_persona &&
     settings.active_persona.bot_id !== settings.active_bot.bot_id
   ) {
-    missing.push('Mascot chuyên gia không thuộc chatbot đang active');
+    missing.push(t('chatWidget.mismatchedExpertMascot'));
   }
 
   return (
@@ -1533,13 +1540,13 @@ function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | nu
         <AlertTriangle className="h-8 w-8 text-amber-600" />
       </div>
       <div>
-        <p className="text-sm font-semibold">Chưa đủ cấu hình chuyên gia bài học</p>
+        <p className="text-sm font-semibold">{t('chatWidget.incompleteExpertConfiguration')}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          Cần cấu hình đủ bot, KB và mascot chuyên gia trước khi chat trong course outline.
+          {t('chatWidget.incompleteExpertConfigurationHint')}
         </p>
       </div>
       <div className="app-liquid-card w-full max-w-xs rounded-lg border bg-muted/30 p-3 text-left">
-        <p className="text-[11px] font-medium text-muted-foreground mb-2">Đang thiếu</p>
+        <p className="text-[11px] font-medium text-muted-foreground mb-2">{t('chatWidget.missing')}</p>
         <div className="space-y-1">
           {missing.map(item => (
             <div key={item} className="flex items-center gap-2 text-xs">
@@ -1550,7 +1557,7 @@ function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | nu
         </div>
       </div>
       <p className="text-[11px] text-muted-foreground max-w-xs">
-        Vào Prompt hệ thống để chọn mascot chuyên gia, rồi vào AI Chatbot → Triển khai để chọn bot và KB.
+        {t('chatWidget.expertSetupHint')}
       </p>
     </div>
   );
@@ -1637,15 +1644,16 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   onDelete: (id: string) => void;
   onNew: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-4 pt-3 pb-2 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Hội thoại</h3>
+          <h3 className="text-sm font-semibold">{t('chatWidget.conversations')}</h3>
           <p className="text-[11px] text-muted-foreground">{conversations.length}/10</p>
         </div>
         <Button size="sm" variant="outline" onClick={onNew} disabled={conversations.length >= 10} className="h-7 gap-1 text-xs">
-          <Plus className="h-3 w-3" /> Mới
+          <Plus className="h-3 w-3" /> {t('chatWidget.newConversation')}
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2">
@@ -1658,7 +1666,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
         ) : conversations.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-muted-foreground">
             <MessageCircle className="h-8 w-8 opacity-30" />
-            <p className="text-xs">Chưa có hội thoại nào</p>
+            <p className="text-xs">{t('chatWidget.noConversations')}</p>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -1680,7 +1688,7 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{conv.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{conv.last_message || 'Chưa có tin nhắn'}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{conv.last_message || t('chatWidget.noMessages')}</p>
                   <div className="flex items-center gap-1 mt-0.5">
                     <Clock className="h-2.5 w-2.5 text-muted-foreground/50" />
                     <span className="text-[9px] text-muted-foreground/50">
@@ -1721,6 +1729,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   onStopBotSpeech: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   void botText;
 
@@ -1743,26 +1752,26 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   const waveActive = !muted && (userVoiceActive || botVoiceActive);
   const caption = (isBotTurn ? '' : transcript).trim();
   const title = muted && phase === 'idle'
-    ? 'Micro đang tắt'
+    ? t('chatWidget.microphoneOff')
     : phase === 'requesting'
-      ? 'Đang kết nối micro'
+      ? t('chatWidget.connectingMicrophone')
       : phase === 'listening'
-        ? 'Đang nghe bạn nói'
+        ? t('chatWidget.listening')
         : phase === 'thinking'
-          ? 'Đang suy nghĩ'
+          ? t('chatWidget.thinking')
           : phase === 'preparing'
-            ? 'Đang chuẩn bị giọng'
+            ? t('chatWidget.preparingVoice')
             : phase === 'speaking'
-              ? 'Bot đang nói'
+              ? t('chatWidget.botSpeaking')
               : phase === 'play_blocked'
-                ? 'Chạm để phát giọng'
-                : 'Đang trong cuộc gọi';
+                ? t('chatWidget.tapToPlayVoice')
+                : t('chatWidget.inCall');
   const hint = muted && phase === 'idle'
-    ? 'Bật mic để tiếp tục cuộc gọi'
+    ? t('chatWidget.enableMicToContinue')
     : phase === 'idle'
-      ? 'Sẵn sàng nghe lượt tiếp theo'
+      ? t('chatWidget.readyForNextTurn')
       : phase === 'play_blocked'
-        ? 'Safari cần một lần chạm để phát audio'
+        ? t('chatWidget.safariTapToPlay')
         : caption || title;
   const statusDotClass = muted
     ? 'bg-amber-300'
@@ -1785,11 +1794,11 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
       : onMic;
   const rightDisabled = muted || phase === 'requesting' || phase === 'thinking';
   const rightTitle = phase === 'play_blocked'
-    ? 'Phát giọng bot'
+    ? t('chatWidget.playBotVoice')
     : phase === 'speaking' || phase === 'preparing'
-      ? 'Tắt giọng bot'
-      : 'Nói ngay';
-  const rightLabel = phase === 'play_blocked' ? 'Phát' : phase === 'speaking' || phase === 'preparing' ? 'Tắt bot' : 'Nói';
+      ? t('chatWidget.muteBotVoice')
+      : t('chatWidget.speakNow');
+  const rightLabel = phase === 'play_blocked' ? t('chatWidget.play') : phase === 'speaking' || phase === 'preparing' ? t('chatWidget.stopBot') : t('chatWidget.speak');
   const bars = [12, 18, 14, 26, 20, 34, 24, 42, 28, 38, 22, 30, 18, 24, 14];
 
   return (
@@ -1836,14 +1845,14 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
                 animate={waveActive ? { scale: [0.9, 1.24, 0.9], opacity: [0.52, 0.12, 0.52] } : { scale: 0.96, opacity: 0.16 }}
                 transition={{ duration: waveActive ? 0.86 : 0.2, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
               />
-              <AppTooltip content={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}><motion.button
+              <AppTooltip content={phase === 'speaking' ? t('chatWidget.muteBotVoice') : phase === 'play_blocked' ? t('chatWidget.playBotVoice') : botName}><motion.button
                 type="button"
                 onClick={phase === 'play_blocked' ? onResumeBotSpeech : phase === 'speaking' ? onStopBotSpeech : undefined}
                 disabled={phase !== 'play_blocked' && phase !== 'speaking'}
                 className={`relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border backdrop-blur-xl shadow-2xl disabled:cursor-default ${avatarTone}`}
                 animate={{ scale: waveActive ? [1, 1.035, 1] : 1 }}
                 transition={{ duration: 0.78, repeat: waveActive ? Infinity : 0, ease: 'easeInOut' }}
-                aria-label={phase === 'speaking' ? 'Tắt giọng bot' : phase === 'play_blocked' ? 'Phát giọng bot' : botName}
+                aria-label={phase === 'speaking' ? t('chatWidget.muteBotVoice') : phase === 'play_blocked' ? t('chatWidget.playBotVoice') : botName}
               >
                 {botAvatarSrc ? (
                   <img src={botAvatarSrc} alt="" className="h-full w-full object-cover" />
@@ -1884,7 +1893,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
                   {caption}
                 </motion.p>
               ) : (
-                <p className="mt-3 text-xs text-muted-foreground dark:text-white/45">{isBotTurn ? 'Giữ cuộc gọi mở trong khi bot phản hồi' : 'Nói tự nhiên, mình sẽ tự gửi khi bạn dừng'}</p>
+                <p className="mt-3 text-xs text-muted-foreground dark:text-white/45">{isBotTurn ? t('chatWidget.keepCallOpen') : t('chatWidget.speakNaturally')}</p>
               )}
             </div>
           </div>
@@ -1892,16 +1901,16 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
           <div className="relative z-10 px-5 pb-5">
             <div className="mx-auto grid max-w-xs grid-cols-3 items-end gap-4 rounded-lg border border-border/70 bg-card/85 px-4 py-4 shadow-2xl shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:shadow-black/25">
               <div className="flex flex-col items-center">
-                <AppTooltip content={muted ? 'Bật micro' : 'Tắt micro'}><Button type="button" variant="ghost" size="icon" className={`h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 ${muted ? 'border-amber-500/40 text-amber-700 dark:border-amber-300/35 dark:text-amber-100' : ''}`} onClick={onToggleMute} aria-label={muted ? 'Bật micro' : 'Tắt micro'}>
+                <AppTooltip content={muted ? t('chatWidget.enableMicrophone') : t('chatWidget.disableMicrophone')}><Button type="button" variant="ghost" size="icon" className={`h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 ${muted ? 'border-amber-500/40 text-amber-700 dark:border-amber-300/35 dark:text-amber-100' : ''}`} onClick={onToggleMute} aria-label={muted ? t('chatWidget.enableMicrophone') : t('chatWidget.disableMicrophone')}>
                   {muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
                 </Button></AppTooltip>
-                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{muted ? 'Bật mic' : 'Tắt mic'}</span>
+                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{muted ? t('chatWidget.enableMic') : t('chatWidget.disableMic')}</span>
               </div>
               <div className="flex flex-col items-center">
-                <AppTooltip content="Kết thúc cuộc gọi"><Button type="button" size="icon" className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-red-950/35 hover:bg-red-600" onClick={onClose} aria-label="Kết thúc cuộc gọi">
+                <AppTooltip content={t('chatWidget.endCall')}><Button type="button" size="icon" className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-red-950/35 hover:bg-red-600" onClick={onClose} aria-label={t('chatWidget.endCall')}>
                   <PhoneOff className="h-6 w-6" />
                 </Button></AppTooltip>
-                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">Kết thúc</span>
+                <span className="mt-2 text-[11px] font-medium text-muted-foreground dark:text-white/55">{t('chatWidget.end')}</span>
               </div>
               <div className="flex flex-col items-center">
                 <AppTooltip content={rightTitle}><Button type="button" variant="ghost" size="icon" className="h-12 w-12 rounded-full border border-border bg-background/70 text-foreground hover:bg-muted disabled:opacity-35 dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15" onClick={rightAction} disabled={rightDisabled} aria-label={rightTitle}>
@@ -1967,6 +1976,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onApplyProposal?: () => void;
   onOpenMindmap?: () => void;
 }) {
+  const { t } = useTranslation();
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
@@ -1991,12 +2001,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               ? 'play_blocked'
               : 'idle';
   const voiceButtonTitle = isVoiceListening
-    ? 'Dừng nghe'
+    ? t('chatWidget.stopListening')
     : isVoiceRequesting
-      ? 'Đang xin quyền micro...'
+      ? t('chatWidget.requestingMicrophone')
       : isBotVoiceActive
-        ? 'Bot đang nói'
-        : 'Nói bằng micro';
+        ? t('chatWidget.botSpeaking')
+        : t('chatWidget.speakWithMicrophone');
   const mentionMatches = useMemo(() => {
     if (!isLessonAuthor || mentionQuery === null) return [];
     const query = normalizeMentionText(mentionQuery);
@@ -2090,7 +2100,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
       return;
     }
     if (selectedSourceDocumentList.length >= 5) {
-      toast.error('Tối đa 5 file nguồn cho mỗi tin nhắn');
+      toast.error(t('chatWidget.maxSourceFiles'));
       return;
     }
     onSelectedSourceDocumentsChange?.([...selectedSourceDocumentList, doc]);
@@ -2163,14 +2173,14 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               <div className="flex justify-center py-1">
                 <Button variant="ghost" size="sm" onClick={onLoadMore} disabled={loadingMore} className="gap-1.5 text-xs h-7">
                   {loadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />}
-                  {loadingMore ? 'Đang tải...' : 'Xem tin nhắn cũ hơn'}
+                  {loadingMore ? t('chatWidget.loading') : t('chatWidget.loadOlderMessages')}
                 </Button>
               </div>
             )}
             {messages.length === 0 && !streaming && (
               <div className="flex flex-col items-center justify-center h-full text-center gap-2">
                 <Sparkles className="h-8 w-8 text-primary/30" />
-                <p className="text-xs text-muted-foreground">Bắt đầu cuộc trò chuyện!</p>
+                <p className="text-xs text-muted-foreground">{t('chatWidget.startConversation')}</p>
               </div>
             )}
             {messages.map((msg) => (
@@ -2209,12 +2219,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <CheckCircle2 className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold">Plan bài học sẵn sàng</p>
-                      <p className="text-[11px] text-muted-foreground">Xem mindmap trước khi áp dụng vào outline</p>
+                      <p className="text-sm font-semibold">{t('chatWidget.lessonPlanReady')}</p>
+                      <p className="text-[11px] text-muted-foreground">{t('chatWidget.openMindmapHint')}</p>
                     </div>
                   </div>
                   <Badge variant="secondary" className="shrink-0 rounded-md text-[10px]">
-                    Chờ duyệt
+                    {t('chatWidget.awaitingApproval')}
                   </Badge>
                 </div>
                 <p className="mt-3 rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground line-clamp-4">
@@ -2239,7 +2249,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     disabled={applyingProposal || !onApplyProposal}
                   >
                     {applyingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Áp dụng
+                    {t('chatWidget.apply')}
                   </Button>
                 </div>
               </div>
@@ -2260,7 +2270,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <input
                         value={sourceSearch}
                         onChange={event => setSourceSearch(event.target.value)}
-                        placeholder="Tìm file trong KB active..."
+                        placeholder={t('chatWidget.searchKnowledgeFiles')}
                         className="h-8 w-full rounded-lg border bg-background pl-8 pr-2 text-xs outline-none focus:border-primary/40"
                         autoFocus
                       />
@@ -2270,10 +2280,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     {loadingSourceDocuments ? (
                       <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Đang tải file...
+                        {t('chatWidget.loadingKnowledgeFiles')}
                       </div>
                     ) : (sourceDocumentOptions ?? []).length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-muted-foreground">Không có file đã học phù hợp.</div>
+                      <div className="px-3 py-3 text-xs text-muted-foreground">{t('chatWidget.noKnowledgeFiles')}</div>
                     ) : (
                       (sourceDocumentOptions ?? []).map(doc => {
                         const selected = selectedSourceDocumentList.some(item => item.document_id === doc.document_id);
@@ -2293,7 +2303,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                             <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-xs font-semibold">{doc.name}</span>
-                              <span className="block truncate text-[10px] text-muted-foreground">File KB · Đã học</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">{t('chatWidget.knowledgeFile')}</span>
                             </span>
                           </button>
                         );
@@ -2302,14 +2312,14 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   </div>
                 </div>
               )}
-              <AppTooltip content="Chọn file KB làm nguồn"><Button
+              <AppTooltip content={t('chatWidget.selectKnowledgeFile')}><Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="h-10 w-10 rounded-xl"
                 disabled={streaming}
                 onClick={() => setSourcePickerOpen(open => !open)}
-                aria-label="Chọn file KB làm nguồn"
+                aria-label={t('chatWidget.selectKnowledgeFile')}
               >
                 <Plus className="h-4 w-4" />
               </Button></AppTooltip>
@@ -2319,7 +2329,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
             {isLessonAuthor && mentionQuery !== null && (
               <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
                 {mentionMatches.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">Không có mục phù hợp trong outline.</div>
+                  <div className="px-3 py-2 text-xs text-muted-foreground">{t('chatWidget.noOutlineMatches')}</div>
                 ) : (
                   mentionMatches.map((mention, index) => (
                     <button
@@ -2369,7 +2379,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleTextareaKeyDown}
-                placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? 'Nhập yêu cầu...' : isLessonAuthor ? 'Gõ @ để chọn outline, + để chọn file KB...' : 'Nhập tin nhắn...'}
+                placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? t('chatWidget.requestPlaceholder') : isLessonAuthor ? t('chatWidget.mentionPickerPlaceholder') : t('chatWidget.messagePlaceholder')}
                 disabled={streaming}
                 rows={1}
                 className="chat-widget-input-textarea min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50 max-h-24"
@@ -2409,6 +2419,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
   compact?: boolean;
   inverted?: boolean;
 }) {
+  const { t } = useTranslation();
   const label = getMentionTypeLabel(mention.block_type);
   return (
     <AppTooltip content={mention.path || mention.display_name}><Badge
@@ -2445,7 +2456,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
             event.stopPropagation();
             onRemove();
           }}
-          aria-label={`Bỏ chọn ${mention.display_name}`}
+          aria-label={t('chatWidget.removeSelection', { name: mention.display_name })}
         >
           <X className="h-3 w-3" />
         </button>
@@ -2461,6 +2472,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
   compact?: boolean;
   inverted?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <AppTooltip content={doc.name}><Badge
       variant="secondary"
@@ -2486,7 +2498,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
       }}
     >
       <FileText className="h-3 w-3 shrink-0" />
-      <span className="shrink-0 opacity-75">File</span>
+      <span className="shrink-0 opacity-75">{t('chatWidget.file')}</span>
       <span className="truncate max-w-[180px]">{doc.name}</span>
       {onRemove && (
         <button
@@ -2496,7 +2508,7 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
             event.stopPropagation();
             onRemove();
           }}
-          aria-label={`Bỏ chọn ${doc.name}`}
+          aria-label={t('chatWidget.removeSelection', { name: doc.name })}
         >
           <X className="h-3 w-3" />
         </button>

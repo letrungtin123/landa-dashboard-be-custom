@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Keyboar
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -32,6 +33,10 @@ import {
 } from "@/api/custom-email-templates";
 import { useAuthStore } from "@/utils/store";
 import { getGroupLabelSet, lowerGroupLabel, type GroupLabelMap } from "@/utils/group-labels";
+import i18n, { type AppLocale } from "@/i18n";
+import { formatLocaleDate } from "@/utils/locale-format";
+import { useLocaleStore } from "@/utils/locale-store";
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 const TEMPLATE_ORDER: EmailTemplateKey[] = [
   "course_notification",
@@ -63,35 +68,25 @@ const TEMPLATE_ACCENT: Record<EmailTemplateKey, { ring: string; soft: string; do
   },
 };
 
-const FRIENDLY_VARIABLE_LABELS: Record<string, string> = {
-  tenant_name: "Tên doanh nghiệp",
-  brand_name: "Tên hệ thống",
-  learner_domain: "Domain học viên",
-  learner_portal_url: "Link cổng học viên",
-  course_name: "Tên khóa học",
-  notification_title: "Tiêu đề thông báo",
-  notification_message: "Nội dung thông báo",
-  assignment_title: "Tên bài tập",
-  assignment_question: "Câu hỏi bài tập",
-  deadline_text: "Hạn nộp",
-  submission_unlock_text: "Điều kiện nộp bài",
-  learner_name: "Tên học viên",
-  learner_email: "Email học viên",
-  feedback_text: "Nội dung feedback",
-  feedback_by_name: "Tên admin feedback",
-  feedback_by_email: "Email admin feedback",
-  score_text: "Điểm bài tập",
-  group_label: "Công ty",
-  subgroup_label: "Chi nhánh",
-  team_label: "Phòng ban",
-  group_label_lower: "công ty",
-  subgroup_label_lower: "chi nhánh",
-  team_label_lower: "phòng ban",
-  group_name: "Tên Công ty",
-  subgroup_name: "Tên Chi nhánh",
-  team_name: "Tên Phòng ban",
-  course_categories_text: "Danh mục khóa học",
-  course_categories_table: "Bảng danh mục khóa học",
+const FRIENDLY_VARIABLE_LABEL_KEYS: Record<string, string> = {
+  tenant_name: "emailTemplates.tenantName",
+  brand_name: "emailTemplates.brandName",
+  learner_domain: "emailTemplates.learnerDomain",
+  learner_portal_url: "emailTemplates.learnerPortalUrl",
+  course_name: "emailTemplates.courseName",
+  notification_title: "emailTemplates.notificationTitle",
+  notification_message: "emailTemplates.notificationMessage",
+  assignment_title: "emailTemplates.assignmentTitle",
+  assignment_question: "emailTemplates.assignmentQuestion",
+  deadline_text: "emailTemplates.deadline",
+  submission_unlock_text: "emailTemplates.submissionUnlock",
+  learner_name: "emailTemplates.learnerName",
+  learner_email: "emailTemplates.learnerEmail",
+  feedback_text: "emailTemplates.feedbackText",
+  feedback_by_name: "emailTemplates.feedbackByName",
+  feedback_by_email: "emailTemplates.feedbackByEmail",
+  score_text: "emailTemplates.score",
+  course_categories_text: "emailTemplates.courseCategories",
 };
 
 type DraftMap = Partial<Record<EmailTemplateKey, EmailTemplateInput>>;
@@ -124,16 +119,17 @@ function groupAwareFriendlyLabel(key: string, groupLabels?: GroupLabelMap | null
   if (key === "group_label_lower") return lowerGroupLabel(labels.group);
   if (key === "subgroup_label_lower") return lowerGroupLabel(labels.subgroup);
   if (key === "team_label_lower") return lowerGroupLabel(labels.team);
-  if (key === "group_name") return `Tên ${labels.group}`;
-  if (key === "subgroup_name") return `Tên ${labels.subgroup}`;
-  if (key === "team_name") return `Tên ${labels.team}`;
+  if (key === "group_name") return i18n.t("emailTemplates.nameOfGroup", { group: labels.group });
+  if (key === "subgroup_name") return i18n.t("emailTemplates.nameOfGroup", { group: labels.subgroup });
+  if (key === "team_name") return i18n.t("emailTemplates.nameOfGroup", { group: labels.team });
   return null;
 }
 
 function friendlyLabel(variable: EmailTemplateVariable, groupLabels?: GroupLabelMap | null) {
   const dynamicLabel = groupAwareFriendlyLabel(variable.key, groupLabels);
   if (dynamicLabel) return dynamicLabel;
-  return FRIENDLY_VARIABLE_LABELS[variable.key] || variable.label;
+  const translationKey = FRIENDLY_VARIABLE_LABEL_KEYS[variable.key];
+  return translationKey ? i18n.t(translationKey) : variable.label;
 }
 
 function tokenLabel(variable: EmailTemplateVariable, groupLabels?: GroupLabelMap | null) {
@@ -339,23 +335,23 @@ function renderSystemCourseCategoriesTable(tokens: string[]) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;border:1px solid #dbe3ef;border-radius:18px;border-collapse:separate;border-spacing:0;background:#ffffff;overflow:hidden">
       <tr>
         <td colspan="2" style="padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#0f172a;font-size:13px;line-height:20px;font-weight:900">
-          Bảng danh mục khóa học
+          ${i18n.t("emailTemplates.courseCategoriesTable")}
         </td>
       </tr>
       <tr>
         <td style="padding:13px 16px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-size:13px;line-height:20px;font-weight:800">
-          ${renderPreviewText("[Tên danh mục khóa học]", tokens)}
+          ${previewTableValue(i18n.t("emailTemplates.courseCategories"), tokens)}
         </td>
         <td align="right" style="padding:13px 16px;border-bottom:1px solid #e5e7eb;color:#047857;font-size:13px;line-height:20px;font-weight:800;white-space:nowrap">
-          ${renderPreviewText("[Số lượng khóa học]", tokens)}
+          ${previewTableValue(i18n.t("emailTemplates.courseCount"), tokens)}
         </td>
       </tr>
       <tr>
         <td style="padding:13px 16px;color:#0f172a;font-size:13px;line-height:20px;font-weight:800">
-          ${renderPreviewText("[Tên danh mục khóa học]", tokens)}
+          ${previewTableValue(i18n.t("emailTemplates.courseCategories"), tokens)}
         </td>
         <td align="right" style="padding:13px 16px;color:#047857;font-size:13px;line-height:20px;font-weight:800;white-space:nowrap">
-          ${renderPreviewText("[Số lượng khóa học]", tokens)}
+          ${previewTableValue(i18n.t("emailTemplates.courseCount"), tokens)}
         </td>
       </tr>
     </table>
@@ -396,32 +392,32 @@ function renderPreviewSystemRows(rows: Array<{ label: string; value: string }>) 
 function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, tokens: string[], groupLabels?: GroupLabelMap | null) {
   if (key === "course_notification") {
     return renderPreviewSystemRows([
-      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
-      { label: "Khóa học", value: previewTableValue("Tên khóa học", tokens) },
-      { label: "Tiêu đề", value: previewTableValue("Tiêu đề thông báo", tokens) },
-      { label: "Cổng học viên", value: previewTableValue("Domain học viên", tokens) },
+      { label: i18n.t("emailTemplates.learner"), value: previewTableValue(i18n.t("emailTemplates.learnerName"), tokens) },
+      { label: i18n.t("emailTemplates.courseName"), value: previewTableValue(i18n.t("emailTemplates.courseName"), tokens) },
+      { label: i18n.t("emailTemplates.subject"), value: previewTableValue(i18n.t("emailTemplates.notificationTitle"), tokens) },
+      { label: i18n.t("emailTemplates.learnerPortal"), value: previewTableValue(i18n.t("emailTemplates.learnerDomain"), tokens) },
     ]);
   }
 
   if (key === "assignment_created") {
     return renderPreviewSystemRows([
-      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
-      { label: "Khóa học", value: previewTableValue("Tên khóa học", tokens) },
-      { label: "Bài tập", value: previewTableValue("Tên bài tập", tokens) },
-      { label: "Thời hạn", value: previewTableValue("Hạn nộp", tokens) },
-      { label: "Điều kiện nộp", value: previewTableValue("Điều kiện nộp bài", tokens) },
-      { label: "Cổng học viên", value: previewTableValue("Domain học viên", tokens) },
+      { label: i18n.t("emailTemplates.learner"), value: previewTableValue(i18n.t("emailTemplates.learnerName"), tokens) },
+      { label: i18n.t("emailTemplates.courseName"), value: previewTableValue(i18n.t("emailTemplates.courseName"), tokens) },
+      { label: i18n.t("emailTemplates.assignment"), value: previewTableValue(i18n.t("emailTemplates.assignmentTitle"), tokens) },
+      { label: i18n.t("emailTemplates.deadlineLabel"), value: previewTableValue(i18n.t("emailTemplates.deadline"), tokens) },
+      { label: i18n.t("emailTemplates.submissionCondition"), value: previewTableValue(i18n.t("emailTemplates.submissionUnlock"), tokens) },
+      { label: i18n.t("emailTemplates.learnerPortal"), value: previewTableValue(i18n.t("emailTemplates.learnerDomain"), tokens) },
     ]);
   }
 
   if (key === "assignment_feedback") {
     return renderPreviewSystemRows([
-      { label: "Học viên", value: `${previewTableValue("Tên học viên", tokens)} ${previewTableValue("Email học viên", tokens)}` },
-      { label: "Khóa học", value: previewTableValue("Tên khóa học", tokens) },
-      { label: "Bài tập", value: previewTableValue("Tên bài tập", tokens) },
-      { label: "Người feedback", value: previewTableValue("Tên admin feedback", tokens) },
-      { label: "Điểm/Trạng thái", value: previewTableValue("Điểm bài tập", tokens) },
-      { label: "Cổng học viên", value: previewTableValue("Domain học viên", tokens) },
+      { label: i18n.t("emailTemplates.learner"), value: `${previewTableValue(i18n.t("emailTemplates.learnerName"), tokens)} ${previewTableValue(i18n.t("emailTemplates.learnerEmail"), tokens)}` },
+      { label: i18n.t("emailTemplates.courseName"), value: previewTableValue(i18n.t("emailTemplates.courseName"), tokens) },
+      { label: i18n.t("emailTemplates.assignment"), value: previewTableValue(i18n.t("emailTemplates.assignmentTitle"), tokens) },
+      { label: i18n.t("emailTemplates.feedbackBy"), value: previewTableValue(i18n.t("emailTemplates.feedbackByName"), tokens) },
+      { label: i18n.t("emailTemplates.scoreStatus"), value: previewTableValue(i18n.t("emailTemplates.score"), tokens) },
+      { label: i18n.t("emailTemplates.learnerPortal"), value: previewTableValue(i18n.t("emailTemplates.learnerDomain"), tokens) },
     ]);
   }
 
@@ -430,11 +426,11 @@ function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, to
     const labels = getGroupLabelSet(groupLabels);
     return `
       ${renderPreviewSystemRows([
-      { label: "Học viên", value: previewTableValue("Tên học viên", tokens) },
-      { label: labels.group, value: previewTableValue(`Tên ${labels.group}`, tokens) },
-      { label: labels.subgroup, value: previewTableValue(`Tên ${labels.subgroup}`, tokens) },
-      { label: labels.team, value: previewTableValue(`Tên ${labels.team}`, tokens) },
-      { label: "Cổng học viên", value: previewTableValue("Domain học viên", tokens) },
+      { label: i18n.t("emailTemplates.learner"), value: previewTableValue(i18n.t("emailTemplates.learnerName"), tokens) },
+      { label: labels.group, value: previewTableValue(i18n.t("emailTemplates.nameOfGroup", { group: labels.group }), tokens) },
+      { label: labels.subgroup, value: previewTableValue(i18n.t("emailTemplates.nameOfGroup", { group: labels.subgroup }), tokens) },
+      { label: labels.team, value: previewTableValue(i18n.t("emailTemplates.nameOfGroup", { group: labels.team }), tokens) },
+      { label: i18n.t("emailTemplates.learnerPortal"), value: previewTableValue(i18n.t("emailTemplates.learnerDomain"), tokens) },
     ])}
       ${hasInlineCategoriesTable ? "" : renderSystemCourseCategoriesTable(tokens)}
     `;
@@ -443,21 +439,16 @@ function renderPreviewSystemData(key: EmailTemplateKey, bodyTemplate: string, to
   return "";
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) return "Đang dùng mặc định";
+function formatDateTime(value: string | null, locale: AppLocale) {
+  if (!value) return i18n.t("emailTemplates.usingDefault");
   try {
-    return new Intl.DateTimeFormat("vi-VN", {
+    return formatLocaleDate(value, locale, {
       dateStyle: "medium",
       timeStyle: "short",
-    }).format(new Date(value));
+    });
   } catch {
-    return "Đang dùng mặc định";
+    return i18n.t("emailTemplates.usingDefault");
   }
-}
-
-function getErrorMessage(err: unknown, fallback: string) {
-  const anyErr = err as { response?: { data?: { message?: string } } };
-  return anyErr?.response?.data?.message || fallback;
 }
 
 function EmailTemplateSkeleton() {
@@ -486,6 +477,8 @@ function EmailTemplateSkeleton() {
 }
 
 export default function EmailTemplatesPage() {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const user = useAuthStore((state) => state.user);
@@ -501,8 +494,8 @@ export default function EmailTemplatesPage() {
   });
   const groupLabelSignature = useMemo(() => {
     const labels = getGroupLabelSet(groupLabels);
-    return `${labels.group}|${labels.subgroup}|${labels.team}`;
-  }, [groupLabels]);
+    return `${locale}|${labels.group}|${labels.subgroup}|${labels.team}`;
+  }, [groupLabels, locale]);
   const draftLabelSignatureRef = useRef<string | null>(null);
 
   const subjectRef = useRef<HTMLTextAreaElement>(null);
@@ -562,21 +555,21 @@ export default function EmailTemplatesPage() {
   const saveMut = useMutation({
     mutationFn: ({ key, input }: { key: EmailTemplateKey; input: EmailTemplateInput }) => updateEmailTemplate(key, input),
     onSuccess: (updated) => {
-      toast.success("Đã lưu mẫu email");
+      toast.success(t("emailTemplates.saved"));
       setDrafts((prev) => ({ ...prev, [updated.template_key]: createDraft(updated, groupLabels) }));
       queryClient.invalidateQueries({ queryKey: ["email-templates"] });
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Không thể lưu mẫu email")),
+    onError: (err) => toast.error(getLocalizedApiError(err, t("emailTemplates.saveFailed"))),
   });
 
   const resetMut = useMutation({
     mutationFn: (key: EmailTemplateKey) => resetEmailTemplate(key),
     onSuccess: (updated) => {
-      toast.success("Đã khôi phục mẫu mặc định");
+      toast.success(t("emailTemplates.reset"));
       setDrafts((prev) => ({ ...prev, [updated.template_key]: createDraft(updated, groupLabels) }));
       queryClient.invalidateQueries({ queryKey: ["email-templates"] });
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Không thể khôi phục mẫu mặc định")),
+    onError: (err) => toast.error(getLocalizedApiError(err, t("emailTemplates.resetFailed"))),
   });
 
   function setDraftField(field: FocusField, value: string) {
@@ -698,9 +691,9 @@ export default function EmailTemplatesPage() {
   function invalidDraftToken() {
     if (!draft) return null;
     const fields: Array<{ key: FocusField; label: string }> = [
-      { key: "subject_template", label: "Dòng tiêu đề" },
-      { key: "preheader_template", label: "Dòng mô tả ngắn" },
-      { key: "body_template", label: "Nội dung chính" },
+      { key: "subject_template", label: t("emailTemplates.subject") },
+      { key: "preheader_template", label: t("emailTemplates.preheader") },
+      { key: "body_template", label: t("emailTemplates.body") },
     ];
 
     for (const field of fields) {
@@ -739,7 +732,7 @@ export default function EmailTemplatesPage() {
     if (!activeTemplate || !draft || controlsDisabled) return;
     const invalidToken = invalidDraftToken();
     if (invalidToken) {
-      toast.error(`Nhãn dữ liệu không hợp lệ ở ${invalidToken.label}: ${invalidToken.fragment}. Hãy xóa nguyên nhãn hoặc chèn lại từ danh sách dữ liệu tự điền.`);
+      toast.error(t("emailTemplates.invalidToken", { field: invalidToken.label, token: invalidToken.fragment }));
       setFocusedField(invalidToken.key);
       window.requestAnimationFrame(() => editorNode(invalidToken.key)?.focus());
       return;
@@ -757,9 +750,9 @@ export default function EmailTemplatesPage() {
   if (templatesQuery.isError || !activeTemplate || !draft) {
     return (
       <div className="p-4 md:p-6">
-        <PageHeader icon={MailCheck} title="Mẫu email" description="Quản lý mẫu email gửi cho học viên" />
+        <PageHeader icon={MailCheck} title={t("emailTemplates.title")} description={t("emailTemplates.description")} />
         <div className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm font-semibold text-destructive">
-          Không thể tải dữ liệu mẫu email.
+          {t("emailTemplates.loadFailed")}
         </div>
       </div>
     );
@@ -769,17 +762,17 @@ export default function EmailTemplatesPage() {
     <div className="p-4 md:p-6 space-y-5">
       <PageHeader
         icon={MailCheck}
-        title="Mẫu email"
-        description="Tùy chỉnh email gửi cho học viên bằng ngôn ngữ dễ hiểu"
+        title={t("emailTemplates.title")}
+        description={t("emailTemplates.descriptionSimple")}
         actions={(
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Badge variant="outline" className="gap-1.5 px-3 py-1">
               <MailOpen className="h-3.5 w-3.5" />
-              {customizedCount}/{templates.length} mẫu đã chỉnh
+              {t("emailTemplates.customizedCount", { count: customizedCount, total: templates.length })}
             </Badge>
             <Badge variant={smtpReady ? "secondary" : "destructive"} className="gap-1.5 px-3 py-1">
               {smtpReady ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-              {smtpReady ? "SMTP sẵn sàng" : "SMTP chưa sẵn sàng"}
+              {smtpReady ? t("emailTemplates.smtpReady") : t("emailTemplates.smtpNotReady")}
             </Badge>
           </div>
         )}
@@ -794,9 +787,9 @@ export default function EmailTemplatesPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
             <div className="min-w-0">
-              <p className="text-sm font-bold">Tenant cần cấu hình SMTP Google hợp lệ trước khi chỉnh mẫu email.</p>
+              <p className="text-sm font-bold">{t("emailTemplates.smtpRequired")}</p>
               <p className="mt-1 text-xs leading-5 text-red-700/80 dark:text-red-200/80">
-                {smtpStatus?.reason || "Vui lòng cấu hình SMTP trước khi chỉnh mẫu email."} Các thao tác lưu và khôi phục đang bị khóa.
+                {locale === "vi" && smtpStatus?.reason ? smtpStatus.reason : t("emailTemplates.smtpRequiredDescription")}
               </p>
             </div>
           </div>
@@ -805,7 +798,7 @@ export default function EmailTemplatesPage() {
 
       {!canEdit && smtpReady && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm font-semibold text-amber-700 dark:text-amber-300">
-          Bạn chỉ có quyền xem mẫu email. Cần quyền chỉnh sửa module Mẫu email để lưu thay đổi.
+          {t("emailTemplates.viewOnly")}
         </div>
       )}
 
@@ -837,9 +830,9 @@ export default function EmailTemplatesPage() {
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{template.description}</p>
                     <div className="mt-3 flex items-center justify-between gap-2">
                       <Badge variant={template.is_customized ? "secondary" : "outline"} size="sm">
-                        {template.is_customized ? "Đã chỉnh" : "Mặc định"}
+                        {template.is_customized ? t("emailTemplates.customized") : t("emailTemplates.default")}
                       </Badge>
-                      <span className="truncate text-[11px] font-medium text-muted-foreground">{formatDateTime(template.updated_at)}</span>
+                      <span className="truncate text-[11px] font-medium text-muted-foreground">{formatDateTime(template.updated_at, locale)}</span>
                     </div>
                   </div>
                 </div>
@@ -860,7 +853,7 @@ export default function EmailTemplatesPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${activeAccent.soft}`}>
-                      {activeTemplate.is_customized ? "Đang dùng bản đã chỉnh" : "Đang dùng mẫu mặc định"}
+                      {activeTemplate.is_customized ? t("emailTemplates.usingCustomized") : t("emailTemplates.usingDefaultTemplate")}
                     </span>
                     {controlsDisabled && <Lock className="h-4 w-4 text-muted-foreground" />}
                   </div>
@@ -870,11 +863,11 @@ export default function EmailTemplatesPage() {
                 <div className="flex items-center gap-2">
                   <Button variant="outline" onClick={handleReset} disabled={controlsDisabled || resetMut.isPending} className="gap-2">
                     {resetMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                    Mặc định
+                    {t("emailTemplates.default")}
                   </Button>
                   <Button onClick={handleSave} disabled={controlsDisabled || saveMut.isPending} className="gap-2">
                     {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Lưu mẫu
+                    {t("emailTemplates.saveTemplate")}
                   </Button>
                 </div>
               </div>
@@ -883,7 +876,7 @@ export default function EmailTemplatesPage() {
             <div className="space-y-5 p-5">
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-foreground">Dòng tiêu đề</label>
+                  <label className="text-sm font-bold text-foreground">{t("emailTemplates.subject")}</label>
                   <div className="relative rounded-xl bg-background">
                     <div
                       aria-hidden="true"
@@ -912,7 +905,7 @@ export default function EmailTemplatesPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-foreground">Dòng mô tả ngắn</label>
+                  <label className="text-sm font-bold text-foreground">{t("emailTemplates.preheader")}</label>
                   <div className="relative rounded-xl bg-background">
                     <div
                       aria-hidden="true"
@@ -943,7 +936,7 @@ export default function EmailTemplatesPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-bold text-foreground">Nội dung chính</label>
+                <label className="text-sm font-bold text-foreground">{t("emailTemplates.body")}</label>
                 <div className="relative rounded-xl bg-background">
                   <div
                     aria-hidden="true"
@@ -974,11 +967,11 @@ export default function EmailTemplatesPage() {
               <div className="rounded-2xl border border-border bg-muted/25 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-foreground">Dữ liệu tự điền</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Bấm vào nhãn để chèn vào ô đang chọn.</p>
+                    <p className="text-sm font-bold text-foreground">{t("emailTemplates.autofillData")}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{t("emailTemplates.autofillHint")}</p>
                   </div>
                   <Badge variant="outline" className="text-[11px]">
-                    Đang chèn vào: {focusedField === "subject_template" ? "Dòng tiêu đề" : focusedField === "preheader_template" ? "Mô tả ngắn" : "Nội dung chính"}
+                    {t("emailTemplates.insertingInto")} {focusedField === "subject_template" ? t("emailTemplates.subject") : focusedField === "preheader_template" ? t("emailTemplates.preheader") : t("emailTemplates.body")}
                   </Badge>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1004,9 +997,9 @@ export default function EmailTemplatesPage() {
             <div className="flex items-center justify-between border-b border-border bg-muted/20 p-5">
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-primary" />
-                <p className="text-sm font-bold text-foreground">Xem trước email</p>
+                <p className="text-sm font-bold text-foreground">{t("emailTemplates.emailPreview")}</p>
               </div>
-              <span className="text-[11px] font-semibold text-muted-foreground">Cập nhật tức thì</span>
+              <span className="text-[11px] font-semibold text-muted-foreground">{t("emailTemplates.instantUpdate")}</span>
             </div>
 
             <div className="p-3 sm:p-5">
@@ -1020,35 +1013,35 @@ export default function EmailTemplatesPage() {
                   <div className="bg-slate-950 px-4 py-5 sm:px-6 sm:py-6">
                     <div className="flex items-center justify-between gap-3">
                       <span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-emerald-300">
-                        Email xem trước
+                        {t("emailTemplates.previewBadge")}
                       </span>
                       <Sparkles className="h-4 w-4 text-emerald-300" />
                     </div>
                     <h3 className="mt-4 text-lg font-extrabold leading-7 text-white sm:text-[24px] sm:leading-9">
-                      {draft.subject_template || "Dòng tiêu đề email"}
+                      {draft.subject_template || t("emailTemplates.defaultSubject")}
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-blue-100">
-                      {draft.preheader_template || "Dòng mô tả ngắn"}
+                      {draft.preheader_template || t("emailTemplates.defaultPreheader")}
                     </p>
                   </div>
                   <div className="px-4 py-5 sm:px-6 sm:py-6">
                     <div
                       className="text-sm leading-7 text-slate-700"
-                      dangerouslySetInnerHTML={{ __html: renderPreviewBody(draft.body_template || "Nội dung chính của email", activeTokens) }}
+                      dangerouslySetInnerHTML={{ __html: renderPreviewBody(draft.body_template || t("emailTemplates.defaultBody"), activeTokens) }}
                     />
                     <div
                       dangerouslySetInnerHTML={{ __html: renderPreviewSystemData(activeTemplate.template_key, draft.body_template, activeTokens, groupLabels) }}
                     />
                     <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <p className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-700">Cổng học viên</p>
-                      <p className="mt-1 text-sm font-bold text-emerald-950">[Domain học viên]</p>
+                      <p className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-700">{t("emailTemplates.learnerPortal")}</p>
+                      <p className="mt-1 text-sm font-bold text-emerald-950">[{t("emailTemplates.learnerDomain")}]</p>
                       <div className="mt-3 inline-flex rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm">
-                        Mở cổng học viên
+                        {t("emailTemplates.openLearnerPortal")}
                       </div>
                     </div>
                     <div className="mt-5 flex items-start gap-2 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
                       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>Preview giữ nguyên nhãn dữ liệu như [Tên học viên], [Tên khóa học]. Khi gửi thật, hệ thống mới tự điền giá trị.</span>
+                      <span>{t("emailTemplates.previewHelp")}</span>
                     </div>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 export interface CarouselOrderImage {
   id: string;
@@ -16,6 +17,7 @@ interface CarouselImageOrderProps {
 }
 
 export default function CarouselImageOrder({ images, onMove, onRemove }: CarouselImageOrderProps) {
+  const { t } = useTranslation();
   if (!images.length) return null;
 
   const moveImage = (fromIndex: number, toIndex: number) => {
@@ -33,16 +35,16 @@ export default function CarouselImageOrder({ images, onMove, onRemove }: Carouse
             </span>
             <img
               src={image.src}
-              alt={image.alt || `Ảnh carousel ${index + 1}`}
+              alt={image.alt || t('courseEditorForms.carouselImage', { count: index + 1 })}
               className="max-h-full max-w-full rounded object-contain"
             />
           </div>
           <div className="flex items-center justify-between gap-2 border-t border-border p-2">
             <span className="min-w-0 truncate text-xs text-muted-foreground">
-              {image.alt || `Ảnh ${index + 1}`}
+              {image.alt || t('courseEditorForms.image', { count: index + 1 })}
             </span>
             <div className="flex shrink-0 items-center gap-1">
-              <AppTooltip content="Chuyển ảnh sang trái"><Button
+              <AppTooltip content={t('courseEditorForms.moveImageLeft', { count: index + 1 })}><Button
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -50,11 +52,11 @@ export default function CarouselImageOrder({ images, onMove, onRemove }: Carouse
                 onClick={() => moveImage(index, index - 1)}
                 disabled={index === 0}
 
-                aria-label={`Move image ${index + 1} left`}
+                aria-label={t('courseEditorForms.moveImageLeft', { count: index + 1 })}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button></AppTooltip>
-              <AppTooltip content="Chuyển ảnh sang phải"><Button
+              <AppTooltip content={t('courseEditorForms.moveImageRight', { count: index + 1 })}><Button
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -62,12 +64,12 @@ export default function CarouselImageOrder({ images, onMove, onRemove }: Carouse
                 onClick={() => moveImage(index, index + 1)}
                 disabled={index === images.length - 1}
 
-                aria-label={`Move image ${index + 1} right`}
+                aria-label={t('courseEditorForms.moveImageRight', { count: index + 1 })}
               >
                 <ArrowRight className="h-4 w-4" />
               </Button></AppTooltip>
               {onRemove && (
-                <AppTooltip content="Xóa ảnh"><Button
+                <AppTooltip content={t('courseEditorForms.removeImage', { count: index + 1 })}><Button
                   type="button"
                   variant="ghost"
                   size="icon"
@@ -75,7 +77,7 @@ export default function CarouselImageOrder({ images, onMove, onRemove }: Carouse
                   onClick={() => onRemove(index)}
                   disabled={image.isDeleting}
 
-                  aria-label={`Remove image ${index + 1}`}
+                  aria-label={t('courseEditorForms.removeImage', { count: index + 1 })}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button></AppTooltip>

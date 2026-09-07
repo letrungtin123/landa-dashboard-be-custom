@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Braces,
@@ -29,90 +30,91 @@ import {
   type InputFilterConfig,
   type InputFilterMessageCode,
 } from "@/api/custom-ai-chatbot";
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 const stepCards: Array<{
   key: keyof Pick<InputFilterConfig, "enable_length" | "enable_normalize" | "enable_language" | "enable_gibberish" | "enable_repeat" | "enable_profanity">;
-  title: string;
-  plainText: string;
+  titleKey: string;
+  plainTextKey: string;
   icon: typeof ShieldCheck;
   tone: string;
 }> = [
   {
     key: "enable_length",
-    title: "Tin nhắn quá ngắn hoặc quá dài",
-    plainText: "Giữ cuộc trò chuyện gọn gàng, tránh gửi rỗng, chỉ link hoặc nội dung quá dài.",
+    titleKey: "aiChatbot.stepLengthTitle",
+    plainTextKey: "aiChatbot.stepLengthDescription",
     icon: TextCursorInput,
     tone: "text-sky-600 bg-sky-500/10 border-sky-500/20",
   },
   {
     key: "enable_normalize",
-    title: "Làm sạch chữ trước khi kiểm tra",
-    plainText: "Gộp khoảng trắng, bỏ ký tự ẩn và giúp các lớp kiểm tra phía sau chính xác hơn.",
+    titleKey: "aiChatbot.stepNormalizeTitle",
+    plainTextKey: "aiChatbot.stepNormalizeDescription",
     icon: Sparkles,
     tone: "text-emerald-600 bg-emerald-500/10 border-emerald-500/20",
   },
   {
     key: "enable_language",
-    title: "Chỉ nhận tiếng Việt và tiếng Anh",
-    plainText: "Chặn nội dung có quá nhiều ký tự ngoài hai ngôn ngữ đang hỗ trợ.",
+    titleKey: "aiChatbot.stepLanguageTitle",
+    plainTextKey: "aiChatbot.stepLanguageDescription",
     icon: Languages,
     tone: "text-cyan-600 bg-cyan-500/10 border-cyan-500/20",
   },
   {
     key: "enable_gibberish",
-    title: "Nội dung gõ bừa hoặc khó hiểu",
-    plainText: "Chặn chuỗi ký tự lặp, ký tự lỗi hoặc nội dung không giống một câu bình thường.",
+    titleKey: "aiChatbot.stepGibberishTitle",
+    plainTextKey: "aiChatbot.stepGibberishDescription",
     icon: Braces,
     tone: "text-amber-600 bg-amber-500/10 border-amber-500/20",
   },
   {
     key: "enable_repeat",
-    title: "Gửi lặp lại nhiều lần",
-    plainText: "Giảm spam khi khách gửi cùng một câu liên tục trong thời gian ngắn.",
+    titleKey: "aiChatbot.stepRepeatTitle",
+    plainTextKey: "aiChatbot.stepRepeatDescription",
     icon: RotateCcw,
     tone: "text-violet-600 bg-violet-500/10 border-violet-500/20",
   },
   {
     key: "enable_profanity",
-    title: "Từ ngữ không phù hợp",
-    plainText: "Chặn lời lẽ thô tục và các từ cấm bổ sung do admin nhập.",
+    titleKey: "aiChatbot.stepProfanityTitle",
+    plainTextKey: "aiChatbot.stepProfanityDescription",
     icon: MessageSquareWarning,
     tone: "text-rose-600 bg-rose-500/10 border-rose-500/20",
   },
 ];
 
-const messageLabels: Record<InputFilterMessageCode, { title: string; when: string }> = {
+const messageLabels: Record<InputFilterMessageCode, { titleKey: string; whenKey: string }> = {
   EMPTY: {
-    title: "Khách chưa nhập nội dung",
-    when: "Tin nhắn rỗng, chỉ emoji hoặc chỉ link.",
+    titleKey: "aiChatbot.messageEmptyTitle",
+    whenKey: "aiChatbot.messageEmptyWhen",
   },
   TOO_SHORT: {
-    title: "Tin nhắn quá ngắn",
-    when: "Nội dung ít hơn số ký tự tối thiểu.",
+    titleKey: "aiChatbot.messageTooShortTitle",
+    whenKey: "aiChatbot.messageTooShortWhen",
   },
   TOO_LONG: {
-    title: "Tin nhắn quá dài",
-    when: "Nội dung vượt quá số ký tự tối đa.",
+    titleKey: "aiChatbot.messageTooLongTitle",
+    whenKey: "aiChatbot.messageTooLongWhen",
   },
   GIBBERISH: {
-    title: "Nội dung khó hiểu",
-    when: "Chuỗi ký tự gõ bừa hoặc không rõ nghĩa.",
+    titleKey: "aiChatbot.messageGibberishTitle",
+    whenKey: "aiChatbot.messageGibberishWhen",
   },
   BINARY_GARBAGE: {
-    title: "Ký tự lỗi",
-    when: "Nội dung có ký tự điều khiển hoặc lỗi hiển thị.",
+    titleKey: "aiChatbot.messageBinaryTitle",
+    whenKey: "aiChatbot.messageBinaryWhen",
   },
   PROFANITY: {
-    title: "Từ ngữ không phù hợp",
-    when: "Nội dung có từ tục, từ cấm hoặc blacklist bổ sung.",
+    titleKey: "aiChatbot.messageProfanityTitle",
+    whenKey: "aiChatbot.messageProfanityWhen",
   },
   UNSUPPORTED_LANG: {
-    title: "Ngôn ngữ chưa hỗ trợ",
-    when: "Tin nhắn có quá nhiều ký tự ngoài tiếng Việt và tiếng Anh.",
+    titleKey: "aiChatbot.messageUnsupportedLanguageTitle",
+    whenKey: "aiChatbot.messageUnsupportedLanguageWhen",
   },
   REPEATED_SENTENCE: {
-    title: "Gửi lặp lại",
-    when: "Khách gửi cùng một nội dung nhiều lần.",
+    titleKey: "aiChatbot.messageRepeatedTitle",
+    whenKey: "aiChatbot.messageRepeatedWhen",
   },
 };
 
@@ -147,6 +149,7 @@ interface InputFilterTabProps {
 }
 
 export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<InputFilterConfig | null>(null);
   const [initialConfig, setInitialConfig] = useState<InputFilterConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -167,13 +170,13 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
       setConfig(cloneConfig(nextConfig));
       setInitialConfig(cloneConfig(nextConfig));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Không tải được bộ lọc");
+      toast.error(getLocalizedApiError(err, t("aiChatbot.loadFilterFailed")));
       setConfig(null);
       setInitialConfig(null);
     } finally {
       setLoadingConfig(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadConfig(botId);
@@ -195,9 +198,9 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
       const saved = await updateBotInputFilter(botId, config);
       setConfig(cloneConfig(saved));
       setInitialConfig(cloneConfig(saved));
-      toast.success("Đã lưu bộ lọc đầu vào");
+      toast.success(t("aiChatbot.filterSaved"));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Không lưu được bộ lọc");
+      toast.error(getLocalizedApiError(err, t("aiChatbot.saveFilterFailed")));
     } finally {
       setSaving(false);
     }
@@ -216,21 +219,21 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
             <div className="space-y-1">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" />
-                Bộ lọc đầu vào
-                <Badge variant={config?.enabled ? "default" : "outline"}>{config?.enabled ? "Đang bật" : "Đang tắt"}</Badge>
+                {t("aiChatbot.inputFilter")}
+                <Badge variant={config?.enabled ? "default" : "outline"}>{config?.enabled ? t("aiChatbot.enabled") : t("aiChatbot.disabled")}</Badge>
               </h3>
               <p className="text-sm text-muted-foreground max-w-3xl">
-                Bộ lọc kiểm tra tin nhắn trước khi gửi xuống AI. Khi bị chặn, khách sẽ nhận câu trả lời do admin tự viết và hệ thống không tốn lượt gọi Gemini.
+                {t("aiChatbot.inputFilterDescription")}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <Button variant="outline" disabled={!isDirty || saving} onClick={handleReset} className="gap-2">
                 <RotateCcw className="h-4 w-4" />
-                Hoàn tác
+                {t("aiChatbot.undo")}
               </Button>
               <Button disabled={!isDirty || saving || !config} onClick={handleSave} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Lưu
+                {t("aiChatbot.save")}
               </Button>
             </div>
           </div>
@@ -243,9 +246,9 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
             <div className="grid grid-cols-1 gap-5">
               <div className="app-liquid-card rounded-lg border bg-background p-4 flex items-center justify-between gap-4">
                 <div>
-                  <p className="font-medium">Bật bộ lọc cho {botName || "chatbot này"}</p>
+                  <p className="font-medium">{t("aiChatbot.filterForBot", { bot: botName || t("aiChatbot.thisChatbot") })}</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Khi tắt, mọi tin nhắn vẫn đi theo luồng AI như hiện tại.
+                    {t("aiChatbot.filterOffDescription")}
                   </p>
                 </div>
                 <Switch checked={config.enabled} onCheckedChange={checked => updateConfig(draft => { draft.enabled = checked; })} />
@@ -255,8 +258,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-semibold">Các lớp bảo vệ</h4>
-                  <p className="text-sm text-muted-foreground">Bật những loại tin nhắn muốn chặn trước khi gửi xuống AI.</p>
+                  <h4 className="font-semibold">{t("aiChatbot.protectionLayers")}</h4>
+                  <p className="text-sm text-muted-foreground">{t("aiChatbot.protectionLayersDescription")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -273,14 +276,14 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-3">
-                          <p className="font-medium leading-snug">{step.title}</p>
+                          <p className="font-medium leading-snug">{t(step.titleKey)}</p>
                           <Switch
                             size="sm"
                             checked={Boolean(config[step.key])}
                             onCheckedChange={checked => updateConfig(draft => { draft[step.key] = checked; })}
                           />
                         </div>
-                        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{step.plainText}</p>
+                        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{t(step.plainTextKey)}</p>
                       </div>
                     </motion.div>
                   );
@@ -297,8 +300,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                 <div className="flex items-center gap-3">
                   <SlidersHorizontal className="h-5 w-5 text-primary" />
                   <div>
-                    <h4 className="font-semibold">Cài đặt nâng cao</h4>
-                    <p className="text-sm text-muted-foreground">Chỉ cần chỉnh khi muốn siết chặt hoặc nới lỏng bộ lọc.</p>
+                    <h4 className="font-semibold">{t("aiChatbot.advancedSettings")}</h4>
+                    <p className="text-sm text-muted-foreground">{t("aiChatbot.advancedSettingsDescription")}</p>
                   </div>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
@@ -308,10 +311,10 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="border-t p-4 space-y-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                     <div className="space-y-3">
-                      <h5 className="font-medium">Độ dài tin nhắn</h5>
+                      <h5 className="font-medium">{t("aiChatbot.messageLength")}</h5>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">Tối thiểu</label>
+                          <label className="text-sm text-muted-foreground">{t("aiChatbot.minimum")}</label>
                           <Input
                             type="number"
                             min={1}
@@ -321,7 +324,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">Tối đa</label>
+                          <label className="text-sm text-muted-foreground">{t("aiChatbot.maximum")}</label>
                           <Input
                             type="number"
                             min={100}
@@ -334,8 +337,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                     </div>
 
                     <div className="space-y-3">
-                      <h5 className="font-medium">Ngôn ngữ ngoài Việt/Anh</h5>
-                      <p className="text-sm text-muted-foreground">Cho phép tối đa {Math.round(config.filter_params.language.foreignCharThreshold * 100)}% ký tự ngoài tiếng Việt và tiếng Anh.</p>
+                      <h5 className="font-medium">{t("aiChatbot.foreignLanguage")}</h5>
+                      <p className="text-sm text-muted-foreground">{t("aiChatbot.foreignLanguageDescription", { percent: Math.round(config.filter_params.language.foreignCharThreshold * 100) })}</p>
                       <Slider
                         value={[config.filter_params.language.foreignCharThreshold * 100]}
                         min={10}
@@ -346,10 +349,10 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                     </div>
 
                     <div className="space-y-3">
-                      <h5 className="font-medium">Gửi lặp lại</h5>
+                      <h5 className="font-medium">{t("aiChatbot.repeatedMessages")}</h5>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">Chặn từ lần thứ</label>
+                          <label className="text-sm text-muted-foreground">{t("aiChatbot.blockFromAttempt")}</label>
                           <Input
                             type="number"
                             min={2}
@@ -359,7 +362,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">Tự quên sau giây</label>
+                          <label className="text-sm text-muted-foreground">{t("aiChatbot.forgetAfterSeconds")}</label>
                           <Input
                             type="number"
                             min={60}
@@ -370,11 +373,11 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                           />
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">Lớp này cần Redis trên máy chủ. Nếu Redis chưa bật, hệ thống sẽ bỏ qua riêng lớp gửi lặp.</p>
+                      <p className="text-xs text-muted-foreground">{t("aiChatbot.redisNotice")}</p>
                     </div>
 
                     <div className="space-y-3">
-                      <h5 className="font-medium">Mức chặn từ ngữ</h5>
+                      <h5 className="font-medium">{t("aiChatbot.profanityLevel")}</h5>
                       <Select
                         value={config.filter_params.profanity.blockSeverity}
                         onValueChange={value => updateConfig(draft => { draft.filter_params.profanity.blockSeverity = value as "HIGH" | "MEDIUM"; })}
@@ -383,8 +386,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="HIGH">Chỉ danh sách tiếng Việt</SelectItem>
-                          <SelectItem value="MEDIUM">Tiếng Việt và tiếng Anh</SelectItem>
+                          <SelectItem value="HIGH">{t("aiChatbot.vietnameseOnly")}</SelectItem>
+                          <SelectItem value="MEDIUM">{t("aiChatbot.vietnameseAndEnglish")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -394,25 +397,25 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
                       <div>
-                        <p className="font-medium">Thông số chống nội dung gõ bừa</p>
-                        <p className="text-sm text-muted-foreground">Giá trị mặc định phù hợp cho đa số chatbot. Chỉ chỉnh khi thấy hệ thống chặn quá nhiều hoặc quá ít.</p>
+                        <p className="font-medium">{t("aiChatbot.gibberishParameters")}</p>
+                        <p className="text-sm text-muted-foreground">{t("aiChatbot.gibberishParametersDescription")}</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Độ tự nhiên tối thiểu</label>
+                        <label className="text-sm text-muted-foreground">{t("aiChatbot.minimumNaturalness")}</label>
                         <Input type="number" step="0.1" min={0.5} max={4} value={config.filter_params.gibberish.minEntropyThreshold} onChange={event => updateConfig(draft => { draft.filter_params.gibberish.minEntropyThreshold = Number(event.target.value); })} />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Lặp một ký tự tối đa</label>
+                        <label className="text-sm text-muted-foreground">{t("aiChatbot.maximumSingleCharacterRepeat")}</label>
                         <Input type="number" step="0.1" min={0.3} max={0.9} value={config.filter_params.gibberish.maxRepeatRatio} onChange={event => updateConfig(draft => { draft.filter_params.gibberish.maxRepeatRatio = Number(event.target.value); })} />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Ký tự hợp lệ tối thiểu</label>
+                        <label className="text-sm text-muted-foreground">{t("aiChatbot.minimumValidCharacters")}</label>
                         <Input type="number" step="0.1" min={0.2} max={0.9} value={config.filter_params.gibberish.minValidCharRatio} onChange={event => updateConfig(draft => { draft.filter_params.gibberish.minValidCharRatio = Number(event.target.value); })} />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Cụm phụ âm tối đa</label>
+                        <label className="text-sm text-muted-foreground">{t("aiChatbot.maximumConsonantCluster")}</label>
                         <Input type="number" min={3} max={10} value={config.filter_params.gibberish.maxConsonantCluster} onChange={event => updateConfig(draft => { draft.filter_params.gibberish.maxConsonantCluster = Number(event.target.value); })} />
                       </div>
                     </div>
@@ -420,20 +423,20 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Từ cấm tiếng Việt bổ sung</label>
+                      <label className="text-sm font-medium">{t("aiChatbot.extraVietnameseBlacklist")}</label>
                       <Textarea
                         value={config.filter_params.profanity.blacklistVi.join("\n")}
                         onChange={event => updateConfig(draft => { draft.filter_params.profanity.blacklistVi = parseList(event.target.value); })}
-                        placeholder="Mỗi dòng một từ hoặc cụm từ"
+                        placeholder={t("aiChatbot.oneItemPerLine")}
                         className="min-h-28"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Từ cấm tiếng Anh bổ sung</label>
+                      <label className="text-sm font-medium">{t("aiChatbot.extraEnglishBlacklist")}</label>
                       <Textarea
                         value={config.filter_params.profanity.blacklistEn.join("\n")}
                         onChange={event => updateConfig(draft => { draft.filter_params.profanity.blacklistEn = parseList(event.target.value); })}
-                        placeholder="Mỗi dòng một từ hoặc cụm từ"
+                        placeholder={t("aiChatbot.oneItemPerLine")}
                         className="min-h-28"
                       />
                     </div>
@@ -451,8 +454,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                 <div className="flex items-center gap-3">
                   <MessageSquareWarning className="h-5 w-5 text-primary" />
                   <div>
-                    <h4 className="font-semibold">Câu trả lời khi bị chặn</h4>
-                    <p className="text-sm text-muted-foreground">Khách sẽ thấy đúng nội dung admin nhập ở đây.</p>
+                    <h4 className="font-semibold">{t("aiChatbot.blockedReply")}</h4>
+                    <p className="text-sm text-muted-foreground">{t("aiChatbot.blockedReplyDescription")}</p>
                   </div>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform ${messagesOpen ? "rotate-180" : ""}`} />
@@ -467,8 +470,8 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                         <div key={message.code} className="rounded-lg border p-4 space-y-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="font-medium">{meta.title}</p>
-                              <p className="text-xs text-muted-foreground mt-1">{meta.when}</p>
+                              <p className="font-medium">{t(meta.titleKey)}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{t(meta.whenKey)}</p>
                             </div>
                             <Badge variant="outline" className="shrink-0">{message.code}</Badge>
                           </div>
@@ -478,7 +481,7 @@ export function InputFilterTab({ botId, botName }: InputFilterTabProps) {
                             onChange={event => updateConfig(draft => { draft.message_config[index].message = event.target.value; })}
                             className="min-h-24"
                           />
-                          <p className="text-xs text-muted-foreground text-right">{message.message.length}/500 ký tự</p>
+                          <p className="text-xs text-muted-foreground text-right">{t("aiChatbot.characters", { count: message.message.length })}</p>
                         </div>
                       );
                     })}

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   getDocuments, getAllCategories, uploadDocumentsBatch, updateDocument, deleteDocument,
-  bulkDocumentAction, getLibraryDocumentUploadSizeError, type Document, type DocCategory,
+  bulkDocumentAction, formatLibraryDocumentUploadSize, LIBRARY_DOCUMENT_MAX_UPLOAD_BYTES, LIBRARY_DOCUMENT_MAX_UPLOAD_LABEL, type Document, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';
 import { storageUrl } from '@/utils/storage-url';
@@ -28,6 +29,10 @@ import {
   FileSpreadsheet, FileType, Film, FolderOpen, CheckCircle2, X, Download, Globe,
 } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useLocaleStore } from '@/utils/locale-store';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { getLocalizedApiError } from '@/utils/localized-error';
+import type { AppLocale } from '@/i18n';
 
 const EXT_ICONS: Record<string, React.ElementType> = {
   pdf: FileText, docx: FileText, doc: FileText,
@@ -45,11 +50,11 @@ const EXT_COLORS: Record<string, string> = {
   jpg: 'text-pink-500', jpeg: 'text-pink-500', png: 'text-pink-500',
 };
 
-function formatDocumentCreatedAt(value: string | null | undefined): string {
+function formatDocumentCreatedAt(value: string | null | undefined, locale: AppLocale): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('vi-VN', {
+  return formatLocaleDate(date, locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -84,6 +89,8 @@ function getDocumentDownloadUrl(doc: Document): string {
 }
 
 export default function DocumentsTab() {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -133,7 +140,7 @@ export default function DocumentsTab() {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
       queryClient.invalidateQueries({ queryKey: ['landa-categories-all'] });
       queryClient.invalidateQueries({ queryKey: ['team-detail'] });
-      toast.success('Đã cập nhật');
+      toast.success(t('library.updated'));
     },
   });
 
@@ -141,7 +148,7 @@ export default function DocumentsTab() {
     mutationFn: deleteDocument,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
-      toast.success('Đã xóa tài liệu');
+      toast.success(t('library.documentDeleted'));
     },
   });
 
@@ -155,9 +162,9 @@ export default function DocumentsTab() {
       queryClient.invalidateQueries({ queryKey: ['team-detail'] });
       setSelected([]);
       setBulkCatId('');
-      toast.success(action === 'set_category' ? 'Đã cập nhật danh mục tài liệu' : action === 'show' ? 'Đã hiện tài liệu' : 'Đã ẩn tài liệu');
-    },    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || err?.response?.data?.message || 'Cập nhật hàng loạt thất bại');
+      toast.success(action === 'set_category' ? t('library.bulkCategoryUpdated') : action === 'show' ? t('library.documentsShown') : t('library.documentsHidden'));
+    },    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('library.bulkUpdateFailed')));
     },
   });
 
@@ -168,13 +175,14 @@ export default function DocumentsTab() {
       queryClient.invalidateQueries({ queryKey: ['landa-documents'] });
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
       if (result.created > 0) {
-        toast.success(`Đã upload ${result.created} tài liệu`);
+        toast.success(t('library.documentsUploaded', { count: result.created }));
       }
       if (result.errors?.length) {
-        result.errors.forEach((e) => toast.error(e));
+        if (locale === 'vi') result.errors.forEach((e) => toast.error(e));
+        else toast.error(t('library.uploadSomeFailed'));
       }
     },
-    onError: () => toast.error('Upload thất bại'),
+    onError: () => toast.error(t('library.uploadFailed')),
   });
 
   const handleUpload = () => {
@@ -188,9 +196,12 @@ export default function DocumentsTab() {
 
       const validFiles: File[] = [];
       Array.from(fileList).forEach((file) => {
-        const sizeError = getLibraryDocumentUploadSizeError(file);
-        if (sizeError) {
-          toast.error(sizeError);
+        if (file.size > LIBRARY_DOCUMENT_MAX_UPLOAD_BYTES) {
+          toast.error(t('library.uploadSizeExceeded', {
+            name: file.name,
+            limit: LIBRARY_DOCUMENT_MAX_UPLOAD_LABEL,
+            size: formatLibraryDocumentUploadSize(file.size),
+          }));
           return;
         }
         validFiles.push(file);
@@ -204,8 +215,8 @@ export default function DocumentsTab() {
 
   const handleDelete = (id: string, title: string) => {
     confirmDialog({
-      title: 'Xóa tài liệu',
-      description: `Xóa "${title}"? Hành động này không thể hoàn tác.`,
+      title: t('library.deleteDocumentTitle'),
+      description: t('library.deleteDocumentDescription', { title }),
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(id),
     });
@@ -236,10 +247,10 @@ export default function DocumentsTab() {
       <TableToolbar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm tài liệu..."
+        searchPlaceholder={t('library.searchDocuments')}
         filters={[
-          { key: 'category', placeholder: 'Danh mục', options: catOptions },
-          { key: 'extension', placeholder: 'Loại file', options: extOptions },
+          { key: 'category', placeholder: t('library.categoryFilter'), options: catOptions },
+          { key: 'extension', placeholder: t('library.fileTypeFilter'), options: extOptions },
         ]}
         filterValues={{ category: catFilter, extension: extFilter }}
         onFilterChange={(key, val) => {
@@ -250,7 +261,7 @@ export default function DocumentsTab() {
         actions={
           canAdd ? (
             <Button size="sm" onClick={handleUpload} disabled={uploadMut.isPending} className="h-8 text-xs shadow-sm">
-              <Upload className="mr-1 h-3.5 w-3.5" /> Tải lên
+              <Upload className="mr-1 h-3.5 w-3.5" /> {t('library.upload')}
             </Button>
           ) : undefined
         }
@@ -264,7 +275,7 @@ export default function DocumentsTab() {
             onCheckedChange={toggleAll}
           />
           <span className="text-sm font-medium text-foreground whitespace-nowrap">
-            {selected.length} đã chọn
+            {t('library.selectedCount', { count: selected.length })}
           </span>
 
           <div className="h-5 w-px bg-border" />
@@ -277,7 +288,7 @@ export default function DocumentsTab() {
             disabled={!canEdit || bulkMut.isPending}
             className="h-8 text-xs font-semibold shadow-sm"
           >
-            <Eye className="mr-1.5 h-3.5 w-3.5" /> Hiển thị
+            <Eye className="mr-1.5 h-3.5 w-3.5" /> {t('library.show')}
           </Button>
 
           {/* Ẩn */}
@@ -288,7 +299,7 @@ export default function DocumentsTab() {
             disabled={!canEdit || bulkMut.isPending}
             className="h-8 text-xs font-semibold shadow-sm"
           >
-            <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Ẩn
+            <EyeOff className="mr-1.5 h-3.5 w-3.5" /> {t('library.hide')}
           </Button>
 
           <div className="h-5 w-px bg-border" />
@@ -297,10 +308,10 @@ export default function DocumentsTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Select value={bulkCatId} onValueChange={setBulkCatId} disabled={!canEdit || bulkMut.isPending}>
               <SelectTrigger className="h-8 w-[180px] text-xs bg-background border-input">
-                <SelectValue placeholder="Gán danh mục..." />
+                <SelectValue placeholder={t('library.assignCategory')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__" className="text-xs text-muted-foreground italic">Bỏ danh mục</SelectItem>
+                <SelectItem value="__none__" className="text-xs text-muted-foreground italic">{t('library.removeCategory')}</SelectItem>
                 {(categories ?? []).map((c) => (
                   <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.name}</SelectItem>
                 ))}
@@ -313,17 +324,17 @@ export default function DocumentsTab() {
               disabled={!canEdit || !bulkCatId || bulkMut.isPending}
               className="h-8 text-xs font-semibold shadow-sm"
             >
-              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Áp dụng
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> {t('library.apply')}
             </Button>
           </div>
 
           {/* Bỏ chọn */}
-          <AppTooltip content="Bỏ chọn tất cả"><Button
+          <AppTooltip content={t('library.clearSelection')}><Button
             size="icon"
             variant="ghost"
             onClick={() => { setSelected([]); setBulkCatId(''); }}
             className="h-7 w-7 ml-auto text-muted-foreground hover:text-foreground"
-            aria-label="Bỏ chọn tất cả"
+            aria-label={t('library.clearSelection')}
           >
             <X className="h-4 w-4" />
           </Button></AppTooltip>
@@ -352,7 +363,7 @@ export default function DocumentsTab() {
           ) : docs.length === 0 ? (
             <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
               <FolderOpen className="mb-2 h-8 w-8 opacity-20" />
-              <p className="text-sm">Chưa có tài liệu</p>
+              <p className="text-sm">{t('library.noDocuments')}</p>
             </div>
           ) : (
             docs.map((doc) => {
@@ -373,7 +384,7 @@ export default function DocumentsTab() {
                               <span className="text-xs text-muted-foreground">{formatDocumentFileSize(doc.file_size, doc.file_size_display)}</span>
                               {doc.is_public && (
                                 <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                                  <Globe className="h-3 w-3" /> Công khai
+                                  <Globe className="h-3 w-3" /> {t('library.public')}
                                 </Badge>
                               )}
                             </div>
@@ -383,11 +394,11 @@ export default function DocumentsTab() {
 
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Danh mục</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('library.categoryFilter')}</div>
                           <div className="truncate font-medium">{doc.category_name || '—'}</div>
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Trạng thái</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('library.status')}</div>
                           <Badge
                             variant="outline"
                             className={doc.is_visible
@@ -395,40 +406,40 @@ export default function DocumentsTab() {
                               : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20'
                             }
                           >
-                            {doc.is_visible ? 'Hiện' : 'Ẩn'}
+                            {doc.is_visible ? t('library.visible') : t('library.hidden')}
                           </Badge>
                           {doc.is_public && (
                             <Badge variant="outline" className="mt-1 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                              <Globe className="h-3 w-3" /> Công khai
+                              <Globe className="h-3 w-3" /> {t('library.public')}
                             </Badge>
                           )}
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Người đăng</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('library.uploadedBy')}</div>
                           <div className="truncate font-medium">{doc.uploaded_by_name || '—'}</div>
                         </div>
                         <div>
-                          <div className="mb-0.5 text-muted-foreground">Ngày tạo</div>
-                          <div className="font-medium">{formatDocumentCreatedAt(doc.created_at)}</div>
+                          <div className="mb-0.5 text-muted-foreground">{t('library.createdAt')}</div>
+                          <div className="font-medium">{formatDocumentCreatedAt(doc.created_at, locale)}</div>
                         </div>
                       </div>
 
                       <div className="mt-3 flex items-center justify-end gap-1">
-                        <AppTooltip content="Tải xuống"><Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-primary" aria-label="Tải xuống">
+                        <AppTooltip content={t('library.download')}><Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-primary" aria-label={t('library.download')}>
                           <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
                             <Download className="h-3.5 w-3.5" />
                           </a>
                         </Button></AppTooltip>
-                        {canEdit && <AppTooltip content={doc.is_visible ? 'Ẩn' : 'Hiện'}><Button variant="ghost" size="icon-sm"
+                        {canEdit && <AppTooltip content={doc.is_visible ? t('library.hide') : t('library.show')}><Button variant="ghost" size="icon-sm"
                           onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
-                          className="text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? 'Ẩn' : 'Hiện'}
+                          className="text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? t('library.hide') : t('library.show')}
                         >
                           {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                         </Button></AppTooltip>}
 
-                        {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon-sm"
+                        {canDelete && <AppTooltip content={t('common.delete')}><Button variant="ghost" size="icon-sm"
                           onClick={() => handleDelete(doc.id, doc.title)}
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label={t('common.delete')}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button></AppTooltip>}
@@ -448,14 +459,14 @@ export default function DocumentsTab() {
                 <TableHead className="w-10 pl-4">
                   <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Tài liệu</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Loại</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Kích thước</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Danh mục</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Người đăng</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Ngày tạo</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">Thao tác</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.document')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.type')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.size')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.categoryFilter')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.status')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.uploadedBy')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.createdAt')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">{t('library.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className={isFetching && docs.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
@@ -478,7 +489,7 @@ export default function DocumentsTab() {
                   <TableCell colSpan={9} className="h-32 text-center">
                     <div className="flex flex-col items-center text-muted-foreground">
                       <FolderOpen className="w-8 h-8 mb-2 opacity-20" />
-                      <p className="text-sm">Chưa có tài liệu</p>
+                      <p className="text-sm">{t('library.noDocuments')}</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -510,33 +521,33 @@ export default function DocumentsTab() {
                             : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20'
                           }
                         >
-                          {doc.is_visible ? 'Hiện' : 'Ẩn'}
+                          {doc.is_visible ? t('library.visible') : t('library.hidden')}
                         </Badge>
                         {doc.is_public && (
                           <Badge variant="outline" className="ml-1 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                            <Globe className="h-3 w-3" /> Công khai
+                            <Globe className="h-3 w-3" /> {t('library.public')}
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{doc.uploaded_by_name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentCreatedAt(doc.created_at)}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">{formatDocumentCreatedAt(doc.created_at, locale)}</TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
-                          <AppTooltip content="Tải xuống"><Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-primary" aria-label="Tải xuống">
+                          <AppTooltip content={t('library.download')}><Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-primary" aria-label={t('library.download')}>
                             <a href={getDocumentDownloadUrl(doc)} download={doc.title}>
                               <Download className="h-3.5 w-3.5" />
                             </a>
                           </Button></AppTooltip>
-                          {canEdit && <AppTooltip content={doc.is_visible ? 'Ẩn' : 'Hiện'}><Button variant="ghost" size="icon"
+                          {canEdit && <AppTooltip content={doc.is_visible ? t('library.hide') : t('library.show')}><Button variant="ghost" size="icon"
                             onClick={() => toggleVisibility.mutate({ id: doc.id, visible: !doc.is_visible })}
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? 'Ẩn' : 'Hiện'}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={doc.is_visible ? t('library.hide') : t('library.show')}
                           >
                             {doc.is_visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                           </Button></AppTooltip>}
 
-                          {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon"
+                          {canDelete && <AppTooltip content={t('common.delete')}><Button variant="ghost" size="icon"
                             onClick={() => handleDelete(doc.id, doc.title)}
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label={t('common.delete')}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button></AppTooltip>}
@@ -550,7 +561,7 @@ export default function DocumentsTab() {
           </Table>
         </div>
 
-        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="tài liệu" />
+        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t('library.documents')} />
       </div>
     </div>
   );

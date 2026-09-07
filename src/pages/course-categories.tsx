@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -39,8 +40,12 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useHeaderInfo } from '@/utils/header-store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 export default function CourseCategoriesPage() {
+  const { t } = useTranslation();
+  useHeaderInfo(t('courseCategories.title'));
   const qc = useQueryClient();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -67,24 +72,24 @@ export default function CourseCategoriesPage() {
     mutationFn: (payload: { name: string; description?: string; sort_order?: number }) =>
       createCourseCategory(payload),
     onSuccess: () => {
-      toast.success('Đã tạo danh mục');
+      toast.success(t('courseCategories.created'));
       qc.invalidateQueries({ queryKey: ['course-categories'] });
       setCreateOpen(false);
       resetForm();
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi tạo danh mục'),
+    onError: (e: unknown) => toast.error(getLocalizedApiError(e, t('courseCategories.createFailed'))),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...payload }: { id: string; name?: string; description?: string; sort_order?: number; is_public?: boolean }) =>
       updateCourseCategory(id, payload),
     onSuccess: () => {
-      toast.success('Đã cập nhật danh mục');
+      toast.success(t('courseCategories.updated'));
       qc.invalidateQueries({ queryKey: ['course-categories'] });
       setEditingCat(null);
       resetForm();
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi cập nhật'),
+    onError: (e: unknown) => toast.error(getLocalizedApiError(e, t('courseCategories.updateFailed'))),
   });
 
   const publicMutation = useMutation({
@@ -93,9 +98,9 @@ export default function CourseCategoriesPage() {
       qc.invalidateQueries({ queryKey: ['course-categories'] });
       qc.invalidateQueries({ queryKey: ['course-categories-for-group'] });
       qc.invalidateQueries({ queryKey: ['team-detail'] });
-      toast.success('Đã cập nhật trạng thái công khai danh mục');
+      toast.success(t('courseCategories.publicStatusUpdated'));
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Cập nhật trạng thái công khai thất bại'),
+    onError: (e: unknown) => toast.error(getLocalizedApiError(e, t('courseCategories.publicStatusUpdateFailed'))),
   });
 
   const handleTogglePublic = async (cat: CourseCategory) => {
@@ -109,27 +114,28 @@ export default function CourseCategoriesPage() {
       const extra = Math.max(0, impact.total - impact.assignments.length);
       const labelSet = getGroupLabelSet(useAuthStore.getState().groupLabels);
       const scopeText = `${labelSet.group}/${labelSet.subgroup}/${labelSet.team}`;
-      const teamLabel = labelSet.team.toLocaleLowerCase('vi-VN');
-      const suffix = extra > 0 ? `\n... và ${extra} ${teamLabel} khác` : "";
+      const suffix = extra > 0 ? t('courseCategories.andOtherTeams', { count: extra, team: labelSet.team }) : "";
       confirmDialog({
-        title: 'Bật Công khai danh mục khóa học',
-        description: `Nếu bật danh mục này công khai, tất cả học viên không phân biệt ${scopeText} sẽ đều nhìn thấy và có thể tham gia các khóa học trong danh mục. Hệ thống sẽ tự động xoá danh mục này khỏi ${scopeText} hiện tại${assignmentText ? `:\n${assignmentText}${suffix}` : '.'}`,
-        confirmText: 'Bật Công khai',
-        cancelText: 'Hủy',
+        title: t('courseCategories.publicImpactTitle'),
+        description: assignmentText
+          ? t('courseCategories.publicImpactWithAssignments', { scope: scopeText, assignments: assignmentText, suffix })
+          : t('courseCategories.publicImpactWithoutAssignments', { scope: scopeText }),
+        confirmText: t('courseCategories.enablePublic'),
+        cancelText: t('common.cancel'),
         variant: 'destructive',
         onConfirm: () => publicMutation.mutate({ id: cat.id, isPublic: true }),
       });
-    } catch (e: any) {
-      toast.error(e.response?.data?.error || 'Không thể kiểm tra phân quyền danh mục');
+    } catch (e: unknown) {
+      toast.error(getLocalizedApiError(e, t('courseCategories.enablePublicFailed')));
     }
   };
   const deleteMutation = useMutation({
     mutationFn: deleteCourseCategory,
     onSuccess: () => {
-      toast.success('Đã xóa danh mục');
+      toast.success(t('courseCategories.deleted'));
       qc.invalidateQueries({ queryKey: ['course-categories'] });
     },
-    onError: () => toast.error('Lỗi xóa danh mục'),
+    onError: () => toast.error(t('courseCategories.deleteFailed')),
   });
 
   const resetForm = () => {
@@ -152,8 +158,8 @@ export default function CourseCategoriesPage() {
 
   const handleDelete = (cat: CourseCategory) => {
     confirmDialog({
-      title: 'Xóa danh mục',
-      description: `Xóa "${cat.name}"? Tất cả khóa học sẽ bị gỡ khỏi danh mục này.`,
+      title: t('courseCategories.deleteTitle'),
+      description: t('courseCategories.deleteDescription', { name: cat.name }),
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(cat.id),
     });
@@ -185,12 +191,12 @@ export default function CourseCategoriesPage() {
 
       <PageHeader
         icon={FolderKanban}
-        title="Danh mục khóa học"
-        description="Quản lý danh mục để phân nhóm khóa học"
+        title={t('courseCategories.title')}
+        description={t('courseCategories.description')}
         actions={
           canAdd ? (
             <Button onClick={openCreate} className="gap-2">
-              <Plus className="h-4 w-4" /> Tạo danh mục
+              <Plus className="h-4 w-4" /> {t('courseCategories.createCategory')}
             </Button>
           ) : undefined
         }
@@ -207,11 +213,11 @@ export default function CourseCategoriesPage() {
           <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mb-4">
             <LayoutGrid className="h-8 w-8 text-muted-foreground/40" />
           </div>
-          <h3 className="text-lg font-semibold text-foreground">Chưa có danh mục nào</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-sm">Tạo danh mục để phân loại và tổ chức các khóa học của bạn một cách khoa học hơn.</p>
+          <h3 className="text-lg font-semibold text-foreground">{t('courseCategories.emptyTitle')}</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">{t('courseCategories.emptyDescription')}</p>
           {canAdd && (
             <Button onClick={openCreate} className="mt-6 gap-2 rounded-full px-6">
-              <Plus className="h-4 w-4" /> Tạo danh mục đầu tiên
+              <Plus className="h-4 w-4" /> {t('courseCategories.createFirst')}
             </Button>
           )}
         </div>
@@ -232,7 +238,7 @@ export default function CourseCategoriesPage() {
                 </div>
                 
                 <div className="flex items-center gap-1.5 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-[opacity,transform] duration-150 ease-out shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="outline" size="icon" className={cn("h-8 w-8 rounded-full bg-background shadow-sm", cat.is_public ? "text-sky-600 border-sky-200" : "hover:bg-sky-50 hover:text-sky-600")} onClick={() => handleTogglePublic(cat)} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                  {canEdit && <AppTooltip content={cat.is_public ? t('courseCategories.turnPublicOff') : t('courseCategories.turnPublicOn')}><Button variant="outline" size="icon" className={cn("h-8 w-8 rounded-full bg-background shadow-sm", cat.is_public ? "text-sky-600 border-sky-200" : "hover:bg-sky-50 hover:text-sky-600")} onClick={() => handleTogglePublic(cat)} aria-label={cat.is_public ? t('courseCategories.turnPublicOff') : t('courseCategories.turnPublicOn')}>
                     <Globe className="h-3.5 w-3.5" />
                   </Button></AppTooltip>}
                   {canEdit && (
@@ -249,15 +255,15 @@ export default function CourseCategoriesPage() {
               </div>
               
               <div className="relative z-10 flex-1 flex flex-col">
-                <div className="flex items-center gap-2"><h3 className="text-lg font-bold text-foreground mb-1 truncate group-hover:text-primary transition-colors">{cat.name}</h3>{cat.is_public && <Badge variant="outline" className="mb-1 shrink-0 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> Công khai</Badge>}</div>
+                <div className="flex items-center gap-2"><h3 className="text-lg font-bold text-foreground mb-1 truncate group-hover:text-primary transition-colors">{cat.name}</h3>{cat.is_public && <Badge variant="outline" className="mb-1 shrink-0 gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> {t('courseCategories.public')}</Badge>}</div>
                 <p className="text-sm text-muted-foreground line-clamp-2 mb-4 min-h-[40px]">
-                  {cat.description || <span className="italic opacity-50">Không có mô tả</span>}
+                  {cat.description || <span className="italic opacity-50">{t('courseCategories.noDescription')}</span>}
                 </p>
                 
                 <div className="mt-auto pt-4 border-t border-border/50 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                     <BookOpen className="h-4 w-4 text-muted-foreground/70" />
-                    <span>{cat.course_count} khóa học</span>
+                    <span>{t('courseCategories.courseCount', { count: cat.course_count })}</span>
                   </div>
                   <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                     <ChevronLeft className="h-4 w-4 rotate-180" />
@@ -273,28 +279,28 @@ export default function CourseCategoriesPage() {
       <Dialog open={isDialogOpen} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingCat ? 'Sửa danh mục' : 'Tạo danh mục mới'}</DialogTitle>
+            <DialogTitle>{editingCat ? t('courseCategories.editTitle') : t('courseCategories.createTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Tên danh mục *</label>
+              <label className="text-sm font-medium mb-1.5 block">{t('courseCategories.categoryName')} *</label>
               <Input
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="VD: Onboarding, Kỹ năng mềm..."
+                placeholder={t('courseCategories.namePlaceholder')}
                 autoFocus
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Mô tả</label>
+              <label className="text-sm font-medium mb-1.5 block">{t('courseCategories.descriptionLabel')}</label>
               <Input
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
-                placeholder="Mô tả ngắn (tùy chọn)"
+                placeholder={t('courseCategories.descriptionPlaceholder')}
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Thứ tự</label>
+              <label className="text-sm font-medium mb-1.5 block">{t('courseCategories.sortOrder')}</label>
               <Input
                 type="number"
                 value={formOrder}
@@ -304,13 +310,13 @@ export default function CourseCategoriesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>Hủy</Button>
+            <Button variant="outline" onClick={closeDialog}>{t('common.cancel')}</Button>
             <Button
               onClick={handleSubmit}
               disabled={!formName.trim() || createMutation.isPending || updateMutation.isPending}
             >
               {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingCat ? 'Lưu' : 'Tạo'}
+              {editingCat ? t('courseCategories.save') : t('courseCategories.create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -325,6 +331,7 @@ export default function CourseCategoriesPage() {
 // ═══════════════════════════════════════
 
 function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: string; onBack: () => void; canEdit: boolean; canDelete: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -344,17 +351,17 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
   const removeMutation = useMutation({
     mutationFn: (courseId: string) => removeCourseFromCategory(catId, courseId),
     onSuccess: () => {
-      toast.success('Đã gỡ khóa học');
+      toast.success(t('courseCategories.removedCourse'));
       qc.invalidateQueries({ queryKey: ['course-category-courses', catId] });
       qc.invalidateQueries({ queryKey: ['course-categories'] });
     },
-    onError: () => toast.error('Lỗi gỡ khóa học'),
+    onError: () => toast.error(t('courseCategories.removeCourseFailed')),
   });
 
   const handleRemove = (courseId: string, name: string) => {
     confirmDialog({
-      title: 'Gỡ khóa học',
-      description: `Gỡ "${name}" khỏi danh mục?`,
+      title: t('courseCategories.removeCourseTitle'),
+      description: t('courseCategories.removeCourseDescription', { name }),
       variant: 'destructive',
       onConfirm: () => removeMutation.mutate(courseId),
     });
@@ -372,26 +379,26 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 px-2.5 py-0.5 text-xs rounded-full">
-                  Danh mục khóa học
+                  {t('courseCategories.title')}
                 </Badge>
               </div>
-              <h1 className="text-2xl font-bold text-foreground tracking-tight">{cat?.name || 'Đang tải...'}</h1>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">{cat?.name || t('courseCategories.loading')}</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                {cat?.description || 'Chi tiết các khóa học thuộc danh mục này'}
+                {cat?.description || t('courseCategories.detailDescription')}
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-4 shrink-0">
             <div className="flex flex-col items-end px-5 py-2.5 bg-background/50 backdrop-blur-md rounded-2xl border">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Tổng số</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">{t('courseCategories.total')}</span>
               <span className="text-xl font-bold text-foreground flex items-center gap-2">
                 {courses.length} <BookOpen className="h-4 w-4 text-primary" />
               </span>
             </div>
             {canEdit && (
               <Button onClick={() => setAddOpen(true)} className="gap-2 h-12 px-6 rounded-2xl shadow-md hover:shadow-lg transition-all">
-                <BookPlus className="h-4 w-4" /> Thêm khóa học
+                <BookPlus className="h-4 w-4" /> {t('courseCategories.addCourse')}
               </Button>
             )}
           </div>
@@ -407,11 +414,11 @@ function CategoryDetailView({ catId, onBack, canEdit, canDelete }: { catId: stri
           <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mb-4">
             <BookOpen className="h-8 w-8 text-muted-foreground/40" />
           </div>
-          <h3 className="text-lg font-semibold text-foreground">Chưa có khóa học nào</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">Thêm các khóa học vào danh mục này để học viên dễ dàng theo dõi.</p>
+          <h3 className="text-lg font-semibold text-foreground">{t('courseCategories.noCoursesTitle')}</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">{t('courseCategories.noCoursesDescription')}</p>
           {canEdit && (
             <Button onClick={() => setAddOpen(true)} variant="outline" className="gap-2 rounded-full px-6">
-              <Plus className="h-4 w-4" /> Thêm ngay
+              <Plus className="h-4 w-4" /> {t('courseCategories.addNow')}
             </Button>
           )}
         </div>
@@ -487,6 +494,7 @@ function AddCoursesToCategoryModal({
   existingCourseIds: string[];
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
@@ -501,17 +509,17 @@ function AddCoursesToCategoryModal({
   const assignMutation = useMutation({
     mutationFn: () => addCoursesToCategory(catId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã thêm ${res.assigned} khóa học${res.skipped ? ` (${res.skipped} đã bỏ qua)` : ''}`);
+      toast.success(t('courseCategories.assignedCourses', { count: res.assigned, skipped: res.skipped ? t('courseCategories.skipped', { count: res.skipped }) : '' }));
       if (res.conflicts?.length) {
-        const preview = res.conflicts.slice(0, 5).map((item) => `${item.display_name}: đang thuộc ${item.category_name}`).join('\n');
-        const extra = res.conflicts.length > 5 ? `\n... và ${res.conflicts.length - 5} khóa học khác` : '';
-        toast.warning(`Một số khóa học đã có danh mục nên không được thêm:\n${preview}${extra}`);
+        const preview = res.conflicts.slice(0, 5).map((item) => t('courseCategories.conflictEntry', { course: item.display_name, category: item.category_name })).join('\n');
+        const extra = res.conflicts.length > 5 ? t('courseCategories.conflictsSuffix', { count: res.conflicts.length - 5 }) : '';
+        toast.warning(t('courseCategories.conflicts', { details: preview, suffix: extra }));
       }
       setSelected([]);
       onSuccess();
       onOpenChange(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi thêm khóa học'),
+    onError: (e: unknown) => toast.error(getLocalizedApiError(e, t('courseCategories.addCoursesFailed'))),
   });
 
   const courses = data?.courses ?? [];
@@ -531,9 +539,9 @@ function AddCoursesToCategoryModal({
                 <BookPlus className="w-7 h-7 text-primary" />
               </div>
               <div>
-                <DialogTitle className="text-xl font-bold">Thêm khóa học vào danh mục</DialogTitle>
+                <DialogTitle className="text-xl font-bold">{t('courseCategories.addCoursesTitle')}</DialogTitle>
                 <DialogDescription className="text-sm mt-1">
-                  Chọn các khóa học muốn hiển thị trong danh mục này
+                  {t('courseCategories.addCoursesDescription')}
                 </DialogDescription>
               </div>
             </div>
@@ -546,7 +554,7 @@ function AddCoursesToCategoryModal({
             <Input
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Tìm kiếm khóa học theo tên hoặc mã..."
+              placeholder={t('courseCategories.searchCourses')}
               className="pl-11 h-12 rounded-xl bg-background border-border/50 shadow-sm text-base focus-visible:ring-primary/20"
             />
           </div>
@@ -555,17 +563,17 @@ function AddCoursesToCategoryModal({
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-                <p className="text-sm">Đang tải dữ liệu khóa học...</p>
+                <p className="text-sm">{t('courseCategories.loadingCourses')}</p>
               </div>
             ) : courses.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
                 <BookOpen className="h-8 w-8 text-muted-foreground/30 mb-3" />
-                <p className="text-sm font-medium">Không tìm thấy khóa học nào phù hợp</p>
+                <p className="text-sm font-medium">{t('courseCategories.noMatchingCourses')}</p>
               </div>
             ) : courses.map((c) => {
               const isAssigned = existingCourseIds.includes(c.id) || c.category_id === catId;
               const isInOtherCategory = !isAssigned && Boolean(c.category_id && c.category_id !== catId);
-              const existingCategoryName = c.category_name?.trim() || 'danh mục khác';
+              const existingCategoryName = c.category_name?.trim() || t('courseCategories.otherCategory');
               const isDisabled = isAssigned || isInOtherCategory;
               const isSelected = selected.includes(c.id);
               return (
@@ -594,17 +602,17 @@ function AddCoursesToCategoryModal({
                     <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{c.id}</p>
                   </div>
                   {isInOtherCategory && (
-                    <AppTooltip content={'Đã thuộc ' + existingCategoryName}><Badge
+                    <AppTooltip content={t('courseCategories.alreadyInCategory', { category: existingCategoryName })}><Badge
                       variant="secondary"
 
                       className="max-w-[220px] truncate text-[10px] shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                     >
-                      Đã thuộc {existingCategoryName}
+                      {t('courseCategories.alreadyInCategory', { category: existingCategoryName })}
                     </Badge></AppTooltip>
                   )}
                   {isAssigned && (
                     <Badge variant="secondary" className="text-[10px] uppercase tracking-wider shrink-0 bg-muted-foreground/10 text-muted-foreground">
-                      Đã thêm
+                      {t('courseCategories.alreadyAdded')}
                     </Badge>
                   )}
                 </div>
@@ -621,7 +629,7 @@ function AddCoursesToCategoryModal({
                   <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="h-7 w-7 rounded-md hover:bg-background shadow-sm">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-muted-foreground font-medium px-2">Trang {page}</span>
+                  <span className="text-muted-foreground font-medium px-2">{t('courseCategories.page', { page })}</span>
                   <Button size="icon" variant="ghost" disabled={page * 20 >= data.total} onClick={() => setPage((p) => p + 1)} className="h-7 w-7 rounded-md hover:bg-background shadow-sm">
                     <ChevronLeft className="h-4 w-4 rotate-180" />
                   </Button>
@@ -630,7 +638,7 @@ function AddCoursesToCategoryModal({
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-muted-foreground">
-                Đã chọn: <strong className="text-primary text-base ml-1">{selected.length}</strong>
+                {t('courseCategories.selected')} <strong className="text-primary text-base ml-1">{selected.length}</strong>
               </span>
               <Button
                 onClick={() => assignMutation.mutate()}
@@ -638,7 +646,7 @@ function AddCoursesToCategoryModal({
                 className="gap-2 rounded-xl px-6 shadow-md"
               >
                 {assignMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Thêm vào danh mục
+                {t('courseCategories.addToCategory')}
               </Button>
             </div>
           </div>

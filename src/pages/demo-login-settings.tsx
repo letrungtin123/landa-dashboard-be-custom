@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -48,6 +49,7 @@ import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
 import { cn } from "@/utils/utils";
 import { createQrSvg, downloadQrPng } from "@/utils/qr-code";
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 type SelectedAccount = {
   id?: string;
@@ -61,8 +63,7 @@ type SelectedAccount = {
 };
 
 function errorMessage(error: unknown, fallback: string): string {
-  const maybeAxios = error as { response?: { data?: { message?: string } }; message?: string };
-  return maybeAxios.response?.data?.message || maybeAxios.message || fallback;
+  return getLocalizedApiError(error, fallback);
 }
 
 function displayName(account: Pick<SelectedAccount, "custom_label" | "full_name" | "username">): string {
@@ -143,6 +144,7 @@ function SortableDemoLearnerCard({
   updateLabel: (userId: string, label: string) => void;
   removeLearner: (userId: string) => void;
 }) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: account.user_id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -163,7 +165,7 @@ function SortableDemoLearnerCard({
         <button
           type="button"
           className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-lg border border-border bg-muted/30 text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary active:cursor-grabbing"
-          aria-label={`Kéo để sắp xếp ${displayName(account)}`}
+          aria-label={t('demoLogin.sortLearner', { name: displayName(account) })}
           {...attributes}
           {...listeners}
         >
@@ -191,6 +193,7 @@ function SortableDemoLearnerCard({
 }
 
 export default function DemoLoginSettingsPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const activeTenantId = useTenantStore((state) => state.activeTenantId);
@@ -293,12 +296,12 @@ export default function DemoLoginSettingsPage() {
       );
     },
     onSuccess: (nextConfig) => {
-      toast.success("Đã lưu cấu hình demo QR login");
+      toast.success(t('demoLogin.qrConfigSaved'));
       queryClient.setQueryData(configQueryKey, nextConfig);
       queryClient.invalidateQueries({ queryKey: ["demo-login-eligible-learners", activeTenantId] });
     },
     onError: (error) => {
-      toast.error(errorMessage(error, "Không thể lưu cấu hình demo QR login"));
+      toast.error(errorMessage(error, t('demoLogin.qrConfigSaveFailed')));
     },
   });
 
@@ -309,23 +312,23 @@ export default function DemoLoginSettingsPage() {
       demo_user_id: iframeLearner?.user_id || null,
     }),
     onSuccess: (nextConfig) => {
-      toast.success("Đã lưu cấu hình demo iframe");
+      toast.success(t('demoLogin.iframeConfigSaved'));
       queryClient.setQueryData(iframeConfigQueryKey, nextConfig);
       queryClient.invalidateQueries({ queryKey: ["demo-iframe-eligible-learners", activeTenantId] });
     },
     onError: (error) => {
-      toast.error(errorMessage(error, "Không thể lưu cấu hình demo iframe"));
+      toast.error(errorMessage(error, t('demoLogin.iframeConfigSaveFailed')));
     },
   });
 
   const regenerateIframeMutation = useMutation({
     mutationFn: () => regenerateDemoIframeEmbed(activeTenantId!),
     onSuccess: (nextConfig) => {
-      toast.success("Đã tạo lại mã nhúng demo iframe");
+      toast.success(t('demoLogin.iframeEmbedRegenerated'));
       queryClient.setQueryData(iframeConfigQueryKey, nextConfig);
     },
     onError: (error) => {
-      toast.error(errorMessage(error, "Không thể tạo lại mã nhúng"));
+      toast.error(errorMessage(error, t('demoLogin.iframeEmbedRegenerateFailed')));
     },
   });
 
@@ -359,7 +362,7 @@ export default function DemoLoginSettingsPage() {
 
   function addLearner(learner: EligibleDemoLearner) {
     if (!canAddMore) {
-      toast.error(`Chỉ được chọn tối đa ${maxAccounts} tài khoản demo`);
+      toast.error(t('demoLogin.maxAccounts', { count: maxAccounts }));
       return;
     }
     setSelectedAccounts((current) => [...current, learnerToSelected(learner)]);
@@ -390,9 +393,9 @@ export default function DemoLoginSettingsPage() {
     if (!demoUrl) return;
     try {
       await navigator.clipboard.writeText(demoUrl);
-      toast.success("Đã copy link QR demo");
+      toast.success(t('demoLogin.qrLinkCopied'));
     } catch {
-      toast.error("Không thể copy link tự động");
+      toast.error(t('demoLogin.qrLinkCopyFailed'));
     }
   }
 
@@ -401,9 +404,9 @@ export default function DemoLoginSettingsPage() {
     try {
       const tenantSlug = safeFileName(config?.tenant.name || activeTenantName || "tenant");
       await downloadQrPng(qrSvg, `demo-qr-login-${tenantSlug}.png`);
-      toast.success("Đã tải ảnh QR demo");
+      toast.success(t('demoLogin.qrImageDownloaded'));
     } catch (error) {
-      toast.error(errorMessage(error, "Không thể tải ảnh QR"));
+      toast.error(errorMessage(error, t('demoLogin.qrImageDownloadFailed')));
     }
   }
 
@@ -415,9 +418,9 @@ export default function DemoLoginSettingsPage() {
     if (!iframeCode) return;
     try {
       await navigator.clipboard.writeText(iframeCode);
-      toast.success("Đã sao chép mã iframe");
+      toast.success(t('demoLogin.iframeCodeCopied'));
     } catch {
-      toast.error("Không thể sao chép mã iframe");
+      toast.error(t('demoLogin.iframeCodeCopyFailed'));
     }
   }
 
@@ -425,9 +428,9 @@ export default function DemoLoginSettingsPage() {
     if (!iframeEmbedUrl) return;
     try {
       await navigator.clipboard.writeText(iframeEmbedUrl);
-      toast.success("Đã sao chép iframe URL");
+      toast.success(t('demoLogin.iframeUrlCopied'));
     } catch {
-      toast.error("Không thể sao chép iframe URL");
+      toast.error(t('demoLogin.iframeUrlCopyFailed'));
     }
   }
 
@@ -439,8 +442,8 @@ export default function DemoLoginSettingsPage() {
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
               <AlertCircle className="h-6 w-6" />
             </div>
-            <CardTitle>Không có quyền truy cập</CardTitle>
-            <CardDescription>Chỉ superadmin mới được quản lý demo QR login.</CardDescription>
+            <CardTitle>{t('demoLogin.accessDenied')}</CardTitle>
+            <CardDescription>{t('demoLogin.superadminOnly')}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -453,12 +456,12 @@ export default function DemoLoginSettingsPage() {
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
             <QrCode className="h-4 w-4" />
-            Demo QR Login
+            {t('demoLogin.qrLoginDemo')}
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Quản lý tài khoản demo</h1>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('demoLogin.title')}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tenant hiện tại: <span className="font-semibold text-foreground">{activeTenantName || "Chưa chọn tenant"}</span>
+              {t('demoLogin.currentTenant')} <span className="font-semibold text-foreground">{activeTenantName || t('demoLogin.noTenantSelected')}</span>
             </p>
           </div>
         </div>
@@ -466,7 +469,7 @@ export default function DemoLoginSettingsPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Select value={activeTenantId || ""} onValueChange={handleTenantChange}>
             <SelectTrigger className="h-10 w-full sm:w-[280px]">
-              <SelectValue placeholder="Chọn tenant" />
+              <SelectValue placeholder={t('demoLogin.selectTenant')} />
             </SelectTrigger>
             <SelectContent>
               {tenants.map((tenant) => (
@@ -480,14 +483,14 @@ export default function DemoLoginSettingsPage() {
             disabled={!activeTenantId || isFetching}
           >
             <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-            Làm mới
+            {t('demoLogin.refresh')}
           </Button>
           <Button
             onClick={() => saveAllMutation.mutate()}
             disabled={!activeTenantId || saveAllMutation.isPending || hasUnsavedCountOverLimit}
           >
             {saveAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Lưu thay đổi
+            {t('demoLogin.saveChanges')}
           </Button>
         </div>
       </div>
@@ -496,8 +499,8 @@ export default function DemoLoginSettingsPage() {
         <Card className="border-dashed">
           <CardHeader className="items-center py-12 text-center">
             <UsersRound className="mb-2 h-10 w-10 text-muted-foreground" />
-            <CardTitle>Chưa chọn tenant</CardTitle>
-            <CardDescription>Chọn tenant để cấu hình danh sách learner demo.</CardDescription>
+            <CardTitle>{t('demoLogin.selectTenantTitle')}</CardTitle>
+            <CardDescription>{t('demoLogin.selectTenantDescription')}</CardDescription>
           </CardHeader>
         </Card>
       ) : isLoading ? (
@@ -514,9 +517,9 @@ export default function DemoLoginSettingsPage() {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <ShieldCheck className="h-5 w-5 text-primary" />
-                      Cấu hình truy cập
+                      {t('demoLogin.accessConfiguration')}
                     </CardTitle>
-                    <CardDescription>Giới hạn số learner demo và thời gian giữ lượt.</CardDescription>
+                    <CardDescription>{t('demoLogin.accessConfigurationDescription')}</CardDescription>
                   </div>
                   <Switch checked={enabled} onCheckedChange={setEnabled} />
                 </div>
@@ -524,7 +527,7 @@ export default function DemoLoginSettingsPage() {
               <CardContent className="space-y-5 p-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="max-demo-accounts">Số tài khoản demo</Label>
+                    <Label htmlFor="max-demo-accounts">{t('demoLogin.demoAccountCount')}</Label>
                     <Input
                       id="max-demo-accounts"
                       type="number"
@@ -535,16 +538,15 @@ export default function DemoLoginSettingsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ttl-seconds">Thời gian reset</Label>
+                    <Label htmlFor="ttl-seconds">{t('demoLogin.resetInterval')}</Label>
                     <Select value={String(ttlSeconds)} onValueChange={(value) => setTtlSeconds(Number(value))}>
                       <SelectTrigger id="ttl-seconds" className="h-10 w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="300">5 phút</SelectItem>
-                        <SelectItem value="600">10 phút</SelectItem>
-                        <SelectItem value="900">15 phút</SelectItem>
-                        <SelectItem value="1800">30 phút</SelectItem>
+                        {[300, 600, 900, 1800].map((seconds) => (
+                          <SelectItem key={seconds} value={String(seconds)}>{t('demoLogin.minutes', { count: seconds / 60 })}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -561,25 +563,25 @@ export default function DemoLoginSettingsPage() {
                       ) : (
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-md bg-muted text-center text-xs text-muted-foreground">
                           <QrCode className="mb-2 h-8 w-8" />
-                          Chưa có QR
+                          {t('demoLogin.noQr')}
                         </div>
                       )}
                     </div>
                     <div className="min-w-0 space-y-3">
                       <div>
-                        <p className="text-sm font-semibold">Ảnh QR demo</p>
+                        <p className="text-sm font-semibold">{t('demoLogin.qrImage')}</p>
                         <p className="mt-1 break-all text-sm text-muted-foreground">
-                          {demoUrl || "Tenant chưa có domain learner"}
+                          {demoUrl || t('demoLogin.noLearnerDomain')}
                         </p>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <Button variant="outline" onClick={copyDemoUrl} disabled={!demoUrl}>
                           <Copy className="h-4 w-4" />
-                          Copy link
+                          {t('demoLogin.copyLink')}
                         </Button>
                         <Button variant="outline" onClick={handleDownloadQr} disabled={!qrSvg}>
                           <Download className="h-4 w-4" />
-                          Tải ảnh QR
+                          {t('demoLogin.downloadQr')}
                         </Button>
                       </div>
                     </div>
@@ -592,23 +594,23 @@ export default function DemoLoginSettingsPage() {
               <CardHeader className="border-b bg-muted/25">
                 <CardTitle className="flex items-center gap-2">
                   <UsersRound className="h-5 w-5 text-primary" />
-                  Learner đang được chọn
+                  {t('demoLogin.selectedLearners')}
                 </CardTitle>
                 <CardDescription>
-                  {selectedAccounts.length}/{maxAccounts} tài khoản demo
+                  {t('demoLogin.demoAccountSummary', { selected: selectedAccounts.length, maximum: maxAccounts })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 p-5">
                 {hasUnsavedCountOverLimit ? (
                   <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    Giảm danh sách xuống tối đa {maxAccounts} tài khoản trước khi lưu.
+                    {t('demoLogin.reduceAccounts', { count: maxAccounts })}
                   </div>
                 ) : null}
 
                 {selectedAccounts.length === 0 ? (
                   <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-                    Chưa có learner demo nào.
+                    {t('demoLogin.noDemoLearners')}
                   </div>
                 ) : (
                   <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleLearnerDragEnd}>
@@ -636,9 +638,9 @@ export default function DemoLoginSettingsPage() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Code2 className="h-5 w-5 text-primary" />
-                    Demo iframe nhúng FE 5173
+                    {t('demoLogin.iframeTitle')}
                   </CardTitle>
-                  <CardDescription>Mỗi tenant có một domain được phép nhúng và một learner có role learner.</CardDescription>
+                  <CardDescription>{t('demoLogin.iframeDescription')}</CardDescription>
                 </div>
                 <div className="flex items-center gap-3">
                   {iframeConfigQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
@@ -650,7 +652,7 @@ export default function DemoLoginSettingsPage() {
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                   <div className="space-y-2">
-                    <Label htmlFor="demo-iframe-origin">Domain khách hàng được demo</Label>
+                    <Label htmlFor="demo-iframe-origin">{t('demoLogin.customerDomain')}</Label>
                     <Input
                       id="demo-iframe-origin"
                       value={iframeAllowedOrigin}
@@ -664,7 +666,7 @@ export default function DemoLoginSettingsPage() {
                     className="md:w-36"
                   >
                     {saveIframeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Lưu iframe
+                    {t('demoLogin.saveIframe')}
                   </Button>
                 </div>
 
@@ -684,13 +686,13 @@ export default function DemoLoginSettingsPage() {
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                             <KeyRound className="h-4 w-4" />
                           </div>
-                          Chưa chọn learner demo iframe
+                          {t('demoLogin.noIframeLearner')}
                         </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <LockKeyhole className="h-4 w-4" />
-                      {iframeEnabled && iframeLearner ? "Tài khoản learner sẽ bị khóa CRUD khi lưu" : "Bật iframe để khóa tài khoản"}
+                      {iframeEnabled && iframeLearner ? t('demoLogin.iframeCrudLock') : t('demoLogin.enableIframeToLock')}
                     </div>
                   </div>
                 </div>
@@ -701,7 +703,7 @@ export default function DemoLoginSettingsPage() {
                     <Input
                       value={iframeSearch}
                       onChange={(event) => setIframeSearch(event.target.value)}
-                      placeholder="Tìm learner có role learner cho iframe"
+                      placeholder={t('demoLogin.searchIframeLearner')}
                       className="pl-9"
                     />
                   </div>
@@ -710,7 +712,7 @@ export default function DemoLoginSettingsPage() {
                       [1, 2].map((item) => <Skeleton key={item} className="h-20" />)
                     ) : iframeEligibleLearners.length === 0 ? (
                       <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground md:col-span-2">
-                        Không tìm thấy learner phù hợp.
+                        {t('demoLogin.noMatchingLearners')}
                       </div>
                     ) : (
                       iframeEligibleLearners.map((learner) => {
@@ -742,25 +744,25 @@ export default function DemoLoginSettingsPage() {
                 <div className="app-liquid-card rounded-lg border bg-muted/20 p-4">
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold">Iframe URL</p>
-                      <p className="truncate text-xs text-muted-foreground">{iframeEmbedUrl || "Lưu cấu hình để tạo URL nhúng"}</p>
+                      <p className="text-sm font-semibold">{t('demoLogin.iframeUrl')}</p>
+                      <p className="truncate text-xs text-muted-foreground">{iframeEmbedUrl || t('demoLogin.iframeUrlEmpty')}</p>
                     </div>
                     <Button variant="outline" size="sm" onClick={copyIframeUrl} disabled={!iframeEmbedUrl}>
                       <Copy className="h-4 w-4" />
-                      Sao chép URL
+                      {t('demoLogin.copyUrl')}
                     </Button>
                   </div>
                   <Textarea
                     value={iframeCode || ""}
                     readOnly
                     rows={7}
-                    placeholder="Iframe code sẽ xuất hiện sau khi lưu domain và learner."
+                    placeholder={t('demoLogin.iframeCodeEmpty')}
                     className="font-mono text-xs"
                   />
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <Button variant="outline" onClick={copyIframeCode} disabled={!iframeCode}>
                       <Copy className="h-4 w-4" />
-                      Sao chép mã iframe
+                      {t('demoLogin.copyIframeCode')}
                     </Button>
                     <Button
                       variant="outline"
@@ -768,16 +770,15 @@ export default function DemoLoginSettingsPage() {
                       disabled={!activeTenantId || regenerateIframeMutation.isPending}
                     >
                       {regenerateIframeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      Tạo lại mã nhúng
+                      {t('demoLogin.regenerateEmbedCode')}
                     </Button>
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  <p className="font-semibold">Chế độ demo vỏ rỗng</p>
+                  <p className="font-semibold">{t('demoLogin.emptyShellTitle')}</p>
                   <p className="mt-1">
-                    Learner iframe tự đăng nhập, đọc nội dung API bình thường, nhưng không ghi tiến độ, ghi danh,
-                    trạng thái modal, thời gian học, bài nộp assignment hoặc huy hiệu vào database.
+                    {t('demoLogin.emptyShellDescription')}
                   </p>
                 </div>
               </div>
@@ -788,9 +789,9 @@ export default function DemoLoginSettingsPage() {
             <CardHeader className="border-b bg-muted/25">
               <CardTitle className="flex items-center gap-2">
                 <Search className="h-5 w-5 text-primary" />
-                Thêm learner demo
+                {t('demoLogin.addDemoLearner')}
               </CardTitle>
-              <CardDescription>Chỉ hiển thị learner active chưa nằm trong danh sách demo.</CardDescription>
+              <CardDescription>{t('demoLogin.addDemoLearnerDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-5">
               <div className="relative">
@@ -798,7 +799,7 @@ export default function DemoLoginSettingsPage() {
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Tìm theo tên, username hoặc email"
+                  placeholder={t('demoLogin.searchLearners')}
                   className="pl-9"
                 />
               </div>
@@ -809,7 +810,7 @@ export default function DemoLoginSettingsPage() {
                 </div>
               ) : eligibleLearners.length === 0 ? (
                 <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-                  Không tìm thấy learner phù hợp.
+                  {t('demoLogin.noMatchingLearners')}
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">

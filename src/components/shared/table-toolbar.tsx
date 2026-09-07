@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/select';
 import { Search, X, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 export interface FilterOption {
   value: string;
@@ -34,13 +35,14 @@ interface TableToolbarProps {
 export function TableToolbar({
   search,
   onSearchChange,
-  searchPlaceholder = 'Search...',
+  searchPlaceholder,
   filters = [],
   filterValues = {},
   onFilterChange,
   onReset,
   actions,
 }: TableToolbarProps) {
+  const { t } = useTranslation();
   const isFiltered = search.length > 0 || Object.values(filterValues).some(v => v !== 'all' && v !== '');
 
   return (
@@ -49,7 +51,7 @@ export function TableToolbar({
       <div className="relative w-full sm:max-w-sm group/search">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 transition-colors duration-200 group-focus-within/search:text-foreground" />
         <Input
-          placeholder={searchPlaceholder}
+          placeholder={searchPlaceholder || t('table.searchPlaceholder')}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           className="pl-9 h-9 w-full bg-muted/40 border-border/50 hover:border-border hover:bg-muted/60 focus-visible:bg-background focus-visible:border-border shadow-none rounded-lg transition-all duration-200 text-sm placeholder:text-muted-foreground/50"
@@ -92,7 +94,7 @@ export function TableToolbar({
                   value="all"
                   className="rounded-lg text-xs text-muted-foreground focus:text-foreground"
                 >
-                  All {filter.placeholder}
+                  {t('table.all', { label: filter.placeholder })}
                 </SelectItem>
                 <div className="my-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
                 {filter.options.map((opt) => (
@@ -114,10 +116,10 @@ export function TableToolbar({
             variant="ghost"
             onClick={onReset}
             className="h-8 px-3 text-xs text-muted-foreground hover:text-destructive rounded-full border border-transparent hover:border-destructive/20 hover:bg-destructive/5 shadow-none transition-all duration-200"
-            aria-label="Reset filters"
+            aria-label={t('table.resetFilters')}
           >
             <X className="h-3.5 w-3.5 mr-1.5" />
-            Reset
+            {t('table.resetFilters')}
           </Button>
         )}
         

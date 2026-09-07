@@ -39,6 +39,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
 import type { CourseIndexResponse, CourseIndexSection } from '@/api/custom-course-authoring';
 import type {
   LessonAuthorComponentProposal,
@@ -87,11 +89,9 @@ interface LessonAuthorMindmapModalProps {
   error?: string | null;
 }
 
-const statusLabel: Record<MindmapStatus, string> = {
-  existing: 'Đã có',
-  'planned-create': 'Sẽ tạo mới',
-  'planned-update': 'Sẽ cập nhật',
-};
+function getStatusLabel(status: MindmapStatus): string {
+  return i18n.t(`mindmap.${status === 'existing' ? 'existing' : status === 'planned-create' ? 'plannedCreate' : 'plannedUpdate'}`);
+}
 
 const statusClassName: Record<MindmapStatus, string> = {
   existing: 'border-slate-300/60 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200',
@@ -135,22 +135,22 @@ function getOutlineChildren(node: CourseIndexSection): CourseIndexSection[] {
 }
 
 function getBlockLabel(blockType: string): string {
-  if (blockType === 'course') return 'Khóa học';
-  if (blockType === 'chapter') return 'Section';
-  if (blockType === 'sequential') return 'Subsection';
-  if (blockType === 'vertical') return 'Unit';
+  if (blockType === 'course') return i18n.t('mindmap.course');
+  if (blockType === 'chapter') return i18n.t('mindmap.section');
+  if (blockType === 'sequential') return i18n.t('mindmap.subsection');
+  if (blockType === 'vertical') return i18n.t('mindmap.unit');
   return getComponentTypeLabel(blockType);
 }
 
 function getComponentTypeLabel(type: string): string {
-  if (type === 'html') return 'Nội dung lý thuyết';
-  if (type === 'problem') return 'Câu hỏi kiểm tra';
-  if (type === 'la_image_choice_quiz') return 'Câu hỏi đáp án hình ảnh';
-  if (type === 'la_faq') return 'Hỏi đáp';
-  if (type === 'la_sortable') return 'Sắp xếp ô chữ';
-  if (type === 'la_crossword') return 'Đố vui ô chữ';
-  if (type === 'la_diagram') return 'Sơ đồ trực quan';
-  return 'Nội dung tương tác';
+  if (type === 'html') return i18n.t('mindmap.theoryContent');
+  if (type === 'problem') return i18n.t('mindmap.checkQuestion');
+  if (type === 'la_image_choice_quiz') return i18n.t('mindmap.imageChoiceQuestion');
+  if (type === 'la_faq') return i18n.t('mindmap.faq');
+  if (type === 'la_sortable') return i18n.t('mindmap.sortable');
+  if (type === 'la_crossword') return i18n.t('mindmap.crossword');
+  if (type === 'la_diagram') return i18n.t('mindmap.diagram');
+  return i18n.t('mindmap.interactiveContent');
 }
 
 function getComponentIcon(type: string) {
@@ -172,7 +172,7 @@ function outlineToMindmapNode(node: CourseIndexSection): MindmapNode {
   const blockType = node.block_type || node.category || 'unknown';
   return {
     id: node.id,
-    title: node.display_name || '(Không tên)',
+    title: node.display_name || i18n.t('mindmap.unnamed'),
     label: getBlockLabel(blockType),
     blockType,
     status: 'existing',
@@ -216,7 +216,7 @@ function getUnitComponents(unit: LessonAuthorUnitProposal): LessonAuthorComponen
   if (unit.html) {
     return [{
       type: 'html',
-      title: unit.title || 'Nội dung lý thuyết',
+      title: unit.title || i18n.t('mindmap.theoryContent'),
       data: unit.html,
     }];
   }
@@ -299,8 +299,8 @@ function isComponentNode(node: MindmapNode): boolean {
 function createEmptyRoot(proposalEvent: LessonAuthorProposalEvent | null): MindmapNode {
   return {
     id: proposalEvent?.job_id ? `proposal-${proposalEvent.job_id}` : 'lesson-author-proposal',
-    title: 'Outline khóa học',
-    label: 'Khóa học',
+    title: i18n.t('mindmap.courseOutline'),
+    label: i18n.t('mindmap.course'),
     blockType: 'course',
     status: 'existing',
     children: [],
@@ -444,12 +444,15 @@ function LessonAuthorMindmapContent({
   loading = false,
   error = null,
 }: Omit<LessonAuthorMindmapModalProps, 'open' | 'onOpenChange'>) {
+  const { t, i18n: translationInstance } = useTranslation();
+  const locale = translationInstance.language;
   const root = useMemo(() => {
+    void locale;
     const baseRoot = outline?.course_structure
       ? outlineToMindmapNode(outline.course_structure)
       : createEmptyRoot(proposalEvent);
     return mergeProposal(baseRoot, proposalEvent?.proposal);
-  }, [outline, proposalEvent]);
+  }, [locale, outline, proposalEvent]);
 
   const stats = useMemo(() => countStats(root), [root]);
   const totalNodes = useMemo(() => getDescendantCount(root) + 1, [root]);
@@ -521,9 +524,9 @@ function LessonAuthorMindmapContent({
               <Network className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-base font-semibold">Mindmap kế hoạch bài học</DialogTitle>
+              <DialogTitle className="text-base font-semibold">{t('mindmap.lessonPlanMindmap')}</DialogTitle>
               <DialogDescription className="mt-1 line-clamp-2">
-                Outline hiện tại được ghép với phần nội dung bot sắp tạo hoặc cập nhật sau khi admin approve.
+                {t('mindmap.description')}
               </DialogDescription>
             </div>
           </div>
@@ -534,24 +537,24 @@ function LessonAuthorMindmapContent({
             <div className="space-y-4">
               <div className="app-liquid-card rounded-xl border bg-card p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">Tóm tắt plan</p>
+                  <p className="text-sm font-semibold">{t('mindmap.planSummary')}</p>
                   {jobSuffix && <Badge variant="secondary" className="font-mono text-[10px]">#{jobSuffix}</Badge>}
                 </div>
                 <p className="mt-2 line-clamp-4 text-xs leading-5 text-muted-foreground">
-                  {proposalEvent?.proposal.summary || 'Chưa có proposal để hiển thị.'}
+                  {proposalEvent?.proposal.summary || t('mindmap.noProposal')}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <StatTile label="Tổng node" value={totalNodes} />
-                <StatTile label="Đã có" value={stats.existing} />
-                <StatTile label="Tạo mới" value={stats.created} accent="text-emerald-600 dark:text-emerald-300" />
-                <StatTile label="Cập nhật" value={stats.updated} accent="text-amber-600 dark:text-amber-300" />
-                <StatTile label="Component" value={stats.components} />
+                <StatTile label={t('mindmap.totalNodes')} value={totalNodes} />
+                <StatTile label={t('mindmap.existing')} value={stats.existing} />
+                <StatTile label={t('mindmap.createNew')} value={stats.created} accent="text-emerald-600 dark:text-emerald-300" />
+                <StatTile label={t('mindmap.update')} value={stats.updated} accent="text-amber-600 dark:text-amber-300" />
+                <StatTile label={t('mindmap.component')} value={stats.components} />
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chú giải</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('mindmap.legend')}</p>
                 <LegendItem status="existing" />
                 <LegendItem status="planned-create" />
                 <LegendItem status="planned-update" />
@@ -566,7 +569,7 @@ function LessonAuthorMindmapContent({
               <div className="flex min-h-[360px] items-center justify-center">
                 <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center">
                   <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
-                  <p className="mt-3 text-sm font-semibold">Không tải được mindmap</p>
+                  <p className="mt-3 text-sm font-semibold">{t('mindmap.loadFailed')}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{error}</p>
                 </div>
               </div>
@@ -638,7 +641,7 @@ function LegendItem({ status }: { status: MindmapStatus }) {
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className={`h-2.5 w-2.5 rounded-full border ${statusClassName[status]}`} />
-      <span className="text-muted-foreground">{statusLabel[status]}</span>
+      <span className="text-muted-foreground">{getStatusLabel(status)}</span>
     </div>
   );
 }
@@ -684,7 +687,7 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
                 {nodeData.label}
               </Badge>
               <Badge variant="secondary" className="h-5 rounded-md bg-background/70 px-1.5 text-[10px]">
-                {statusLabel[nodeData.status]}
+                {getStatusLabel(nodeData.status)}
               </Badge>
             </div>
             <p className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-foreground">
@@ -692,7 +695,9 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
             </p>
             {nodeData.collapsible && (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {nodeData.expanded ? `${nodeData.childCount} mục đang mở` : `${nodeData.childCount} mục con`}
+                {nodeData.expanded
+                  ? i18n.t('mindmap.itemsExpanded', { count: nodeData.childCount })
+                  : i18n.t('mindmap.childItems', { count: nodeData.childCount })}
               </p>
             )}
           </div>

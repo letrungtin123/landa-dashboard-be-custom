@@ -1,6 +1,7 @@
 import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { downloadReportExcel } from '@/api/custom-reports';
+import i18n from '@/i18n';
 import { DEFAULT_GROUP_LABELS } from '@/utils/group-labels';
 
 interface ExportParams {
@@ -26,7 +27,7 @@ export async function exportReportExcel(params: ExportParams) {
     teamLabel = DEFAULT_GROUP_LABELS.team,
   } = params;
 
-  const toastId = toast.loading('Đang chuẩn bị file Excel báo cáo...');
+  const toastId = toast.loading(i18n.t('reports.exportPreparing'));
 
   try {
     const { blob, fileName } = await downloadReportExcel({
@@ -41,10 +42,10 @@ export async function exportReportExcel(params: ExportParams) {
     });
 
     saveAs(blob, fileName);
-    toast.success('Đã xuất file Excel thành công.', { id: toastId });
+    toast.success(i18n.t('reports.exportSuccess'), { id: toastId });
   } catch (error) {
     console.error('Lỗi xuất file Excel:', error);
-    toast.error('Có lỗi xảy ra khi xuất file Excel.', { id: toastId });
+    toast.error(i18n.t('reports.exportFailed'), { id: toastId });
     throw error;
   }
 }

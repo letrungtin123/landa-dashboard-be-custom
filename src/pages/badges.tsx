@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Award, Save, Loader2 } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from 'react-i18next';
 
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +12,7 @@ import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { BadgeAdminCard } from "@/components/badges/BadgeAdminCard";
 
 export default function BadgesPage() {
+  const { t } = useTranslation();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
 
   const [badges, setBadges] = useState<BadgeSetting[]>([]);
@@ -50,7 +52,7 @@ export default function BadgesPage() {
         setLoadedTenantId(requestedTenantId);
       } catch {
         if (!cancelled && sequence === loadSequenceRef.current) {
-          toast.error("Không thể tải cấu hình danh hiệu");
+          toast.error(t('badges.loadFailed'));
         }
       } finally {
         if (!cancelled && sequence === loadSequenceRef.current) setLoadingBadges(false);
@@ -61,7 +63,7 @@ export default function BadgesPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTenantId]);
+  }, [activeTenantId, t]);
 
   function toggleBadge(badgeId: string) {
     setBadges((prev) => 
@@ -94,10 +96,10 @@ export default function BadgesPage() {
       if (activeTenantIdRef.current !== tenantId || loadSequence !== loadSequenceRef.current) return;
       setBadges(result.data);
       setLoadedTenantId(tenantId);
-      toast.success("Đã lưu cấu hình danh hiệu thành công");
+      toast.success(t('badges.saved'));
     } catch {
       if (activeTenantIdRef.current === tenantId && saveSequence === saveSequenceRef.current) {
-        toast.error("Lỗi khi lưu cấu hình danh hiệu");
+        toast.error(t('badges.saveFailed'));
       }
     } finally {
       if (saveSequence === saveSequenceRef.current) setSaving(false);
@@ -116,7 +118,7 @@ export default function BadgesPage() {
       })
       .catch(() => {
         if (activeTenantIdRef.current === tenantId && sequence === loadSequenceRef.current) {
-          toast.error("Không thể tải lại ảnh danh hiệu");
+          toast.error(t('badges.imageReloadFailed'));
         }
       })
       .finally(() => {
@@ -128,14 +130,14 @@ export default function BadgesPage() {
     <div className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         icon={Award}
-        title="Quản lý Danh hiệu"
-        description="Bật/tắt các danh hiệu (Badges) cho tenant hiện tại"
+        title={t('badges.title')}
+        description={t('badges.description')}
         actions={
           <div className="flex min-w-0 items-center gap-3">
             {tenantReady && (
               <Button onClick={handleSave} disabled={saving || loadingBadges} className="gap-2 whitespace-nowrap">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Lưu thay đổi
+                {t('badges.saveChanges')}
               </Button>
             )}
           </div>
@@ -144,7 +146,7 @@ export default function BadgesPage() {
 
       {!activeTenantId ? (
         <div className="text-center py-20 text-muted-foreground">
-          Vui lòng chọn Tenant từ thanh điều hướng (Header) để tiếp tục
+          {t('badges.selectTenant')}
         </div>
       ) : (
         <div className="min-w-0 pt-2 sm:pt-4">
@@ -154,7 +156,7 @@ export default function BadgesPage() {
             </div>
           ) : badges.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground">
-              Không có danh hiệu nào
+              {t('badges.empty')}
             </div>
           ) : (
             <motion.div

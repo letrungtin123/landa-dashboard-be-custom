@@ -20,11 +20,14 @@ import {
 import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw, GraduationCap } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
+import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { useBranding } from '@/hooks/useBranding';
 import { customGenerateOttApi } from '@/api/custom-auth';
 import { storageUrl } from '@/utils/storage-url';
+import { useTranslation } from 'react-i18next';
 
 export function Header() {
+  const { t } = useTranslation();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const startLogout = useAuthStore((state) => state.startLogout);
@@ -100,13 +103,13 @@ export function Header() {
             <DropdownMenuTrigger className="app-liquid-field flex items-center gap-1.5 rounded-lg px-2.5 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring mr-1">
               <Building2 className="h-4 w-4 text-primary shrink-0" />
               <span className="text-xs font-medium text-foreground hidden sm:inline-block max-w-[140px] truncate">
-                {activeTenantName || 'Chọn doanh nghiệp'}
+                {activeTenantName || t('header.selectTenant')}
               </span>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 mt-1 rounded-lg">
               <DropdownMenuLabel className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Doanh nghiệp</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('header.tenant')}</span>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -135,11 +138,11 @@ export function Header() {
         {!isSuperadmin && user && (
           <div
             className="app-liquid-field flex items-center gap-1.5 rounded-lg px-2.5 h-8 mr-1 bg-muted/50 border border-border/60 text-foreground cursor-default select-none"
-            aria-label={`Doanh nghiệp hiện tại: ${user.tenant_name || 'Chưa có doanh nghiệp'}`}
+            aria-label={t('header.currentTenant', { tenant: user.tenant_name || t('header.noTenant') })}
           >
             <Building2 className="h-4 w-4 text-primary shrink-0" />
             <span className="text-xs font-medium hidden sm:inline-block max-w-[140px] truncate">
-              {user.tenant_name || 'Chưa có doanh nghiệp'}
+              {user.tenant_name || t('header.noTenant')}
             </span>
           </div>
         )}
@@ -156,12 +159,14 @@ export function Header() {
 
         <ThemeColorToggle />
 
+        <LanguageSwitcher />
+
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 h-8 transition-all duration-200 outline-none hover:bg-muted hover:ring-1 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring">
             {showUserAvatar ? (
               <img
                 src={storageUrl(userAvatar)}
-                alt={user?.name || 'User'}
+                alt={user?.name || t('common.user')}
                 className="w-6 h-6 rounded-full object-cover shrink-0 shadow-sm ring-1 ring-border/70"
                 onError={() => setAvatarLoadFailed(true)}
               />
@@ -180,7 +185,7 @@ export function Header() {
               {showUserAvatar ? (
                 <img
                   src={storageUrl(userAvatar)}
-                  alt={user?.name || 'User'}
+                  alt={user?.name || t('common.user')}
                   className="h-9 w-9 rounded-xl object-cover shrink-0 shadow-sm ring-1 ring-border/70"
                   onError={() => setAvatarLoadFailed(true)}
                 />
@@ -200,7 +205,7 @@ export function Header() {
               onClick={() => navigate('/profile')}
             >
               <User className="mr-2 h-4 w-4 text-muted-foreground" />
-              Hồ sơ cá nhân
+              {t('header.profile')}
             </DropdownMenuItem>
             {branding.learnerUrl && (
               <DropdownMenuItem
@@ -218,7 +223,7 @@ export function Header() {
                 }}
               >
                 <GraduationCap className="mr-2 h-4 w-4" />
-                Trang học viên
+                {t('header.learnerPortal')}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -227,7 +232,7 @@ export function Header() {
               onClick={handleLogout}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Đăng xuất
+              {t('header.logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -10,6 +10,9 @@ import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/
 import ImageCarousel from '../ImageCarousel';
 import UploadedVideoPreview from '../UploadedVideoPreview';
 import CarouselImageOrder from '../CarouselImageOrder';
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
+import { getLocalizedApiError } from '@/utils/localized-error';
 import {
   extractYoutubeId,
   normalizeProblemMedia,
@@ -19,11 +22,11 @@ import {
 } from '../problemMedia';
 
 // OLX Templates chính xác từ frontend-app-authoring
-const PROBLEM_TYPES = [
+const PROBLEM_TYPE_DEFINITIONS = [
   {
     id: 'multiplechoiceresponse',
-    label: 'Trắc nghiệm 1 đáp án',
-    desc: 'Chọn một đáp án đúng',
+    labelKey: 'courseEditorForms.problemSingleChoice',
+    descKey: 'courseEditorForms.problemSingleChoiceDescription',
     boilerplate: 'multiplechoice.yaml',
     template: `<problem>
   <multiplechoiceresponse>
@@ -38,8 +41,8 @@ const PROBLEM_TYPES = [
   },
   {
     id: 'choiceresponse',
-    label: 'Trắc nghiệm nhiều đáp án',
-    desc: 'Chọn nhiều đáp án đúng',
+    labelKey: 'courseEditorForms.problemMultipleChoice',
+    descKey: 'courseEditorForms.problemMultipleChoiceDescription',
     boilerplate: 'checkboxes_response.yaml',
     template: `<problem>
   <choiceresponse>
@@ -54,8 +57,8 @@ const PROBLEM_TYPES = [
   },
   {
     id: 'optionresponse',
-    label: 'Danh sách thả xuống',
-    desc: 'Chọn từ danh sách thả xuống',
+    labelKey: 'courseEditorForms.problemDropdown',
+    descKey: 'courseEditorForms.problemDropdownDescription',
     boilerplate: 'optionresponse.yaml',
     template: `<problem>
   <optionresponse>
@@ -70,8 +73,8 @@ const PROBLEM_TYPES = [
   },
   {
     id: 'numericalresponse',
-    label: 'Điền số',
-    desc: 'Nhập số (có sai số)',
+    labelKey: 'courseEditorForms.problemNumerical',
+    descKey: 'courseEditorForms.problemNumericalDescription',
     boilerplate: 'numericalresponse.yaml',
     template: `<problem>
   <numericalresponse answer="100">
@@ -83,8 +86,8 @@ const PROBLEM_TYPES = [
   },
   {
     id: 'stringresponse',
-    label: 'Điền văn bản',
-    desc: 'Nhập văn bản tự do',
+    labelKey: 'courseEditorForms.problemText',
+    descKey: 'courseEditorForms.problemTextDescription',
     boilerplate: 'string_response.yaml',
     template: `<problem>
   <stringresponse answer="đáp án đúng" type="ci">
@@ -94,7 +97,17 @@ const PROBLEM_TYPES = [
   </stringresponse>
 </problem>`,
   },
-];
+] as const;
+
+type ProblemTypeDefinition = (typeof PROBLEM_TYPE_DEFINITIONS)[number];
+
+export function getProblemTypes() {
+  return PROBLEM_TYPE_DEFINITIONS.map((type) => ({
+    ...type,
+    label: i18n.t(type.labelKey),
+    desc: i18n.t(type.descKey),
+  }));
+}
 
 interface Choice {
   id: string;
@@ -385,6 +398,7 @@ export default function ProblemEditor({
   onAutoSave,
 }: ProblemEditorProps) {
   void selectedBoilerplate;
+  const { t } = useTranslation();
 
   const [state, setState] = useState<ProblemState>(() => {
     const parsed = parseProblemXml(problemXml);
@@ -440,7 +454,7 @@ export default function ProblemEditor({
   const handleUploadImages = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload ảnh');
+      toast.error(t('courseEditorForms.courseIdRequired'));
       return;
     }
 
@@ -466,7 +480,7 @@ export default function ProblemEditor({
         updateProblemMedia(nextMedia);
         try {
           await persistMediaDraft(nextMedia);
-          toast.success(`Đã upload ${uploaded.length} ảnh và lưu draft`);
+          toast.success(t('courseEditorForms.imageUploadSaved', { count: uploaded.length }));
         } catch (saveErr) {
           await Promise.allSettled(uploadedPaths.map(path => deleteCourseAssetByStoragePath(courseId, path)));
           updateProblemMedia(currentMedia);
@@ -474,7 +488,7 @@ export default function ProblemEditor({
         }
       }
     } catch (err: any) {
-      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally {
       setUploading(false);
     }
@@ -483,17 +497,17 @@ export default function ProblemEditor({
   const handleUploadVideo = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload video');
+      toast.error(t('courseEditorForms.courseIdMissing'));
       return;
     }
     const file = files[0];
     const MAX_SIZE = COURSE_ASSET_MAX_UPLOAD_BYTES;
     if (file.size > MAX_SIZE) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+      toast.error(t('courseEditorForms.videoTooLarge', { size: `${(file.size / 1024 / 1024).toFixed(1)}MB`, limit: COURSE_ASSET_MAX_UPLOAD_LABEL }));
       return;
     }
     if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
-      toast.error('Định dạng không hỗ trợ. Chỉ chấp nhận MP4, WebM, MOV.');
+      toast.error(t('courseEditorForms.unsupportedVideoFormat'));
       return;
     }
     setVideoUploading(true);
@@ -512,15 +526,15 @@ export default function ProblemEditor({
         setYoutubeInput('');
         try {
           await persistMediaDraft(nextMedia);
-          toast.success('Upload video thành công và đã lưu draft');
+          toast.success(t('courseEditorForms.videoUploadedSaved'));
         } catch (saveErr) {
-          await deleteCourseAssetByStoragePath(courseId, path).catch(() => {});
+          await deleteCourseAssetByStoragePath(courseId, path).catch(() => { /* Best-effort cleanup. */ });
           updateProblemMedia(previousMedia);
           throw saveErr;
         }
       }
     } catch (err: any) {
-      toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.videoUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally {
       setVideoUploading(false);
     }
@@ -537,16 +551,18 @@ export default function ProblemEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Lưu thay đổi media thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.mediaSaveFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
       return;
     }
     if (courseId) {
       try {
         const result = await deleteCourseAssetByStoragePath(courseId, videoPath);
         pendingDelete = !!result?.pending_delete;
-      } catch {}
+      } catch {
+        // The saved draft remains valid even if the old published asset is retained.
+      }
     }
-    toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
+    toast.success(pendingDelete ? t('courseEditorForms.videoRemovedDraft') : t('courseEditorForms.videoDeleted'));
   };
 
   const handleRemoveImage = async (idx: number) => {
@@ -560,11 +576,11 @@ export default function ProblemEditor({
     updateProblemMedia(nextMedia);
     try {
       await persistMediaDraft(nextMedia);
-      if (courseId) await deleteCourseAssetByStoragePath(courseId, removedImage.src).catch(() => {});
-      toast.success('Đã xóa ảnh và lưu draft');
+      if (courseId) await deleteCourseAssetByStoragePath(courseId, removedImage.src).catch(() => { /* Best-effort cleanup. */ });
+      toast.success(t('courseEditorForms.imageDeletedSaved'));
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageDeleteFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -583,7 +599,7 @@ export default function ProblemEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageOrderFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -592,7 +608,7 @@ export default function ProblemEditor({
     src: resolveProblemMediaImageUrl(img.src),
   }));
 
-  const handleSelectType = (type: typeof PROBLEM_TYPES[0]) => {
+  const handleSelectType = (type: ProblemTypeDefinition) => {
     if (['multiplechoiceresponse', 'choiceresponse', 'numericalresponse', 'stringresponse', 'optionresponse'].includes(type.id)) {
       const isNumStr = type.id === 'numericalresponse' || type.id === 'stringresponse';
       const newState: ProblemState = {
@@ -669,7 +685,7 @@ export default function ProblemEditor({
     <div className="space-y-6">
       <div className="flex items-end justify-between border-b pb-4">
         <div className="w-1/2">
-          <Field label="Tên hiển thị">
+          <Field label={t('courseUnit.displayName')}>
             <input
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-2 focus:ring-ring focus:outline-none"
               value={displayName}
@@ -681,14 +697,14 @@ export default function ProblemEditor({
 
       <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
         <div>
-          <h3 className="text-sm font-bold">Media minh họa</h3>
+          <h3 className="text-sm font-bold">{t('courseEditorForms.mediaIllustration')}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Video sẽ hiển thị trước ảnh và nằm ngay phía trên câu hỏi.
+            {t('courseEditorForms.mediaIllustrationHint')}
           </p>
         </div>
 
         {!media.video_storage_path && (
-          <Field label="YouTube URL hoặc Video ID">
+          <Field label={t('courseEditorForms.youtubeUrlOrId')}>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Video className="h-4 w-4 text-muted-foreground" />
@@ -697,11 +713,11 @@ export default function ProblemEditor({
                 className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
                 value={youtubeInput}
                 onChange={e => handleYoutubeChange(e.target.value)}
-                placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+                placeholder={t('courseEditorForms.youtubePlaceholder')}
               />
             </div>
             {youtubeInput && !youtubeId && (
-              <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
+              <p className="text-xs text-destructive mt-2">{t('courseEditorForms.invalidYoutube')}</p>
             )}
           </Field>
         )}
@@ -713,7 +729,7 @@ export default function ProblemEditor({
               width="100%"
               height="100%"
               src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
-              title="YouTube Preview"
+              title={t('courseEditorForms.youtubePreviewTitle')}
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -727,7 +743,7 @@ export default function ProblemEditor({
             <UploadedVideoPreview storagePath={media.video_storage_path} />
             <div className="flex justify-end">
               <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5" onClick={handleDeleteVideo}>
-                <Trash2 className="h-3.5 w-3.5" /> Xóa video
+                <Trash2 className="h-3.5 w-3.5" /> {t('courseEditorForms.deleteVideo')}
               </Button>
             </div>
           </div>
@@ -745,9 +761,9 @@ export default function ProblemEditor({
               disabled={videoUploading}
             >
               {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload video
+              {t('courseEditorForms.youtubeUpload')}
             </Button>
-            <span className="text-xs text-muted-foreground">Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV</span>
+            <span className="text-xs text-muted-foreground">{t('courseEditorForms.videoFormatHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</span>
             <input
               ref={videoFileInputRef}
               type="file"
@@ -769,9 +785,9 @@ export default function ProblemEditor({
               disabled={uploading}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              Upload ảnh
+              {t('courseEditorForms.uploadImage')}
             </Button>
-            <span className="text-xs text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
+            <span className="text-xs text-muted-foreground">{t('courseEditorForms.imageCarouselHint')}</span>
             <input
               ref={fileInputRef}
               type="file"
@@ -789,7 +805,7 @@ export default function ProblemEditor({
             <div className="app-liquid-card relative rounded-lg border border-border bg-background p-2">
               <img
                 src={resolvedImages[0].src}
-                alt={resolvedImages[0].alt || 'Problem image'}
+                alt={resolvedImages[0].alt || t('courseEditorForms.image', { count: 1 })}
                 className="max-h-[260px] w-full rounded-md object-contain"
               />
               <Button
@@ -826,7 +842,7 @@ export default function ProblemEditor({
           <div className="flex-1 space-y-8">
             <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-bold">Câu hỏi</h3>
+                <h3 className="text-sm font-bold">{t('courseEditorForms.question')}</h3>
               </div>
               <RichTextEditor 
                 content={state.questionHtml} 
@@ -837,8 +853,8 @@ export default function ProblemEditor({
 
             <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-bold">Giải thích (Đáp án)</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Cung cấp lời giải chi tiết sau khi học viên trả lời</p>
+                <h3 className="text-sm font-bold">{t('courseEditorForms.problemExplanation')}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.problemExplanationHint')}</p>
               </div>
               <RichTextEditor 
                 content={state.explanationHtml} 
@@ -849,18 +865,18 @@ export default function ProblemEditor({
 
             <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-bold">Danh sách đáp án</h3>
+                <h3 className="text-sm font-bold">{t('courseEditorForms.problemAnswerList')}</h3>
                 {state.type === 'numericalresponse' || state.type === 'stringresponse' ? (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Nhập (các) đáp án đúng bên dưới. Học viên phải nhập khớp một trong số các đáp án này.
+                    {t('courseEditorForms.problemTextAnswerHint')}
                   </p>
                 ) : state.type === 'optionresponse' ? (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Nhập các tùy chọn bên dưới và đánh dấu vào đáp án đúng.
+                    {t('courseEditorForms.problemDropdownAnswerHint')}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Nhập các đáp án bên dưới và đánh dấu vào {state.type === 'multiplechoiceresponse' ? 'đáp án đúng' : 'các đáp án đúng'}.
+                    {t('courseEditorForms.problemChoiceAnswerHint', { answer: state.type === 'multiplechoiceresponse' ? t('courseEditorForms.problemOneCorrectAnswer') : t('courseEditorForms.problemMultipleCorrectAnswers') })}
                   </p>
                 )}
               </div>
@@ -883,7 +899,7 @@ export default function ProblemEditor({
                           className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-[15px] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
                           value={choice.html}
                           onChange={(e) => handleUpdateChoice(choice.id, { html: e.target.value })}
-                          placeholder={state.type === 'numericalresponse' ? 'Nhập số (VD: 100)' : 'Nhập văn bản đáp án đúng'}
+                          placeholder={state.type === 'numericalresponse' ? t('courseEditorForms.problemNumberAnswerPlaceholder') : t('courseEditorForms.problemTextAnswerPlaceholder')}
                         />
                       </div>
                       <div className="pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
@@ -918,7 +934,7 @@ export default function ProblemEditor({
                           className="w-full flex min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-[15px] ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 resize-y"
                           value={choice.html}
                           onChange={(e) => handleUpdateChoice(choice.id, { html: e.target.value })}
-                          placeholder="Nhập tùy chọn thả xuống..."
+                          placeholder={t('courseEditorForms.problemDropdownOptionPlaceholder')}
                         />
                       </div>
                       <div className="pt-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
@@ -971,7 +987,7 @@ export default function ProblemEditor({
                 
                 <div className="pt-2">
                   <Button variant="ghost" className="text-sm font-semibold pl-2 hover:bg-primary/5 hover:text-primary" onClick={handleAddChoice}>
-                    <Plus className="w-4 h-4 mr-2" /> {state.type === 'numericalresponse' || state.type === 'stringresponse' ? 'Thêm đáp án' : 'Thêm lựa chọn'}
+                    <Plus className="w-4 h-4 mr-2" /> {state.type === 'numericalresponse' || state.type === 'stringresponse' ? t('courseEditorForms.addAnswer') : t('courseEditorForms.addChoice')}
                   </Button>
                 </div>
               </div>
@@ -980,7 +996,7 @@ export default function ProblemEditor({
 
           <div className="w-full lg:w-72 shrink-0 space-y-6">
             <div className="app-liquid-card border border-border rounded-xl p-4 bg-muted/10 space-y-3">
-              <label className="text-sm font-semibold text-primary">Gợi ý</label>
+              <label className="text-sm font-semibold text-primary">{t('courseEditorForms.hints')}</label>
               <div className="space-y-2">
                 {state.hints.map((hint, i) => (
                   <div key={i} className="flex gap-2 items-center">
@@ -996,7 +1012,7 @@ export default function ProblemEditor({
                 ))}
               </div>
               <Button variant="ghost" className="w-full text-sm font-semibold hover:bg-primary/5 hover:text-primary mt-1" onClick={handleAddHint}>
-                <Plus className="w-4 h-4 mr-2" /> Thêm gợi ý
+                <Plus className="w-4 h-4 mr-2" /> {t('courseEditorForms.addHint')}
               </Button>
             </div>
           </div>
@@ -1004,5 +1020,3 @@ export default function ProblemEditor({
     </div>
   );
 }
-
-export { PROBLEM_TYPES };

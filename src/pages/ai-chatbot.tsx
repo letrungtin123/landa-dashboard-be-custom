@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Bot, Brain, Rocket } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,6 +23,7 @@ import { BotDetail } from "@/components/ai-chatbot/bot-detail";
 import { DeploySection } from "@/components/ai-chatbot/deploy-section";
 
 export default function AiChatbotPage() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab") || "kb";
   const kbIdParam = searchParams.get("kbId");
@@ -111,12 +113,12 @@ export default function AiChatbotPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader icon={Bot} title="AI Chatbot" description="Quản lý Knowledge Base, tài liệu và chatbot AI" />
+      <PageHeader icon={Bot} title={t("aiChatbot.title")} description={t("aiChatbot.description")} />
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full max-w-lg grid-cols-3">
-          <TabsTrigger value="kb" className="gap-2"><Brain className="h-4 w-4" /> Kho tri thức</TabsTrigger>
-          <TabsTrigger value="bots" className="gap-2"><Bot className="h-4 w-4" /> Chatbots</TabsTrigger>
-          <TabsTrigger value="deploy" className="gap-2"><Rocket className="h-4 w-4" /> Triển khai</TabsTrigger>
+          <TabsTrigger value="kb" className="gap-2"><Brain className="h-4 w-4" /> {t("aiChatbot.knowledgeBases")}</TabsTrigger>
+          <TabsTrigger value="bots" className="gap-2"><Bot className="h-4 w-4" /> {t("aiChatbot.chatbots")}</TabsTrigger>
+          <TabsTrigger value="deploy" className="gap-2"><Rocket className="h-4 w-4" /> {t("aiChatbot.deploy")}</TabsTrigger>
         </TabsList>
         <TabsContent value="kb" className="mt-6"><KnowledgeBaseTab key={activeTenantId} onSelectKb={handleSelectKb} /></TabsContent>
         <TabsContent value="bots" className="mt-6"><ChatbotTab key={activeTenantId} onSelectBot={handleSelectBot} /></TabsContent>

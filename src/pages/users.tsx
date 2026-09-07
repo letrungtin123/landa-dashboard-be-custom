@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { storageUrl } from '@/utils/storage-url';
 import { useHeaderInfo } from '@/utils/header-store';
 import { useAuthStore } from '@/utils/store';
@@ -12,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Pencil, Ban, Trash2, Users as UsersIcon, ShieldAlert, CheckCircle2, Eye, ShieldCheck, LockKeyhole } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
-import { format } from 'date-fns';
 import { UserFormDialog } from '@/components/users/user-form-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
@@ -24,6 +24,9 @@ import { fetchUsers, updateUser, deleteUser, type CustomUser } from '@/api/custo
 import { toast } from 'sonner';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 import { getRoleLabel } from '@/utils/role-labels';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
@@ -39,7 +42,9 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export default function UsersPage() {
-  useHeaderInfo('Tài Khoản');
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  useHeaderInfo(t('users.title'));
 
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
@@ -86,33 +91,33 @@ export default function UsersPage() {
   const deactivateMutation = useMutation({
     mutationFn: function deactivate(id: string) { return updateUser(id, { is_active: false }); },
     onSuccess: function onOk() {
-      toast.success('Đã vô hiệu hóa tài khoản');
+      toast.success(t('users.deactivateSuccess'));
       queryClient.invalidateQueries({ queryKey: ['custom-users'] });
     },
     onError: function onErr(error: any) {
-      toast.error(error.response?.data?.message || 'Vô hiệu hóa thất bại');
+      toast.error(getLocalizedApiError(error, t('users.deactivateFailed')));
     },
   });
 
   const activateMutation = useMutation({
     mutationFn: function activate(id: string) { return updateUser(id, { is_active: true }); },
     onSuccess: function onOk() {
-      toast.success('Đã kích hoạt tài khoản');
+      toast.success(t('users.activateSuccess'));
       queryClient.invalidateQueries({ queryKey: ['custom-users'] });
     },
     onError: function onErr(error: any) {
-      toast.error(error.response?.data?.message || 'Kích hoạt thất bại');
+      toast.error(getLocalizedApiError(error, t('users.activateFailed')));
     },
   });
 
   const hardDeleteMutation = useMutation({
     mutationFn: function hardDel(id: string) { return deleteUser(id); },
     onSuccess: function onOk() {
-      toast.success('Đã xóa vĩnh viễn tài khoản');
+      toast.success(t('users.deleteSuccess'));
       queryClient.invalidateQueries({ queryKey: ['custom-users'] });
     },
     onError: function onErr(error: any) {
-      toast.error(error.response?.data?.error || 'Xóa thất bại');
+      toast.error(getLocalizedApiError(error, t('users.deleteFailed')));
     },
   });
 
@@ -126,12 +131,12 @@ export default function UsersPage() {
 
   function handleDeactivate(user: CustomUser) {
     if (isDemoIframeLocked(user)) {
-      toast.warning('Learner này đang được khóa cho demo iframe');
+      toast.warning(t('users.demoLocked'));
       return;
     }
     confirmDialog({
-      title: 'Vô hiệu hóa tài khoản',
-      description: `Bạn có chắc muốn vô hiệu hóa ${user.username}? Người dùng này sẽ không thể đăng nhập.`,
+      title: t('users.deactivateTitle'),
+      description: t('users.deactivateDescription', { username: user.username }),
       variant: 'destructive',
       onConfirm: function confirm() { deactivateMutation.mutate(user.id); },
     });
@@ -139,12 +144,12 @@ export default function UsersPage() {
 
   function handleHardDelete(user: CustomUser) {
     if (isDemoIframeLocked(user)) {
-      toast.warning('Learner này đang được khóa cho demo iframe');
+      toast.warning(t('users.demoLocked'));
       return;
     }
     confirmDialog({
-      title: 'Xóa vĩnh viễn tài khoản',
-      description: `Bạn có chắc muốn xóa vĩnh viễn "${user.full_name || user.username}"? Toàn bộ dữ liệu (tiến độ học, nhóm, quyền) sẽ bị xóa và KHÔNG thể khôi phục.`,
+      title: t('users.deleteTitle'),
+      description: t('users.deleteDescription', { username: user.full_name || user.username }),
       variant: 'destructive',
       onConfirm: function confirm() { hardDeleteMutation.mutate(user.id); },
     });
@@ -157,18 +162,18 @@ export default function UsersPage() {
 
       <PageHeader
         icon={UsersIcon}
-        title="Tài khoản"
-        description="Quản lý người dùng, phân quyền và trạng thái tài khoản"
+        title={t('users.title')}
+        description={t('users.description')}
       />
 
       <TableToolbar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm theo tên, email hoặc họ tên..."
+        searchPlaceholder={t('users.searchPlaceholder')}
         filters={[
           {
             key: 'role',
-            placeholder: 'Vai trò',
+            placeholder: t('users.role'),
             options: [
               ...(isSuperadmin ? [{ value: 'superadmin', label: getRoleLabel('superadmin', roleLabels, 'Super Admin') }] : []),
               { value: 'superuser', label: getRoleLabel('superuser', roleLabels, 'Superuser') },
@@ -179,10 +184,10 @@ export default function UsersPage() {
           },
           {
             key: 'status',
-            placeholder: 'Trạng thái',
+            placeholder: t('users.status'),
             options: [
-              { value: 'active', label: 'Hoạt động' },
-              { value: 'inactive', label: 'Đã khóa' },
+              { value: 'active', label: t('users.active') },
+              { value: 'inactive', label: t('users.inactive') },
             ],
           },
         ]}
@@ -195,7 +200,7 @@ export default function UsersPage() {
         actions={
           canAdd ? (
             <Button onClick={function openCreate() { setSelectedUser(undefined); setIsDialogOpen(true); }} className="shadow-sm">
-              <Plus className="mr-2 h-4 w-4" /> Thêm tài khoản
+              <Plus className="mr-2 h-4 w-4" /> {t('users.add')}
             </Button>
           ) : undefined
         }
@@ -207,14 +212,14 @@ export default function UsersPage() {
           <Table>
             <TableHeader className="bg-muted/10">
               <TableRow className="hover:bg-transparent border-border">
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider h-11 pl-5">Người dùng</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Vai trò</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Nhóm quyền</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Điện thoại</TableHead>
-                {isSuperadmin && <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Tenant</TableHead>}
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Trạng thái</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Ngày tham gia</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">Thao tác</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider h-11 pl-5">{t('users.user')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.role')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.permissionGroup')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.phone')}</TableHead>
+                {isSuperadmin && <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.tenant')}</TableHead>}
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.status')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('users.joinedAt')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">{t('users.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className={isFetching && users.length > 0 ? "opacity-50 pointer-events-none transition-opacity duration-200" : "transition-opacity duration-200"}>
@@ -238,8 +243,8 @@ export default function UsersPage() {
                   <TableCell colSpan={isSuperadmin ? 8 : 7} className="h-48 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <UsersIcon className="w-10 h-10 mb-3 opacity-20" />
-                      <p className="text-sm font-medium">Không tìm thấy người dùng</p>
-                      <p className="text-xs mt-1 text-muted-foreground/70">Hãy thử thay đổi từ khóa hoặc bộ lọc.</p>
+                      <p className="text-sm font-medium">{t('users.emptyTitle')}</p>
+                      <p className="text-xs mt-1 text-muted-foreground/70">{t('users.emptyDescription')}</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -291,7 +296,7 @@ export default function UsersPage() {
                             {u.permission_group_name}
                           </span>
                         ) : (u.role === 'staff' || u.role === 'superuser' || u.role === 'learner_plus') ? (
-                          <span className="text-[11px] text-muted-foreground/40 italic">Chưa gán</span>
+                          <span className="text-[11px] text-muted-foreground/40 italic">{t('users.unassigned')}</span>
                         ) : (
                           <span className="text-muted-foreground/40">—</span>
                         )}
@@ -306,11 +311,11 @@ export default function UsersPage() {
                       )}
                       <TableCell>
                         <Badge variant="outline" className={`font-medium shadow-none font-sans ${STATUS_COLORS[statusKey]}`}>
-                          <span className="capitalize">{statusKey === 'active' ? 'Hoạt động' : 'Đã khóa'}</span>
+                          <span className="capitalize">{statusKey === 'active' ? t('users.active') : t('users.inactive')}</span>
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {u.created_at ? format(new Date(u.created_at), 'dd/MM/yyyy') : '-'}
+                        {u.created_at ? formatLocaleDate(u.created_at, locale, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
                       </TableCell>
                       <TableCell className="text-right pr-5">
                         <div className="flex items-center justify-end gap-1">
@@ -322,7 +327,7 @@ export default function UsersPage() {
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Xem chi tiết</TooltipContent>
+                              <TooltipContent>{t('users.viewDetail')}</TooltipContent>
                             </Tooltip>
                           )}
                           {!canEditDelete ? (
@@ -336,7 +341,7 @@ export default function UsersPage() {
                                   )}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>{demoIframeLocked ? 'Đang khóa bởi demo iframe' : 'Không có quyền'}</TooltipContent>
+                              <TooltipContent>{demoIframeLocked ? t('users.demoLockedTooltip') : t('users.noPermission')}</TooltipContent>
                             </Tooltip>
                           ) : (
                             <>
@@ -349,7 +354,7 @@ export default function UsersPage() {
                                       <CheckCircle2 className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Kích hoạt</TooltipContent>
+                                  <TooltipContent>{t('users.activate')}</TooltipContent>
                                 </Tooltip>
                               )}
                               {canEdit && (
@@ -360,7 +365,7 @@ export default function UsersPage() {
                                       <Pencil className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Chỉnh sửa</TooltipContent>
+                                  <TooltipContent>{t('common.edit')}</TooltipContent>
                                 </Tooltip>
                               )}
                               {u.is_active && canDelete && (
@@ -371,7 +376,7 @@ export default function UsersPage() {
                                       <Ban className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Vô hiệu hóa</TooltipContent>
+                                  <TooltipContent>{t('users.deactivate')}</TooltipContent>
                                 </Tooltip>
                               )}
                               {canDelete && (
@@ -383,7 +388,7 @@ export default function UsersPage() {
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Xóa vĩnh viễn</TooltipContent>
+                                  <TooltipContent>{t('users.permanentDelete')}</TooltipContent>
                                 </Tooltip>
                               )}
                             </>
@@ -398,7 +403,7 @@ export default function UsersPage() {
           </Table>
         </div>
 
-        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="tài khoản" />
+        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t('users.accounts')} />
       </div>
       </TooltipProvider>
 

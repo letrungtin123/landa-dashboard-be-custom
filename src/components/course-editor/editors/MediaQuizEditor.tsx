@@ -11,6 +11,9 @@ import { toast } from 'sonner';
 import RichTextEditor from '../RichTextEditor';
 import { Field } from './VideoEditor';
 import UploadedVideoPreview from '../UploadedVideoPreview';
+import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 export type MediaQuizMode = 'single_select' | 'multiple_select';
 export type MediaQuizMediaType = 'image' | 'video';
@@ -152,17 +155,17 @@ function stripHtml(value: string): string {
 }
 
 export function getMediaQuizValidationError(data: MediaQuizData, mode: MediaQuizValidationMode = 'publish'): string | null {
-  if (!data.questions.length) return 'Câu hỏi kèm media cần ít nhất một câu hỏi.';
+  if (!data.questions.length) return i18n.t('courseEditorForms.mediaQuizNoQuestions');
   for (let index = 0; index < data.questions.length; index += 1) {
     const question = data.questions[index];
-    if (!stripHtml(question.prompt_html)) return `Câu hỏi ${index + 1} cần nội dung câu hỏi.`;
-    if (mode === 'publish' && !question.media?.storage_path) return `Câu hỏi ${index + 1} cần upload media.`;
-    if (question.choices.length < 2) return `Câu hỏi ${index + 1} cần ít nhất hai lựa chọn.`;
-    if (!question.choices.some(choice => choice.correct)) return `Câu hỏi ${index + 1} cần ít nhất một đáp án đúng.`;
+    if (!stripHtml(question.prompt_html)) return i18n.t('courseEditorForms.mediaQuizQuestionContentRequired', { count: index + 1 });
+    if (mode === 'publish' && !question.media?.storage_path) return i18n.t('courseEditorForms.mediaQuizQuestionMediaRequired', { count: index + 1 });
+    if (question.choices.length < 2) return i18n.t('courseEditorForms.mediaQuizTwoChoicesRequired', { count: index + 1 });
+    if (!question.choices.some(choice => choice.correct)) return i18n.t('courseEditorForms.mediaQuizAtLeastOneCorrect', { count: index + 1 });
     if (question.mode === 'single_select' && question.choices.filter(choice => choice.correct).length !== 1) {
-      return `Câu hỏi ${index + 1} phải có đúng một đáp án đúng.`;
+      return i18n.t('courseEditorForms.mediaQuizExactlyOneCorrect', { count: index + 1 });
     }
-    if (question.choices.some(choice => !stripHtml(choice.html))) return `Câu hỏi ${index + 1} có lựa chọn đang để trống.`;
+    if (question.choices.some(choice => !stripHtml(choice.html))) return i18n.t('courseEditorForms.mediaQuizChoiceEmpty', { count: index + 1 });
   }
   return null;
 }
@@ -223,18 +226,19 @@ function QuestionTypeChooser({
   onSelect: (mode: MediaQuizMode) => void;
   onCancel?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="app-liquid-card rounded-xl border border-border bg-muted/20 p-5 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold">{title}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Chọn một kiểu trả lời để bắt đầu tạo nội dung.
+            {t('courseEditorForms.chooseAnswerTypeDescription')}
           </p>
         </div>
         {onCancel && (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Hủy
+            {t('common.cancel')}
           </Button>
         )}
       </div>
@@ -244,16 +248,16 @@ function QuestionTypeChooser({
           onClick={() => onSelect('single_select')}
           className="app-liquid-card rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
         >
-          <div className="font-bold text-sm">Chọn một đáp án</div>
-          <p className="mt-1 text-xs text-muted-foreground">Học viên chọn đúng một lựa chọn.</p>
+          <div className="font-bold text-sm">{t('courseEditorForms.singleChoice')}</div>
+          <p className="mt-1 text-xs text-muted-foreground">{t('courseEditorForms.singleChoiceDescription')}</p>
         </button>
         <button
           type="button"
           onClick={() => onSelect('multiple_select')}
           className="app-liquid-card rounded-xl border-2 border-border bg-background p-5 text-left transition-all hover:border-primary hover:bg-primary/5"
         >
-          <div className="font-bold text-sm">Chọn nhiều đáp án</div>
-          <p className="mt-1 text-xs text-muted-foreground">Học viên phải chọn đúng toàn bộ đáp án.</p>
+          <div className="font-bold text-sm">{t('courseEditorForms.multipleChoice')}</div>
+          <p className="mt-1 text-xs text-muted-foreground">{t('courseEditorForms.multipleChoiceDescription')}</p>
         </button>
       </div>
     </div>
@@ -268,6 +272,7 @@ export default function MediaQuizEditor({
   courseId,
   onAutoSave,
 }: MediaQuizEditorProps) {
+  const { t } = useTranslation();
   const imageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const videoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null);
@@ -319,16 +324,19 @@ export default function MediaQuizEditor({
 
   const handleUploadMedia = async (questionId: string, file: File, mediaType: MediaQuizMediaType) => {
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể tải media lên.');
+      toast.error(t('courseEditorForms.missingCourseIdForMedia'));
       return;
     }
     if (mediaType === 'video') {
       if (file.size > MAX_VIDEO_SIZE) {
-        toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+        toast.error(t('courseEditorForms.videoTooLargeShort', {
+          size: `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+          limit: COURSE_ASSET_MAX_UPLOAD_LABEL,
+        }));
         return;
       }
       if (!ACCEPTED_VIDEO_TYPES.includes(file.type)) {
-        toast.error('Định dạng video chưa được hỗ trợ. Hãy dùng MP4, WebM hoặc MOV.');
+        toast.error(t('courseEditorForms.unsupportedMediaVideo'));
         return;
       }
     }
@@ -337,7 +345,7 @@ export default function MediaQuizEditor({
     try {
       const result = await uploadCourseAsset(courseId, file);
       const path = result?.storage_path || result?.url || '';
-      if (!path) throw new Error('Phản hồi tải lên không có đường dẫn lưu trữ.');
+      if (!path) throw new Error(t('courseEditorForms.missingMediaStoragePath'));
       const currentQuiz = quizRef.current;
 
       const nextQuiz = normalizeMediaQuizData({
@@ -359,14 +367,18 @@ export default function MediaQuizEditor({
       try {
         await persistQuizDraft(nextQuiz);
       } catch (saveErr) {
-        try { await deleteCourseAssetByStoragePath(courseId, path); } catch { }
+        try { await deleteCourseAssetByStoragePath(courseId, path); } catch { /* Best-effort cleanup. */ }
         quizRef.current = currentQuiz;
         onDataChange(currentQuiz);
         throw saveErr;
       }
-      toast.success('Đã tải media lên và lưu draft.');
+      toast.success(t('courseEditorForms.mediaUploaded'));
     } catch (err: any) {
-      toast.error('Tải lên thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+      toast.error(t('courseEditorForms.mediaUploadFailed', {
+        message: err?.message === t('courseEditorForms.missingMediaStoragePath')
+          ? err.message
+          : getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     } finally {
       setUploadingQuestionId(null);
     }
@@ -383,11 +395,13 @@ export default function MediaQuizEditor({
     onDataChange(nextQuiz);
     try {
       await persistQuizDraft(nextQuiz);
-      toast.success('Đã xóa media và lưu draft.');
+      toast.success(t('courseEditorForms.mediaRemoved'));
     } catch (err: any) {
       quizRef.current = currentQuiz;
       onDataChange(currentQuiz);
-      toast.error('Xóa media thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+      toast.error(t('courseEditorForms.mediaRemoveFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     }
   };
 
@@ -398,7 +412,7 @@ export default function MediaQuizEditor({
   const handleRemoveQuestion = async (questionId: string) => {
     const currentQuiz = quizRef.current;
     if (currentQuiz.questions.length <= 1) {
-      toast.error('Câu hỏi kèm media cần ít nhất một câu hỏi.');
+      toast.error(t('courseEditorForms.mediaQuizNoQuestions'));
       return;
     }
     const nextQuiz = normalizeMediaQuizData({
@@ -409,11 +423,13 @@ export default function MediaQuizEditor({
     onDataChange(nextQuiz);
     try {
       await persistQuizDraft(nextQuiz);
-      toast.success('Đã xóa câu hỏi và lưu draft.');
+      toast.success(t('courseEditorForms.questionRemoved'));
     } catch (err: any) {
       quizRef.current = currentQuiz;
       onDataChange(currentQuiz);
-      toast.error('Xóa câu hỏi thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+      toast.error(t('courseEditorForms.questionRemoveFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     }
   };
 
@@ -448,7 +464,7 @@ export default function MediaQuizEditor({
   const handleDeleteChoice = (questionId: string, choiceId: string) => {
     updateQuestion(questionId, question => {
       if (question.choices.length <= 2) {
-        toast.error('Mỗi câu hỏi cần ít nhất hai lựa chọn.');
+        toast.error(t('courseEditorForms.eachQuestionTwoChoices'));
         return question;
       }
       return {
@@ -485,14 +501,14 @@ export default function MediaQuizEditor({
         <div>
           <div className="flex items-center gap-2 text-primary font-bold">
             <Video className="h-5 w-5" />
-            <span>Câu hỏi kèm media</span>
+            <span>{t('courseEditorForms.mediaQuizTitle')}</span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Học viên phải trả lời đúng từng câu trước khi xem media tiếp theo.
+            {t('courseEditorForms.mediaQuizDescription')}
           </p>
         </div>
         <div className="w-1/2">
-          <Field label="Tên hiển thị">
+          <Field label={t('courseUnit.displayName')}>
             <input
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-2 focus:ring-ring focus:outline-none"
               value={displayName}
@@ -503,7 +519,7 @@ export default function MediaQuizEditor({
       </div>
 
       {choosingFirstQuestion && (
-        <QuestionTypeChooser title="Chọn loại câu hỏi đầu tiên" onSelect={handleChooseQuestionType} />
+        <QuestionTypeChooser title={t('courseEditorForms.firstQuestionType')} onSelect={handleChooseQuestionType} />
       )}
 
       {!choosingFirstQuestion && validationError && (
@@ -526,9 +542,9 @@ export default function MediaQuizEditor({
             <div className="app-liquid-card rounded-xl border border-border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-bold">Câu hỏi {questionIndex + 1}</div>
+                  <div className="text-sm font-bold">{t('courseEditorForms.mediaQuizQuestion', { count: questionIndex + 1 })}</div>
                   <div className="text-xs text-muted-foreground">
-                    Câu hỏi này bắt buộc có media.
+                    {t('courseEditorForms.mediaRequired')}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -536,7 +552,7 @@ export default function MediaQuizEditor({
                     type="button"
                     {...dragHandleProps}
                     className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
-                    aria-label="Kéo để sắp xếp câu hỏi"
+                    aria-label={t('courseEditorForms.dragQuestion')}
                   >
                     <GripVertical className="h-4 w-4" />
                   </button>
@@ -562,7 +578,7 @@ export default function MediaQuizEditor({
                       <div className="app-liquid-card rounded-lg border border-border bg-background p-2">
                         <img
                           src={mediaUrl}
-                          alt={question.media.alt || 'Ảnh câu hỏi kèm media'}
+                          alt={question.media.alt || t('courseEditorForms.mediaQuestionImage')}
                           className="max-h-[260px] w-full rounded-md object-contain"
                         />
                       </div>
@@ -576,14 +592,14 @@ export default function MediaQuizEditor({
                         onClick={() => handleRemoveMedia(question.id)}
                       >
                         <X className="h-4 w-4" />
-                        Xóa media
+                        {t('courseEditorForms.removeMedia')}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-background py-8 text-muted-foreground gap-2">
                     <ImagePlus className="h-8 w-8 opacity-60" />
-                    <span className="text-sm font-medium">Tải media lên cho câu hỏi này</span>
+                    <span className="text-sm font-medium">{t('courseEditorForms.uploadMediaForQuestion')}</span>
                   </div>
                 )}
 
@@ -597,7 +613,7 @@ export default function MediaQuizEditor({
                     onClick={() => imageInputRefs.current[question.id]?.click()}
                   >
                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                    Tải ảnh lên
+                    {t('courseEditorForms.uploadImage')}
                   </Button>
                   <Button
                     type="button"
@@ -608,9 +624,9 @@ export default function MediaQuizEditor({
                     onClick={() => videoInputRefs.current[question.id]?.click()}
                   >
                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    Tải video lên
+                    {t('courseEditorForms.uploadVideo')}
                   </Button>
-                  <span className="text-xs text-muted-foreground">Hỗ trợ ảnh hoặc MP4/WebM/MOV, tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL}.</span>
+                  <span className="text-xs text-muted-foreground">{t('courseEditorForms.mediaUploadHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</span>
                   <input
                     ref={element => { imageInputRefs.current[question.id] = element; }}
                     type="file"
@@ -637,7 +653,7 @@ export default function MediaQuizEditor({
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-sm font-bold">Nội dung câu hỏi</h3>
+                <h3 className="text-sm font-bold">{t('courseEditorForms.questionContent')}</h3>
                 <RichTextEditor
                   content={question.prompt_html}
                   onChange={value => updateQuestion(question.id, item => ({ ...item, prompt_html: value }))}
@@ -647,11 +663,11 @@ export default function MediaQuizEditor({
 
               <div className="space-y-3">
                 <div>
-                  <h3 className="text-sm font-bold">Đáp án</h3>
+                  <h3 className="text-sm font-bold">{t('courseEditorForms.answers')}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {question.mode === 'single_select'
-                      ? 'Đánh dấu đúng một đáp án đúng.'
-                      : 'Đánh dấu tất cả đáp án đúng. Học viên phải chọn đúng toàn bộ đáp án.'}
+                      ? t('courseEditorForms.markSingleCorrect')
+                      : t('courseEditorForms.markAllCorrect')}
                   </p>
                 </div>
 
@@ -710,15 +726,15 @@ export default function MediaQuizEditor({
                   onClick={() => handleAddChoice(question.id)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Thêm lựa chọn
+                  {t('courseEditorForms.addChoice')}
                 </Button>
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
                 <div>
-                  <h3 className="text-sm font-bold">Giải thích</h3>
+                  <h3 className="text-sm font-bold">{t('courseEditorForms.explanation')}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Hiển thị sau khi học viên trả lời đúng câu hỏi này.
+                    {t('courseEditorForms.explanationAfterQuestionCorrect')}
                   </p>
                 </div>
                 <RichTextEditor
@@ -731,9 +747,9 @@ export default function MediaQuizEditor({
               <div className="space-y-3 border-t border-border pt-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-bold">Gợi ý</h3>
+                    <h3 className="text-sm font-bold">{t('courseEditorForms.hints')}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Học viên có thể mở gợi ý trước khi xác nhận đáp án.
+                      {t('courseEditorForms.hintsBeforeAnswer')}
                     </p>
                   </div>
                   <Button
@@ -745,7 +761,7 @@ export default function MediaQuizEditor({
                     disabled={(question.hints || []).length >= 10}
                   >
                     <Plus className="h-4 w-4" />
-                    Thêm gợi ý
+                    {t('courseEditorForms.addHint')}
                   </Button>
                 </div>
 
@@ -754,7 +770,7 @@ export default function MediaQuizEditor({
                     {(question.hints || []).map((hint, hintIndex) => (
                       <div key={`${question.id}-hint-${hintIndex}`} className="flex items-start gap-3 group">
                         <div className="pt-[14px] w-14 shrink-0 text-xs font-bold text-muted-foreground">
-                          Gợi ý {hintIndex + 1}
+                          {t('courseEditorForms.hintNumber', { count: hintIndex + 1 })}
                         </div>
                         <div className="flex-1">
                           <RichTextEditor
@@ -780,7 +796,7 @@ export default function MediaQuizEditor({
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    Chưa có gợi ý cho câu hỏi này.
+                    {t('courseEditorForms.noHintsForQuestion')}
                   </div>
                 )}
               </div>
@@ -797,14 +813,14 @@ export default function MediaQuizEditor({
       {!choosingFirstQuestion && (
         showQuestionTypeChooser ? (
           <QuestionTypeChooser
-            title="Chọn loại câu hỏi mới"
+            title={t('courseEditorForms.newQuestionType')}
             onSelect={handleChooseQuestionType}
             onCancel={() => setShowQuestionTypeChooser(false)}
           />
         ) : (
           <Button type="button" variant="outline" className="w-full border-dashed gap-2" onClick={handleAddQuestion}>
             <Plus className="h-4 w-4" />
-            Thêm câu hỏi
+            {t('courseEditorForms.addQuestion')}
           </Button>
         )
       )}

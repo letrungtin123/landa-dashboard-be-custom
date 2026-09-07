@@ -17,6 +17,8 @@ import {
   toYoutubeUrl,
   type ProblemMedia,
 } from '../problemMedia';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface CrosswordWord {
   id: number;
@@ -49,6 +51,7 @@ export default function CrosswordEditor({
   courseId,
   onAutoSave,
 }: CrosswordEditorProps) {
+  const { t } = useTranslation();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
@@ -89,7 +92,7 @@ export default function CrosswordEditor({
   const handleUploadImages = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload ảnh');
+      toast.error(t('courseEditorForms.courseIdRequired'));
       return;
     }
     setUploading(true);
@@ -110,7 +113,7 @@ export default function CrosswordEditor({
         updateProblemMedia(nextMedia);
         try {
           await persistMediaDraft(nextMedia);
-          toast.success(`Đã upload ${uploaded.length} ảnh và lưu draft`);
+          toast.success(t('courseEditorForms.imageUploadSaved', { count: uploaded.length }));
         } catch (saveErr) {
           await Promise.allSettled(uploadedPaths.map(path => deleteCourseAssetByStoragePath(courseId, path)));
           updateProblemMedia(currentMedia);
@@ -118,7 +121,7 @@ export default function CrosswordEditor({
         }
       }
     } catch (err: any) {
-      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally {
       setUploading(false);
     }
@@ -126,14 +129,14 @@ export default function CrosswordEditor({
 
   const handleUploadVideo = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    if (!courseId) { toast.error('Thiếu courseId'); return; }
+    if (!courseId) { toast.error(t('courseEditorForms.courseIdRequired')); return; }
     const file = files[0];
     if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+      toast.error(t('courseEditorForms.videoTooLarge', { size: `${(file.size / 1024 / 1024).toFixed(1)}MB`, limit: COURSE_ASSET_MAX_UPLOAD_LABEL }));
       return;
     }
     if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
-      toast.error('Chỉ chấp nhận MP4, WebM, MOV.'); return;
+      toast.error(t('courseEditorForms.unsupportedVideoFormat')); return;
     }
     setVideoUploading(true);
     try {
@@ -146,7 +149,7 @@ export default function CrosswordEditor({
         setYoutubeInput('');
         try {
           await persistMediaDraft(nextMedia);
-          toast.success('Upload video thành công và đã lưu draft');
+          toast.success(t('courseEditorForms.videoUploadedSaved'));
         } catch (saveErr) {
           await deleteCourseAssetByStoragePath(courseId, path).catch(() => {});
           updateProblemMedia(previousMedia);
@@ -154,7 +157,7 @@ export default function CrosswordEditor({
         }
       }
     } catch (err: any) {
-      toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.videoUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally { setVideoUploading(false); }
   };
 
@@ -169,16 +172,18 @@ export default function CrosswordEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Lưu thay đổi media thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.mediaSaveFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
       return;
     }
     if (courseId) {
       try {
         const result = await deleteCourseAssetByStoragePath(courseId, videoPath);
         pendingDelete = !!result?.pending_delete;
-      } catch {}
+      } catch {
+        // The draft remains valid even if the old published asset is retained.
+      }
     }
-    toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
+    toast.success(pendingDelete ? t('courseEditorForms.videoRemovedDraft') : t('courseEditorForms.videoDeleted'));
   };
 
   const handleRemoveImage = async (idx: number) => {
@@ -190,10 +195,10 @@ export default function CrosswordEditor({
     try {
       await persistMediaDraft(nextMedia);
       if (courseId) await deleteCourseAssetByStoragePath(courseId, removedImage.src).catch(() => {});
-      toast.success('Đã xóa ảnh và lưu draft');
+      toast.success(t('courseEditorForms.imageDeletedSaved'));
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageDeleteFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -209,7 +214,7 @@ export default function CrosswordEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageOrderFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -253,7 +258,7 @@ export default function CrosswordEditor({
     <div className="flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Cột trái: Form nhập liệu */}
       <div className="min-w-0 flex-1 space-y-5 lg:max-w-[450px] xl:max-w-[500px] lg:shrink-0">
-        <Field label="Tên bài tập">
+        <Field label={t('courseEditorForms.exerciseName')}>
           <input
             className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
             value={displayName}
@@ -264,14 +269,14 @@ export default function CrosswordEditor({
         {/* ── Media minh họa ── */}
         <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
           <div>
-            <h3 className="text-sm font-bold">Media minh họa</h3>
+            <h3 className="text-sm font-bold">{t('courseEditorForms.mediaIllustration')}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Video sẽ hiển thị trước ảnh và nằm ngay phía trên bài tập.
+              {t('courseEditorForms.mediaIllustrationHint')}
             </p>
           </div>
 
           {!media.video_storage_path && (
-            <Field label="YouTube URL hoặc Video ID">
+            <Field label={t('courseEditorForms.youtubeUrlOrId')}>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Video className="h-4 w-4 text-muted-foreground" />
@@ -280,11 +285,11 @@ export default function CrosswordEditor({
                   className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
                   value={youtubeInput}
                   onChange={e => handleYoutubeChange(e.target.value)}
-                  placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+                  placeholder={t('courseEditorForms.youtubePlaceholder')}
                 />
               </div>
               {youtubeInput && !youtubeId && (
-                <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
+                <p className="text-xs text-destructive mt-2">{t('courseEditorForms.invalidYoutube')}</p>
               )}
             </Field>
           )}
@@ -296,7 +301,7 @@ export default function CrosswordEditor({
                 width="100%"
                 height="100%"
                 src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
-                title="YouTube Preview"
+                title={t('courseEditorForms.youtubePreviewTitle')}
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
@@ -310,7 +315,7 @@ export default function CrosswordEditor({
                 <UploadedVideoPreview storagePath={media.video_storage_path} />
               <div className="flex justify-end">
                 <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5" onClick={handleDeleteVideo}>
-                  <Trash2 className="h-3.5 w-3.5" /> Xóa video
+                  <Trash2 className="h-3.5 w-3.5" /> {t('courseEditorForms.deleteVideo')}
                 </Button>
               </div>
             </div>
@@ -321,9 +326,9 @@ export default function CrosswordEditor({
             <div className="app-liquid-card flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center">
               <Button type="button" variant="default" size="sm" className="shrink-0 gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
                 {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Upload video
+                {t('courseEditorForms.youtubeUpload')}
               </Button>
-              <span className="min-w-0 text-xs leading-5 text-muted-foreground">Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV</span>
+              <span className="min-w-0 text-xs leading-5 text-muted-foreground">{t('courseEditorForms.videoFormatHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</span>
               <input ref={videoFileInputRef} type="file" accept=".mp4,.webm,.mov" className="hidden" onChange={e => { handleUploadVideo(e.target.files); e.target.value = ''; }} />
             </div>
           )}
@@ -339,9 +344,9 @@ export default function CrosswordEditor({
                 disabled={uploading}
               >
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                Upload ảnh
+                {t('courseEditorForms.uploadImage')}
               </Button>
-              <span className="min-w-0 text-xs leading-5 text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
+              <span className="min-w-0 text-xs leading-5 text-muted-foreground">{t('courseEditorForms.imageCarouselHint')}</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -391,7 +396,7 @@ export default function CrosswordEditor({
           </div>
         </div>
 
-        <Field label="Cột chữ khóa dọc (Từ khóa chính)">
+        <Field label={t('courseEditorForms.keywordColumn')}>
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <input
               type="number"
@@ -401,7 +406,7 @@ export default function CrosswordEditor({
               onChange={e => onKeywordColChange?.(parseInt(e.target.value) || 0)}
             />
             <span className="min-w-0 text-xs leading-5 text-muted-foreground">
-              Chỉ số cột sẽ được highlight tạo thành từ khóa dọc
+              {t('courseEditorForms.keywordColumnHint')}
             </span>
           </div>
         </Field>
@@ -410,15 +415,15 @@ export default function CrosswordEditor({
 
         <div className="space-y-3">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h4 className="min-w-0 text-sm font-bold leading-5">Danh sách Câu Hỏi - Hàng Ngang ({words.length})</h4>
+            <h4 className="min-w-0 text-sm font-bold leading-5">{t('courseEditorForms.crosswordRows', { count: words.length })}</h4>
             <Button size="sm" variant="outline" className="h-7 w-fit shrink-0 gap-1 text-xs" onClick={addWord}>
-              <Plus className="h-3.5 w-3.5" /> Thêm hàng
+              <Plus className="h-3.5 w-3.5" /> {t('courseEditorForms.addRow')}
             </Button>
           </div>
 
           {words.length === 0 && (
             <div className="border-2 border-dashed border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-              Chưa có từ khóa nào. Bấm "Thêm hàng" để bắt đầu.
+              {t('courseEditorForms.crosswordWordEmpty')}
             </div>
           )}
 
@@ -427,10 +432,10 @@ export default function CrosswordEditor({
               <div key={word.id} className="app-liquid-card min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3 space-y-3 transition-colors hover:border-primary/30 sm:p-4">
                 <div className="flex min-w-0 items-start justify-between gap-2">
                   <span className="min-w-0 break-words text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Hàng #{word.id}
+                    {t('courseEditorForms.row', { count: word.id })}
                     {word.answer && (
                       <span className="ml-2 inline-flex shrink-0 text-primary normal-case font-normal">
-                        {word.answer.length} ô
+                        {t('courseEditorForms.cells', { count: word.answer.length })}
                       </span>
                     )}
                   </span>
@@ -444,16 +449,16 @@ export default function CrosswordEditor({
 
                 <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="min-w-0 space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Câu hỏi gợi ý</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('courseEditorForms.clue')}</label>
                     <input
                       className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                       value={word.clue}
                       onChange={e => updateWord(idx, 'clue', e.target.value)}
-                      placeholder="Gợi ý cho hàng ngang..."
+                      placeholder={t('courseEditorForms.cluePlaceholder')}
                     />
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Đáp án (Viết liền không dấu)</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('courseEditorForms.answerUnaccented')}</label>
                     <input
                       className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm font-mono uppercase"
                       value={word.answer}
@@ -467,17 +472,17 @@ export default function CrosswordEditor({
                 </div>
 
                 <div className="min-w-0 space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Gợi ý — Hint (tuỳ chọn)</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('courseEditorForms.optionalHint')}</label>
                   <input
                     className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                     value={word.hint || ''}
                     onChange={e => updateWord(idx, 'hint', e.target.value)}
-                    placeholder="Nhập gợi ý giúp học viên trả lời..."
+                    placeholder={t('courseEditorForms.hintPlaceholder')}
                   />
                 </div>
 
                 <div className="min-w-0 space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Căn lề cột (Thụt hàng)</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('courseEditorForms.columnIndent')}</label>
                   <input
                     type="number" min={0} max={20}
                     className="flex h-9 w-24 max-w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -494,7 +499,7 @@ export default function CrosswordEditor({
         </div>
 
         <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-300">
-          <strong>Lưu ý:</strong> Đáp án phải IN HOA, viết liền không dấu tiếng Việt. "Căn lề cột" dùng để thụt đầu hàng sao cho cột chữ khóa dọc thẳng hàng.
+          <strong>{t('courseEditorForms.note')}</strong> {t('courseEditorForms.crosswordNote')}
         </div>
       </div>
 
@@ -506,10 +511,10 @@ export default function CrosswordEditor({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0B57D0]"></span>
             </span>
-            <span className="min-w-0 break-words">Xem trước Ma trận lưới</span>
+            <span className="min-w-0 break-words">{t('courseEditorForms.gridPreview')}</span>
           </h3>
           <p className="mt-1 min-w-0 break-words text-xs leading-5 text-muted-foreground">
-            Ô màu xanh đậm = cột chữ khóa dọc (cột {keywordCol}). Thay đổi đáp án/căn lề để canh chỉnh từ khóa chính.
+            {t('courseEditorForms.gridPreviewHint', { column: keywordCol })}
           </p>
         </div>
         <CrosswordPreviewInteractive

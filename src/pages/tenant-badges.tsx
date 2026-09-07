@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -37,6 +38,7 @@ import { cn } from '@/utils/utils';
 import { storageUrl } from '@/utils/storage-url';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 const BADGE_QUERY_ROOT = 'tenant-badge-management';
 
@@ -44,8 +46,8 @@ function badgeQueryKey(tenantScope: string | null) {
   return [BADGE_QUERY_ROOT, tenantScope] as const;
 }
 
-function errorMessage(error: any, fallback: string): string {
-  return error?.response?.data?.message || error?.response?.data?.error || fallback;
+function errorMessage(error: unknown, fallback: string): string {
+  return getLocalizedApiError(error, fallback);
 }
 
 function useDebouncedValue(value: string, delay = 300): string {
@@ -71,11 +73,8 @@ function countDeletedCourses(courses: TenantBadgeCourseMapping[]): number {
   return courses.filter((course) => !course.course_id || course.is_deleted).length;
 }
 
-function courseRequirementMessage(requiredCount: number): string {
-  return `Cần chọn đúng ${requiredCount} khóa học trước khi bật huy hiệu`;
-}
-
 export default function TenantBadgesPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -114,15 +113,15 @@ export default function TenantBadgesPage() {
       queryClient.setQueryData<TenantBadgeConfiguration[]>(badgeQueryKey(variables.tenantScope), (current = []) =>
         current.map((badge) => badge.id === updated.id ? updated : badge),
       );
-      toast.success(updated.is_enabled ? 'Đã bật huy hiệu' : 'Đã tắt huy hiệu');
+      toast.success(updated.is_enabled ? t('tenantBadges.enabled') : t('tenantBadges.disabled'));
     },
-    onError: (error: any) => toast.error(errorMessage(error, 'Không thể cập nhật huy hiệu')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('tenantBadges.updateFailed'))),
   });
 
   const handleToggle = (badge: TenantBadgeConfiguration, checked: boolean) => {
     if (!canEdit || !tenantScope) return;
     if (checked && badge.requires_courses && !badge.is_config_valid) {
-      toast.warning(courseRequirementMessage(badge.minimum_required_courses));
+      toast.warning(t('tenantBadges.courseRequirement', { count: badge.minimum_required_courses }));
       setEditingBadge(badge);
       return;
     }
@@ -136,13 +135,13 @@ export default function TenantBadgesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader icon={Award} title="Quản lý huy hiệu" />
+      <PageHeader icon={Award} title={t('tenantBadges.title')} />
 
       {badgeQuery.data?.[0]?.module_enabled === false && (
         <div className="flex items-start gap-3 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Tính năng Quản lý huy hiệu chưa được cấp cho doanh nghiệp này. Cấu hình vẫn được lưu, nhưng learner chưa được tính hoặc hiển thị huy hiệu.
+            {t('tenantBadges.moduleDisabled')}
           </p>
         </div>
       )}
@@ -156,12 +155,12 @@ export default function TenantBadgesPage() {
       ) : badgeQuery.isError ? (
         <div className="flex min-h-52 flex-col items-center justify-center gap-3 border border-dashed p-6 text-center">
           <AlertTriangle className="h-7 w-7 text-destructive" />
-          <p className="text-sm text-muted-foreground">Không thể tải cấu hình huy hiệu</p>
-          <Button variant="outline" onClick={() => badgeQuery.refetch()}>Tải lại</Button>
+          <p className="text-sm text-muted-foreground">{t('tenantBadges.loadFailed')}</p>
+          <Button variant="outline" onClick={() => badgeQuery.refetch()}>{t('tenantBadges.reload')}</Button>
         </div>
       ) : (badgeQuery.data?.length || 0) === 0 ? (
         <div className="flex min-h-52 items-center justify-center border border-dashed text-sm text-muted-foreground">
-          Không có huy hiệu khả dụng
+          {t('tenantBadges.empty')}
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border bg-card">
@@ -170,7 +169,7 @@ export default function TenantBadgesPage() {
             const validCourses = uniqueValidCourses(badge.courses);
             const deletedCount = countDeletedCourses(badge.courses);
             const requiredCourseCount = badge.minimum_required_courses;
-            const courseCountLabel = `Đã chọn ${validCourses.length}/${requiredCourseCount} khóa học`;
+            const courseCountLabel = t('tenantBadges.selectedCourses', { selected: validCourses.length, required: requiredCourseCount });
             const isUpdating = updateMutation.isPending && updateMutation.variables?.badgeId === badge.id;
 
             return (
@@ -190,7 +189,7 @@ export default function TenantBadgesPage() {
                     <h2 className="truncate text-sm font-semibold">{badge.name}</h2>
                     {!badge.is_config_valid && (
                       <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
-                        Chưa đúng cấu hình
+                        {t('tenantBadges.invalidConfiguration')}
                       </Badge>
                     )}
                   </div>
@@ -207,11 +206,11 @@ export default function TenantBadgesPage() {
                           </Badge>
                         ))}
                         {validCourses.length > 3 && <Badge variant="outline">+{validCourses.length - 3}</Badge>}
-                        {validCourses.length === 0 && <span className="text-xs text-muted-foreground">Chưa chọn khóa học</span>}
+                        {validCourses.length === 0 && <span className="text-xs text-muted-foreground">{t('tenantBadges.noCourseSelected')}</span>}
                       </div>
                       {deletedCount > 0 && (
                         <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
-                          <AlertTriangle className="h-3.5 w-3.5" /> {deletedCount} khóa học đã bị xóa
+                          <AlertTriangle className="h-3.5 w-3.5" /> {t('tenantBadges.deletedCourses', { count: deletedCount })}
                         </p>
                       )}
                       <p className={cn(
@@ -223,7 +222,7 @@ export default function TenantBadgesPage() {
                     </div>
                   ) : (
                     <div className="flex min-h-12 items-start">
-                      <span className="text-xs leading-5 text-muted-foreground">Hệ thống tự tính</span>
+                      <span className="text-xs leading-5 text-muted-foreground">{t('tenantBadges.automatic')}</span>
                     </div>
                   )}
                 </div>
@@ -237,7 +236,7 @@ export default function TenantBadgesPage() {
                       disabled={!canEdit}
                       onClick={() => setEditingBadge(badge)}
                     >
-                      <Settings2 className="h-4 w-4" /> Khóa học
+                      <Settings2 className="h-4 w-4" /> {t('tenantBadges.courses')}
                     </Button>
                   )}
                   {isUpdating ? (
@@ -247,7 +246,7 @@ export default function TenantBadgesPage() {
                       checked={badge.is_enabled}
                       disabled={!canEdit || updateMutation.isPending}
                       onCheckedChange={(checked) => handleToggle(badge, checked)}
-                      aria-label={`${badge.is_enabled ? 'Tắt' : 'Bật'} ${badge.name}`}
+                      aria-label={`${badge.is_enabled ? t('tenantBadges.disable') : t('tenantBadges.enable')} ${badge.name}`}
                     />
                   )}
                 </div>
@@ -281,6 +280,7 @@ function CoursePickerDialog({
   requestTenantId: string | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -327,10 +327,10 @@ function CoursePickerDialog({
       queryClient.setQueryData<TenantBadgeConfiguration[]>(badgeQueryKey(variables.tenantScope), (current = []) =>
         current.map((item) => item.id === updated.id ? updated : item),
       );
-      toast.success('Đã lưu khóa học áp dụng');
+      toast.success(t('tenantBadges.savedCourses'));
       onClose();
     },
-    onError: (error: any) => toast.error(errorMessage(error, 'Không thể lưu khóa học')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('tenantBadges.saveCoursesFailed'))),
   });
 
   const selectedCount = selectedIds.size;
@@ -342,7 +342,7 @@ function CoursePickerDialog({
   const courses = coursesQuery.data?.data || [];
   const toggleCourse = (courseId: string) => {
     if (!selectedIds.has(courseId) && isAtCourseLimit) {
-      toast.warning(`Chỉ được chọn đúng ${requiredCourseCount} khóa học cho huy hiệu này`);
+      toast.warning(t('tenantBadges.courseLimit', { count: requiredCourseCount }));
       return;
     }
     setSelectedIds((current) => {
@@ -369,7 +369,7 @@ function CoursePickerDialog({
             <Input
               value={search}
               onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-              placeholder="Tìm theo tên hoặc mã khóa học"
+              placeholder={t('tenantBadges.searchCourses')}
               className="pl-9"
             />
           </div>
@@ -378,7 +378,7 @@ function CoursePickerDialog({
             {coursesQuery.isLoading ? (
               <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : courses.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Không tìm thấy khóa học</div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t('tenantBadges.noMatchingCourses')}</div>
             ) : courses.map((course) => {
               const selected = selectedIds.has(course.id);
               const disabledByLimit = !selected && isAtCourseLimit;
@@ -408,7 +408,9 @@ function CoursePickerDialog({
               isExactRequiredCourseCount ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
               isAboveRequiredCourseCount && 'text-amber-700 dark:text-amber-300',
             )}>
-              Đã chọn {selectedCount}{requiredCourseCount > 0 ? ` / đúng ${requiredCourseCount}` : ''} khóa học
+              {requiredCourseCount > 0
+                ? t('tenantBadges.selectedCoursesExact', { selected: selectedCount, required: requiredCourseCount })
+                : t('tenantBadges.selectedCourses', { selected: selectedCount, required: requiredCourseCount })}
             </span>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
@@ -423,7 +425,7 @@ function CoursePickerDialog({
         </div>
 
         <DialogFooter className="border-t px-6 py-4">
-          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             onClick={() => {
               if (!badge || !tenantScope) return;
@@ -442,7 +444,7 @@ function CoursePickerDialog({
               || (Boolean(badge?.is_enabled) && !isExactRequiredCourseCount)}
           >
             {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Lưu
+            {t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

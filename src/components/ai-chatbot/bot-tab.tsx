@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Brain, Plus, Trash2, Search, Loader2,
@@ -29,6 +30,7 @@ import {
   PaginationBar, BotCardSkeleton,
 } from "./ai-chatbot-helpers";
 import { AppTooltip } from '@/components/ui/tooltip';
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 
@@ -37,6 +39,7 @@ interface ChatbotTabProps {
 }
 
 export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
+  const { t } = useTranslation();
   const [bots, setBots] = useState<Chatbot[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -58,30 +61,30 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
     try {
       const [br, kr] = await Promise.all([fetchBots({ page, page_size: pageSize, search: searchDebounced || undefined }), fetchKnowledgebases({ page: 1, page_size: 100 })]);
       setBots(br.data); setTotal(br.total); setKbs(kr.data);
-    } catch { toast.error("Lỗi"); } finally { setLoading(false); }
-  }, [page, pageSize, searchDebounced]);
+    } catch { toast.error(t("aiChatbot.genericError")); } finally { setLoading(false); }
+  }, [page, pageSize, searchDebounced, t]);
   useEffect(() => { loadData(); }, [loadData]);
 
   async function handleCreate() {
-    if (!formName.trim()) { toast.error("Tên bot trống"); return; }
+    if (!formName.trim()) { toast.error(t("aiChatbot.botNameRequired")); return; }
     setSaving(true);
     try {
       await createBot({ name: formName, kb_id: formKbId });
-      toast.success("Tạo OK"); setShowCreate(false); setFormName(""); setFormKbId(null); loadData();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+      toast.success(t("aiChatbot.botCreated")); setShowCreate(false); setFormName(""); setFormKbId(null); loadData();
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSaving(false); }
   }
-  async function handleDelete() { if (!deletingId) return; try { await deleteBot(deletingId); toast.success("Xoá OK"); setDeletingId(null); loadData(); } catch { toast.error("Lỗi"); } }
+  async function handleDelete() { if (!deletingId) return; try { await deleteBot(deletingId); toast.success(t("aiChatbot.botDeleted")); setDeletingId(null); loadData(); } catch { toast.error(t("aiChatbot.genericError")); } }
 
   const totalPages = Math.ceil(total / pageSize);
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2"><Bot className="h-5 w-5 text-primary" /> Chatbots <Badge variant="outline" className="ml-1">{total}</Badge></h3>
-        <Button onClick={() => { setFormName(""); setFormKbId(null); setShowCreate(true); }} className="gap-2"><Plus className="h-4 w-4" /> Tạo Bot</Button>
+        <h3 className="text-lg font-semibold flex items-center gap-2"><Bot className="h-5 w-5 text-primary" /> {t("aiChatbot.chatbots")} <Badge variant="outline" className="ml-1">{total}</Badge></h3>
+        <Button onClick={() => { setFormName(""); setFormKbId(null); setShowCreate(true); }} className="gap-2"><Plus className="h-4 w-4" /> {t("aiChatbot.createBot")}</Button>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Tìm bot..." value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
+        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchBots")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
       </div>
 
       {/* Bot Card Grid */}
@@ -90,7 +93,7 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
         : bots.length === 0 ? (
           <div className="col-span-full text-center py-16 text-muted-foreground">
             <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{searchDebounced ? "Không tìm thấy bot nào." : "Chưa có bot. Tạo mới để bắt đầu!"}</p>
+            <p className="text-sm">{searchDebounced ? t("aiChatbot.noBotsFound") : t("aiChatbot.noBots")}</p>
           </div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -125,7 +128,7 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
                         {bot.kb_name ? (
                           <Badge variant="outline" className="gap-1 mt-1 text-xs"><Brain className="h-3 w-3" /> {bot.kb_name}</Badge>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Chưa gán Kho tri thức</span>
+                          <span className="text-xs text-muted-foreground">{t("aiChatbot.noKnowledgeBaseAssigned")}</span>
                         )}
                       </div>
                     </div>
@@ -152,7 +155,7 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
                             );
                           })}
                         </div>
-                        <span className="text-[10px] text-muted-foreground ml-1">{previews.length} nhân cách</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">{t("aiChatbot.personasCount", { count: previews.length })}</span>
                       </div>
                     )}
 
@@ -170,22 +173,22 @@ export function ChatbotTab({ onSelectBot }: ChatbotTabProps) {
 
       {/* Create Bot Dialog */}
       <Dialog open={showCreate} onOpenChange={() => setShowCreate(false)}>
-        <DialogContent><DialogHeader><DialogTitle>Tạo Bot</DialogTitle><DialogDescription>Gán Kho tri thức để bot trả lời dựa trên tài liệu.</DialogDescription></DialogHeader>
+        <DialogContent><DialogHeader><DialogTitle>{t("aiChatbot.createBot")}</DialogTitle><DialogDescription>{t("aiChatbot.createBotDescription")}</DialogDescription></DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2"><label className="text-sm font-medium">Tên bot</label><Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="VD: Trợ lý tư vấn" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium">Kho tri thức</label>
-              <Select value={formKbId || "__none__"} onValueChange={v => setFormKbId(v === "__none__" ? null : v)}><SelectTrigger><SelectValue placeholder="Chọn Kho tri thức..." /></SelectTrigger>
-                <SelectContent><SelectItem value="__none__">— Không gán Kho tri thức —</SelectItem>{kbs.map(kb => <SelectItem key={kb.id} value={kb.id}>{kb.name} ({kb.document_count})</SelectItem>)}</SelectContent>
+            <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.botName")}</label><Input value={formName} onChange={e => setFormName(e.target.value)} placeholder={t("aiChatbot.botNamePlaceholder")} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.knowledgeBases")}</label>
+              <Select value={formKbId || "__none__"} onValueChange={v => setFormKbId(v === "__none__" ? null : v)}><SelectTrigger><SelectValue placeholder={t("aiChatbot.selectKnowledgeBase")} /></SelectTrigger>
+                <SelectContent><SelectItem value="__none__">{t("aiChatbot.noKnowledgeBaseAssignment")}</SelectItem>{kbs.map(kb => <SelectItem key={kb.id} value={kb.id}>{kb.name} ({kb.document_count})</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
-          <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button onClick={handleCreate} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Tạo</Button></DialogFooter>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button onClick={handleCreate} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("aiChatbot.create")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Bot Dialog */}
-      <Dialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}><DialogContent><DialogHeader><DialogTitle>Xoá Bot</DialogTitle><DialogDescription>Bot sẽ bị xoá. Kho tri thức không ảnh hưởng.</DialogDescription></DialogHeader>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button variant="destructive" onClick={handleDelete}>Xoá</Button></DialogFooter>
+      <Dialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}><DialogContent><DialogHeader><DialogTitle>{t("aiChatbot.deleteBot")}</DialogTitle><DialogDescription>{t("aiChatbot.deleteBotDescription")}</DialogDescription></DialogHeader>
+        <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button variant="destructive" onClick={handleDelete}>{t("aiChatbot.delete")}</Button></DialogFooter>
       </DialogContent></Dialog>
     </div>
   );

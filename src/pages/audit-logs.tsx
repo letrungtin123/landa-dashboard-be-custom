@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
@@ -18,8 +19,11 @@ import type { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
 import { getAuditLogs } from '@/api/custom-audit-logs';
 import type { AuditLog } from '@/api/custom-audit-logs';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
+import type { AppLocale } from '@/i18n';
 
-function getRelativeTime(dateStr: string): string {
+function getRelativeTime(dateStr: string, locale: AppLocale, t: (key: string, options?: Record<string, unknown>) => string): string {
   const now = new Date();
   const date = new Date(dateStr);
   const diffMs = now.getTime() - date.getTime();
@@ -28,20 +32,21 @@ function getRelativeTime(dateStr: string): string {
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
 
-  if (diffSec < 60) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHour < 24) return `${diffHour}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (diffSec < 60) return t('auditLogs.relativeTime.justNow');
+  if (diffMin < 60) return t('auditLogs.relativeTime.minutesAgo', { count: diffMin });
+  if (diffHour < 24) return t('auditLogs.relativeTime.hoursAgo', { count: diffHour });
+  if (diffDay < 7) return t('auditLogs.relativeTime.daysAgo', { count: diffDay });
+  return formatLocaleDate(date, locale, { month: 'short', day: 'numeric' });
 }
 
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+function formatDate(dateStr: string, locale: AppLocale) {
+  return formatLocaleDate(dateStr, locale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 export default function AuditLogsPage() {
-  useHeaderInfo('Audit Logs');
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  useHeaderInfo(t('auditLogs.title'));
 
   const user = useAuthStore((s) => s.user);
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
@@ -89,7 +94,7 @@ export default function AuditLogsPage() {
   const handleRefresh = () => {
     if (refreshCooldown > 0) return;
     refetch();
-    toast.success('Logs refreshed');
+    toast.success(t('auditLogs.refreshed'));
     setRefreshCooldown(5);
     cooldownRef.current = setInterval(() => {
       setRefreshCooldown((prev) => {
@@ -107,11 +112,11 @@ export default function AuditLogsPage() {
   const filters: any[] = [
     {
       key: 'action',
-      placeholder: 'Actions',
+      placeholder: t('auditLogs.actions'),
       options: [
-        { value: 'CREATE', label: 'Create' },
-        { value: 'UPDATE', label: 'Update' },
-        { value: 'DELETE', label: 'Delete' },
+        { value: 'CREATE', label: t('auditLogs.create') },
+        { value: 'UPDATE', label: t('auditLogs.update') },
+        { value: 'DELETE', label: t('auditLogs.delete') },
       ],
     },
   ];
@@ -124,7 +129,7 @@ export default function AuditLogsPage() {
 
   // Group activities by date for timeline view
   const groupedByDate = activities.reduce<Record<string, AuditLog[]>>((acc, log) => {
-    const dateKey = new Date(log.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const dateKey = formatLocaleDate(log.created_at, locale, { month: 'short', day: 'numeric', year: 'numeric' });
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(log);
     return acc;
@@ -135,24 +140,24 @@ export default function AuditLogsPage() {
 
       <PageHeader
         icon={Activity}
-        title="Nhật ký hoạt động"
-        description="Theo dõi tất cả thao tác trong hệ thống"
+        title={t('auditLogs.title')}
+        description={t('auditLogs.description')}
       />
 
       <div className="pb-6 flex items-center justify-between" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
         {/* View mode toggle */}
         <div className="flex items-center bg-muted/50 rounded-lg p-0.5 border border-border/40">
           <button onClick={() => setViewMode('table')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 cursor-pointer ${viewMode === 'table' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            Table
+            {t('auditLogs.table')}
           </button>
           <button onClick={() => setViewMode('timeline')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 cursor-pointer ${viewMode === 'timeline' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            Timeline
+            {t('auditLogs.timeline')}
           </button>
         </div>
 
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshCooldown > 0} className="gap-2 h-9 px-3 text-[13px] shadow-sm">
           <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          {refreshCooldown > 0 ? `${refreshCooldown}s` : 'Refresh'}
+          {refreshCooldown > 0 ? `${refreshCooldown}s` : t('auditLogs.refresh')}
         </Button>
       </div>
 
@@ -161,7 +166,7 @@ export default function AuditLogsPage() {
           <TableToolbar
             search={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Search by user or entity..."
+            searchPlaceholder={t('auditLogs.searchPlaceholder')}
             filters={filters}
             filterValues={{ action: actionFilter }}
             onFilterChange={(key, val) => {
@@ -210,8 +215,8 @@ export default function AuditLogsPage() {
             ) : !isLoading && activities.length === 0 ? (
               <div className="p-12 text-center">
                 <Activity className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                <p className="text-base font-medium text-foreground">No activity logs found</p>
-                <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or search terms.</p>
+                <p className="text-base font-medium text-foreground">{t('auditLogs.emptyTitle')}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t('auditLogs.emptyDescription')}</p>
               </div>
             ) : (
               activities.map((log, index) => {
@@ -227,8 +232,8 @@ export default function AuditLogsPage() {
                         ? 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400'
                         : 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400';
                 const entityType = (log.entity_type || '').toLowerCase();
-                const entityName = log.entity_name || log.entity_id || 'unknown';
-                const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : log.action === 'LOGIN' ? 'logged in' : log.action === 'LOGOUT' ? 'logged out' : 'updated';
+                const entityName = log.entity_name || log.entity_id || t('auditLogs.unknownEntity');
+                const actionVerb = log.action === 'CREATE' ? t('auditLogs.actionVerbs.create') : log.action === 'DELETE' ? t('auditLogs.actionVerbs.delete') : log.action === 'LOGIN' ? t('auditLogs.actionVerbs.login') : log.action === 'LOGOUT' ? t('auditLogs.actionVerbs.logout') : t('auditLogs.actionVerbs.update');
 
                 return (
                   <div key={log.id} className={`flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors ${index !== activities.length - 1 ? 'border-b border-border' : ''}`}>
@@ -243,7 +248,7 @@ export default function AuditLogsPage() {
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {formatDate(log.created_at)} ({getRelativeTime(log.created_at)})
+                        {formatDate(log.created_at, locale)} ({getRelativeTime(log.created_at, locale, t)})
                         {log.ip_address && <span className="ml-2 opacity-60">• {log.ip_address}</span>}
                       </p>
                     </div>
@@ -252,7 +257,7 @@ export default function AuditLogsPage() {
               })
             )}
           </div>
-          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="logs" />
+          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t('auditLogs.title').toLowerCase()} />
         </div>
       )}
 
@@ -276,8 +281,8 @@ export default function AuditLogsPage() {
               ) : !isLoading && activities.length === 0 ? (
                 <div className="p-12 text-center">
                   <Activity className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                  <p className="text-base font-medium text-foreground">No activity logs found</p>
-                  <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters or search terms.</p>
+                <p className="text-base font-medium text-foreground">{t('auditLogs.emptyTitle')}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t('auditLogs.emptyDescription')}</p>
                 </div>
               ) : (
                 Object.entries(groupedByDate).map(([dateKey, logs], groupIdx) => (
@@ -292,9 +297,9 @@ export default function AuditLogsPage() {
                         {logs.map((log) => {
                           const dotColor = log.action === 'CREATE' ? 'bg-emerald-500' : log.action === 'DELETE' ? 'bg-red-500' : log.action === 'LOGIN' ? 'bg-violet-500' : log.action === 'LOGOUT' ? 'bg-slate-500' : 'bg-blue-500';
                           const entityType = (log.entity_type || '').toLowerCase();
-                          const entityName = log.entity_name || log.entity_id || 'unknown';
-                          const actionVerb = log.action === 'CREATE' ? 'created' : log.action === 'DELETE' ? 'deleted' : log.action === 'LOGIN' ? 'logged in' : log.action === 'LOGOUT' ? 'logged out' : 'updated';
-                          const timeStr = new Date(log.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                          const entityName = log.entity_name || log.entity_id || t('auditLogs.unknownEntity');
+                          const actionVerb = log.action === 'CREATE' ? t('auditLogs.actionVerbs.create') : log.action === 'DELETE' ? t('auditLogs.actionVerbs.delete') : log.action === 'LOGIN' ? t('auditLogs.actionVerbs.login') : log.action === 'LOGOUT' ? t('auditLogs.actionVerbs.logout') : t('auditLogs.actionVerbs.update');
+                          const timeStr = formatLocaleDate(log.created_at, locale, { hour: 'numeric', minute: '2-digit' });
 
                           return (
                             <div key={log.id} className="relative flex items-start gap-4 py-3 group">
@@ -323,7 +328,7 @@ export default function AuditLogsPage() {
               )}
             </div>
           </div>
-          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="logs" />
+          <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t('auditLogs.title').toLowerCase()} />
         </div>
       )}
     </div>

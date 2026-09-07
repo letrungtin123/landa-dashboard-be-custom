@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export type GroupLabelKey = 'group' | 'subgroup' | 'team';
 export type GroupLabelMap = Partial<Record<GroupLabelKey, string>>;
 
@@ -8,6 +10,17 @@ export const DEFAULT_GROUP_LABELS: Record<GroupLabelKey, string> = {
   subgroup: 'Chi nhánh',
   team: 'Phòng ban',
 };
+
+const LOCALIZED_DEFAULT_GROUP_LABEL_KEYS: Record<GroupLabelKey, string> = {
+  group: 'groupLabels.group',
+  subgroup: 'groupLabels.subgroup',
+  team: 'groupLabels.team',
+};
+
+/** Default labels shown by the UI when a tenant has not configured its own labels. */
+export function getLocalizedDefaultGroupLabel(key: GroupLabelKey): string {
+  return i18n.t(LOCALIZED_DEFAULT_GROUP_LABEL_KEYS[key]);
+}
 
 export function normalizeGroupLabels(input?: GroupLabelMap | null): GroupLabelMap {
   const labels: GroupLabelMap = {};
@@ -28,7 +41,10 @@ export function getGroupLabel(
   if (!key) return fallback || '';
   const label = labels?.[key as GroupLabelKey]?.trim();
   if (label) return label;
-  return fallback || DEFAULT_GROUP_LABELS[key as GroupLabelKey] || key;
+  if (fallback) return fallback;
+  return key in LOCALIZED_DEFAULT_GROUP_LABEL_KEYS
+    ? getLocalizedDefaultGroupLabel(key as GroupLabelKey)
+    : key;
 }
 
 export function getGroupLabelSet(labels?: GroupLabelMap | null): Record<GroupLabelKey, string> {
@@ -36,6 +52,18 @@ export function getGroupLabelSet(labels?: GroupLabelMap | null): Record<GroupLab
     group: getGroupLabel('group', labels),
     subgroup: getGroupLabel('subgroup', labels),
     team: getGroupLabel('team', labels),
+  };
+}
+
+/**
+ * Preserves the canonical Vietnamese defaults for API payloads and stored
+ * configuration. Do not use this for rendered UI labels.
+ */
+export function getStoredGroupLabelSet(labels?: GroupLabelMap | null): Record<GroupLabelKey, string> {
+  return {
+    group: labels?.group?.trim() || DEFAULT_GROUP_LABELS.group,
+    subgroup: labels?.subgroup?.trim() || DEFAULT_GROUP_LABELS.subgroup,
+    team: labels?.team?.trim() || DEFAULT_GROUP_LABELS.team,
   };
 }
 

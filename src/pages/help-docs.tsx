@@ -4,6 +4,7 @@
  * Giống Course Editor nhưng cho Help Docs.
  */
 import { useCallback, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useQuery } from '@tanstack/react-query';
@@ -23,7 +24,8 @@ const SIDEBAR_MIN_WIDTH = 260;
 const SIDEBAR_MAX_WIDTH = 560;
 
 export default function HelpDocsPage() {
-  useHeaderInfo('Help Docs');
+  const { t } = useTranslation();
+  useHeaderInfo(t('helpDocs.helpDocs'));
   const user = useAuthStore((s) => s.user);
   const canManageHelpDocs = user?.role === 'superadmin';
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
@@ -95,9 +97,9 @@ export default function HelpDocsPage() {
         <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-5 rounded-xl flex gap-3">
           <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
           <div>
-            <h3 className="font-semibold">Lỗi tải Help Docs</h3>
+            <h3 className="font-semibold">{t('helpDocs.loadFailed')}</h3>
             <p className="text-sm mt-1 opacity-80">
-              Không thể kết nối đến server. Kiểm tra lại kết nối.
+              {t('helpDocs.loadFailedDescription')}
             </p>
           </div>
         </div>
@@ -120,8 +122,8 @@ export default function HelpDocsPage() {
       <div className="px-6 pt-3 shrink-0">
         <PageHeader
           icon={HelpCircle}
-          title="Hướng dẫn sử dụng"
-          description="Tài liệu hướng dẫn và trợ giúp"
+          title={t('helpDocs.title')}
+          description={t('helpDocs.description')}
         />
       </div>
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
@@ -129,23 +131,23 @@ export default function HelpDocsPage() {
       <div className="md:hidden flex items-center justify-between p-4 border-b border-border bg-background sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-2">
           <BookOpen className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-bold text-foreground">Help Docs</h2>
+          <h2 className="text-sm font-bold text-foreground">{t('helpDocs.helpDocs')}</h2>
         </div>
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 flex gap-2">
               <Menu className="h-4 w-4" />
-              Mục lục
+              {t('helpDocs.contents')}
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-[300px] p-0 flex flex-col">
             <div className="p-4 border-b border-border bg-background/80 shrink-0">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-primary" />
-                <h2 className="text-base font-bold text-foreground">Help Docs</h2>
+                <h2 className="text-base font-bold text-foreground">{t('helpDocs.helpDocs')}</h2>
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5 opacity-60">
-                Tài liệu hướng dẫn sử dụng
+                {t('helpDocs.sidebarDescription')}
               </p>
             </div>
             <div className="p-3 flex-1 overflow-y-auto">
@@ -163,10 +165,10 @@ export default function HelpDocsPage() {
         <div className="p-4 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary" />
-            <h2 className="text-base font-bold text-foreground">Help Docs</h2>
+            <h2 className="text-base font-bold text-foreground">{t('helpDocs.helpDocs')}</h2>
           </div>
           <p className="text-[10px] text-muted-foreground mt-0.5 opacity-60">
-            Tài liệu hướng dẫn sử dụng
+            {t('helpDocs.sidebarDescription')}
           </p>
         </div>
         <div className="p-3 flex-1 overflow-y-auto">
@@ -175,7 +177,7 @@ export default function HelpDocsPage() {
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Điều chỉnh chiều rộng mục lục"
+          aria-label={t('helpDocs.resizeContents')}
           tabIndex={0}
           onPointerDown={handleSidebarResizeStart}
           className="group absolute -right-1 top-0 z-20 flex h-full w-2 cursor-col-resize items-center justify-center outline-none transition-colors hover:bg-primary/5 focus-visible:bg-primary/10"
@@ -200,11 +202,11 @@ export default function HelpDocsPage() {
               <BookOpen className="h-8 w-8 opacity-30" />
             </div>
             <div className="text-center">
-              <p className="text-base font-medium">Chọn trang để xem</p>
+              <p className="text-base font-medium">{t('helpDocs.selectPage')}</p>
               <p className="text-sm opacity-60 mt-1">
                 {canManageHelpDocs
-                  ? 'Chọn trang ở sidebar trái hoặc tạo folder/trang mới'
-                  : 'Chọn trang ở sidebar trái để đọc hướng dẫn'
+                  ? t('helpDocs.selectPageAdmin')
+                  : t('helpDocs.selectPageReader')
                 }
               </p>
             </div>

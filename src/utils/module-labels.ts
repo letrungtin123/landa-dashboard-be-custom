@@ -1,23 +1,26 @@
-export const MODULE_DISPLAY_NAMES: Record<string, string> = {
-  dashboard: "Bảng điều khiển",
-  library: "Thư viện",
-  courses: "Khóa học",
-  course_categories: "Danh mục khóa học",
-  account: "Người dùng",
-  groups: "Nhóm",
-  permission_groups: "Nhóm quyền",
-  audit_log: "Nhật ký hoạt động",
-  report_summary: "Báo cáo tổng hợp",
-  help_docs: "Tài liệu hướng dẫn",
-  tenant_management: "Quản lí doanh nghiệp",
-  branding: "Thương hiệu",
-  email_templates: "Mẫu email",
-  ai_chatbot: "AI Chatbot",
-  enrollments: "Ghi danh khóa học",
-  course_authoring: "Biên soạn khóa học",
-  superadmin_only: "Quản trị hệ thống",
+import i18n from "@/i18n";
+
+export const MODULE_DISPLAY_NAME_KEYS: Record<string, string> = {
+  dashboard: "modules.dashboard",
+  library: "modules.library",
+  courses: "modules.courses",
+  course_categories: "modules.courseCategories",
+  account: "modules.account",
+  groups: "modules.groups",
+  permission_groups: "modules.permissionGroups",
+  audit_log: "modules.auditLog",
+  report_summary: "modules.reportSummary",
+  help_docs: "modules.helpDocs",
+  tenant_management: "modules.tenantManagement",
+  branding: "modules.branding",
+  email_templates: "modules.emailTemplates",
+  ai_chatbot: "modules.aiChatbot",
+  enrollments: "modules.enrollments",
+  course_authoring: "modules.courseAuthoring",
+  superadmin_only: "modules.superadminOnly",
 };
 
 export function getModuleDisplayName(code: string, fallback?: string | null) {
-  return MODULE_DISPLAY_NAMES[code] || fallback || code;
+  const translationKey = MODULE_DISPLAY_NAME_KEYS[code];
+  return translationKey ? i18n.t(translationKey) : fallback || code;
 }

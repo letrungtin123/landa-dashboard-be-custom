@@ -7,6 +7,9 @@ import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/
 import { storageUrl } from '@/utils/storage-url';
 import RichTextEditor from '../RichTextEditor';
 import { Field } from './VideoEditor';
+import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 export interface ImageChoiceQuizChoice {
   id: string;
@@ -118,17 +121,17 @@ export function getImageChoiceQuizValidationError(
   data: ImageChoiceQuizData,
   mode: ImageChoiceQuizValidationMode = 'publish',
 ): string | null {
-  if (!stripHtml(data.prompt_html)) return 'Cần nhập nội dung câu hỏi.';
+  if (!stripHtml(data.prompt_html)) return i18n.t('courseEditorForms.imageChoiceQuestionRequired');
   if (data.choices.length < MIN_CHOICES || data.choices.length > MAX_CHOICES) {
-    return 'Câu hỏi đáp án hình ảnh phải có từ 2 đến 4 đáp án.';
+    return i18n.t('courseEditorForms.imageChoiceAnswerRange', { min: MIN_CHOICES, max: MAX_CHOICES });
   }
   if (data.choices.filter(choice => choice.correct).length !== 1) {
-    return 'Phải có đúng 1 đáp án đúng.';
+    return i18n.t('courseEditorForms.imageChoiceOneCorrect');
   }
   for (let index = 0; index < data.choices.length; index += 1) {
     const choice = data.choices[index];
-    if (!stripHtml(choice.html)) return `Đáp án ${index + 1} cần nội dung.`;
-    if (mode === 'publish' && !choice.image.storage_path) return `Đáp án ${index + 1} cần upload hình ảnh.`;
+    if (!stripHtml(choice.html)) return i18n.t('courseEditorForms.imageChoiceAnswerContentRequired', { count: index + 1 });
+    if (mode === 'publish' && !choice.image.storage_path) return i18n.t('courseEditorForms.imageChoiceAnswerImageRequired', { count: index + 1 });
   }
   return null;
 }
@@ -155,6 +158,7 @@ export default function ImageChoiceQuizEditor({
   onAssetUploaded,
   onAutoSave,
 }: ImageChoiceQuizEditorProps) {
+  const { t } = useTranslation();
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [uploadingChoiceId, setUploadingChoiceId] = useState<string | null>(null);
   const quiz = normalizeImageChoiceQuizData(data);
@@ -201,7 +205,7 @@ export default function ImageChoiceQuizEditor({
 
   const handleAddChoice = () => {
     if (quiz.choices.length >= MAX_CHOICES) {
-      toast.error('Tối đa 4 đáp án.');
+      toast.error(t('courseEditorForms.maximumAnswers', { count: MAX_CHOICES }));
       return;
     }
     updateQuiz(previous => ({
@@ -212,7 +216,7 @@ export default function ImageChoiceQuizEditor({
 
   const handleDeleteChoice = (choiceId: string) => {
     if (quiz.choices.length <= MIN_CHOICES) {
-      toast.error('Tối thiểu 2 đáp án.');
+      toast.error(t('courseEditorForms.minimumAnswers', { count: MIN_CHOICES }));
       return;
     }
     updateQuiz(previous => ({
@@ -223,15 +227,15 @@ export default function ImageChoiceQuizEditor({
 
   const handleUploadImage = async (choiceId: string, file: File) => {
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload ảnh.');
+      toast.error(t('courseEditorForms.missingCourseIdForImage'));
       return;
     }
     if (!file.type.startsWith('image/')) {
-      toast.error('Chỉ chấp nhận file hình ảnh.');
+      toast.error(t('courseEditorForms.imagesOnly'));
       return;
     }
     if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
-      toast.error(`Ảnh quá lớn. Giới hạn tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+      toast.error(t('courseEditorForms.imageTooLarge', { size: COURSE_ASSET_MAX_UPLOAD_LABEL }));
       return;
     }
 
@@ -239,7 +243,7 @@ export default function ImageChoiceQuizEditor({
     try {
       const result = await uploadCourseAsset(courseId, file);
       const storagePath = result?.storage_path || result?.url || '';
-      if (!storagePath) throw new Error('Phản hồi upload không có đường dẫn ảnh.');
+      if (!storagePath) throw new Error(t('courseEditorForms.missingImageStoragePath'));
       onAssetUploaded?.(storagePath);
       const currentQuiz = quizRef.current;
       const nextQuiz = updateChoice(choiceId, choice => ({
@@ -252,13 +256,17 @@ export default function ImageChoiceQuizEditor({
       try {
         await persistQuizDraft(nextQuiz);
       } catch (saveErr) {
-        try { await deleteCourseAssetByStoragePath(courseId, storagePath); } catch { }
+        try { await deleteCourseAssetByStoragePath(courseId, storagePath); } catch { /* Best-effort cleanup. */ }
         applyQuizData(currentQuiz);
         throw saveErr;
       }
-      toast.success('Đã upload ảnh đáp án và lưu draft.');
+      toast.success(t('courseEditorForms.answerImageUploaded'));
     } catch (err: any) {
-      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+      toast.error(t('courseEditorForms.answerImageUploadFailed', {
+        message: err?.message === t('courseEditorForms.missingImageStoragePath')
+          ? err.message
+          : getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     } finally {
       setUploadingChoiceId(null);
     }
@@ -269,16 +277,18 @@ export default function ImageChoiceQuizEditor({
     const nextQuiz = updateChoice(choiceId, current => ({ ...current, image: { storage_path: '', alt: '' } }));
     try {
       await persistQuizDraft(nextQuiz);
-      toast.success('Đã xóa ảnh đáp án và lưu draft.');
+      toast.success(t('courseEditorForms.answerImageRemoved'));
     } catch (err: any) {
       applyQuizData(currentQuiz);
-      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Lỗi không rõ'));
+      toast.error(t('courseEditorForms.answerImageRemoveFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     }
   };
 
   const handleAddHint = () => {
     if ((quiz.hints || []).length >= 10) {
-      toast.error('Tối đa 10 gợi ý.');
+      toast.error(t('courseEditorForms.maximumHints', { count: 10 }));
       return;
     }
     updateQuiz(previous => ({
@@ -326,14 +336,14 @@ export default function ImageChoiceQuizEditor({
         <div>
           <div className="flex items-center gap-2 text-primary font-bold">
             <ImagePlus className="h-5 w-5" />
-            <span>Câu hỏi đáp án hình ảnh</span>
+            <span>{t('courseEditorForms.imageChoiceQuizTitle')}</span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Học viên chọn một đáp án đúng. Mỗi đáp án bắt buộc có hình ảnh riêng.
+            {t('courseEditorForms.imageChoiceQuizDescription')}
           </p>
         </div>
         <div className="w-full lg:w-1/2">
-          <Field label="Tên hiển thị">
+          <Field label={t('courseUnit.displayName')}>
             <input
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-2 focus:ring-ring focus:outline-none"
               value={displayName}
@@ -350,7 +360,7 @@ export default function ImageChoiceQuizEditor({
       )}
 
       <div className="space-y-3">
-        <h3 className="text-sm font-bold">Nội dung câu hỏi</h3>
+        <h3 className="text-sm font-bold">{t('courseEditorForms.questionContent')}</h3>
         <RichTextEditor
           content={quiz.prompt_html}
           onChange={value => updateQuiz(previous => ({ ...previous, prompt_html: value }))}
@@ -361,8 +371,8 @@ export default function ImageChoiceQuizEditor({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold">Đáp án có hình ảnh</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Tối thiểu 2 đáp án, tối đa 4 đáp án.</p>
+            <h3 className="text-sm font-bold">{t('courseEditorForms.imageAnswers')}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.imageChoiceBounds')}</p>
           </div>
           <Button
             type="button"
@@ -373,7 +383,7 @@ export default function ImageChoiceQuizEditor({
             disabled={quiz.choices.length >= MAX_CHOICES}
           >
             <Plus className="h-4 w-4" />
-            Thêm đáp án
+            {t('courseEditorForms.addAnswer')}
           </Button>
         </div>
 
@@ -392,7 +402,7 @@ export default function ImageChoiceQuizEditor({
                       onChange={() => setCorrectChoice(choice.id)}
                       className="h-4 w-4 accent-primary"
                     />
-                    <span>Đáp án {String.fromCharCode(65 + choiceIndex)}</span>
+                    <span>{t('courseEditorForms.answerLetter', { letter: String.fromCharCode(65 + choiceIndex) })}</span>
                     {choice.correct && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                   </label>
                   <Button
@@ -412,14 +422,14 @@ export default function ImageChoiceQuizEditor({
                     <div className="relative">
                       <img
                         src={imageUrl}
-                        alt={choice.image.alt || `Ảnh đáp án ${choiceIndex + 1}`}
+                        alt={choice.image.alt || t('courseEditorForms.answerImage', { count: choiceIndex + 1 })}
                         className="aspect-[16/10] w-full rounded-md bg-background object-contain"
                       />
                       <button
                         type="button"
                         onClick={() => void handleRemoveImage(choice.id)}
                         className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-destructive shadow hover:bg-background"
-                        aria-label="Xóa ảnh đáp án"
+                        aria-label={t('courseEditorForms.removeAnswerImage')}
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -432,7 +442,7 @@ export default function ImageChoiceQuizEditor({
                       className="flex aspect-[16/10] w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-background text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {uploading ? <Loader2 className="h-7 w-7 animate-spin" /> : <ImagePlus className="h-7 w-7" />}
-                      <span>Upload ảnh đáp án</span>
+                      <span>{t('courseEditorForms.uploadAnswerImage')}</span>
                     </button>
                   )}
                   <input
@@ -458,7 +468,7 @@ export default function ImageChoiceQuizEditor({
                     onClick={() => inputRefs.current[choice.id]?.click()}
                   >
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                    Đổi ảnh
+                    {t('courseEditorForms.changeImage')}
                   </Button>
                 )}
 
@@ -478,9 +488,9 @@ export default function ImageChoiceQuizEditor({
 
       <div className="space-y-3 border-t border-border pt-4">
         <div>
-          <h3 className="text-sm font-bold">Giải thích</h3>
+          <h3 className="text-sm font-bold">{t('courseEditorForms.explanation')}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Hiển thị sau khi học viên chọn đúng đáp án.
+            {t('courseEditorForms.explanationAfterCorrect')}
           </p>
         </div>
         <RichTextEditor
@@ -493,9 +503,9 @@ export default function ImageChoiceQuizEditor({
       <div className="space-y-3 border-t border-border pt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold">Gợi ý</h3>
+            <h3 className="text-sm font-bold">{t('courseEditorForms.hints')}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Học viên có thể mở gợi ý trước khi xác nhận đáp án.
+              {t('courseEditorForms.hintsBeforeAnswer')}
             </p>
           </div>
           <Button
@@ -507,7 +517,7 @@ export default function ImageChoiceQuizEditor({
             disabled={(quiz.hints || []).length >= 10}
           >
             <Plus className="h-4 w-4" />
-            Thêm gợi ý
+            {t('courseEditorForms.addHint')}
           </Button>
         </div>
 
@@ -516,7 +526,7 @@ export default function ImageChoiceQuizEditor({
             {(quiz.hints || []).map((hint, hintIndex) => (
               <div key={`image-choice-hint-${hintIndex}`} className="flex items-start gap-3 group">
                 <div className="pt-[14px] w-14 shrink-0 text-xs font-bold text-muted-foreground">
-                  Gợi ý {hintIndex + 1}
+                  {t('courseEditorForms.hintNumber', { count: hintIndex + 1 })}
                 </div>
                 <div className="flex-1">
                   <RichTextEditor
@@ -542,7 +552,7 @@ export default function ImageChoiceQuizEditor({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-            Chưa có gợi ý cho câu hỏi này.
+            {t('courseEditorForms.noHintsForQuestion')}
           </div>
         )}
       </div>

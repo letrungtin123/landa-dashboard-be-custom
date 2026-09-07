@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import i18n from '@/i18n';
 
 interface ConfirmOptions {
   title: string;
@@ -23,8 +24,8 @@ export const useConfirmStore = create<ConfirmStore>((set) => ({
   isOpen: false,
   title: '',
   description: '',
-  confirmText: 'Confirm',
-  cancelText: 'Cancel',
+  confirmText: i18n.t('confirmDialog.confirm'),
+  cancelText: i18n.t('confirmDialog.cancel'),
   variant: 'default',
   onConfirm: () => {},
   
@@ -32,8 +33,8 @@ export const useConfirmStore = create<ConfirmStore>((set) => ({
     set({ 
       ...options, 
       isOpen: true,
-      confirmText: options.confirmText || 'Confirm',
-      cancelText: options.cancelText || 'Cancel',
+      confirmText: options.confirmText || i18n.t('confirmDialog.confirm'),
+      cancelText: options.cancelText || i18n.t('confirmDialog.cancel'),
       variant: options.variant || 'default',
     }),
     

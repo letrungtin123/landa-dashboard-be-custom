@@ -6,6 +6,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cn } from "@/utils/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 const Sheet = SheetPrimitive.Root
 const SheetTrigger = SheetPrimitive.Trigger
@@ -43,8 +44,9 @@ const sheetVariants = {
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ className, children, side = "right", showCloseButton = true, ...props }, ref) => (
-  <SheetPortal>
+>(({ className, children, side = "right", showCloseButton = true, ...props }, ref) => {
+  const { t } = useTranslation()
+  return <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
@@ -66,13 +68,14 @@ const SheetContent = React.forwardRef<
             size="icon-sm"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common.close")}</span>
           </Button>
         </SheetPrimitive.Close>
       )}
     </SheetPrimitive.Content>
   </SheetPortal>
-))
+}
+)
 SheetContent.displayName = "SheetContent"
 
 function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

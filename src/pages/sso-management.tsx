@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Loader2, Save, ShieldCheck, Trash2, AlertCircle, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 type DraftConfig = {
   is_enabled: boolean;
@@ -53,11 +56,13 @@ const KeycloakIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-const PROVIDERS: Array<{ id: SsoProvider; title: string; description: string; icon: React.ElementType }> = [
-  { id: 'google', title: 'Google', description: 'OIDC Google Workspace hoặc Google identity.', icon: GoogleIcon },
-  { id: 'keycloak', title: 'Keycloak', description: 'Keycloak realm OIDC theo từng tenant.', icon: KeycloakIcon },
+function getProviders(t: TFunction): Array<{ id: SsoProvider; title: string; description: string; icon: React.ElementType }> {
+  return [
+  { id: 'google', title: 'Google', description: t('sso.googleDescription'), icon: GoogleIcon },
+  { id: 'keycloak', title: 'Keycloak', description: t('sso.keycloakDescription'), icon: KeycloakIcon },
   { id: 'microsoft365', title: 'Microsoft 365', description: 'Microsoft Entra ID / Office 365 OIDC.', icon: MicrosoftIcon },
-];
+  ];
+}
 
 const EMPTY_DRAFT: DraftConfig = {
   is_enabled: false,
@@ -103,23 +108,23 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function validateEnabledConfig(provider: SsoProvider, draft: DraftConfig, config?: SsoConfig): Partial<Record<FieldKey, string>> {
+function validateEnabledConfig(provider: SsoProvider, draft: DraftConfig, t: TFunction, config?: SsoConfig): Partial<Record<FieldKey, string>> {
   const errors: Partial<Record<FieldKey, string>> = {};
   if (!draft.is_enabled) return errors;
 
   if (!draft.client_id.trim()) {
-    errors.client_id = 'Bắt buộc nhập Client ID khi bật SSO.';
+    errors.client_id = t('sso.clientIdRequired');
   }
 
   if (!config?.has_secret && !draft.client_secret.trim()) {
-    errors.client_secret = 'Bắt buộc nhập Client Secret khi bật SSO.';
+    errors.client_secret = t('sso.clientSecretRequired');
   }
 
   const scopes = parseScopes(draft.scopesText);
   if (scopes.length === 0) {
-    errors.scopesText = 'Bắt buộc nhập ít nhất một scope.';
+    errors.scopesText = t('sso.scopesRequired');
   } else if (!scopes.includes('openid')) {
-    errors.scopesText = 'Scope bắt buộc phải có openid.';
+    errors.scopesText = t('sso.openidRequired');
   }
 
   const urlFields: Array<keyof Pick<DraftConfig, 'issuer_url' | 'authorization_url' | 'token_url' | 'userinfo_url'>> = [
@@ -130,7 +135,7 @@ function validateEnabledConfig(provider: SsoProvider, draft: DraftConfig, config
   ];
   for (const field of urlFields) {
     if (!isHttpUrl(draft[field])) {
-      errors[field] = 'URL phải bắt đầu bằng http:// hoặc https://.';
+      errors[field] = t('sso.invalidUrl');
     }
   }
 
@@ -138,14 +143,14 @@ function validateEnabledConfig(provider: SsoProvider, draft: DraftConfig, config
   if (provider === 'keycloak') {
     const hasManualEndpoints = !!draft.authorization_url.trim() && !!draft.token_url.trim() && !!draft.userinfo_url.trim();
     if (!hasIssuer && !hasManualEndpoints) {
-      errors.endpoints = 'Keycloak cần Issuer URL hoặc đầy đủ Authorization URL, Token URL, Userinfo URL.';
+      errors.endpoints = t('sso.keycloakEndpointsRequired');
     }
   }
 
   if (provider === 'microsoft365') {
     const hasManualEndpoints = !!draft.authorization_url.trim() && !!draft.token_url.trim();
     if (!hasIssuer && !hasManualEndpoints) {
-      errors.endpoints = 'Microsoft 365 cần Issuer URL hoặc ít nhất Authorization URL và Token URL.';
+      errors.endpoints = t('sso.microsoftEndpointsRequired');
     }
   }
 
@@ -172,6 +177,7 @@ const itemVariants = {
 };
 
 export default function SsoManagementPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const activeTenantId = useTenantStore((state) => state.activeTenantId);
@@ -222,7 +228,7 @@ export default function SsoManagementPage() {
       },
     }),
     onSuccess: (_, variables) => {
-      toast.success(`Đã lưu cấu hình ${variables.provider}`);
+      toast.success(t('sso.saved', { provider: variables.provider }));
       queryClient.invalidateQueries({ queryKey });
       setDrafts((current) => ({
         ...current,
@@ -234,41 +240,41 @@ export default function SsoManagementPage() {
       }));
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Không thể lưu cấu hình SSO');
+      toast.error(getLocalizedApiError(err, t('sso.saveFailed')));
     },
   });
 
   const clearSecretMutation = useMutation({
     mutationFn: (provider: SsoProvider) => updateSsoConfig(provider, { clear_client_secret: true }),
     onSuccess: (_, provider) => {
-      toast.success(`Đã xóa client secret ${provider}`);
+      toast.success(t('sso.secretDeleted', { provider }));
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Không thể xóa secret');
+      toast.error(getLocalizedApiError(err, t('sso.secretDeleteFailed')));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteSsoConfig,
     onSuccess: (_, provider) => {
-      toast.success(`Đã xóa cấu hình ${provider}`);
+      toast.success(t('sso.configurationDeleted', { provider }));
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Không thể xóa cấu hình SSO');
+      toast.error(getLocalizedApiError(err, t('sso.configurationDeleteFailed')));
     },
   });
 
   const handleSave = (provider: SsoProvider, draft: DraftConfig, config?: SsoConfig) => {
-    const validationErrors = validateEnabledConfig(provider, draft, config);
+    const validationErrors = validateEnabledConfig(provider, draft, t, config);
     setFieldErrors((current) => ({
       ...current,
       [provider]: validationErrors,
     }));
 
     if (Object.keys(validationErrors).length > 0) {
-      toast.error('Vui lòng nhập đủ các trường bắt buộc trước khi lưu SSO.');
+      toast.error(t('sso.requiredBeforeSave'));
       return;
     }
 
@@ -284,8 +290,8 @@ export default function SsoManagementPage() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
                 <AlertCircle className="h-6 w-6 text-destructive" />
               </div>
-              <CardTitle className="text-xl">Không có quyền truy cập</CardTitle>
-              <CardDescription className="text-base">Chỉ superadmin mới được quản lý cấu hình SSO.</CardDescription>
+              <CardTitle className="text-xl">{t('sso.accessDenied')}</CardTitle>
+              <CardDescription className="text-base">{t('sso.superadminOnly')}</CardDescription>
             </CardHeader>
           </Card>
         </motion.div>
@@ -307,11 +313,11 @@ export default function SsoManagementPage() {
             </div>
             <span className="text-sm font-semibold uppercase tracking-wider">Single Sign-On</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Quản lý SSO</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t('sso.title')}</h1>
           <p className="text-muted-foreground">
-            Tenant hiện tại:{' '}
+            {t('sso.currentTenant')}{' '}
             <span className="font-semibold text-foreground">
-              {activeTenantName || 'Chưa chọn tenant'}
+              {activeTenantName || t('sso.noTenantSelected')}
             </span>
           </p>
         </div>
@@ -324,9 +330,9 @@ export default function SsoManagementPage() {
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
                 <Settings2 className="h-7 w-7 text-muted-foreground" />
               </div>
-              <CardTitle className="text-xl">Chưa chọn tenant</CardTitle>
+              <CardTitle className="text-xl">{t('sso.noTenantSelected')}</CardTitle>
               <CardDescription className="text-base mt-2">
-                Hãy chọn tenant trên thanh header để cấu hình SSO riêng cho tenant đó.
+                {t('sso.selectTenantDescription')}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -338,7 +344,7 @@ export default function SsoManagementPage() {
           animate="visible"
           className="grid gap-6 xl:grid-cols-3"
         >
-          {PROVIDERS.map((providerMeta) => {
+          {getProviders(t).map((providerMeta) => {
             const provider = providerMeta.id;
             const draft = drafts[provider];
             const config = configs.find((item) => item.provider === provider);
@@ -411,7 +417,7 @@ export default function SsoManagementPage() {
                             {config?.has_secret && (
                               <div className="inline-flex items-center rounded-md border border-emerald-200/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:border-emerald-800/50 dark:bg-emerald-500/20 dark:text-emerald-400">
                                 <ShieldCheck className="mr-1 h-3 w-3" />
-                                Đã có secret
+                                {t('sso.secretExists')}
                               </div>
                             )}
                           </div>
@@ -421,7 +427,7 @@ export default function SsoManagementPage() {
                               ...current,
                               [provider]: { ...current[provider], client_secret: event.target.value },
                             }))}
-                            placeholder={config?.has_secret ? 'Để trống nếu không đổi secret' : 'Nhập client secret'}
+                            placeholder={config?.has_secret ? t('sso.secretUnchanged') : t('sso.enterClientSecret')}
                             className={`bg-muted/40 transition-colors focus:bg-background ${errors.client_secret ? 'border-destructive focus-visible:ring-destructive/30' : ''}`}
                           />
                           {errors.client_secret && <p className="text-xs text-destructive">{errors.client_secret}</p>}
@@ -430,9 +436,9 @@ export default function SsoManagementPage() {
                         <div className="app-liquid-card rounded-lg border bg-muted/20 p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
-                              <div className="text-sm font-medium">Tu dong kich hoat learner moi</div>
+                              <div className="text-sm font-medium">{t('sso.autoRegister')}</div>
                               <p className="text-xs leading-relaxed text-muted-foreground">
-                                Bật: Tự động tạo account learner và không cần admin duyệt xác thực. Tắt: Cần admin duyệt xác thực account learner khi đăng nhập SSO.
+                                {t('sso.autoRegisterDescription')}
                               </p>
                             </div>
                             <Switch
@@ -469,7 +475,7 @@ export default function SsoManagementPage() {
                               ...current,
                               [provider]: { ...current[provider], authorization_url: event.target.value },
                             }))}
-                            placeholder="Tùy chọn - backend có default"
+                            placeholder={t('sso.optionalBackendDefault')}
                             className={`bg-muted/40 transition-colors focus:bg-background ${errors.authorization_url || errors.endpoints ? 'border-destructive focus-visible:ring-destructive/30' : ''}`}
                           />
                           {errors.authorization_url && <p className="text-xs text-destructive">{errors.authorization_url}</p>}
@@ -483,7 +489,7 @@ export default function SsoManagementPage() {
                               ...current,
                               [provider]: { ...current[provider], token_url: event.target.value },
                             }))}
-                            placeholder="Tùy chọn - backend có default"
+                            placeholder={t('sso.optionalBackendDefault')}
                             className={`bg-muted/40 transition-colors focus:bg-background ${errors.token_url || errors.endpoints ? 'border-destructive focus-visible:ring-destructive/30' : ''}`}
                           />
                           {errors.token_url && <p className="text-xs text-destructive">{errors.token_url}</p>}
@@ -497,7 +503,7 @@ export default function SsoManagementPage() {
                               ...current,
                               [provider]: { ...current[provider], userinfo_url: event.target.value },
                             }))}
-                            placeholder="Tùy chọn - backend có default"
+                            placeholder={t('sso.optionalBackendDefault')}
                             className={`bg-muted/40 transition-colors focus:bg-background ${errors.userinfo_url || errors.endpoints ? 'border-destructive focus-visible:ring-destructive/30' : ''}`}
                           />
                           {errors.userinfo_url && <p className="text-xs text-destructive">{errors.userinfo_url}</p>}
@@ -538,7 +544,7 @@ export default function SsoManagementPage() {
                           onClick={() => handleSave(provider, draft, config)}
                         >
                           {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                          Lưu
+                          {t('sso.save')}
                         </Button>
                         <Button
                           type="button"
@@ -547,7 +553,7 @@ export default function SsoManagementPage() {
                           disabled={!config?.has_secret || isSaving || isDeleting || isClearing}
                           onClick={() => clearSecretMutation.mutate(provider)}
                         >
-                          Xóa secret
+                          {t('sso.deleteSecret')}
                         </Button>
                         <Button
                           type="button"
@@ -555,13 +561,13 @@ export default function SsoManagementPage() {
                           className="flex-1 min-w-[90px] shadow-sm transition-all active:scale-95"
                           disabled={isSaving || isDeleting || isClearing}
                           onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn xóa cấu hình ${providerMeta.title}?`)) {
+                            if (window.confirm(t('sso.deleteConfirm', { provider: providerMeta.title }))) {
                               deleteMutation.mutate(provider);
                             }
                           }}
                         >
                           {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                          Xóa
+                          {t('sso.delete')}
                         </Button>
                       </div>
                     )}

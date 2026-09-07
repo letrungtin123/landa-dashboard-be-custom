@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/utils/store';
@@ -69,6 +70,7 @@ const TOOLTIP_STYLE = {
 };
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const roleLabels = useAuthStore((s) => s.roleLabels);
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -78,7 +80,7 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  useHeaderInfo('Dashboard');
+  useHeaderInfo(t('dashboard.title'));
 
   // MOCK: Removed useDashboardStats hook
   const isLoading = false;
@@ -94,16 +96,16 @@ export default function DashboardPage() {
 
         <PageHeader
           icon={LayoutDashboard}
-          title="Dashboard"
-          description="Tổng quan hệ thống và chỉ số hoạt động"
+          title={t('dashboard.title')}
+          description={t('dashboard.description')}
         />
 
         {!canView ? (
           <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-8 text-center mt-6">
             <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-3" />
-            <h2 className="text-lg font-semibold text-destructive mb-1">Access Restricted</h2>
+            <h2 className="text-lg font-semibold text-destructive mb-1">{t('dashboard.accessRestricted')}</h2>
             <p className="text-muted-foreground text-sm">
-              You do not have permission to view the dashboard overview.
+              {t('dashboard.noPermission')}
             </p>
           </div>
         ) : (
@@ -118,23 +120,23 @@ export default function DashboardPage() {
               }}
             >
               <motion.div variants={chartCardVariant}>
-                <StatCard title="Total Users" icon={<Users className="h-4 w-4 text-muted-foreground/70" />} value={totalUsers} isLoading={isLoading} />
+                <StatCard title={t('dashboard.totalUsers')} icon={<Users className="h-4 w-4 text-muted-foreground/70" />} value={totalUsers} isLoading={isLoading} />
               </motion.div>
               <motion.div variants={chartCardVariant}>
-                <StatCard title="Active Tenants" icon={<Building2 className="h-4 w-4 text-muted-foreground/70" />} value={activeTenants} isLoading={isLoading} />
+                <StatCard title={t('dashboard.activeTenants')} icon={<Building2 className="h-4 w-4 text-muted-foreground/70" />} value={activeTenants} isLoading={isLoading} />
               </motion.div>
               <motion.div variants={chartCardVariant}>
-                <StatCard title="Avg. Activity" icon={<Activity className="h-4 w-4 text-muted-foreground/70" />} value={avgActivity} suffix="%" isLoading={isLoading} />
+                <StatCard title={t('dashboard.averageActivity')} icon={<Activity className="h-4 w-4 text-muted-foreground/70" />} value={avgActivity} suffix="%" isLoading={isLoading} />
               </motion.div>
               <motion.div variants={chartCardVariant}>
                 <Card className="shadow-none border-border bg-muted/40">
                   <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
-                    <CardTitle className="text-sm font-semibold text-foreground">Your Role</CardTitle>
+                    <CardTitle className="text-sm font-semibold text-foreground">{t('dashboard.yourRole')}</CardTitle>
                     <ShieldCheck className="h-4 w-4 text-foreground/70" />
                   </CardHeader>
                   <CardContent className="p-4 pt-0 flex items-end">
                     <div className="text-lg font-mono font-bold uppercase tracking-wider text-foreground bg-background border border-border px-3 py-1 rounded-md shadow-sm">
-                      {getRoleLabel(user?.role, roleLabels, user?.role || '...')}
+                      {getRoleLabel(user?.role, roleLabels, user?.role || t('common.loading'))}
                     </div>
                   </CardContent>
                 </Card>
@@ -157,9 +159,9 @@ export default function DashboardPage() {
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                      User Growth
+                      {t('dashboard.userGrowth')}
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">Monthly active users over time</p>
+                    <p className="text-xs text-muted-foreground">{t('dashboard.userGrowthDescription')}</p>
                   </CardHeader>
                   <CardContent className="p-4 pt-2">
                     <ResponsiveContainer width="100%" height={240}>
@@ -188,9 +190,9 @@ export default function DashboardPage() {
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
                       <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                      Activity by Module
+                      {t('dashboard.activityByModule')}
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">Actions performed this week</p>
+                    <p className="text-xs text-muted-foreground">{t('dashboard.activityByModuleDescription')}</p>
                   </CardHeader>
                   <CardContent className="p-4 pt-2">
                     <ResponsiveContainer width="100%" height={240}>
@@ -213,9 +215,9 @@ export default function DashboardPage() {
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
                       <PieChartIcon className="h-4 w-4 text-muted-foreground" />
-                      Workspace Distribution
+                      {t('dashboard.workspaceDistribution')}
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">Tenants by plan type</p>
+                    <p className="text-xs text-muted-foreground">{t('dashboard.workspaceDistributionDescription')}</p>
                   </CardHeader>
                   <CardContent className="p-4 pt-2 flex items-center justify-center">
                     <ResponsiveContainer width="100%" height={240}>
@@ -241,9 +243,9 @@ export default function DashboardPage() {
                   <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
                       <Zap className="h-4 w-4 text-muted-foreground" />
-                      System Health
+                      {t('dashboard.systemHealth')}
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">Current performance metrics</p>
+                    <p className="text-xs text-muted-foreground">{t('dashboard.systemHealthDescription')}</p>
                   </CardHeader>
                   <CardContent className="p-4 pt-2">
                     <ResponsiveContainer width="100%" height={240}>
@@ -251,8 +253,8 @@ export default function DashboardPage() {
                         <PolarGrid stroke="var(--border)" strokeOpacity={0.5} />
                         <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
                         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                        <Radar name="Current" dataKey="value" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.15} strokeWidth={2} />
-                        <Radar name="Target" dataKey="target" stroke="var(--muted-foreground)" fill="none" strokeWidth={1} strokeDasharray="4 4" />
+                        <Radar name={t('dashboard.current')} dataKey="value" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.15} strokeWidth={2} />
+                        <Radar name={t('dashboard.target')} dataKey="target" stroke="var(--muted-foreground)" fill="none" strokeWidth={1} strokeDasharray="4 4" />
                         <Tooltip contentStyle={TOOLTIP_STYLE} />
                       </RadarChart>
                     </ResponsiveContainer>

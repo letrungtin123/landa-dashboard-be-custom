@@ -105,7 +105,7 @@ export function useBranding() {
     }
 
     if (title || faviconUrl) {
-      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch {}
+      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch { /* Private-mode storage can be unavailable. */ }
     }
   }, [data?.tenantName, data?.squareIcon]);
 
@@ -143,7 +143,7 @@ export function useBrandingPublic() {
     }
 
     if (title || faviconUrl) {
-      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch {}
+      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch { /* Private-mode storage can be unavailable. */ }
     }
   }, [data?.tenantName, data?.squareIcon]);
 

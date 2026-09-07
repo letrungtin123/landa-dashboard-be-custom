@@ -4,6 +4,7 @@
  * Hiển thị chi tiết khóa học + badges + weekly momentum của 1 learner.
  */
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -52,20 +53,22 @@ import badgeBacThayTN from '@/assets/badges/BacThayToanNang.png';
 import badgeHocGia from '@/assets/badges/HocGiaTocDo.png';
 import badgeNhaThamHiem from '@/assets/badges/NhaThamHiemHeThong.png';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { formatLocaleDate, formatLocaleNumber } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
 
-const BADGE_IMAGE_MAP: Record<string, { src: string; name: string }> = {
-  perfect_profile: { src: badgeManhGhep, name: 'Mảnh Ghép Hoàn Hảo' },
-  onboarding_warrior: { src: badgeChienBinh, name: 'Chiến Binh Onboarding' },
-  value_holder: { src: badgeNguoiNamGiu, name: 'Người Nắm Giữ Giá Trị' },
-  la_ambassador: { src: badgeDaiSuLA, name: 'Đại Sứ L&A' },
-  la_breakthrough: { src: badgeNguoiButPha, name: 'Người Bức Phá L&A' },
-  la_expert: { src: badgeChuyenGiaLA, name: 'Chuyên Gia L&A' },
-  recruitment_master: { src: badgeBacThayTD, name: 'Bậc Thầy Tuyển Dụng' },
-  otif_expert: { src: badgeOTIF, name: 'Chuyên Gia OTIF' },
-  trusted_ambassador: { src: badgeDaiSuTinCay, name: 'Đại Sứ Tin Cậy' },
-  omnipotent_master: { src: badgeBacThayTN, name: 'Bậc Thầy Toàn Năng' },
-  speed_scholar: { src: badgeHocGia, name: 'Học Giả Tốc Độ' },
-  system_explorer: { src: badgeNhaThamHiem, name: 'Nhà Thám Hiểm Hệ Thống' },
+const BADGE_IMAGE_MAP: Record<string, { src: string; nameKey: string }> = {
+  perfect_profile: { src: badgeManhGhep, nameKey: 'learnerDetail.badgeNames.perfectProfile' },
+  onboarding_warrior: { src: badgeChienBinh, nameKey: 'learnerDetail.badgeNames.onboardingWarrior' },
+  value_holder: { src: badgeNguoiNamGiu, nameKey: 'learnerDetail.badgeNames.valueHolder' },
+  la_ambassador: { src: badgeDaiSuLA, nameKey: 'learnerDetail.badgeNames.laAmbassador' },
+  la_breakthrough: { src: badgeNguoiButPha, nameKey: 'learnerDetail.badgeNames.laBreakthrough' },
+  la_expert: { src: badgeChuyenGiaLA, nameKey: 'learnerDetail.badgeNames.laExpert' },
+  recruitment_master: { src: badgeBacThayTD, nameKey: 'learnerDetail.badgeNames.recruitmentMaster' },
+  otif_expert: { src: badgeOTIF, nameKey: 'learnerDetail.badgeNames.otifExpert' },
+  trusted_ambassador: { src: badgeDaiSuTinCay, nameKey: 'learnerDetail.badgeNames.trustedAmbassador' },
+  omnipotent_master: { src: badgeBacThayTN, nameKey: 'learnerDetail.badgeNames.omnipotentMaster' },
+  speed_scholar: { src: badgeHocGia, nameKey: 'learnerDetail.badgeNames.speedScholar' },
+  system_explorer: { src: badgeNhaThamHiem, nameKey: 'learnerDetail.badgeNames.systemExplorer' },
 };
 
 type MomentumFilterMode = 'week' | 'day' | 'month' | 'year' | 'custom';
@@ -204,17 +207,6 @@ const getCourseProgressTone = (progress: number, isCompleted: boolean) => {
 
 const LEARNER_DETAIL_PAGE_SIZE = 10;
 
-const COURSE_STATUS_OPTIONS: Array<{ value: ReportCourseCompletionStatus; label: string }> = [
-  { value: 'all', label: 'Tất cả' },
-  { value: 'completed', label: 'Đã học' },
-  { value: 'learning', label: 'Đang học' },
-  { value: 'not_started', label: 'Chưa học' },
-];
-
-const COURSE_DATA_SCOPE_OPTIONS: Array<{ value: LearnerDetailDataScope; label: string }> = [
-  { value: 'report_filter', label: 'Lọc theo bộ lọc báo cáo' },
-  { value: 'learner_history', label: 'Tất cả khóa học học viên từng học' },
-];
 const normalizeScopeId = (value?: string | 'all' | null) => {
   if (!value || value === 'all') return undefined;
   return value;
@@ -232,6 +224,18 @@ interface Props {
 }
 
 export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId, reportDateFrom, reportDateTo }: Props) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  const courseStatusOptions: Array<{ value: ReportCourseCompletionStatus; label: string }> = [
+    { value: 'all', label: t('learnerDetail.all') },
+    { value: 'completed', label: t('learnerDetail.completed') },
+    { value: 'learning', label: t('learnerDetail.learning') },
+    { value: 'not_started', label: t('learnerDetail.notStarted') },
+  ];
+  const courseDataScopeOptions: Array<{ value: LearnerDetailDataScope; label: string }> = [
+    { value: 'report_filter', label: t('learnerDetail.reportFilterScope') },
+    { value: 'learner_history', label: t('learnerDetail.learnerHistoryScope') },
+  ];
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [coursePage, setCoursePage] = useState(1);
@@ -246,8 +250,8 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
   const scopedSubgroupId = normalizeScopeId(subgroupId);
   const scopedTeamId = normalizeScopeId(teamId);
   const hasReportContext = Boolean(reportDateFrom && reportDateTo);
-  const selectedCourseDataScope = COURSE_DATA_SCOPE_OPTIONS.find((option) => option.value === courseDataScope) || COURSE_DATA_SCOPE_OPTIONS[0];
-  const selectedCourseStatus = COURSE_STATUS_OPTIONS.find((option) => option.value === courseStatus) || COURSE_STATUS_OPTIONS[0];
+  const selectedCourseDataScope = courseDataScopeOptions.find((option) => option.value === courseDataScope) || courseDataScopeOptions[0];
+  const selectedCourseStatus = courseStatusOptions.find((option) => option.value === courseStatus) || courseStatusOptions[0];
 
   useEffect(() => {
     if (!isOpen) return;
@@ -341,21 +345,21 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
   };
 
   const fmtTime = (m: number) => {
-    if (m < 60) return `${m} phút`;
+    if (m < 60) return t('learnerDetail.minutes', { count: m });
     const h = Math.floor(m / 60);
     const r = m % 60;
-    return r > 0 ? `${h} tiếng ${r} phút` : `${h} tiếng`;
+    return r > 0 ? t('learnerDetail.hoursMinutes', { hours: h, minutes: r }) : t('learnerDetail.hours', { count: h });
   };
 
   const renderMomentumFilterPanel = () => (
     <div className="absolute right-3 top-11 z-30 w-[calc(100%-1.5rem)] rounded-xl border border-white/20 bg-[#071827]/95 p-3 shadow-2xl backdrop-blur sm:w-[360px]">
       <div className="mb-3 grid grid-cols-2 gap-1 sm:grid-cols-5">
         {[
-          ['week', '7 ngày'],
-          ['day', 'Ngày'],
-          ['month', 'Tháng'],
-          ['year', 'Năm'],
-          ['custom', 'Từ - đến'],
+          ['week', t('learnerDetail.sevenDays')],
+          ['day', t('learnerDetail.day')],
+          ['month', t('learnerDetail.month')],
+          ['year', t('learnerDetail.year')],
+          ['custom', t('learnerDetail.customRange')],
         ].map(([mode, label]) => (
           <button
             key={mode}
@@ -421,7 +425,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
           className="h-8 px-2 text-white hover:bg-white/10 hover:text-white"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Reset
+          {t('common.reset')}
         </Button>
         <Button
           type="button"
@@ -430,7 +434,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
           className="h-8 bg-[#45FFCA] px-3 text-[#071827] hover:bg-[#45FFCA]/90"
         >
           <Check className="h-3.5 w-3.5" />
-          Apply
+          {t('common.confirm')}
         </Button>
       </div>
     </div>
@@ -448,7 +452,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <DialogTitle className="text-lg sm:text-2xl font-bold text-foreground truncate">
-                  Chi tiết: {username}
+                  {t('learnerDetail.details', { username })}
                 </DialogTitle>
                 {userGroups.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5 sm:mt-2 mb-1">
@@ -462,9 +466,9 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                 <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 hidden sm:block">
                   {hasReportContext
                     ? courseDataScope === 'report_filter'
-                      ? 'Danh sách khóa học theo bộ lọc Báo cáo tổng hợp.'
-                      : 'Danh sách các khóa học học viên đã ghi danh.'
-                    : 'Danh sách khóa học được phân và tiến độ học tập.'}
+                      ? t('learnerDetail.reportFilterDescription')
+                      : t('learnerDetail.learnerHistoryDescription')
+                    : t('learnerDetail.defaultDescription')}
                 </DialogDescription>
               </div>
             </div>
@@ -475,7 +479,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
               <div className="relative w-full sm:max-w-md">
                 <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Tìm kiếm khóa học..."
+                  placeholder={t('learnerDetail.searchCourses')}
                   className="pl-9 h-9 sm:h-10 bg-background border-border shadow-sm focus-visible:ring-primary/30 text-sm rounded-xl transition-all"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -493,7 +497,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-[170px]">
-                  {COURSE_STATUS_OPTIONS.map((option) => (
+                  {courseStatusOptions.map((option) => (
                     <DropdownMenuItem
                       key={option.value}
                       onClick={() => setCourseStatus(option.value)}
@@ -518,7 +522,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[248px]">
-                    {COURSE_DATA_SCOPE_OPTIONS.map((option) => (
+                    {courseDataScopeOptions.map((option) => (
                       <DropdownMenuItem
                         key={option.value}
                         onClick={() => setCourseDataScope(option.value)}
@@ -541,10 +545,10 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
               <div className="app-liquid-card rounded-xl border border-border bg-card p-3 sm:p-4 shadow-sm min-w-0">
                 <div className="flex items-center gap-2 mb-3">
                   <Award className="h-4 w-4 text-amber-500 shrink-0" />
-                  <h4 className="text-xs sm:text-sm font-bold text-foreground">Danh hiệu đạt được</h4>
+                  <h4 className="text-xs sm:text-sm font-bold text-foreground">{t('learnerDetail.achievements')}</h4>
                   {badgesData && (
                     <span className="ml-auto text-[9px] sm:text-[10px] font-bold bg-primary/10 text-primary px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
-                      {badgesData.badges.length} danh hiệu
+                      {t('learnerDetail.achievementCount', { count: badgesData.badges.length })}
                     </span>
                   )}
                 </div>
@@ -555,14 +559,14 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                     ))}
                   </div>
                 ) : badgesData.badges.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic py-2">Chưa đạt danh hiệu nào.</p>
+                  <p className="text-xs text-muted-foreground italic py-2">{t('learnerDetail.noAchievements')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {badgesData.badges.map((b) => {
                       const info = BADGE_IMAGE_MAP[b.badge_id];
                       if (!info) return null;
                       return (
-                        <AppTooltip content={`${info.name} — Đạt: ${new Date(b.earned_at).toLocaleDateString('vi-VN')}`}><div
+                        <AppTooltip content={t('learnerDetail.earnedOn', { badge: t(info.nameKey), date: formatLocaleDate(b.earned_at, locale) })}><div
                           key={b.badge_id}
                           className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/20 border border-amber-200/50 dark:border-amber-700/30 text-[10px] sm:text-xs font-medium text-amber-800 dark:text-amber-300 shadow-sm"
 
@@ -572,7 +576,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                             whileHover={{ scale: 1.15 }}
                             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                           >
-                            <img src={info.src} alt={info.name} className="w-full h-full object-contain drop-shadow-sm" />
+                            <img src={info.src} alt={t(info.nameKey)} className="w-full h-full object-contain drop-shadow-sm" />
                             <div
                               className="absolute inset-0 z-10 pointer-events-none"
                               style={{
@@ -593,7 +597,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                               />
                             </div>
                           </motion.div>
-                          <span className="truncate max-w-[80px] sm:max-w-none">{info.name}</span>
+                          <span className="truncate max-w-[80px] sm:max-w-none">{t(info.nameKey)}</span>
                         </div></AppTooltip>
                       );
                     })}
@@ -607,17 +611,18 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                   <div className="min-w-0 pr-2">
                     <h4 className="text-xs sm:text-sm font-bold flex items-center gap-2">
                       <BarChart3 className="h-4 w-4 text-white/80 shrink-0" />
-                      Weekly Momentum
+                      {t('learnerDetail.weeklyMomentum')}
                     </h4>
                     {studyTimeData && (() => {
                       if (!isDefaultWeekly) {
                         const meta = studyTimeData.meta;
                         const from = meta?.from || studyTimeParams?.from || momentumFilter.from;
                         const to = meta?.to || studyTimeParams?.to || momentumFilter.to;
+                        const range = from === to ? from : `${from} → ${to}`;
                         const granularity = meta?.granularity || studyTimeParams?.granularity || 'day';
-                        const bucket = granularity === 'day' ? 'ngày' : granularity === 'month' ? 'tháng' : 'năm';
+                        const bucket = granularity === 'day' ? t('learnerDetail.day') : granularity === 'month' ? t('learnerDetail.month') : t('learnerDetail.year');
                         return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
-                          {from === to ? from : `${from} → ${to}`} theo {bucket}: <span className="text-[#45FFCA] font-semibold">{fmtTime(totalStudyMinutes)}</span>
+                          {t('learnerDetail.timeRange', { range, bucket, time: fmtTime(totalStudyMinutes) })}
                         </p>;
                       }
                       const todayMins = studyChartData[studyChartData.length - 1]?.rawMinutes || 0;
@@ -626,17 +631,17 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                         ? Math.round(pastDays.reduce((a, d) => a + d.rawMinutes, 0) / pastDays.length)
                         : 0;
                       if (todayMins === 0) {
-                        return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">Hôm nay chưa bắt đầu học.</p>;
+                        return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">{t('learnerDetail.noStudyToday')}</p>;
                       }
                       if (avgMins > 0) {
                         const pct = Math.round((todayMins / avgMins) * 100);
                         return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
-                          Hôm nay: <span className="text-[#45FFCA] font-semibold">{fmtTime(todayMins)}</span>
-                          {pct >= 100 ? ` — cao hơn ${pct - 100}% so với TB tuần` : ` — TB tuần: ${fmtTime(avgMins)}/ngày`}
+                          {t('learnerDetail.todayStudy', { time: fmtTime(todayMins) })}
+                          {pct >= 100 ? ` ${t('learnerDetail.aboveWeeklyAverage', { percent: pct - 100 })}` : ` ${t('learnerDetail.weeklyAverage', { time: fmtTime(avgMins) })}`}
                         </p>;
                       }
                       return <p className="text-[10px] sm:text-[11px] text-white/70 mt-1">
-                        Hôm nay: <span className="text-[#45FFCA] font-semibold">{fmtTime(todayMins)}</span>
+                        {t('learnerDetail.todayStudy', { time: fmtTime(todayMins) })}
                       </p>;
                     })()}
                   </div>
@@ -648,7 +653,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                     className="h-7 shrink-0 rounded-full bg-white/10 px-2 text-[10px] font-semibold text-white hover:bg-white/15 hover:text-white"
                   >
                     <Filter className="h-3.5 w-3.5" />
-                    Bộ lọc
+                    {t('learnerDetail.filter')}
                   </Button>
                 </div>
                 {filterOpen && renderMomentumFilterPanel()}
@@ -697,14 +702,10 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                             if (!active || !payload?.[0]) return null;
                             const mins = payload[0].payload.rawMinutes || 0;
                             if (mins === 0) return null;
-                            const timeText = mins < 60
-                              ? `${mins} phút`
-                              : mins % 60 > 0
-                                ? `${Math.floor(mins / 60)} tiếng ${mins % 60} phút`
-                                : `${Math.floor(mins / 60)} tiếng`;
+                            const timeText = fmtTime(mins);
                             return (
                               <div className="relative bg-[#45FFCA] text-[#0a1628] px-2.5 py-1.5 rounded-lg shadow-lg text-center min-w-[90px] -mt-8 flex flex-col items-center">
-                                <span className="text-[10px] font-normal">Đã học</span>
+                                <span className="text-[10px] font-normal">{t('learnerDetail.studied')}</span>
                                 <span className="text-[12px] font-bold">{timeText}</span>
                                 <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#45FFCA] rotate-45 rounded-[1px]" />
                               </div>
@@ -739,14 +740,14 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
             ) : isError ? (
               <div className="text-center py-10 text-muted-foreground">
                 <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Lỗi khi tải dữ liệu chi tiết.</p>
+                <p>{t('learnerDetail.detailLoadFailed')}</p>
                 <button onClick={() => refetch()} className="text-primary text-sm font-bold mt-2">
-                  Thử lại
+                  {t('common.retry')}
                 </button>
               </div>
             ) : allResults.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground italic">
-                Không tìm thấy khóa học nào.
+                {t('learnerDetail.noCourses')}
               </div>
             ) : (
               <div className="space-y-3">
@@ -762,10 +763,10 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                       const strokeDashoffset =
                         circumference - (progress / 100) * circumference;
                       const statusLabel = course.status === 'not_started'
-                        ? 'Chưa học'
+                        ? t('learnerDetail.notStarted')
                         : course.status === 'completed' || course.is_completed
-                          ? 'Hoàn thành'
-                          : 'Đang học';
+                          ? t('learnerDetail.statusCompleted')
+                          : t('learnerDetail.learning');
 
                       return (
                         <motion.div
@@ -834,7 +835,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
 
                 <div className="flex flex-col gap-2 border-t border-border/40 pt-3 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs font-semibold text-muted-foreground">
-                    Trang {currentCoursePage} / {Math.max(totalCoursePages, 1)} · {totalCourses} khóa học
+                    {t('learnerDetail.coursePageSummary', { page: currentCoursePage, total: Math.max(totalCoursePages, 1), count: formatLocaleNumber(totalCourses, locale) })}
                   </span>
                   <div className="flex items-center gap-2">
                     <Button

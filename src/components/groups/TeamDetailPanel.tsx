@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { storageUrl } from '@/utils/storage-url';
 import {
   UserPlus,
@@ -28,7 +29,6 @@ import { confirmDialog } from '@/utils/confirm-store';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import { useDebounce } from '@/hooks/use-debounce';
-import { format } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -51,6 +51,8 @@ import { getDocuments } from '@/api/custom-library';
 import { AddMembersModal } from './AddMembersModal';
 import { AssignCategoriesModal } from './AssignCategoriesModal';
 import { AssignCourseCategoriesModal } from './AssignCourseCategoriesModal';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
 
 interface Props {
   teamId: string;
@@ -97,6 +99,7 @@ function PaginationControls({
   isFetching?: boolean;
   onPageChange: (page: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border px-4 py-3">
       <Button
@@ -109,7 +112,7 @@ function PaginationControls({
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <span className="text-xs text-muted-foreground">
-        Trang {page} / {Math.max(1, totalPages)}
+        {t('groups.page', { page, total: Math.max(1, totalPages) })}
       </span>
       <Button
         variant="outline"
@@ -164,6 +167,8 @@ function LoadingRows() {
 }
 
 export function TeamDetailPanel({ teamId }: Props) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const [activeTab, setActiveTab] = useState<Tab>('members');
   const [addMembersOpen, setAddMembersOpen] = useState(false);
   const [assignCategoriesOpen, setAssignCategoriesOpen] = useState(false);
@@ -250,10 +255,10 @@ export function TeamDetailPanel({ teamId }: Props) {
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => removeTeamMember(teamId, userId),
     onSuccess: () => {
-      toast.success('Đã xóa thành viên');
+      toast.success(t('groups.memberDeleted'));
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi xóa thành viên'),
+    onError: () => toast.error(t('groups.memberDeleteFailed')),
   });
 
   const removeMultipleMembersMutation = useMutation({
@@ -261,20 +266,20 @@ export function TeamDetailPanel({ teamId }: Props) {
       await Promise.all(userIds.map(id => removeTeamMember(teamId, id)));
     },
     onSuccess: () => {
-      toast.success('Đã xóa các thành viên đã chọn');
+      toast.success(t('groups.selectedMembersDeleted'));
       setSelectedMembers([]);
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi xóa thành viên'),
+    onError: () => toast.error(t('groups.memberDeleteFailed')),
   });
 
   const revokeCategoryMutation = useMutation({
     mutationFn: (categoryId: string) => revokeTeamCategory(teamId, categoryId),
     onSuccess: () => {
-      toast.success('Đã thu hồi danh mục');
+      toast.success(t('groups.categoryRevoked'));
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi thu hồi danh mục'),
+    onError: () => toast.error(t('groups.categoryRevokeFailed')),
   });
 
   const revokeMultipleCategoriesMutation = useMutation({
@@ -282,20 +287,20 @@ export function TeamDetailPanel({ teamId }: Props) {
       await Promise.all(categoryIds.map(id => revokeTeamCategory(teamId, id)));
     },
     onSuccess: () => {
-      toast.success('Đã thu hồi các danh mục đã chọn');
+      toast.success(t('groups.selectedCategoriesRevoked'));
       setSelectedCategories([]);
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi thu hồi danh mục'),
+    onError: () => toast.error(t('groups.categoryRevokeFailed')),
   });
 
   const revokeCourseCategoryMutation = useMutation({
     mutationFn: (categoryId: string) => revokeTeamCourseCategory(teamId, categoryId),
     onSuccess: () => {
-      toast.success('Đã thu hồi danh mục khóa học');
+      toast.success(t('groups.courseCategoryRevoked'));
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
+    onError: () => toast.error(t('groups.courseCategoryRevokeFailed')),
   });
 
   const revokeMultipleCourseCategoriesMutation = useMutation({
@@ -303,17 +308,17 @@ export function TeamDetailPanel({ teamId }: Props) {
       await Promise.all(categoryIds.map(id => revokeTeamCourseCategory(teamId, id)));
     },
     onSuccess: () => {
-      toast.success('Đã thu hồi các danh mục khóa học đã chọn');
+      toast.success(t('groups.selectedCourseCategoriesRevoked'));
       setSelectedCourseCategories([]);
       invalidateTeamQueries();
     },
-    onError: () => toast.error('Lỗi thu hồi danh mục khóa học'),
+    onError: () => toast.error(t('groups.courseCategoryRevokeFailed')),
   });
 
   const handleRemoveMember = (userId: string, username: string) => {
     confirmDialog({
-      title: 'Xóa thành viên',
-      description: `Xóa ${username} khỏi ${teamLabelLower}?`,
+      title: t('groups.removeMemberTitle'),
+      description: t('groups.removeMemberDescription', { username, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => removeMemberMutation.mutate(userId),
     });
@@ -321,8 +326,8 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   const handleBulkRemoveMembers = () => {
     confirmDialog({
-      title: 'Xóa nhiều thành viên',
-      description: `Xóa ${selectedMembers.length} thành viên khỏi ${teamLabelLower}?`,
+      title: t('groups.removeMembersTitle'),
+      description: t('groups.removeMembersDescription', { count: selectedMembers.length, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => removeMultipleMembersMutation.mutate(selectedMembers),
     });
@@ -330,8 +335,8 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   const handleRevokeCategory = (categoryId: string, name: string) => {
     confirmDialog({
-      title: 'Thu hồi danh mục',
-      description: `Thu hồi "${name}"? Thành viên sẽ không còn thấy tài liệu trong danh mục này.`,
+      title: t('groups.revokeCategoryTitle'),
+      description: t('groups.revokeCategoryDescription', { name }),
       variant: 'destructive',
       onConfirm: () => revokeCategoryMutation.mutate(categoryId),
     });
@@ -339,8 +344,8 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   const handleBulkRevokeCategories = () => {
     confirmDialog({
-      title: 'Thu hồi nhiều danh mục',
-      description: `Thu hồi ${selectedCategories.length} danh mục khỏi ${teamLabelLower}?`,
+      title: t('groups.revokeCategoriesTitle'),
+      description: t('groups.revokeCategoriesDescription', { count: selectedCategories.length, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => revokeMultipleCategoriesMutation.mutate(selectedCategories),
     });
@@ -348,8 +353,8 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   const handleRevokeCourseCategory = (categoryId: string, name: string) => {
     confirmDialog({
-      title: 'Thu hồi danh mục khóa học',
-      description: `Thu hồi "${name}"? Các thành viên sẽ không còn thấy khóa học trong danh mục này.`,
+      title: t('groups.revokeCourseCategoryTitle'),
+      description: t('groups.revokeCourseCategoryDescription', { name }),
       variant: 'destructive',
       onConfirm: () => revokeCourseCategoryMutation.mutate(categoryId),
     });
@@ -357,8 +362,8 @@ export function TeamDetailPanel({ teamId }: Props) {
 
   const handleBulkRevokeCourseCategories = () => {
     confirmDialog({
-      title: 'Thu hồi nhiều danh mục khóa học',
-      description: `Thu hồi ${selectedCourseCategories.length} danh mục khóa học khỏi ${teamLabelLower}?`,
+      title: t('groups.revokeCourseCategoriesTitle'),
+      description: t('groups.revokeCourseCategoriesDescription', { count: selectedCourseCategories.length, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => revokeMultipleCourseCategoriesMutation.mutate(selectedCourseCategories),
     });
@@ -432,7 +437,7 @@ export function TeamDetailPanel({ teamId }: Props) {
               }`}
           >
             {tab === 'members' ? <Users className="h-3.5 w-3.5" /> : tab === 'categories' ? <FolderOpen className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
-            {tab === 'members' ? `Thành viên (${sg.member_count})` : tab === 'categories' ? `Thư viện tài liệu (${sg.category_count})` : `Danh mục khoá học (${sg.course_category_count})`}
+            {tab === 'members' ? t('groups.membersTab', { count: sg.member_count }) : tab === 'categories' ? t('groups.libraryTab', { count: sg.category_count }) : t('groups.courseCategoriesTab', { count: sg.course_category_count })}
           </button>
         ))}
       </div>
@@ -441,7 +446,7 @@ export function TeamDetailPanel({ teamId }: Props) {
         {activeTab === 'members' && (
           <>
             <div className="space-y-3 border-b border-border px-4 py-3">
-              <TabSearch value={memberSearch} placeholder="Tìm thành viên theo tên hoặc email..." onChange={setMemberSearch} />
+              <TabSearch value={memberSearch} placeholder={t('groups.searchMembers')} onChange={setMemberSearch} />
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
                   <Checkbox
@@ -450,7 +455,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                     disabled={members.length === 0 || membersQuery.isFetching}
                     id="select-all-members"
                   />
-                  <label htmlFor="select-all-members" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  <label htmlFor="select-all-members" className="cursor-pointer text-sm font-medium">{t('groups.selectAllPage')}</label>
                   {selectedMembers.length > 0 && canEdit && (
                     <Button
                       size="sm"
@@ -460,13 +465,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                       disabled={removeMultipleMembersMutation.isPending}
                     >
                       {removeMultipleMembersMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                      Xóa ({selectedMembers.length})
+                      {t('groups.deleteSelected', { count: selectedMembers.length })}
                     </Button>
                   )}
                 </div>
                 {canEdit && (
                   <Button size="sm" className="h-8 gap-1.5 text-xs sm:self-auto" onClick={() => setAddMembersOpen(true)}>
-                    <UserPlus className="h-3.5 w-3.5" /> Thêm thành viên
+                    <UserPlus className="h-3.5 w-3.5" /> {t('groups.addMembers')}
                   </Button>
                 )}
               </div>
@@ -476,7 +481,7 @@ export function TeamDetailPanel({ teamId }: Props) {
             ) : members.length === 0 ? (
               <div className="flex h-40 flex-col items-center justify-center text-center">
                 <Users className="mb-2 h-10 w-10 text-muted-foreground/20" />
-                <p className="text-sm text-muted-foreground">{debouncedMemberSearch ? 'Không tìm thấy thành viên phù hợp' : 'Chưa có thành viên'}</p>
+                <p className="text-sm text-muted-foreground">{debouncedMemberSearch ? t('groups.noMatchingMembers') : t('groups.noMembers')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -498,7 +503,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                       <p className="truncate text-xs text-muted-foreground">{m.email}</p>
                     </div>
                     <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
-                      {format(new Date(m.added_at), 'dd/MM/yyyy')}
+                      {formatLocaleDate(m.added_at, locale, { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </span>
                     {canEdit && (
                       <button
@@ -520,7 +525,7 @@ export function TeamDetailPanel({ teamId }: Props) {
         {activeTab === 'categories' && (
           <>
             <div className="space-y-3 border-b border-border px-4 py-3">
-              <TabSearch value={categorySearch} placeholder="Tìm danh mục tài liệu..." onChange={setCategorySearch} />
+              <TabSearch value={categorySearch} placeholder={t('groups.searchDocumentCategories')} onChange={setCategorySearch} />
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
                   <Checkbox
@@ -529,7 +534,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                     disabled={categories.length === 0 || categoriesQuery.isFetching}
                     id="select-all-categories"
                   />
-                  <label htmlFor="select-all-categories" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  <label htmlFor="select-all-categories" className="cursor-pointer text-sm font-medium">{t('groups.selectAllPage')}</label>
                   {selectedCategories.length > 0 && canEdit && (
                     <Button
                       size="sm"
@@ -539,13 +544,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                       disabled={revokeMultipleCategoriesMutation.isPending}
                     >
                       {revokeMultipleCategoriesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                      Xóa ({selectedCategories.length})
+                      {t('groups.deleteSelected', { count: selectedCategories.length })}
                     </Button>
                   )}
                 </div>
                 {canEdit && (
                   <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCategoriesOpen(true)}>
-                    <FolderPlus className="h-3.5 w-3.5" /> Phân thư viện tài liệu
+                    <FolderPlus className="h-3.5 w-3.5" /> {t('groups.assignDocumentLibrary')}
                   </Button>
                 )}
               </div>
@@ -555,7 +560,7 @@ export function TeamDetailPanel({ teamId }: Props) {
             ) : categories.length === 0 ? (
               <div className="flex h-40 flex-col items-center justify-center text-center">
                 <FolderOpen className="mb-2 h-10 w-10 text-muted-foreground/20" />
-                <p className="text-sm text-muted-foreground">{debouncedCategorySearch ? 'Không tìm thấy danh mục tài liệu phù hợp' : 'Chưa có danh mục nào được phân'}</p>
+                <p className="text-sm text-muted-foreground">{debouncedCategorySearch ? t('groups.noMatchingDocumentCategories') : t('groups.noAssignedDocumentCategories')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -578,7 +583,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                     </div>
                     <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
                     <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
-                      {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
+                      {formatLocaleDate(c.assigned_at, locale, { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </span>
                     {canEdit && (
                       <button
@@ -600,7 +605,7 @@ export function TeamDetailPanel({ teamId }: Props) {
         {activeTab === 'course_categories' && (
           <>
             <div className="space-y-3 border-b border-border px-4 py-3">
-              <TabSearch value={courseCategorySearch} placeholder="Tìm danh mục khoá học..." onChange={setCourseCategorySearch} />
+              <TabSearch value={courseCategorySearch} placeholder={t('groups.searchCourseCategories')} onChange={setCourseCategorySearch} />
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
                   <Checkbox
@@ -609,7 +614,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                     disabled={courseCategories.length === 0 || courseCategoriesQuery.isFetching}
                     id="select-all-course-categories"
                   />
-                  <label htmlFor="select-all-course-categories" className="cursor-pointer text-sm font-medium">Chọn tất cả trang này</label>
+                  <label htmlFor="select-all-course-categories" className="cursor-pointer text-sm font-medium">{t('groups.selectAllPage')}</label>
                   {selectedCourseCategories.length > 0 && canEdit && (
                     <Button
                       size="sm"
@@ -619,13 +624,13 @@ export function TeamDetailPanel({ teamId }: Props) {
                       disabled={revokeMultipleCourseCategoriesMutation.isPending}
                     >
                       {revokeMultipleCourseCategoriesMutation.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                      Xóa ({selectedCourseCategories.length})
+                      {t('groups.deleteSelected', { count: selectedCourseCategories.length })}
                     </Button>
                   )}
                 </div>
                 {canEdit && (
                   <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAssignCourseCategoriesOpen(true)}>
-                    <FolderPlus className="h-3.5 w-3.5" /> Phân danh mục khoá học
+                    <FolderPlus className="h-3.5 w-3.5" /> {t('groups.assignCourseCategories')}
                   </Button>
                 )}
               </div>
@@ -635,7 +640,7 @@ export function TeamDetailPanel({ teamId }: Props) {
             ) : courseCategories.length === 0 ? (
               <div className="flex h-40 flex-col items-center justify-center text-center">
                 <FolderKanban className="mb-2 h-10 w-10 text-muted-foreground/20" />
-                <p className="text-sm text-muted-foreground">{debouncedCourseCategorySearch ? 'Không tìm thấy danh mục khóa học phù hợp' : 'Chưa có danh mục khóa học nào được phân'}</p>
+                <p className="text-sm text-muted-foreground">{debouncedCourseCategorySearch ? t('groups.noMatchingCourseCategories') : t('groups.noAssignedCourseCategories')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -658,7 +663,7 @@ export function TeamDetailPanel({ teamId }: Props) {
                     </div>
                     <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
                     <span className="hidden shrink-0 text-[11px] text-muted-foreground/60 group-hover:block">
-                      {format(new Date(c.assigned_at), 'dd/MM/yyyy')}
+                      {formatLocaleDate(c.assigned_at, locale, { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </span>
                     {canEdit && (
                       <button
@@ -715,6 +720,7 @@ export function TeamDetailPanel({ teamId }: Props) {
 // ═══════════════════════════════════════
 
 function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['course-category-courses-preview', catId],
     queryFn: () => getCourseCategoryCourses(catId!),
@@ -731,7 +737,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
             <FolderKanban className="h-4 w-4 text-primary" />
             {catName}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">{courses.length} khóa học trong danh mục</p>
+          <p className="text-xs text-muted-foreground">{t('groups.courseCountInCategory', { count: courses.length })}</p>
         </DialogHeader>
 
         <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
@@ -742,7 +748,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
           ) : courses.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
               <BookOpen className="h-8 w-8 text-muted-foreground/20 mb-2" />
-              <p className="text-sm text-muted-foreground">Chưa có khóa học nào trong danh mục</p>
+              <p className="text-sm text-muted-foreground">{t('groups.noCoursesInCategory')}</p>
             </div>
           ) : (
             courses.map(c => (
@@ -769,6 +775,7 @@ function CourseCategoryPreviewModal({ catId, catName, onClose }: { catId: string
 // ═══════════════════════════════════════
 
 function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string | null; catName: string; onClose: () => void }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['file-category-files-preview', catId],
     queryFn: () => getDocuments({ category_id: catId!, page: 1, page_size: 100 }),
@@ -785,7 +792,7 @@ function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string |
             <FolderOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             {catName}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">{files.length} tài liệu trong danh mục</p>
+          <p className="text-xs text-muted-foreground">{t('groups.documentCountInCategory', { count: files.length })}</p>
         </DialogHeader>
 
         <div className="app-liquid-card flex-1 overflow-y-auto border rounded-lg divide-y min-h-[120px] max-h-[400px]">
@@ -796,7 +803,7 @@ function FileCategoryPreviewModal({ catId, catName, onClose }: { catId: string |
           ) : files.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
               <FileText className="h-8 w-8 text-muted-foreground/20 mb-2" />
-              <p className="text-sm text-muted-foreground">Chưa có tài liệu nào trong danh mục</p>
+              <p className="text-sm text-muted-foreground">{t('groups.noDocumentsInCategory')}</p>
             </div>
           ) : (
             files.map(f => {

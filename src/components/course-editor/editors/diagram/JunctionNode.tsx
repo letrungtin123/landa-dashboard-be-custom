@@ -1,12 +1,14 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 function JunctionNode({ data }: NodeProps) {
+  const { t } = useTranslation();
   const isHidden = data?.hidePorts;
 
   return (
-    <AppTooltip content={isHidden ? undefined : "Điểm nối (Junction)"}><div
+    <AppTooltip content={isHidden ? undefined : t('courseEditorForms.junction')}><div
       className={`w-3 h-3 rounded-full transition-colors group relative border-background ${
         isHidden ? 'bg-muted-foreground shadow-none' : 'bg-muted-foreground hover:bg-primary shadow-md ring-2 cursor-crosshair hover:scale-125'
       }`}

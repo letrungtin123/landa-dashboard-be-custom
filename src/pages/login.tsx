@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -17,13 +17,17 @@ import {
 } from '@/components/ui/form';
 import { toast } from 'sonner';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useLocaleStore } from '@/utils/locale-store';
 
-const formSchema = z.object({
-  email: z.string().min(1, 'Vui lòng nhập tên đăng nhập hoặc email'),
-  password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
-});
+interface LoginFormValues {
+  email: string;
+  password: string;
+}
 
 export default function LoginPage() {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
@@ -74,38 +78,36 @@ export default function LoginPage() {
     }
   };
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const formSchema = useMemo(() => z.object({
+    email: z.string().min(1, t('auth.validation.usernameRequired')),
+    password: z.string().min(6, t('auth.validation.passwordMin')),
+  }), [t]);
+
+  const form = useForm<LoginFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { email: '', password: '' },
   });
 
   useEffect(() => {
     if (searchParams.get('error') === 'admin_forbidden') {
-      setAuthError('Tài khoản learner chỉ được truy cập trang học viên.');
+      setAuthError(t('auth.adminForbidden'));
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   // ── Password login ──
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: LoginFormValues) {
     setIsLoading(true);
     setAuthError(null);
     try {
       await login(values.email, values.password);
 
-      toast.success('Đăng nhập thành công');
+      toast.success(t('auth.loginSuccess'));
       navigate('/');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Đăng nhập thất bại.';
-      const shouldShowRawError = msg.includes('learner') || msg.includes('quyền truy cập');
-      // Parse backend error message
-      if (shouldShowRawError || msg.includes('không đúng')) {
-        setAuthError(msg);
-      } else if (msg.includes('vô hiệu hóa')) {
-        setAuthError(msg);
-      } else {
-        setAuthError('Đăng nhập thất bại. Vui lòng thử lại.');
-      }
-      toast.error(msg);
+      const rawMessage = err instanceof Error ? err.message : '';
+      const message = locale === 'vi' && rawMessage ? rawMessage : t('auth.loginFailed');
+      setAuthError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -126,13 +128,14 @@ export default function LoginPage() {
         client_app: 'admin',
       });
       await setSession(session);
-      toast.success('Đăng nhập SSO thành công');
+      toast.success(t('auth.ssoLoginSuccess'));
       navigate('/');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Đăng nhập SSO thất bại.';
-      if (!msg.includes('huy')) {
-        setAuthError(msg);
-        toast.error(msg);
+      const rawMessage = err instanceof Error ? err.message : '';
+      if (!/hủy|cancel/i.test(rawMessage)) {
+        const message = locale === 'vi' && rawMessage ? rawMessage : t('auth.ssoLoginFailed');
+        setAuthError(message);
+        toast.error(message);
       }
     } finally {
       setLoadingProvider(null);
@@ -185,7 +188,7 @@ export default function LoginPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-white/70 font-semibold text-xs tracking-wide uppercase">
-                      Username / Email
+                      {t('auth.usernameEmail')}
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -205,7 +208,7 @@ export default function LoginPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-white/70 font-semibold text-xs tracking-wide uppercase">
-                      Password
+                      {t('auth.password')}
                     </FormLabel>
                     <FormControl>
                       <PasswordInput
@@ -230,7 +233,7 @@ export default function LoginPage() {
                   disabled={isLoading}
                 >
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+                  {isLoading ? t('auth.signingIn') : t('auth.signIn')}
                 </Button>
               </motion.div>
             </form>
@@ -241,7 +244,7 @@ export default function LoginPage() {
               <div className="flex items-center gap-4">
                 <div className="h-px flex-1 bg-white/10" />
                 <span className="text-xs font-medium uppercase tracking-wide text-white/45">
-                  Hoặc
+                  {t('auth.or')}
                 </span>
                 <div className="h-px flex-1 bg-white/10" />
               </div>
@@ -260,7 +263,7 @@ export default function LoginPage() {
                     ) : (
                       getSsoIcon(provider.provider, "mr-2 h-4 w-4")
                     )}
-                    {loadingProvider === provider.provider ? 'Đang kết nối...' : `Đăng nhập bằng ${provider.label}`}
+                    {loadingProvider === provider.provider ? t('auth.connecting') : t('auth.signInWith', { provider: provider.label })}
                   </Button>
                 ))}
               </div>

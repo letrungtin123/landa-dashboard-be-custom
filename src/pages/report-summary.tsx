@@ -50,14 +50,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { exportReportExcel } from '@/utils/export-report';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 import { ReportWindowChart } from '@/components/reports/ReportWindowChart';
-import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
+import { getGroupLabelSet, getStoredGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { formatLocaleDate, formatLocaleNumber } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
+import type { AppLocale } from '@/i18n';
 
 const cardVariant = {
   hidden: { opacity: 0, y: 20 },
@@ -101,13 +105,13 @@ function formatDateParam(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
-function formatDateLabel(date: Date): string {
-  return format(date, 'dd/MM/yyyy');
+function formatDateLabel(date: Date, locale: AppLocale): string {
+  return formatLocaleDate(date, locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function getDateRangeLabel(from: Date, to: Date): string {
-  if (formatDateParam(from) === formatDateParam(to)) return formatDateLabel(from);
-  return `${formatDateLabel(from)} - ${formatDateLabel(to)}`;
+function getDateRangeLabel(from: Date, to: Date, locale: AppLocale): string {
+  if (formatDateParam(from) === formatDateParam(to)) return formatDateLabel(from, locale);
+  return `${formatDateLabel(from, locale)} - ${formatDateLabel(to, locale)}`;
 }
 
 function getPreviousDateRange(from: Date, to: Date): { from: Date; to: Date } {
@@ -124,9 +128,9 @@ function clampPercent(value: number | null | undefined) {
   return Math.min(Math.max(numericValue, 0), 100);
 }
 
-function formatPercent(value: number | null | undefined) {
+function formatPercent(value: number | null | undefined, locale: AppLocale) {
   const roundedValue = Math.round(clampPercent(value) * 10) / 10;
-  return `${roundedValue.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`;
+  return `${formatLocaleNumber(roundedValue, locale, { maximumFractionDigits: 1 })}%`;
 }
 
 function ReportPageSizeDropdown({
@@ -175,9 +179,9 @@ function getMetricChartColors(metricKey: string | null): string[] {
   return ['#3b82f6'];
 }
 
-function formatChartMetricValue(metricKey: string | null, value: number): string {
-  if (metricKey === 'completion_rate') return formatPercent(value);
-  return value.toLocaleString('vi-VN');
+function formatChartMetricValue(metricKey: string | null, value: number, locale: AppLocale): string {
+  if (metricKey === 'completion_rate') return formatPercent(value, locale);
+  return formatLocaleNumber(value, locale);
 }
 
 function ChartTrendModal({
@@ -203,6 +207,8 @@ function ChartTrendModal({
   dateTo: string;
   dateLabel: string;
 }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const chartRequest = useMemo(() => {
     if (!metricKey) return null;
     return {
@@ -218,7 +224,7 @@ function ChartTrendModal({
   }, [dateFrom, dateTo, groupId, metricKey, subgroupId, teamId]);
 
   const chartColors = useMemo(() => getMetricChartColors(metricKey), [metricKey]);
-  const formatValue = useCallback((value: number) => formatChartMetricValue(metricKey, value), [metricKey]);
+  const formatValue = useCallback((value: number) => formatChartMetricValue(metricKey, value, locale), [locale, metricKey]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -230,12 +236,12 @@ function ChartTrendModal({
               <div className="min-w-0">
                 <DialogTitle className="text-xl sm:text-2xl font-bold truncate">{title}</DialogTitle>
                 <DialogDescription className="text-sm mt-1">
-                  Dữ liệu trong khoảng · {dateLabel}
+                  {t('reports.dataInRange', { dateRange: dateLabel })}
                 </DialogDescription>
               </div>
               <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                Chart theo thời gian
+                {t('reports.timeChart')}
               </div>
             </div>
           </DialogHeader>
@@ -248,7 +254,7 @@ function ChartTrendModal({
                 valueSuffix={metricKey === 'completion_rate' ? '%' : ''}
                 formatValue={formatValue}
                 colors={chartColors}
-                emptyLabel="Không có dữ liệu trong khoảng này"
+                emptyLabel={t('reports.noDataInRange')}
               />
             ) : null}
           </div>
@@ -264,6 +270,8 @@ function CourseCompletionTooltip({
   active?: boolean;
   payload?: Array<{ payload: ReportCourseCompletionRanking }>;
 }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   if (!active || !payload?.length) return null;
   const course = payload[0]?.payload;
   if (!course) return null;
@@ -273,20 +281,20 @@ function CourseCompletionTooltip({
       <AppTooltip content={course.name}><p className="font-bold text-foreground mb-2 max-w-[280px] truncate" >{course.name}</p></AppTooltip>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Tiến độ trung bình</span>
+          <span className="text-muted-foreground">{t('reports.averageProgress')}</span>
           <span className="font-bold text-primary">{course.completion_rate}%</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Lượt ghi danh</span>
-          <span className="font-semibold">{course.total_enrollments.toLocaleString('vi-VN')}</span>
+          <span className="text-muted-foreground">{t('reports.enrollments')}</span>
+          <span className="font-semibold">{formatLocaleNumber(course.total_enrollments, locale)}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-emerald-600">Đã hoàn thành</span>
-          <span className="font-semibold">{course.completed_enrollments.toLocaleString('vi-VN')}</span>
+          <span className="text-emerald-600">{t('reports.completed')}</span>
+          <span className="font-semibold">{formatLocaleNumber(course.completed_enrollments, locale)}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-slate-500">Chưa hoàn thành</span>
-          <span className="font-semibold">{course.incomplete_enrollments.toLocaleString('vi-VN')}</span>
+          <span className="text-slate-500">{t('reports.incomplete')}</span>
+          <span className="font-semibold">{formatLocaleNumber(course.incomplete_enrollments, locale)}</span>
         </div>
       </div>
     </div>
@@ -336,6 +344,8 @@ function CourseCompletionRankingWidget({
   teamId: string | 'all';
   onSelectLearner: (u: string) => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof REPORT_PAGE_SIZE_OPTIONS)[number]>(5);
   const [selectedCourse, setSelectedCourse] = useState<ReportCourseCompletionRanking | null>(null);
@@ -457,9 +467,9 @@ function CourseCompletionRankingWidget({
   const isLearnersRefreshing = isFetchingLearners && !!learnersData;
 
   const statusConfig = {
-    not_started: { label: 'Chưa học', badgeClass: 'text-slate-600 bg-slate-500/10', barClass: 'bg-slate-400' },
-    learning: { label: 'Đang học', badgeClass: 'text-amber-600 bg-amber-500/10', barClass: 'bg-amber-500' },
-    completed: { label: 'Đã học', badgeClass: 'text-emerald-600 bg-emerald-500/10', barClass: 'bg-emerald-500' },
+    not_started: { label: t('reports.notStarted'), badgeClass: 'text-slate-600 bg-slate-500/10', barClass: 'bg-slate-400' },
+    learning: { label: t('reports.learning'), badgeClass: 'text-amber-600 bg-amber-500/10', barClass: 'bg-amber-500' },
+    completed: { label: t('reports.learned'), badgeClass: 'text-emerald-600 bg-emerald-500/10', barClass: 'bg-emerald-500' },
   };
 
   const handleCourseSelect = (course: ReportCourseCompletionRanking) => {
@@ -499,7 +509,7 @@ function CourseCompletionRankingWidget({
               <div className="flex min-w-0 items-start gap-3">
                 <button
                   type="button"
-                  aria-label="Quay lại bảng xếp hạng"
+                  aria-label={t('reports.backToRanking')}
                   onClick={handleBackToRanking}
                   className="mt-0.5 h-8 w-8 rounded-lg border border-border bg-background/80 hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
                 >
@@ -510,15 +520,15 @@ function CourseCompletionRankingWidget({
                     {selectedCourseData.name}
                   </CardTitle></AppTooltip>
                   <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold">
-                    <span className="text-primary">{selectedCourseData.completion_rate}% tiến độ trung bình</span>
-                    <span className="text-emerald-600">{selectedCourseData.completed_enrollments.toLocaleString('vi-VN')}/{selectedCourseData.total_enrollments.toLocaleString('vi-VN')} lượt đã hoàn thành</span>
-                    <span className="text-slate-500">{selectedCourseData.incomplete_enrollments.toLocaleString('vi-VN')} lượt chưa hoàn thành</span>
+                    <span className="text-primary">{t('reports.averageProgressValue', { value: selectedCourseData.completion_rate })}</span>
+                    <span className="text-emerald-600">{t('reports.completedEnrollmentValue', { completed: formatLocaleNumber(selectedCourseData.completed_enrollments, locale), total: formatLocaleNumber(selectedCourseData.total_enrollments, locale) })}</span>
+                    <span className="text-slate-500">{t('reports.incompleteEnrollmentValue', { count: formatLocaleNumber(selectedCourseData.incomplete_enrollments, locale) })}</span>
                   </div>
                 </div>
               </div>
               <div className="hidden sm:flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20 shrink-0">
                 <Users className="h-3 w-3 text-primary" />
-                <span className="text-[9px] font-black text-primary tracking-widest uppercase">Học viên</span>
+                <span className="text-[9px] font-black text-primary tracking-widest uppercase">{t('reports.learners')}</span>
               </div>
             </motion.div>
           ) : (
@@ -533,13 +543,13 @@ function CourseCompletionRankingWidget({
               <div className="space-y-1">
                 <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                   <BookOpen className="h-4 w-4 text-primary" />
-                  Bảng xếp hạng tiến độ trung bình từng khóa học
+                  {t('reports.courseRankingTitle')}
                 </CardTitle>
-                <p className="text-[11px] text-muted-foreground">Tiến độ học trung bình của các lượt ghi danh trong khoảng thời gian và phạm vi đang lọc.</p>
+                <p className="text-[11px] text-muted-foreground">{t('reports.courseRankingDescription')}</p>
               </div>
               <div className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
                 <Percent className="h-3 w-3 text-primary" />
-                <span className="text-[9px] font-black text-primary tracking-widest uppercase">Hoàn thành</span>
+                <span className="text-[9px] font-black text-primary tracking-widest uppercase">{t('reports.completion')}</span>
               </div>
             </motion.div>
           )}
@@ -560,7 +570,7 @@ function CourseCompletionRankingWidget({
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Tìm tên học viên/email..."
+                    placeholder={t('reports.learnerSearch')}
                     className="h-10 pl-8 text-xs bg-background/80 border-border"
                     value={learnerSearch}
                     onChange={e => { setLearnerSearch(e.target.value); setLearnerPage(1); }}
@@ -568,13 +578,13 @@ function CourseCompletionRankingWidget({
                 </div>
                 <Select value={learnerStatus} onValueChange={(val) => { setLearnerStatus(val as ReportCourseCompletionStatus); setLearnerPage(1); }}>
                   <SelectTrigger className={`w-full sm:w-[140px] h-10 text-xs bg-background/80 border-border shadow-sm ${learnerStatus !== 'all' ? 'app-liquid-filter-active' : ''}`}>
-                    <SelectValue placeholder="Trạng thái" />
+                    <SelectValue placeholder={t('reports.status')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all" className="text-xs">Tất cả</SelectItem>
-                    <SelectItem value="not_started" className="text-xs font-medium text-slate-600 focus:text-slate-700">Chưa học</SelectItem>
-                    <SelectItem value="learning" className="text-xs font-medium text-amber-600 focus:text-amber-700">Đang học</SelectItem>
-                    <SelectItem value="completed" className="text-xs font-medium text-emerald-600 focus:text-emerald-700">Đã học</SelectItem>
+                    <SelectItem value="all" className="text-xs">{t('reports.all')}</SelectItem>
+                    <SelectItem value="not_started" className="text-xs font-medium text-slate-600 focus:text-slate-700">{t('reports.notStarted')}</SelectItem>
+                    <SelectItem value="learning" className="text-xs font-medium text-amber-600 focus:text-amber-700">{t('reports.learning')}</SelectItem>
+                    <SelectItem value="completed" className="text-xs font-medium text-emerald-600 focus:text-emerald-700">{t('reports.learned')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -586,7 +596,7 @@ function CourseCompletionRankingWidget({
                   </div>
                 ) : !learnersData || learnersData.results.length === 0 ? (
                   <div className="flex min-h-[260px] items-center justify-center p-8 text-center text-xs text-muted-foreground">
-                    Không có học viên phù hợp
+                    {t('reports.noMatchingLearners')}
                   </div>
                 ) : (
                   <AnimatePresence mode="wait" initial={false}>
@@ -624,8 +634,8 @@ function CourseCompletionRankingWidget({
                             </div>
                             <div className="min-w-0 text-[10px] text-muted-foreground">
                               {u.completed_at
-                                ? `Hoàn thành ngày ${new Date(u.completed_at).toLocaleDateString('vi-VN')}`
-                                : 'Chưa hoàn thành trong kỳ'}
+                                ? t('reports.completedOn', { date: formatLocaleDate(u.completed_at, locale) })
+                                : t('reports.notCompletedInPeriod')}
                             </div>
                             <span className={`justify-self-end text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter shrink-0 ${cfg.badgeClass}`}>
                               {cfg.label}
@@ -648,7 +658,7 @@ function CourseCompletionRankingWidget({
                     >
                       <div className="h-7 rounded-full border border-border bg-background/90 px-3 text-[11px] font-semibold text-muted-foreground shadow-sm flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                        {"\u0110ang t\u1ea3i..."}
+                        {t('reports.loading')}
                       </div>
                     </motion.div>
                   )}
@@ -658,11 +668,11 @@ function CourseCompletionRankingWidget({
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground font-medium">
                   {learnersData
-                    ? `Trang ${learnerPage} / ${Math.max(learnersData.total_pages, 1)} · ${learnersData.count.toLocaleString('en-US')} học viên`
-                    : 'Đang tải học viên...'}
+                    ? t('reports.pageSummary', { page: learnerPage, total: Math.max(learnersData.total_pages, 1), count: formatLocaleNumber(learnersData.count, locale), label: t('reports.learners') })
+                    : t('reports.loadingLearners')}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Giới hạn 1 trang:</span>
+                  <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">{t('reports.pageLimit')}</span>
                   <ReportPageSizeDropdown
                     value={learnerPageSize}
                     onChange={(size) => { rememberScrollPosition(); setLearnerPageSize(size); setLearnerPage(1); }}
@@ -694,7 +704,7 @@ function CourseCompletionRankingWidget({
               exit={{ opacity: 0 }}
               className="flex-grow flex items-center justify-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-xl bg-muted/20"
             >
-              Không có dữ liệu
+              {t('reports.noData')}
             </motion.div>
           ) : (
             <motion.div
@@ -760,7 +770,7 @@ function CourseCompletionRankingWidget({
                     >
                       <div className="h-7 rounded-full border border-border bg-background/90 px-3 text-[11px] font-semibold text-muted-foreground shadow-sm flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                        {"\u0110ang t\u1ea3i..."}
+                        {t('reports.loading')}
                       </div>
                     </motion.div>
                   )}
@@ -768,10 +778,10 @@ function CourseCompletionRankingWidget({
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 mt-4 pt-4 border-t border-border">
               <span className="text-xs text-muted-foreground font-medium">
-                Trang {page} / {Math.max(data.total_pages, 1)} · {data.count.toLocaleString('en-US')} khóa học
+                {t('reports.pageSummary', { page, total: Math.max(data.total_pages, 1), count: formatLocaleNumber(data.count, locale), label: t('reports.courses') })}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Giới hạn 1 trang:</span>
+                <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">{t('reports.pageLimit')}</span>
                 <ReportPageSizeDropdown
                   value={pageSize}
                   onChange={(size) => { rememberScrollPosition(); setPageSize(size); setPage(1); }}
@@ -815,15 +825,17 @@ function GroupEnrollmentsWidget({
   selectedTeamId: string | 'all';
   totalEnrollments: number;
 }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
   const title = selectedTeamId !== 'all'
-    ? `Tổng lượt ghi danh của ${lowerGroupLabel(labels.team)}`
+    ? t('reports.totalEnrollmentOf', { group: lowerGroupLabel(labels.team) })
     : selectedSubGroupId !== 'all'
-      ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.team)}`
+      ? t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.team) })
       : selectedGroupId !== 'all'
-        ? `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.subgroup)}`
-        : `Tổng lượt ghi danh theo ${lowerGroupLabel(labels.group)}`;
+        ? t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.subgroup) })
+        : t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.group) });
 
   const chartRequest = useMemo(() => ({
     date_from: dateFrom,
@@ -837,7 +849,7 @@ function GroupEnrollmentsWidget({
     granularity: 'auto' as const,
   }), [dateFrom, dateTo, selectedGroupId, selectedSubGroupId, selectedTeamId]);
 
-  const formatEnrollmentValue = useCallback((value: number) => `${value.toLocaleString('vi-VN')} lượt`, []);
+  const formatEnrollmentValue = useCallback((value: number) => `${formatLocaleNumber(value, locale)} ${t('reports.enrollment')}`, [locale, t]);
 
   return (
     <Card className="shadow-sm border-border/70 h-full flex flex-col bg-card/95 overflow-hidden relative">
@@ -851,14 +863,14 @@ function GroupEnrollmentsWidget({
               {title}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground">
-              Xu hướng ghi danh · {dateLabel}
+              {t('reports.enrollmentTrend', { dateRange: dateLabel })}
             </p>
           </div>
           <div className="flex flex-col items-end gap-0.5 shrink-0">
             <span className="text-2xl font-bold text-foreground leading-none">
-              {totalEnrollments.toLocaleString('en-US')}
+              {formatLocaleNumber(totalEnrollments, locale)}
             </span>
-            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Trong khoảng</span>
+            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{t('reports.duringPeriod')}</span>
           </div>
         </div>
       </CardHeader>
@@ -866,8 +878,8 @@ function GroupEnrollmentsWidget({
         <ReportWindowChart
           request={chartRequest}
           height={340}
-          valueLabel="Ghi danh"
-          emptyLabel="Không có dữ liệu ghi danh"
+          valueLabel={t('reports.enrollment')}
+          emptyLabel={t('reports.noEnrollmentData')}
           formatValue={formatEnrollmentValue}
           colors={GROUP_BAR_COLORS}
           variant="line"
@@ -877,6 +889,8 @@ function GroupEnrollmentsWidget({
   );
 }
 function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgroupId, teamId }: { dateFrom: string, dateTo: string, onSelectLearner: (u: string) => void, groupId: string | 'all', subgroupId: string | 'all', teamId: string | 'all' }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -900,9 +914,9 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
   });
 
   const statusConfig = {
-    not_started: { label: 'Chưa học', avatarClass: 'bg-muted text-muted-foreground group-hover:bg-slate-500 group-hover:text-white', barClass: 'bg-slate-400', badgeClass: 'text-slate-600 bg-slate-500/10' },
-    learning: { label: 'Đang học', avatarClass: 'bg-amber-500/10 text-amber-600 group-hover:bg-amber-500 group-hover:text-white', barClass: 'bg-amber-500', badgeClass: 'text-amber-600 bg-amber-500/10' },
-    completed: { label: 'Đã học', avatarClass: 'bg-emerald-500/10 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white', barClass: 'bg-emerald-500', badgeClass: 'text-emerald-600 bg-emerald-500/10' },
+    not_started: { label: t('reports.notStarted'), avatarClass: 'bg-muted text-muted-foreground group-hover:bg-slate-500 group-hover:text-white', barClass: 'bg-slate-400', badgeClass: 'text-slate-600 bg-slate-500/10' },
+    learning: { label: t('reports.learning'), avatarClass: 'bg-amber-500/10 text-amber-600 group-hover:bg-amber-500 group-hover:text-white', barClass: 'bg-amber-500', badgeClass: 'text-amber-600 bg-amber-500/10' },
+    completed: { label: t('reports.learned'), avatarClass: 'bg-emerald-500/10 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white', barClass: 'bg-emerald-500', badgeClass: 'text-emerald-600 bg-emerald-500/10' },
   };
 
   return (
@@ -911,18 +925,18 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
             <Users className="h-4 w-4 text-primary" />
-            Danh sách học viên
+            {t('reports.learnerList')}
           </CardTitle>
           {data && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{data.count.toLocaleString('en-US')} học viên</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{formatLocaleNumber(data.count, locale)} {t('reports.learners')}</span>
             </div>
           )}
         </div>
         <div className="mt-3 flex gap-2">
           <div className="relative flex-1">
             <Input
-              placeholder="Tìm user/email..."
+              placeholder={t('reports.userSearch')}
               className="h-9 text-xs bg-background border-border"
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -930,13 +944,13 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
           </div>
           <Select value={statusFilter} onValueChange={(val: any) => { setStatusFilter(val); setPage(1); }}>
             <SelectTrigger className={`w-[110px] h-9 text-xs bg-background border-border shadow-sm ${statusFilter !== 'all' ? 'app-liquid-filter-active' : ''}`}>
-              <SelectValue placeholder="Trạng thái" />
+              <SelectValue placeholder={t('reports.status')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all" className="text-xs">Tất cả</SelectItem>
-              <SelectItem value="not_started" className="text-xs font-medium text-slate-600 focus:text-slate-700">Chưa học</SelectItem>
-              <SelectItem value="learning" className="text-xs font-medium text-amber-600 focus:text-amber-700">Đang học</SelectItem>
-              <SelectItem value="completed" className="text-xs font-medium text-emerald-600 focus:text-emerald-700">Đã học</SelectItem>
+              <SelectItem value="all" className="text-xs">{t('reports.all')}</SelectItem>
+              <SelectItem value="not_started" className="text-xs font-medium text-slate-600 focus:text-slate-700">{t('reports.notStarted')}</SelectItem>
+              <SelectItem value="learning" className="text-xs font-medium text-amber-600 focus:text-amber-700">{t('reports.learning')}</SelectItem>
+              <SelectItem value="completed" className="text-xs font-medium text-emerald-600 focus:text-emerald-700">{t('reports.learned')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -948,7 +962,7 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
           </div>
         ) : !data || data.results.length === 0 ? (
           <div className="flex items-center justify-center p-12 text-center text-sm text-muted-foreground italic min-h-[200px]">
-            Không có dữ liệu
+            {t('reports.noData')}
           </div>
         ) : (
           <div className="divide-y divide-border/40 overflow-y-auto custom-scrollbar max-h-[440px]">
@@ -980,7 +994,7 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
 
                     <div className="flex-1 min-w-[140px] flex flex-col justify-center">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-medium text-foreground">{formatPercent(u.completion_rate)}</span>
+                        <span className="text-[10px] font-medium text-foreground">{formatPercent(u.completion_rate, locale)}</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                         <div
@@ -996,8 +1010,8 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
                         <Clock className="h-2.5 w-2.5 text-muted-foreground" />
                         <span className="text-[10px] text-muted-foreground">
                           {u.last_completion_at
-                            ? new Date(u.last_completion_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                            : 'Chưa học'}
+                            ? formatLocaleDate(u.last_completion_at, locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            : t('reports.notStarted')}
                         </span>
                       </div>
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${cfg.badgeClass}`}>{cfg.label}</span>
@@ -1011,7 +1025,7 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
       </CardContent>
       {data && data.total_pages > 1 && (
         <div className="p-3 border-t border-border/40 flex items-center justify-between bg-muted/5">
-          <span className="text-xs text-muted-foreground font-medium">Trang {page} / {data.total_pages}</span>
+          <span className="text-xs text-muted-foreground font-medium">{t('reports.page', { page, total: data.total_pages })}</span>
           <div className="flex gap-2">
             <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded-md bg-background border border-border hover:bg-muted disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
             <button disabled={page === data.total_pages} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded-md bg-background border border-border hover:bg-muted disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
@@ -1026,7 +1040,9 @@ function UncompletedWidget({ dateFrom, dateTo, onSelectLearner, groupId, subgrou
 // import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 
 export default function ReportSummaryPage() {
-  useHeaderInfo('Báo cáo tổng hợp');
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  useHeaderInfo(t('reports.title'));
   const [selectedLearner, setSelectedLearner] = useState<string | null>(null);
   const [chartMetric, setChartMetric] = useState<{ key: string, title: string } | null>(null);
 
@@ -1044,8 +1060,8 @@ export default function ReportSummaryPage() {
   const isDateRangeFiltered = dateFrom !== defaultDateFrom || dateTo !== defaultDateTo;
   const draftDateFrom = useMemo(() => formatDateParam(normalizedDraftDateRange.from), [normalizedDraftDateRange.from]);
   const draftDateTo = useMemo(() => formatDateParam(normalizedDraftDateRange.to), [normalizedDraftDateRange.to]);
-  const dateLabel = useMemo(() => getDateRangeLabel(normalizedDateRange.from, normalizedDateRange.to), [normalizedDateRange.from, normalizedDateRange.to]);
-  const draftDateLabel = useMemo(() => getDateRangeLabel(normalizedDraftDateRange.from, normalizedDraftDateRange.to), [normalizedDraftDateRange.from, normalizedDraftDateRange.to]);
+  const dateLabel = useMemo(() => getDateRangeLabel(normalizedDateRange.from, normalizedDateRange.to, locale), [locale, normalizedDateRange.from, normalizedDateRange.to]);
+  const draftDateLabel = useMemo(() => getDateRangeLabel(normalizedDraftDateRange.from, normalizedDraftDateRange.to, locale), [locale, normalizedDraftDateRange.from, normalizedDraftDateRange.to]);
   const previousDateRange = useMemo(() => getPreviousDateRange(normalizedDateRange.from, normalizedDateRange.to), [normalizedDateRange.from, normalizedDateRange.to]);
   const previousDateFrom = useMemo(() => formatDateParam(previousDateRange.from), [previousDateRange.from]);
   const previousDateTo = useMemo(() => formatDateParam(previousDateRange.to), [previousDateRange.to]);
@@ -1057,9 +1073,10 @@ export default function ReportSummaryPage() {
   const user = useAuthStore((s) => s.user);
   const groupLabels = useAuthStore((s) => s.groupLabels);
   const labels = getGroupLabelSet(groupLabels);
-  const allGroupLabel = `Tất cả ${lowerGroupLabel(labels.group)}`;
-  const allSubgroupLabel = `Tất cả ${lowerGroupLabel(labels.subgroup)}`;
-  const allTeamLabel = `Tất cả ${lowerGroupLabel(labels.team)}`;
+  const storedLabels = getStoredGroupLabelSet(groupLabels);
+  const allGroupLabel = t('reports.allGroup', { group: lowerGroupLabel(labels.group) });
+  const allSubgroupLabel = t('reports.allGroup', { group: lowerGroupLabel(labels.subgroup) });
+  const allTeamLabel = t('reports.allGroup', { group: lowerGroupLabel(labels.team) });
   const hierarchyLabel = `${lowerGroupLabel(labels.group)}/${lowerGroupLabel(labels.subgroup)}/${lowerGroupLabel(labels.team)}`;
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const isSuperadmin = user?.role === 'superadmin' || user?.role === 'superuser';
@@ -1188,9 +1205,9 @@ export default function ReportSummaryPage() {
         selectedGroupId,
         selectedSubGroupId,
         selectedTeamId,
-        groupLabel: labels.group,
-        subgroupLabel: labels.subgroup,
-        teamLabel: labels.team,
+        groupLabel: storedLabels.group,
+        subgroupLabel: storedLabels.subgroup,
+        teamLabel: storedLabels.team,
       });
     } finally {
       setIsExporting(false);
@@ -1202,10 +1219,9 @@ export default function ReportSummaryPage() {
       <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
         <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-12 text-center mt-12 backdrop-blur-sm">
           <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-destructive mb-2">Truy cập bị hạn chế</h2>
+          <h2 className="text-xl font-bold text-destructive mb-2">{t('reports.noAccessTitle')}</h2>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Bạn không có quyền cần thiết để xem phân tích hệ thống.
-            Chỉ quản trị viên cấp cao (superuser) hoặc người dùng Learner Plus mới có thể truy cập báo cáo.
+            {t('reports.noAccessDescription')}
           </p>
         </div>
       </div>
@@ -1217,10 +1233,9 @@ export default function ReportSummaryPage() {
       <div className="p-6 space-y-6 max-w-7xl mx-auto pb-10">
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-12 text-center mt-12 backdrop-blur-sm">
           <Users className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-amber-600 dark:text-amber-400 mb-2">Chưa được gán {hierarchyLabel}</h2>
+          <h2 className="text-xl font-bold text-amber-600 dark:text-amber-400 mb-2">{t('reports.noHierarchyTitle', { hierarchy: hierarchyLabel })}</h2>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Bạn chưa được thêm vào {hierarchyLabel} nào trong hệ thống.
-            Vui lòng liên hệ quản trị viên để được thêm vào đơn vị phù hợp.
+            {t('reports.noHierarchyDescription', { hierarchy: hierarchyLabel })}
           </p>
         </div>
       </div>
@@ -1258,9 +1273,9 @@ export default function ReportSummaryPage() {
         <div className="p-4 bg-muted rounded-full">
           <AlertTriangle className="h-8 w-8" />
         </div>
-        <p>Không thể tải dữ liệu phân tích thời gian thực. Vui lòng kiểm tra kết nối.</p>
+        <p>{t('reports.analysisLoadFailed')}</p>
         <button onClick={() => refetch()} className="text-sm text-primary font-medium hover:underline flex items-center gap-2">
-          <RefreshCcw className="h-4 w-4" /> Thử lại
+          <RefreshCcw className="h-4 w-4" /> {t('common.retry')}
         </button>
       </div>
     );
@@ -1279,7 +1294,7 @@ export default function ReportSummaryPage() {
     const sign = diff > 0 ? '+' : (diff < 0 ? '-' : '');
 
     if (isAbsolute) {
-      const formatted = suffix === '' ? Math.abs(diff).toLocaleString('en-US') : Math.abs(diff).toFixed(1);
+      const formatted = suffix === '' ? formatLocaleNumber(Math.abs(diff), locale) : Math.abs(diff).toFixed(1);
       return { text: `${sign}${formatted}${suffix}`, type };
     }
 
@@ -1299,10 +1314,10 @@ export default function ReportSummaryPage() {
   const enrollmentsTrend = calculateTrend(overview.total_enrollments, prevOverview?.total_enrollments, true, '');
 
   const stats = [
-    { title: 'Tổng học viên đã tạo', value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: 'Tổng số tài khoản học viên được tạo trong khoảng thời gian đã chọn và thuộc phạm vi nhóm đang lọc. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
-    { title: 'Học viên có hoạt động học', value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: 'Số học viên đã hoàn thành ít nhất một nội dung học trong khoảng thời gian đã chọn. Mỗi học viên chỉ được tính một lần.', supportingText: '', notice: '', disabled: false },
-    { title: 'Tỷ lệ hoàn thành trung bình', value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: 'Tính trên toàn bộ học viên thuộc phạm vi đang lọc. Học viên chưa có khóa trong khoảng thời gian đã chọn được tính 0%. Với mỗi học viên, hệ thống lấy trung bình tiến độ các khóa trong khoảng thời gian đó, rồi lấy trung bình tất cả học viên.', supportingText: '', notice: '', disabled: false },
-    { title: 'Lượt ghi danh trong kỳ', value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: 'Số lần học viên được ghi danh vào khóa học trong khoảng thời gian đã chọn. Một học viên được ghi danh nhiều khóa sẽ có nhiều lượt ghi danh.', supportingText: '', notice: '', disabled: false },
+    { title: t('reports.totalLearnersCreated'), value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: t('reports.totalLearnersDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.activeLearners'), value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: t('reports.activeLearnersDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.averageCompletionRate'), value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: t('reports.completionRateDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.periodEnrollments'), value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: t('reports.enrollmentsDescription'), supportingText: '', notice: '', disabled: false },
   ];
 
   return (
@@ -1340,8 +1355,8 @@ export default function ReportSummaryPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-6">
         <PageHeader
           icon={BarChart3}
-          title="Tổng quan phân tích"
-          description="Chỉ số hệ thống thời gian thực và hiệu suất người học."
+          title={t('reports.overviewTitle')}
+          description={t('reports.overviewDescription')}
         />
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <DropdownMenu>
@@ -1350,7 +1365,7 @@ export default function ReportSummaryPage() {
               <span className="truncate max-w-[100px] sm:max-w-[120px]">
                 {selectedGroupId === 'all'
                   ? allGroupLabel
-                  : groupsData?.groups.find(g => g.id === selectedGroupId)?.name || 'Đang tải...'}
+                  : groupsData?.groups.find(g => g.id === selectedGroupId)?.name || t('reports.loading')}
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
             </DropdownMenuTrigger>
@@ -1387,7 +1402,7 @@ export default function ReportSummaryPage() {
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedSubGroupId === 'all'
                     ? allSubgroupLabel
-                    : subGroupsData?.subgroups.find(sg => sg.id === selectedSubGroupId)?.name || 'Đang tải...'}
+                    : subGroupsData?.subgroups.find(sg => sg.id === selectedSubGroupId)?.name || t('reports.loading')}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
               </DropdownMenuTrigger>
@@ -1420,7 +1435,7 @@ export default function ReportSummaryPage() {
                 <span className="truncate max-w-[100px] sm:max-w-[120px]">
                   {selectedTeamId === 'all'
                     ? allTeamLabel
-                    : teamsData?.teams.find(t => t.id === selectedTeamId)?.name || 'Đang tải...'}
+                    : teamsData?.teams.find(team => team.id === selectedTeamId)?.name || t('reports.loading')}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
               </DropdownMenuTrigger>
@@ -1455,15 +1470,15 @@ export default function ReportSummaryPage() {
             <PopoverContent align="end" className="w-[min(calc(100vw-2rem),640px)] max-h-[min(82vh,720px)] overflow-y-auto p-0 rounded-xl border-border/70 shadow-xl bg-popover">
               <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-foreground">Bộ lọc thời gian</p>
-                  <p className="text-[11px] text-muted-foreground truncate">Đang áp dụng: {dateLabel}</p>
+                  <p className="text-xs font-bold text-foreground">{t('reports.dateFilter')}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{t('reports.currentlyApplied', { dateRange: dateLabel })}</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleDraftCurrentMonth}
                   className="h-7 rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
                 >
-                  Tháng này
+                  {t('reports.thisMonth')}
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 p-3 border-b border-border/60 bg-muted/20">
@@ -1473,8 +1488,8 @@ export default function ReportSummaryPage() {
                   aria-pressed={dateDraftTarget === 'from'}
                   className={`h-[72px] rounded-xl border px-3 text-left transition-all ${dateDraftTarget === 'from' ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/15' : 'border-border bg-background hover:bg-muted'}`}
                 >
-                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Từ ngày</span>
-                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.from)}</span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t('reports.fromDate')}</span>
+                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.from, locale)}</span>
                 </button>
                 <button
                   type="button"
@@ -1482,8 +1497,8 @@ export default function ReportSummaryPage() {
                   aria-pressed={dateDraftTarget === 'to'}
                   className={`h-[72px] rounded-xl border px-3 text-left transition-all ${dateDraftTarget === 'to' ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/15' : 'border-border bg-background hover:bg-muted'}`}
                 >
-                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Đến ngày</span>
-                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.to)}</span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t('reports.toDate')}</span>
+                  <span className="mt-1 block text-sm font-bold text-foreground">{formatDateLabel(normalizedDraftDateRange.to, locale)}</span>
                 </button>
               </div>
               <div className="px-2 sm:px-3">
@@ -1511,7 +1526,7 @@ export default function ReportSummaryPage() {
                     onClick={handleCancelDateFilter}
                     className="h-8 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
-                    Hủy
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -1519,17 +1534,17 @@ export default function ReportSummaryPage() {
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-95 transition-all"
                   >
                     <Check className="h-3.5 w-3.5" />
-                    Áp dụng
+                    {t('common.confirm')}
                   </button>
                 </div>
               </div>
             </PopoverContent>
           </Popover>
-          <AppTooltip content="Đặt lại khoảng thời gian"><button
+          <AppTooltip content={t('reports.resetDateRange')}><button
             type="button"
             onClick={handleResetDateFilter}
             className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-border bg-background hover:bg-muted transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm shrink-0"
-            aria-label="Đặt lại khoảng thời gian"
+            aria-label={t('reports.resetDateRange')}
           >
             <X className="h-3.5 w-3.5" />
           </button></AppTooltip>
@@ -1544,7 +1559,7 @@ export default function ReportSummaryPage() {
               className={`inline-flex items-center gap-2 h-9 px-4 text-xs font-medium rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95 shadow-md shrink-0 ${isExporting ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               {isExporting ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              <span className="whitespace-nowrap">{isExporting ? 'Đang xuất...' : 'Xuất dữ liệu'}</span>
+              <span className="whitespace-nowrap">{isExporting ? t('reports.exporting') : t('reports.exportData')}</span>
             </button>
           )}
         </div>
@@ -1588,7 +1603,7 @@ export default function ReportSummaryPage() {
 
                 <div className="min-w-0">
                   <div className="text-[34px] font-bold tracking-tight text-foreground leading-none mb-4">
-                    {typeof stat.value === 'number' ? stat.value.toLocaleString('en-US') : stat.value}{stat.suffix}
+                    {typeof stat.value === 'number' ? formatLocaleNumber(stat.value, locale) : stat.value}{stat.suffix}
                   </div>
 
                   <div className="flex min-h-[22px] flex-col items-start gap-1.5">
@@ -1605,7 +1620,7 @@ export default function ReportSummaryPage() {
                           ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                           : 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
                           }`}>
-                          {stat.trend} so với khoảng trước
+                          {stat.trend} {t('reports.comparedToPrevious')}
                         </span>
                       </div>
                     )}

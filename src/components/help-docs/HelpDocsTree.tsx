@@ -4,6 +4,7 @@
  * Người có quyền chỉnh sửa có thể kéo thả để sắp xếp folder/page.
  */
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight, ChevronDown, Plus, Trash2, Folder, FileText,
@@ -53,6 +54,7 @@ interface HelpDocsTreeProps {
 export default function HelpDocsTree({
   folders, pages, selectedPageId, onSelectPage, canManage,
 }: HelpDocsTreeProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const canAdd = canManage;
   const canEdit = canManage;
@@ -101,12 +103,12 @@ export default function HelpDocsTree({
 
     folderReorderMut.mutate(nextFolders.map((folder) => folder.id), {
       onSuccess: () => {
-        toast.success('Đã lưu thứ tự folder');
+        toast.success(t('helpDocs.folderOrderSaved'));
         invalidate();
       },
       onError: () => {
         setLocalFolders(previousFolders);
-        toast.error('Lưu thứ tự folder thất bại');
+        toast.error(t('helpDocs.folderOrderSaveFailed'));
         invalidate();
       },
     });
@@ -125,12 +127,12 @@ export default function HelpDocsTree({
 
     pageReorderMut.mutate({ folderId, orderedIds: orderedPages.map((page) => page.id) }, {
       onSuccess: () => {
-        toast.success('Đã lưu thứ tự trang');
+        toast.success(t('helpDocs.pageOrderSaved'));
         invalidate();
       },
       onError: () => {
         setLocalPages(previousPages);
-        toast.error('Lưu thứ tự trang thất bại');
+        toast.error(t('helpDocs.pageOrderSaveFailed'));
         invalidate();
       },
     });
@@ -170,7 +172,7 @@ export default function HelpDocsTree({
       {localFolders.length === 0 && !canAdd && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
           <BookOpen className="h-10 w-10 opacity-30" />
-          <p className="text-sm">Chưa có tài liệu nào</p>
+          <p className="text-sm">{t('helpDocs.noDocuments')}</p>
         </div>
       )}
     </div>
@@ -192,6 +194,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
   canReorderPages: boolean;
   canManage: boolean;
 }) {
+  const { t } = useTranslation();
   const canAdd = canManage;
   const canEdit = canManage;
   const canDelete = canManage;
@@ -215,14 +218,14 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
 
   const renameMut = useMutation({
     mutationFn: () => updateHelpFolder(folder.id, { title: renameValue }),
-    onSuccess: () => { toast.success('Đã đổi tên folder'); setIsRenaming(false); onStructureChange(); },
-    onError: () => toast.error('Đổi tên thất bại'),
+    onSuccess: () => { toast.success(t('helpDocs.folderRenamed')); setIsRenaming(false); onStructureChange(); },
+    onError: () => toast.error(t('helpDocs.folderRenameFailed')),
   });
 
   const deleteMut = useMutation({
     mutationFn: () => deleteHelpFolder(folder.id),
-    onSuccess: () => { toast.success('Đã xóa folder'); onStructureChange(); },
-    onError: () => toast.error('Xóa thất bại'),
+    onSuccess: () => { toast.success(t('helpDocs.folderDeleted')); onStructureChange(); },
+    onError: () => toast.error(t('helpDocs.deleteFailed')),
   });
 
   return (
@@ -238,7 +241,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
             {...attributes}
             {...listeners}
             className="shrink-0 flex h-5 w-4 items-center justify-center rounded text-muted-foreground/35 transition-colors cursor-grab hover:bg-muted-foreground/10 hover:text-muted-foreground active:cursor-grabbing"
-            aria-label="Kéo để sắp xếp folder"
+            aria-label={t('helpDocs.sortFolder')}
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3.5 w-3.5" />
@@ -301,7 +304,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
               <DropdownMenuContent align="end" className="w-40">
                 {canEdit && (
                   <DropdownMenuItem onClick={() => { setIsRenaming(true); setRenameValue(folder.title); }}>
-                    <Pencil className="h-3.5 w-3.5 mr-2" /> Đổi tên
+                    <Pencil className="h-3.5 w-3.5 mr-2" /> {t('helpDocs.rename')}
                   </DropdownMenuItem>
                 )}
                 {canDelete && (
@@ -309,7 +312,7 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
                     className="text-destructive focus:text-destructive"
                     onClick={() => setShowDeleteDialog(true)}
                   >
-                    <Trash2 className="h-3.5 w-3.5 mr-2" /> Xóa
+                    <Trash2 className="h-3.5 w-3.5 mr-2" /> {t('helpDocs.delete')}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -341,19 +344,18 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa folder</AlertDialogTitle>
+            <AlertDialogTitle>{t('helpDocs.deleteFolderTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc muốn xóa <span className="font-semibold text-foreground">"{folder.title}"</span>?
-              Tất cả {pages.length} trang trong folder cũng sẽ bị xóa. Hành động này không thể hoàn tác.
+              {t('helpDocs.deleteFolderDescription', { name: folder.title, count: pages.length })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{t('helpDocs.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteMut.mutate()}
             >
-              Xóa
+              {t('helpDocs.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -376,6 +378,7 @@ function SortablePageList({ folderId, pages, selectedPageId, onSelectPage, onStr
   canReorder: boolean;
   canManage: boolean;
 }) {
+  const { t } = useTranslation();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -423,6 +426,7 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
   canReorder: boolean;
   canDelete: boolean;
 }) {
+  const { t } = useTranslation();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: page.id,
@@ -436,8 +440,8 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
 
   const deleteMut = useMutation({
     mutationFn: () => deleteHelpPage(page.id),
-    onSuccess: () => { toast.success('Đã xóa trang'); onStructureChange(); },
-    onError: () => toast.error('Xóa thất bại'),
+    onSuccess: () => { toast.success(t('helpDocs.pageDeleted')); onStructureChange(); },
+    onError: () => toast.error(t('helpDocs.deleteFailed')),
   });
 
   return (
@@ -456,7 +460,7 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
             {...attributes}
             {...listeners}
             className="shrink-0 flex h-5 w-4 items-center justify-center rounded text-muted-foreground/35 transition-colors cursor-grab hover:bg-muted-foreground/10 hover:text-muted-foreground active:cursor-grabbing"
-            aria-label="Kéo để sắp xếp trang"
+            aria-label={t('helpDocs.sortPage')}
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3 w-3" />
@@ -466,7 +470,7 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
         <span className="flex-1 truncate">{page.title}</span>
 
         {/* Published status */}
-        <AppTooltip content={page.is_published ? 'Đã xuất bản' : 'Bản nháp'}><span className="shrink-0" >
+        <AppTooltip content={page.is_published ? t('helpDocs.published') : t('helpDocs.draft')}><span className="shrink-0" >
           <div className={`w-1.5 h-1.5 rounded-full ${page.is_published ? 'bg-emerald-500' : 'bg-slate-400'}`} />
         </span></AppTooltip>
 
@@ -486,19 +490,18 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa trang</AlertDialogTitle>
+            <AlertDialogTitle>{t('helpDocs.deletePageTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc muốn xóa <span className="font-semibold text-foreground">"{page.title}"</span>?
-              Hành động này không thể hoàn tác.
+              {t('helpDocs.deletePageDescription', { name: page.title })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{t('helpDocs.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteMut.mutate()}
             >
-              Xóa
+              {t('helpDocs.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -512,18 +515,19 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
 // ─────────────────────────────────────────────
 
 function AddFolderButton({ onStructureChange }: { onStructureChange: () => void }) {
+  const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
 
   const addMut = useMutation({
     mutationFn: () => createHelpFolder({ title: name }),
     onSuccess: () => {
-      toast.success('Đã tạo folder');
+      toast.success(t('helpDocs.folderCreated'));
       setIsAdding(false);
       setName('');
       onStructureChange();
     },
-    onError: () => toast.error('Tạo folder thất bại'),
+    onError: () => toast.error(t('helpDocs.folderCreateFailed')),
   });
 
   if (isAdding) {
@@ -532,7 +536,7 @@ function AddFolderButton({ onStructureChange }: { onStructureChange: () => void 
         <input
           autoFocus
           className="flex h-7 flex-1 rounded border border-input bg-background px-2 text-xs shadow-sm"
-          placeholder="Tên folder..."
+          placeholder={t('helpDocs.folderNamePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -541,10 +545,10 @@ function AddFolderButton({ onStructureChange }: { onStructureChange: () => void 
           }}
         />
         <Button size="sm" className="h-7 text-xs" onClick={() => addMut.mutate()} disabled={addMut.isPending || !name.trim()}>
-          Lưu
+          {t('helpDocs.save')}
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsAdding(false)}>
-          Hủy
+          {t('helpDocs.cancel')}
         </Button>
       </div>
     );
@@ -556,7 +560,7 @@ function AddFolderButton({ onStructureChange }: { onStructureChange: () => void 
       className="flex items-center gap-1.5 w-full text-left px-2 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
     >
       <Plus className="h-3.5 w-3.5" />
-      Thêm Folder
+      {t('helpDocs.addFolder')}
     </button>
   );
 }
@@ -569,18 +573,19 @@ function AddPageButton({ folderId, onStructureChange }: {
   folderId: string;
   onStructureChange: () => void;
 }) {
+  const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
 
   const addMut = useMutation({
     mutationFn: () => createHelpPage({ folder_id: folderId, title: name }),
     onSuccess: () => {
-      toast.success('Đã tạo trang');
+      toast.success(t('helpDocs.pageCreated'));
       setIsAdding(false);
       setName('');
       onStructureChange();
     },
-    onError: () => toast.error('Tạo trang thất bại'),
+    onError: () => toast.error(t('helpDocs.pageCreateFailed')),
   });
 
   if (isAdding) {
@@ -589,7 +594,7 @@ function AddPageButton({ folderId, onStructureChange }: {
         <input
           autoFocus
           className="flex h-7 flex-1 rounded border border-input bg-background px-2 text-xs shadow-sm"
-          placeholder="Tên trang..."
+          placeholder={t('helpDocs.pageNamePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -598,10 +603,10 @@ function AddPageButton({ folderId, onStructureChange }: {
           }}
         />
         <Button size="sm" className="h-7 text-xs" onClick={() => addMut.mutate()} disabled={addMut.isPending || !name.trim()}>
-          Lưu
+          {t('helpDocs.save')}
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsAdding(false)}>
-          Hủy
+          {t('helpDocs.cancel')}
         </Button>
       </div>
     );
@@ -613,7 +618,7 @@ function AddPageButton({ folderId, onStructureChange }: {
       className="flex items-center gap-1.5 w-full text-left px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
     >
       <Plus className="h-3 w-3" />
-      Thêm trang
+      {t('helpDocs.addPage')}
     </button>
   );
 }

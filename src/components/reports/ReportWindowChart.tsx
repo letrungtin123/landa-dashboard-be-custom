@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, MoveHorizontal } from 'lucide-react';
 
@@ -14,6 +15,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/utils/utils';
 import { useTenantStore } from '@/utils/tenant-store';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { formatLocaleNumber } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
 
 type ReportChartRequest = Parameters<typeof getReportChart>[0];
 type ChartView = { start: number; end: number };
@@ -136,10 +139,10 @@ function getSeriesValue(point: ReportChartPoint, key: string): number {
   return Math.max(0, Number(point[key]) || 0);
 }
 
-function formatBucketShort(bucket: string, granularity?: ReportChartGranularity): string {
+function formatBucketShort(bucket: string, granularity: ReportChartGranularity | undefined, locale: 'vi' | 'en'): string {
   if (!bucket || bucket.length < 10) return bucket;
   const [year, month, day] = bucket.split('-');
-  if (granularity === 'month') return `T${Number(month)}/${year.slice(2)}`;
+  if (granularity === 'month') return `${locale === 'vi' ? 'T' : 'M'}${Number(month)}/${year.slice(2)}`;
   if (granularity === 'week') return `${day}/${month}`;
   return `${day}/${month}`;
 }
@@ -176,10 +179,10 @@ export function ReportWindowChart({
   enabled = true,
   className,
   height = 320,
-  emptyLabel = 'Không có dữ liệu',
-  valueLabel = 'Giá trị',
+  emptyLabel,
+  valueLabel,
   valueSuffix = '',
-  formatValue = (value) => `${value.toLocaleString('vi-VN')}${valueSuffix}`,
+  formatValue,
   colors = DEFAULT_COLORS,
   variant = 'bar',
 }: {
@@ -194,6 +197,11 @@ export function ReportWindowChart({
   colors?: string[];
   variant?: ChartVariant;
 }) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  const resolvedEmptyLabel = emptyLabel ?? t('reportChart.noData');
+  const resolvedValueLabel = valueLabel ?? t('reportChart.value');
+  const resolvedFormatValue = formatValue ?? ((value: number) => `${formatLocaleNumber(value, locale)}${valueSuffix}`);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pointsRef = useRef<ReportChartPoint[]>([]);
@@ -330,13 +338,13 @@ export function ReportWindowChart({
     setEdgeLoading(direction);
     try {
       await fetchWindow(direction, anchor);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi tải biểu đồ');
+    } catch {
+      setError(t('reportChart.loadFailed'));
     } finally {
       loadingRef.current[direction] = false;
       setEdgeLoading(null);
     }
-  }, [enabled, fetchWindow]);
+  }, [enabled, fetchWindow, t]);
 
   const panByBuckets = useCallback((delta: number) => {
     if (!delta) return;
@@ -370,11 +378,11 @@ export function ReportWindowChart({
     setIsInitialLoading(true);
 
     fetchWindow('initial')
-      .catch((err) => setError(err instanceof Error ? err.message : 'Lỗi tải biểu đồ'))
+      .catch(() => setError(t('reportChart.loadFailed')))
       .finally(() => {
         if (resetKeyRef.current === requestKey) setIsInitialLoading(false);
       });
-  }, [enabled, fetchWindow, requestKey]);
+  }, [enabled, fetchWindow, requestKey, t]);
 
   useEffect(() => {
     if (!isChartReady) return;
@@ -554,7 +562,7 @@ export function ReportWindowChart({
         ctx.font = '700 10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(formatBucketShort(getBucketId(point), granularity), xCenter, zeroY + 12);
+        ctx.fillText(formatBucketShort(getBucketId(point), granularity, locale), xCenter, zeroY + 12);
       }
     });
 
@@ -573,7 +581,7 @@ export function ReportWindowChart({
         ctx.restore();
       }
     }
-  }, [colors, granularity, isGrouped, seriesKeys, size, themeVersion, tooltip, valueSuffix, variant, view, visiblePoints]);
+  }, [colors, granularity, isGrouped, locale, seriesKeys, size, themeVersion, tooltip, valueSuffix, variant, view, visiblePoints]);
 
   const moveTooltip = useCallback((clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -640,7 +648,7 @@ export function ReportWindowChart({
       <div className={cn('flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground', className)} style={{ height }}>
         <div className="flex flex-col items-center gap-2">
           <AlertTriangle className="h-6 w-6 opacity-60" />
-          <span>Lỗi tải biểu đồ</span>
+          <span>{t('reportChart.loadFailed')}</span>
         </div>
       </div>
     );
@@ -649,7 +657,7 @@ export function ReportWindowChart({
   if (!points.length || !hasValue || !view) {
     return (
       <div className={cn('flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground', className)} style={{ height }}>
-        {emptyLabel}
+        {resolvedEmptyLabel}
       </div>
     );
   }
@@ -657,7 +665,7 @@ export function ReportWindowChart({
   return (
     <div className={cn('app-liquid-card relative overflow-hidden rounded-xl border border-border/70 bg-card shadow-inner', className)} style={{ height }}>
       <div ref={containerRef} className="absolute inset-0">
-        <AppTooltip content="Kéo ngang để xem dữ liệu trong khoảng đã chọn"><canvas
+        <AppTooltip content={t('reportChart.dragToView')}><canvas
           ref={canvasRef}
           className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
           onPointerDown={handlePointerDown}
@@ -672,14 +680,14 @@ export function ReportWindowChart({
 
       <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-2.5 py-1 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur">
         <MoveHorizontal className="h-3.5 w-3.5" />
-        <span>Trong khoảng đã chọn</span>
+        <span>{t('reportChart.selectedPeriod')}</span>
       </div>
 
       <div className="pointer-events-none absolute right-3 top-3 flex flex-wrap justify-end gap-1.5 max-w-[70%]">
         {seriesKeys.slice(0, 4).map((key, index) => (
           <span key={key} className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/88 px-2 py-1 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
-            <span className="max-w-[92px] truncate">{key === 'value' ? valueLabel : key}</span>
+            <span className="max-w-[92px] truncate">{key === 'value' ? resolvedValueLabel : key}</span>
           </span>
         ))}
         {seriesKeys.length > 4 && (
@@ -699,14 +707,14 @@ export function ReportWindowChart({
             transition={{ duration: 0.16 }}
             className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-background/92 px-3 py-1.5 text-[11px] font-bold text-muted-foreground shadow-lg backdrop-blur"
           >
-            Đang tải thêm...
+            {t('reportChart.loadingMore')}
           </motion.div>
         )}
       </AnimatePresence>
 
       {seriesOverflow && (
         <div className="pointer-events-none absolute bottom-3 right-3 rounded-full border border-border/70 bg-background/88 px-2.5 py-1 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur">
-          Top {SERIES_LIMIT} + Khác
+          Top {SERIES_LIMIT} + {t('reportChart.other')}
         </div>
       )}
 
@@ -724,9 +732,9 @@ export function ReportWindowChart({
               <div key={row.key} className="flex items-center justify-between gap-4">
                 <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
-                  <span className="truncate">{row.key === 'value' ? valueLabel : row.key}</span>
+                  <span className="truncate">{row.key === 'value' ? resolvedValueLabel : row.key}</span>
                 </span>
-                <span className="font-bold text-foreground">{formatValue(row.value)}</span>
+                <span className="font-bold text-foreground">{resolvedFormatValue(row.value)}</span>
               </div>
             ))}
           </div>
@@ -735,7 +743,7 @@ export function ReportWindowChart({
 
       {error && points.length > 0 && (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 text-[10px] font-bold text-destructive shadow-sm">
-          Lỗi tải thêm
+          {t('reportChart.loadMoreFailed')}
         </div>
       )}
 

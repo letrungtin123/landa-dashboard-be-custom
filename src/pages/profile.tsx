@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/utils/store';
 import { getRoleLabel } from '@/utils/role-labels';
 import { customApiClient } from '@/api/custom-client';
@@ -34,10 +35,6 @@ const ROLE_LABEL: Record<string, string> = {
   learner_plus: 'Learner Plus',
   learner: 'Learner',
 };
-const GENDER_MAP: Record<string, string> = { male: 'Nam', female: 'Nữ', other: 'Khác' };
-const COUNTRY_MAP: Record<string, string> = { VN: 'Việt Nam', US: 'Hoa Kỳ', JP: 'Nhật Bản', KR: 'Hàn Quốc', GB: 'Anh', OTHER: 'Khác' };
-const EDU_MAP: Record<string, string> = { doctorate: 'Tiến sĩ', master: 'Thạc sĩ', bachelor: 'Cử nhân', associate: 'Cao đẳng', high_school: 'THPT', junior_high: 'THCS', primary: 'Tiểu học', none: 'Không có', other: 'Khác' };
-const LANG_MAP: Record<string, string> = { vi: 'Tiếng Việt', en: 'English', ja: '日本語', ko: '한국어', zh: '中文' };
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -91,6 +88,11 @@ function FormSelect({ label, icon: Icon, value, onChange, options, placeholder }
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation();
+  const genderMap: Record<string, string> = { male: t('profile.genderMale'), female: t('profile.genderFemale'), other: t('profile.genderOther') };
+  const countryMap: Record<string, string> = { VN: t('profile.countryVn'), US: t('profile.countryUs'), JP: t('profile.countryJp'), KR: t('profile.countryKr'), GB: t('profile.countryGb'), OTHER: t('profile.countryOther') };
+  const educationMap: Record<string, string> = { doctorate: t('profile.educationDoctorate'), master: t('profile.educationMaster'), bachelor: t('profile.educationBachelor'), associate: t('profile.educationAssociate'), high_school: t('profile.educationHighSchool'), junior_high: t('profile.educationJuniorHigh'), primary: t('profile.educationPrimary'), none: t('profile.educationNone'), other: t('profile.educationOther') };
+  const languageMap: Record<string, string> = { vi: t('profile.languageVietnamese'), en: 'English', ja: '日本語', ko: '한국어', zh: '中文' };
   const user = useAuthStore((s) => s.user);
   const roleLabels = useAuthStore((s) => s.roleLabels);
   const updateUser = useAuthStore((s) => s.updateUser);
@@ -148,11 +150,11 @@ export default function ProfilePage() {
         phone_number: profile.phone || '',
       });
     } catch {
-      setToast({ msg: 'Không thể tải hồ sơ', type: 'error' });
+      setToast({ msg: t('profile.loadFailed'), type: 'error' });
     } finally {
       setIsLoadingProfile(false);
     }
-  }, [updateUser, user?.username]);
+  }, [t, updateUser, user?.username]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
@@ -167,14 +169,14 @@ export default function ProfilePage() {
     if (!user?.username) return;
 
     if (!form.name.trim()) {
-      setToast({ msg: 'Tên hiển thị không được để trống', type: 'error' });
+      setToast({ msg: t('profile.nameRequired'), type: 'error' });
       return;
     }
 
     if (form.year_of_birth) {
       const y = parseInt(form.year_of_birth, 10);
       if (isNaN(y) || y < 1900 || y > new Date().getFullYear()) {
-        setToast({ msg: 'Năm sinh không hợp lệ', type: 'error' });
+        setToast({ msg: t('profile.invalidBirthYear'), type: 'error' });
         return;
       }
     }
@@ -213,9 +215,9 @@ export default function ProfilePage() {
 
       await loadProfile();
       setAvatarPreview(null);
-      setToast({ msg: 'Cập nhật hồ sơ thành công!', type: 'success' });
+      setToast({ msg: t('profile.updated'), type: 'success' });
     } catch {
-      setToast({ msg: 'Cập nhật thất bại. Vui lòng thử lại.', type: 'error' });
+      setToast({ msg: t('profile.updateFailed'), type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -226,11 +228,11 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setToast({ msg: 'Chỉ chấp nhận ảnh JPG, PNG, WebP', type: 'error' });
+      setToast({ msg: t('profile.unsupportedAvatar'), type: 'error' });
       return;
     }
     if (file.size > 1024 * 1024) {
-      setToast({ msg: 'Ảnh quá lớn (tối đa 1MB)', type: 'error' });
+      setToast({ msg: t('profile.avatarTooLarge'), type: 'error' });
       return;
     }
     setAvatarFile(file);
@@ -243,10 +245,10 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwError('');
 
-    if (!pwForm.current.trim()) { setPwError('Vui lòng nhập mật khẩu hiện tại'); return; }
-    if (pwForm.newPw.length < 8) { setPwError('Mật khẩu mới phải có ít nhất 8 ký tự'); return; }
-    if (pwForm.newPw !== pwForm.confirm) { setPwError('Mật khẩu mới không khớp'); return; }
-    if (pwForm.current === pwForm.newPw) { setPwError('Mật khẩu mới phải khác mật khẩu hiện tại'); return; }
+    if (!pwForm.current.trim()) { setPwError(t('profile.currentPasswordRequired')); return; }
+    if (pwForm.newPw.length < 8) { setPwError(t('profile.passwordTooShort')); return; }
+    if (pwForm.newPw !== pwForm.confirm) { setPwError(t('profile.passwordMismatch')); return; }
+    if (pwForm.current === pwForm.newPw) { setPwError(t('profile.passwordUnchanged')); return; }
 
     setIsSavingPw(true);
     try {
@@ -257,9 +259,8 @@ export default function ProfilePage() {
       setPwSuccess(true);
       setPwForm({ current: '', newPw: '', confirm: '' });
       setTimeout(() => { setShowPwModal(false); setPwSuccess(false); }, 1500);
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Đổi mật khẩu thất bại';
-      setPwError(msg);
+    } catch {
+      setPwError(t('profile.passwordChangeFailed'));
     } finally {
       setIsSavingPw(false);
     }
@@ -293,8 +294,8 @@ export default function ProfilePage() {
     <div className="p-6">
       <div className="max-w-4xl mx-auto pb-12 w-full pt-2">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Hồ Sơ Cá Nhân</h1>
-          <p className="text-sm text-muted-foreground mt-1">Quản lý thông tin và bảo mật tài khoản của bạn.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">{t('profile.title')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('profile.description')}</p>
         </div>
 
         <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatarChange} />
@@ -354,8 +355,8 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3 mb-8">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><User className="w-5 h-5 text-primary" /></div>
               <div>
-                <h3 className="font-semibold text-foreground">Thông tin cá nhân</h3>
-                <p className="text-xs text-muted-foreground">Chỉnh sửa và lưu thông tin hồ sơ của bạn</p>
+                <h3 className="font-semibold text-foreground">{t('profile.personalInfo')}</h3>
+                <p className="text-xs text-muted-foreground">{t('profile.personalInfoDescription')}</p>
               </div>
             </div>
 
@@ -363,56 +364,56 @@ export default function ProfilePage() {
               {/* Row: Username + Email (readonly) */}
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><User className="h-4 w-4 text-muted-foreground" /> Username</label>
+                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><User className="h-4 w-4 text-muted-foreground" /> {t('profile.username')}</label>
                   <Input value={profileData?.username || ''} disabled className="h-11 rounded-xl bg-muted/50 cursor-not-allowed" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Mail className="h-4 w-4 text-muted-foreground" /> Email</label>
+                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Mail className="h-4 w-4 text-muted-foreground" /> {t('profile.email')}</label>
                   <Input value={profileData?.email || ''} disabled className="h-11 rounded-xl bg-muted/50 cursor-not-allowed" />
                 </div>
               </div>
 
               {/* Name */}
               <div className="space-y-2">
-                <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Type className="h-4 w-4 text-muted-foreground" /> Tên hiển thị</label>
-                <Input value={form.name} onChange={(e) => handleChange('name', e.target.value)} placeholder="Ví dụ: Nguyễn Văn A" className="h-11 rounded-xl" />
+                <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Type className="h-4 w-4 text-muted-foreground" /> {t('profile.displayName')}</label>
+                <Input value={form.name} onChange={(e) => handleChange('name', e.target.value)} placeholder={t('profile.displayNamePlaceholder')} className="h-11 rounded-xl" />
               </div>
 
               {/* Row: Gender + Country */}
               <div className="grid gap-5 md:grid-cols-2">
-                <FormSelect label="Giới tính" icon={Users} value={form.gender} onChange={(v) => handleChange('gender', v)} options={GENDER_MAP} placeholder="-- Chọn --" />
-                <FormSelect label="Quốc gia" icon={MapPin} value={form.country} onChange={(v) => handleChange('country', v)} options={COUNTRY_MAP} placeholder="-- Chọn --" />
+                <FormSelect label={t('profile.gender')} icon={Users} value={form.gender} onChange={(v) => handleChange('gender', v)} options={genderMap} placeholder={t('profile.select')} />
+                <FormSelect label={t('profile.country')} icon={MapPin} value={form.country} onChange={(v) => handleChange('country', v)} options={countryMap} placeholder={t('profile.select')} />
               </div>
 
               {/* Row: Education + Language */}
               <div className="grid gap-5 md:grid-cols-2">
-                <FormSelect label="Trình độ học vấn" icon={GraduationCap} value={form.level_of_education} onChange={(v) => handleChange('level_of_education', v)} options={EDU_MAP} placeholder="-- Chọn --" />
-                <FormSelect label="Ngôn ngữ" icon={Globe} value={form.language} onChange={(v) => handleChange('language', v)} options={LANG_MAP} placeholder="-- Chọn --" />
+                <FormSelect label={t('profile.education')} icon={GraduationCap} value={form.level_of_education} onChange={(v) => handleChange('level_of_education', v)} options={educationMap} placeholder={t('profile.select')} />
+                <FormSelect label={t('profile.language')} icon={Globe} value={form.language} onChange={(v) => handleChange('language', v)} options={languageMap} placeholder={t('profile.select')} />
               </div>
 
               {/* Row: Year of birth + Phone */}
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Calendar className="h-4 w-4 text-muted-foreground" /> Năm sinh</label>
+                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Calendar className="h-4 w-4 text-muted-foreground" /> {t('profile.birthYear')}</label>
                   <Input type="number" min="1900" max={new Date().getFullYear()} value={form.year_of_birth} onChange={(e) => handleChange('year_of_birth', e.target.value)} placeholder="VD: 2000" className="h-11 rounded-xl" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Phone className="h-4 w-4 text-muted-foreground" /> Số điện thoại</label>
+                  <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><Phone className="h-4 w-4 text-muted-foreground" /> {t('profile.phone')}</label>
                   <Input type="tel" value={form.phone_number} onChange={(e) => handleChange('phone_number', e.target.value)} placeholder="VD: 0901234567" className="h-11 rounded-xl" />
                 </div>
               </div>
 
               {/* Bio */}
               <div className="space-y-2">
-                <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><FileText className="h-4 w-4 text-muted-foreground" /> Tiểu sử (Bio)</label>
-                <Textarea value={form.bio} onChange={(e) => handleChange('bio', e.target.value)} placeholder="Chia sẻ về bản thân bạn..." rows={4} className="rounded-xl resize-none" />
+                <label className="text-[13px] font-semibold text-foreground flex items-center gap-1.5"><FileText className="h-4 w-4 text-muted-foreground" /> {t('profile.bio')}</label>
+                <Textarea value={form.bio} onChange={(e) => handleChange('bio', e.target.value)} placeholder={t('profile.bioPlaceholder')} rows={4} className="rounded-xl resize-none" />
               </div>
 
               {/* Submit */}
               <div className="flex justify-end pt-4 border-t border-border/50">
                 <Button type="submit" disabled={isSaving} className="h-11 rounded-xl px-8 font-semibold shadow-lg shadow-primary/20">
                   {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Lưu thay đổi
+                  {t('profile.saveChanges')}
                 </Button>
               </div>
             </form>
@@ -423,23 +424,23 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center"><KeyRound className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div>
               <div>
-                <h3 className="font-semibold text-foreground">Bảo mật tài khoản</h3>
-                <p className="text-xs text-muted-foreground">Quản lý mật khẩu và bảo mật</p>
+                <h3 className="font-semibold text-foreground">{t('profile.security')}</h3>
+                <p className="text-xs text-muted-foreground">{t('profile.securityDescription')}</p>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-foreground">Mật khẩu</div>
-                <p className="text-xs text-muted-foreground mt-0.5">Đổi mật khẩu định kỳ để bảo vệ tài khoản</p>
+                <div className="text-sm font-medium text-foreground">{t('profile.password')}</div>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('profile.passwordHint')}</p>
               </div>
               <Button variant="outline" className="rounded-xl h-10 px-6 text-sm font-medium" onClick={() => { setShowPwModal(true); setPwError(''); setPwSuccess(false); setPwForm({ current: '', newPw: '', confirm: '' }); }}>
-                <KeyRound className="mr-2 h-4 w-4" /> Đổi mật khẩu
+                <KeyRound className="mr-2 h-4 w-4" /> {t('profile.changePassword')}
               </Button>
             </div>
             {user?.created_at && (
               <div className="mt-6 pt-5 border-t border-border/50 flex items-center gap-3 text-sm text-muted-foreground">
                 <Calendar className="h-4 w-4" />
-                <span>Tham gia từ <strong className="text-foreground">{format(new Date(user.created_at), 'dd/MM/yyyy')}</strong></span>
+                <span>{t('profile.memberSince')} <strong className="text-foreground">{format(new Date(user.created_at), 'dd/MM/yyyy')}</strong></span>
               </div>
             )}
           </motion.div>
@@ -480,12 +481,12 @@ export default function ProfilePage() {
                   className="rounded-xl h-10 px-6 text-sm font-medium bg-card border-border shadow-lg hover:bg-muted"
                   onClick={() => { avatarInputRef.current?.click(); setShowAvatarModal(false); }}
                 >
-                  <Camera className="mr-2 h-4 w-4" /> Đổi ảnh đại diện
+                  <Camera className="mr-2 h-4 w-4" /> {t('profile.changeAvatar')}
                 </Button>
 
                 {/* Upload limit note */}
                 <p className="text-xs text-muted-foreground/70 text-center">
-                  Chấp nhận JPG, PNG, WebP · Tối đa 1MB
+                  {t('profile.avatarFormats')}
                 </p>
               </motion.div>
             </div>
@@ -501,7 +502,7 @@ export default function ProfilePage() {
                 className="app-liquid-card bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4"
               >
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-bold text-foreground">Đổi mật khẩu</h3>
+                  <h3 className="text-lg font-bold text-foreground">{t('profile.changePassword')}</h3>
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setShowPwModal(false)}>
                     <X className="h-4 w-4" />
                   </Button>
@@ -510,15 +511,15 @@ export default function ProfilePage() {
                 {pwSuccess ? (
                   <div className="flex flex-col items-center py-8 text-emerald-500">
                     <Check className="h-12 w-12 mb-3" />
-                    <p className="font-semibold">Đổi mật khẩu thành công!</p>
+                    <p className="font-semibold">{t('profile.passwordChanged')}</p>
                   </div>
                 ) : (
                   <form onSubmit={handlePasswordSubmit} className="space-y-4">
                     {/* Current Password */}
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Mật khẩu hiện tại</label>
+                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.currentPassword')}</label>
                       <div className="relative">
-                        <Input type={showPw ? 'text' : 'password'} value={pwForm.current} onChange={(e) => setPwForm((p) => ({ ...p, current: e.target.value }))} placeholder="Nhập mật khẩu hiện tại" className="pr-10" />
+                        <Input type={showPw ? 'text' : 'password'} value={pwForm.current} onChange={(e) => setPwForm((p) => ({ ...p, current: e.target.value }))} placeholder={t('profile.enterCurrentPassword')} className="pr-10" />
                         <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPw(!showPw)}>
                           {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -526,13 +527,13 @@ export default function ProfilePage() {
                     </div>
                     {/* New Password */}
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Mật khẩu mới</label>
-                      <Input type={showPw ? 'text' : 'password'} value={pwForm.newPw} onChange={(e) => setPwForm((p) => ({ ...p, newPw: e.target.value }))} placeholder="Tối thiểu 8 ký tự" />
+                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.newPassword')}</label>
+                      <Input type={showPw ? 'text' : 'password'} value={pwForm.newPw} onChange={(e) => setPwForm((p) => ({ ...p, newPw: e.target.value }))} placeholder={t('profile.passwordMinimum')} />
                     </div>
                     {/* Confirm Password */}
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Xác nhận mật khẩu mới</label>
-                      <Input type={showPw ? 'text' : 'password'} value={pwForm.confirm} onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))} placeholder="Nhập lại mật khẩu mới" />
+                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.confirmPassword')}</label>
+                      <Input type={showPw ? 'text' : 'password'} value={pwForm.confirm} onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))} placeholder={t('profile.repeatNewPassword')} />
                     </div>
 
                     {pwError && (
@@ -542,10 +543,10 @@ export default function ProfilePage() {
                     )}
 
                     <div className="flex gap-3 pt-2">
-                      <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPwModal(false)}>Hủy</Button>
+                      <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPwModal(false)}>{t('common.cancel')}</Button>
                       <Button type="submit" className="flex-1" disabled={isSavingPw}>
                         {isSavingPw && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        Đổi mật khẩu
+                        {t('profile.changePassword')}
                       </Button>
                     </div>
                   </form>

@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { PanelLeftIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -156,6 +157,7 @@ function Sidebar({
   dir?: string
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { t } = useTranslation()
 
   if (collapsible === "none") {
     return (
@@ -188,8 +190,8 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            <SheetTitle>{t("common.sidebar")}</SheetTitle>
+            <SheetDescription>{t("common.sidebarDescription")}</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
@@ -248,6 +250,7 @@ function SidebarTrigger({
   ...props
 }: React.ComponentPropsWithoutRef<typeof Button>) {
   const { toggleSidebar } = useSidebar()
+  const { t } = useTranslation()
 
   return (
     <Button
@@ -263,19 +266,20 @@ function SidebarTrigger({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{t("common.toggleSidebar")}</span>
     </Button>
   )
 }
 
 function SidebarRail({ className, ...props }: React.HTMLAttributes<HTMLButtonElement>) {
   const { toggleSidebar } = useSidebar()
+  const { t } = useTranslation()
 
   return (
-    <AppTooltip content="Toggle Sidebar"><button
+    <AppTooltip content={t("common.toggleSidebar")}><button
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
+      aria-label={t("common.toggleSidebar")}
       tabIndex={-1}
       onClick={toggleSidebar}
 

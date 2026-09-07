@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { storageUrl } from '@/utils/storage-url';
 import {
   Search,
@@ -49,12 +50,13 @@ function getInitial(user: CustomUser) {
 }
 
 function MembershipSummary({ user, labels }: { user: CustomUser; labels: ReturnType<typeof getGroupLabelSet> }) {
+  const { t } = useTranslation();
   const assignments = user.team_assignments ?? [];
   if (assignments.length === 0) {
     return (
       <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-dashed border-border bg-muted/25 px-2.5 py-1 text-xs text-muted-foreground">
         <Building2 className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">Chưa thuộc phòng ban nào</span>
+        <span className="truncate">{t('groups.noTeamAssignment')}</span>
       </div>
     );
   }
@@ -81,7 +83,7 @@ function MembershipSummary({ user, labels }: { user: CustomUser; labels: ReturnT
       ))}
       {hiddenCount > 0 && (
         <Badge variant="secondary" className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">
-          +{hiddenCount} phòng ban
+          {t('groups.moreTeams', { count: hiddenCount })}
         </Badge>
       )}
     </div>
@@ -89,6 +91,7 @@ function MembershipSummary({ user, labels }: { user: CustomUser; labels: ReturnT
 }
 
 export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -122,31 +125,31 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
   });
 
   const emailAutomationReady = Boolean(smtpStatus?.can_send_email);
-  const emailBadgeText = emailAutomationReady ? 'Email tự động đang bật' : 'Chỉ tạo thông báo trong hệ thống';
+  const emailBadgeText = emailAutomationReady ? t('groups.emailAutomationEnabled') : t('groups.systemNotificationOnly');
   const emailDescription = emailAutomationReady
-    ? 'Hệ thống sẽ tự gửi email cho học viên sau khi thao tác hoàn tất.'
-    : 'Chưa cấu hình email gửi đi nên học viên chỉ thấy thông báo trong hệ thống.';
+    ? t('groups.emailAutomationDescription')
+    : t('groups.noEmailDescription');
   const emailTooltip = isSmtpError
-    ? 'Không kiểm tra được cấu hình email gửi đi. Hệ thống sẽ chỉ tạo thông báo trong hệ thống cho đến khi kiểm tra lại thành công.'
-    : 'Chưa cấu hình email gửi đi cho đơn vị này. Vui lòng vào phần cấu hình email để bật gửi email tự động.';
+    ? t('groups.emailStatusCheckFailed')
+    : t('groups.emailNotConfigured');
 
   const mutation = useMutation({
     mutationFn: () => addTeamMembers(teamId, selected),
     onSuccess: (res) => {
-      const skippedText = res.skipped ? ` (${res.skipped} đã có hoặc không hợp lệ)` : '';
+      const skippedText = res.skipped ? t('groups.skippedMembers', { count: res.skipped }) : '';
       const emailText = res.email_requested
         ? res.email_queued > 0
-          ? ` Đã xếp hàng ${res.email_queued} email.`
-          : ' Không có email nào được xếp hàng.'
+          ? t('groups.emailsQueued', { count: res.email_queued })
+          : t('groups.noEmailsQueued')
         : '';
-      toast.success(`Đã thêm ${res.added} học viên${skippedText}.${emailText}`);
+      toast.success(t('groups.membersAdded', { count: res.added, skipped: skippedText, email: emailText }));
       setSelected([]);
       setSearch('');
       setPage(1);
       onOpenChange(false);
       onSuccess();
     },
-    onError: () => toast.error('Lỗi thêm thành viên'),
+    onError: () => toast.error(t('groups.addMembersFailed')),
   });
 
   const users: CustomUser[] = data?.data ?? [];
@@ -192,21 +195,21 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
               </div>
               <div className="min-w-0">
                 <DialogTitle className="text-lg font-bold leading-6 text-foreground sm:text-xl">
-                  Thêm thành viên vào {targetLabelLower}
+                  {t('groups.addMembersTitle', { target: targetLabelLower })}
                 </DialogTitle>
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                  Tìm học viên, xem phòng ban hiện tại và chọn người cần thêm.
+                  {t('groups.addMembersDescription')}
                 </p>
               </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
               <div className="rounded-2xl border border-border/70 bg-background px-4 py-2 text-center shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Đã chọn</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t('groups.selected')}</p>
                 <p className="text-lg font-bold text-primary">{selected.length}</p>
               </div>
               <div className="rounded-2xl border border-border/70 bg-background px-4 py-2 text-center shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kết quả</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t('groups.results')}</p>
                 <p className="text-lg font-bold text-foreground">{total}</p>
               </div>
             </div>
@@ -219,7 +222,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="h-11 rounded-2xl border-border/80 bg-background pl-10 shadow-sm focus-visible:ring-primary/20"
-                placeholder="Tìm học viên theo tên hoặc email..."
+                placeholder={t('groups.searchLearners')}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
@@ -228,7 +231,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
             <div className="flex h-11 w-full items-center justify-between gap-2 rounded-2xl border border-border/80 bg-background px-3 shadow-sm sm:w-[220px] lg:flex-none">
               <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-muted-foreground">
                 <Settings2 className="h-3.5 w-3.5" />
-                Hiển thị
+                {t('groups.display')}
               </div>
               <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
                 <SelectTrigger size="sm" className="w-[122px] min-w-[122px] bg-muted/30">
@@ -236,7 +239,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                 </SelectTrigger>
                 <SelectContent>
                   {PAGE_SIZE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={String(option)}>{option}/trang</SelectItem>
+                    <SelectItem key={option} value={String(option)}>{t('groups.perPage', { count: option })}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -250,7 +253,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Checkbox checked={allSelected} disabled={availableUsers.length === 0} className="pointer-events-none" />
-                <span className="whitespace-nowrap">Chọn tất cả trang này</span>
+                <span className="whitespace-nowrap">{t('groups.selectAllPage')}</span>
               </span>
               <span className="shrink-0 text-xs text-muted-foreground">{selectedOnPage}/{availableUsers.length}</span>
             </button>
@@ -260,9 +263,9 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
           <div className="hidden shrink-0 border-b border-border/70 bg-muted/20 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[34px_minmax(240px,0.9fr)_minmax(280px,1fr)_150px] sm:gap-4 sm:px-6">
             <span />
-            <span>Học viên</span>
-            <span>Phòng ban hiện tại</span>
-            <span className="text-right">Trạng thái</span>
+            <span>{t('groups.learner')}</span>
+            <span>{t('groups.currentTeams')}</span>
+            <span className="text-right">{t('groups.status')}</span>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-border/70 custom-scrollbar">
@@ -290,9 +293,9 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/40 text-muted-foreground">
                   <UsersRound className="h-6 w-6" />
                 </div>
-                <p className="mt-4 text-sm font-semibold text-foreground">Không tìm thấy học viên</p>
+                <p className="mt-4 text-sm font-semibold text-foreground">{t('groups.noLearners')}</p>
                 <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-                  Thử đổi từ khóa tìm kiếm hoặc tăng số lượng hiển thị mỗi trang.
+                  {t('groups.noLearnersDescription')}
                 </p>
               </div>
             ) : users.map(u => {
@@ -342,14 +345,14 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                   <div className="col-span-2 flex pl-[50px] sm:col-span-1 sm:justify-end sm:pl-0">
                     {isExisting ? (
                       <Badge variant="secondary" className="rounded-full border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
-                        Đã có trong {targetLabelLower}
+                        {t('groups.alreadyInTarget', { target: targetLabelLower })}
                       </Badge>
                     ) : isSelected ? (
                       <Badge variant="secondary" className="rounded-full border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                        Đang chọn
+                        {t('groups.selecting')}
                       </Badge>
                     ) : (
-                      <span className="text-xs font-medium text-muted-foreground">Có thể thêm</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t('groups.canAdd')}</span>
                     )}
                   </div>
                 </div>
@@ -391,7 +394,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                           <button
                             type="button"
                             className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 transition hover:bg-red-500/15 dark:text-red-300"
-                            aria-label="Vì sao email tự động chưa bật?"
+                            aria-label={t('groups.emailAutomationWhy')}
                           >
                             <Info className="h-3.5 w-3.5" />
                           </button>
@@ -414,9 +417,9 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
             <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-xs leading-5 text-muted-foreground">
               <div className="mb-1 flex items-center gap-2 font-semibold text-foreground">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                Quy tắc thêm thành viên
+                {t('groups.memberRuleTitle')}
               </div>
-              Học viên đã nằm trong {targetLabelLower} này sẽ bị khóa chọn. Học viên thuộc phòng ban khác vẫn có thể được thêm vào nhiều {lowerGroupLabel(labels.team)}.
+              {t('groups.memberRuleDescription', { target: targetLabelLower, team: lowerGroupLabel(labels.team) })}
             </div>
           </div>
 
@@ -426,7 +429,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="min-w-[124px] text-center text-xs font-semibold text-muted-foreground">
-                Trang {page} / {Math.max(1, totalPages)} · {pageStart}-{pageEnd}/{total}
+                {t('groups.pageRange', { page, totalPages: Math.max(1, totalPages), start: pageStart, end: pageEnd, count: total })}
               </span>
               <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || isFetching} className="h-9 w-9 rounded-xl p-0">
                 <ChevronRight className="h-4 w-4" />
@@ -434,14 +437,14 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
             </div>
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={handleClose} className="h-10 px-6 sm:min-w-[112px]">Hủy</Button>
+              <Button variant="outline" onClick={handleClose} className="h-10 px-6 sm:min-w-[112px]">{t('common.cancel')}</Button>
               <Button
                 disabled={selected.length === 0 || mutation.isPending}
                 onClick={() => mutation.mutate()}
                 className="h-10 gap-2 px-6 sm:min-w-[168px]"
               >
                 {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
-                Thêm {selected.length > 0 ? `(${selected.length})` : ''}
+                {t('groups.add')} {selected.length > 0 ? `(${selected.length})` : ''}
               </Button>
             </div>
           </div>

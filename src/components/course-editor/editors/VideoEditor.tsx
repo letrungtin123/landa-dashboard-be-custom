@@ -6,6 +6,8 @@ import { storageUrl } from '@/utils/storage-url';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import { toast } from 'sonner';
 import UploadedVideoPreview from '../UploadedVideoPreview';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 type VideoMode = 'youtube' | 'upload';
 
@@ -37,6 +39,7 @@ function extractYoutubeId(input: string): string {
 }
 
 export default function VideoEditor({ displayName, onDisplayNameChange, metadata, onMetadataChange, courseId, onAutoSave }: VideoEditorProps) {
+  const { t } = useTranslation();
   // Detect initial mode from existing metadata
   const existingStoragePath = metadata?.video_storage_path || '';
 
@@ -105,17 +108,20 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
 
   const handleUploadVideo = async (file: File) => {
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload video');
+      toast.error(t('courseEditorForms.courseIdMissing'));
       return;
     }
 
     if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Giới hạn tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+      toast.error(t('courseEditorForms.videoTooLarge', {
+        size: `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+        limit: COURSE_ASSET_MAX_UPLOAD_LABEL,
+      }));
       return;
     }
 
     if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
-      toast.error('Định dạng không hỗ trợ. Chỉ chấp nhận MP4, WebM, MOV.');
+      toast.error(t('courseEditorForms.unsupportedVideoFormat'));
       return;
     }
 
@@ -144,7 +150,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
         onMetadataChange(nextMetadata);
         try {
           await persistMetadataDraft(nextMetadata);
-          toast.success('Upload video thành công và đã lưu draft');
+          toast.success(t('courseEditorForms.videoUploadedSaved'));
         } catch (saveErr) {
           try { await deleteCourseAssetByStoragePath(courseId, path); } catch { /* ignore cleanup */ }
           setVideoPath(previousPath);
@@ -154,7 +160,9 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
       }
       setUploadProgress(100);
     } catch (err: any) {
-      toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.videoUploadFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
       setUploadProgress(0);
     } finally {
       clearInterval(progressInterval);
@@ -180,7 +188,9 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
       setVideoPath(previousPath);
       metadataRef.current = previousMetadata;
       onMetadataChange(previousMetadata);
-      toast.error('Lưu thay đổi video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.videoSaveFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
       return;
     }
     let pendingDelete = false;
@@ -192,7 +202,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
         // Ignore cleanup errors
       }
     }
-    toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
+    toast.success(pendingDelete ? t('courseEditorForms.videoRemovedDraft') : t('courseEditorForms.videoDeleted'));
   };
 
   const handleFileSelect = (files: FileList | null) => {
@@ -225,7 +235,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
 
   return (
     <div className="space-y-6">
-      <Field label="Tên hiển thị">
+      <Field label={t('courseUnit.displayName')}>
         <input
           className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-4 text-sm font-medium shadow-sm transition-all duration-200 hover:bg-background focus:border-primary focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
           value={displayName}
@@ -263,14 +273,14 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
           }`}
         >
           <Upload className="h-4 w-4" />
-          Upload Video
+          {t('courseEditorForms.youtubeUpload')}
         </button>
       </div>
 
       {/* YouTube Mode */}
       {mode === 'youtube' && (
         <>
-          <Field label="YouTube URL hoặc Video ID">
+          <Field label={t('courseEditorForms.youtubeUrlOrId')}>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Video className="h-5 w-5 text-muted-foreground" />
@@ -279,13 +289,13 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                 className="flex h-11 w-full rounded-xl border border-input bg-background/50 pl-10 pr-4 text-sm font-mono shadow-sm transition-all duration-200 hover:bg-background focus:border-primary focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
                 value={inputValue}
                 onChange={e => handleYoutubeChange(e.target.value)}
-                placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+                placeholder={t('courseEditorForms.youtubePlaceholder')}
               />
             </div>
             {youtubeId && youtubeId.length === 11 && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                ID hợp lệ: <span className="font-mono font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">{youtubeId}</span>
+                {t('courseEditorForms.validId')} <span className="font-mono font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">{youtubeId}</span>
               </p>
             )}
           </Field>
@@ -298,7 +308,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                   width="100%"
                   height="100%"
                   src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
-                  title="YouTube Preview"
+                  title={t('courseEditorForms.youtubePreviewTitle')}
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -310,7 +320,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
               <div className="p-4 bg-background rounded-full shadow-sm">
                 <Video className="h-8 w-8 text-muted-foreground/60" />
               </div>
-              <span className="text-sm font-medium">Nhập YouTube URL để xem trước video</span>
+              <span className="text-sm font-medium">{t('courseEditorForms.youtubePreviewHint')}</span>
             </div>
           )}
         </>
@@ -332,7 +342,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                  Video đã upload
+                  {t('courseUnit.uploadedVideo')}
                 </p>
                 <Button
                   type="button"
@@ -342,7 +352,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                   onClick={handleDeleteVideo}
                 >
                   <Trash2 className="h-4 w-4" />
-                  Xóa video
+                  {t('courseEditorForms.deleteVideo')}
                 </Button>
               </div>
             </div>
@@ -365,7 +375,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                 {uploading ? (
                   <>
                     <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                    <span className="text-sm font-medium text-foreground">Đang upload...</span>
+                    <span className="text-sm font-medium text-foreground">{t('courseEditorForms.uploading')}</span>
                     <div className="w-48 h-2 rounded-full bg-muted overflow-hidden">
                       <div
                         className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
@@ -381,11 +391,11 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
                     </div>
                     <div className="text-center">
                       <span className="text-sm font-medium block">
-                        {isDragging ? 'Thả file vào đây' : 'Kéo thả video hoặc click để chọn'}
+                        {isDragging ? t('courseEditorForms.dropVideo') : t('courseEditorForms.chooseVideo')}
                       </span>
                       <span className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1.5">
                         <AlertCircle className="h-3 w-3" />
-                        Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV
+                        {t('courseEditorForms.videoFormatHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}
                       </span>
                     </div>
                   </>

@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
 import { extractPdfStoragePath, getPdfFileName, isUploadedPdfAssetUrl, resolvePdfEmbedUrl, resolvePdfFileUrl } from '@/utils/pdf-url';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface PdfEditorProps {
   displayName: string;
@@ -29,6 +31,7 @@ export default function PdfEditor({
   courseId,
   onAutoSave,
 }: PdfEditorProps) {
+  const { t } = useTranslation();
   // Detect mode dựa vào URL hiện tại, bao gồm storage path mới của backend.
   const isAssetUrl = isUploadedPdfAssetUrl(pdfUrl);
   const [mode, setMode] = useState<InputMode>(isAssetUrl ? 'upload' : 'link');
@@ -43,17 +46,17 @@ export default function PdfEditor({
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error('Chỉ chấp nhận file PDF');
+      toast.error(t('courseEditorForms.pdfOnly'));
       return;
     }
 
     if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
-      toast.error(`File quá lớn (tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL})`);
+      toast.error(t('courseEditorForms.fileTooLarge', { size: COURSE_ASSET_MAX_UPLOAD_LABEL }));
       return;
     }
 
     if (!courseId) {
-      toast.error('Không xác định được course ID');
+      toast.error(t('courseEditorForms.courseIdRequired'));
       return;
     }
 
@@ -69,7 +72,7 @@ export default function PdfEditor({
         setUploadedFileName(file.name);
         try {
           await onAutoSave?.(storedPdfUrl);
-          toast.success(`Đã upload và lưu draft: ${file.name}`);
+          toast.success(t('courseEditorForms.uploadSavedDraft', { name: file.name }));
         } catch (saveErr) {
           const uploadedPath = extractPdfStoragePath(storedPdfUrl);
           if (uploadedPath) await deleteCourseAssetByStoragePath(courseId, uploadedPath).catch(() => {});
@@ -78,10 +81,12 @@ export default function PdfEditor({
           throw saveErr;
         }
       } else {
-        toast.error('Upload thành công nhưng không nhận được URL');
+        toast.error(t('courseEditorForms.uploadMissingUrl'));
       }
     } catch (err: any) {
-      toast.error(`Upload thất bại: ${err?.message || 'Lỗi không rõ'}`);
+      toast.error(t('courseEditorForms.uploadFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     } finally {
       setUploading(false);
       // Reset input để cho phép chọn lại cùng file
@@ -112,11 +117,11 @@ export default function PdfEditor({
           console.warn('Failed to delete course asset:', err);
         }
       }
-      toast.success('Đã gỡ tài liệu PDF khỏi draft');
+      toast.success(t('courseEditorForms.pdfRemoved'));
     } catch (err) {
       onPdfUrlChange(previousPdfUrl);
       setUploadedFileName(previousFileName);
-      toast.error('Không thể lưu thay đổi gỡ tài liệu PDF');
+      toast.error(t('courseEditorForms.pdfRemoveSaveFailed'));
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -126,7 +131,7 @@ export default function PdfEditor({
 
   return (
     <div className="space-y-5">
-      <Field label="Tên hiển thị">
+      <Field label={t('courseUnit.displayName')}>
         <input
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           value={displayName}
@@ -136,7 +141,7 @@ export default function PdfEditor({
 
       {/* ── Mode Selector ── */}
       <div className="space-y-3">
-        <label className="text-sm font-medium">Nguồn tài liệu PDF</label>
+        <label className="text-sm font-medium">{t('courseEditorForms.pdfSource')}</label>
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -155,8 +160,8 @@ export default function PdfEditor({
               <Link2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Nhập link URL</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Google Drive hoặc URL trực tiếp</p>
+              <p className="text-sm font-semibold">{t('courseEditorForms.enterUrl')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.directOrGoogleDriveUrl')}</p>
             </div>
           </button>
 
@@ -177,8 +182,8 @@ export default function PdfEditor({
               <Upload className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Upload file PDF</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Tải lên từ máy tính (tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL})</p>
+              <p className="text-sm font-semibold">{t('courseEditorForms.uploadPdf')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.uploadFromComputer', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</p>
             </div>
           </button>
         </div>
@@ -190,16 +195,16 @@ export default function PdfEditor({
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
               <Link2 className="h-4 w-4 text-blue-500" />
-              Link PDF
+              {t('courseEditorForms.pdfLink')}
             </label>
             <input
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-mono"
               value={pdfUrl}
               onChange={e => onPdfUrlChange(e.target.value)}
-              placeholder="https://drive.google.com/file/d/.../view"
+              placeholder={t('courseEditorForms.pdfUrlPlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Dán link Google Drive public share hoặc URL trực tiếp đến file .pdf.
+              {t('courseEditorForms.pdfUrlHint')}
             </p>
           </div>
 
@@ -207,20 +212,20 @@ export default function PdfEditor({
           {embedUrl ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-muted-foreground">Xem trước</label>
+                <label className="text-sm font-medium text-muted-foreground">{t('courseEditorForms.preview')}</label>
                 <a
                   href={fileUrl || pdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline flex items-center gap-1"
                 >
-                  Mở trong tab mới <ExternalLink className="h-3 w-3" />
+                  {t('courseEditorForms.openNewTab')} <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
               <div className="app-liquid-card border border-border rounded-xl overflow-hidden bg-muted/30">
                 <iframe
                   src={embedUrl}
-                  title="PDF Preview"
+                  title={t('courseEditorForms.pdfPreviewTitle')}
                   className="w-full h-[400px]"
                   allow="autoplay"
                 />
@@ -229,7 +234,7 @@ export default function PdfEditor({
           ) : (
             <div className="border-2 border-dashed border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
               <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p>Nhập link PDF ở trên để xem trước nội dung tài liệu.</p>
+              <p>{t('courseEditorForms.pdfPreviewHint')}</p>
             </div>
           )}
         </div>
@@ -286,7 +291,7 @@ export default function PdfEditor({
               {uploading ? (
                 <>
                   <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                  <p className="text-sm font-medium text-primary">Đang upload...</p>
+                  <p className="text-sm font-medium text-primary">{t('courseEditorForms.uploading')}</p>
                 </>
               ) : (
                 <>
@@ -294,8 +299,8 @@ export default function PdfEditor({
                     <Upload className="h-7 w-7 text-muted-foreground/60" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-semibold">Nhấn để chọn file PDF</p>
-                    <p className="text-xs text-muted-foreground mt-1">Hỗ trợ file .pdf, tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL}</p>
+                    <p className="text-sm font-semibold">{t('courseEditorForms.choosePdf')}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t('courseEditorForms.pdfFormatHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</p>
                   </div>
                 </>
               )}
@@ -312,17 +317,17 @@ export default function PdfEditor({
               disabled={uploading}
             >
               <Upload className="h-3.5 w-3.5" />
-              Chọn file khác
+              {t('courseEditorForms.chooseOtherFile')}
             </Button>
           )}
         </div>
       )}
 
       <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
-        <strong>Lưu ý:</strong>{' '}
+        <strong>{t('courseEditorForms.note')}</strong>{' '}
         {mode === 'link'
-          ? 'Đảm bảo file PDF đã được chia sẻ công khai (public) trên Google Drive.'
-          : 'File upload sẽ được lưu trữ trên hệ thống cùng với course.'}
+          ? t('courseEditorForms.pdfPublicNote')
+          : t('courseEditorForms.pdfStorageNote')}
       </div>
     </div>
   );

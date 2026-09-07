@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 // Removed PermissionsService
 import {
   Dialog,
@@ -11,13 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Shield, Eye, Plus, Pencil, Trash2 } from 'lucide-react';
-
-const ACTION_META = [
-  { key: 'view' as const, label: 'View', icon: Eye },
-  { key: 'add' as const, label: 'Add', icon: Plus },
-  { key: 'edit' as const, label: 'Edit', icon: Pencil },
-  { key: 'delete' as const, label: 'Delete', icon: Trash2 },
-];
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 type PermissionsJsonb = Record<string, Record<string, { view: boolean; add: boolean; edit: boolean; delete: boolean }>>;
 
@@ -53,6 +48,13 @@ export function PermissionsDialog({
   tenantId,
   onSuccess,
 }: PermissionsDialogProps) {
+  const { t } = useTranslation();
+  const actionMeta = [
+    { key: 'view' as const, label: t('permissionsDialog.view'), icon: Eye },
+    { key: 'add' as const, label: t('permissionsDialog.add'), icon: Plus },
+    { key: 'edit' as const, label: t('permissionsDialog.edit'), icon: Pencil },
+    { key: 'delete' as const, label: t('permissionsDialog.delete'), icon: Trash2 },
+  ];
   const [modules, setModules] = useState<ModuleWithTabs[]>([]);
   const [permissions, setPermissions] = useState<PermissionsJsonb>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -68,11 +70,11 @@ export function PermissionsDialog({
       setModules(mockModules as any);
       setPermissions({});
     } catch {
-      toast.error('Failed to load permissions');
+      toast.error(t('permissionsDialog.loadFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, [open, groupId, tenantId]);
+  }, [open, groupId, tenantId, t]);
 
   useEffect(() => {
     fetchData();
@@ -112,11 +114,11 @@ export function PermissionsDialog({
     try {
       setIsSaving(true);
       await new Promise(res => setTimeout(res, 500));
-      toast.success('Permissions updated successfully');
+      toast.success(t('permissionsDialog.saved'));
       onSuccess?.();
       onOpenChange(false);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to save');
+      toast.error(getLocalizedApiError(error, t('permissionsDialog.saveFailed')));
     } finally {
       setIsSaving(false);
     }
@@ -131,10 +133,10 @@ export function PermissionsDialog({
           </div>
           <div>
             <DialogTitle className="text-base font-semibold">
-              Group Permissions
+              {t('permissionsDialog.title')}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-              Configure access for group <span className="font-medium text-foreground">{groupName}</span>
+              {t('permissionsDialog.description', { groupName })}
             </DialogDescription>
           </div>
         </div>
@@ -160,19 +162,19 @@ export function PermissionsDialog({
                 <div className="border border-border rounded-lg overflow-hidden">
                   {/* Header */}
                   <div className="grid grid-cols-[1fr_repeat(4,56px)_40px] items-center px-3 py-2 bg-muted/50 border-b border-border gap-1">
-                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Tab</span>
-                    {ACTION_META.map((a) => (
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('permissionsDialog.tab')}</span>
+                    {actionMeta.map((a) => (
                       <span key={a.key} className="text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wider">
                         {a.label}
                       </span>
                     ))}
-                    <span className="text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wider">All</span>
+                    <span className="text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wider">{t('permissionsDialog.all')}</span>
                   </div>
 
                   {/* Rows */}
                   {mod.tabs.map((tab, ti) => {
                     // Check if all available actions are turned on
-                    const applicableActions = ACTION_META.filter(
+                    const applicableActions = actionMeta.filter(
                       (a) => tab.available_actions?.[a.key] !== false
                     );
                     const allOn = applicableActions.every((a) =>
@@ -187,7 +189,7 @@ export function PermissionsDialog({
                         }`}
                       >
                         <span className="text-[13px] font-medium text-foreground">{tab.name}</span>
-                        {ACTION_META.map((a) => {
+                        {actionMeta.map((a) => {
                           const isAvailable = tab.available_actions?.[a.key] !== false; // Default to true if not specified
                           return (
                             <div key={a.key} className="flex justify-center">
@@ -224,14 +226,14 @@ export function PermissionsDialog({
             onClick={() => onOpenChange(false)}
             className="h-9 px-4 text-[13px]"
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving || isLoading}
             className="h-9 px-5 text-[13px] transition-all duration-200 active:scale-[0.97]"
           >
-            {isSaving ? 'Saving...' : 'Save Permissions'}
+            {isSaving ? t('permissionsDialog.saving') : t('permissionsDialog.save')}
           </Button>
         </div>
       </DialogContent>

@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const GRADIENT_THEMES: { name: ThemeColor; label: string; color: string }[] = [
   { name: 'orange', label: 'Orange', color: '#f97316' },
@@ -32,6 +33,7 @@ const SOLID_THEMES: { name: ThemeColor; label: string; color: string }[] = [
 ];
 
 export function ThemeColorToggle() {
+  const { t } = useTranslation();
   const { themeColor, setThemeColor } = useThemeColorStore();
   const [mounted, setMounted] = useState(false);
 
@@ -46,7 +48,7 @@ export function ThemeColorToggle() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[140px] max-h-[350px] overflow-y-auto rounded-lg">
         <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Gradients
+          {t('theme.gradients')}
         </div>
         {GRADIENT_THEMES.map((theme) => (
           <DropdownMenuItem
@@ -75,7 +77,7 @@ export function ThemeColorToggle() {
 
         <div className="my-1 border-t border-border/50" />
         <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Solid Colors
+          {t('theme.solidColors')}
         </div>
 
         {SOLID_THEMES.map((theme) => (

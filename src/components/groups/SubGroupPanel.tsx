@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, ChevronRight, Users } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -12,6 +13,7 @@ import {
   getSubGroups, createSubGroup, updateSubGroup, deleteSubGroup,
   type SubGroup,
 } from '@/api/custom-groups';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface Props {
   groupId: string;
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
+  const { t } = useTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('groups', 'can_add');
   const canEdit = hasPermission('groups', 'can_edit');
@@ -43,42 +46,42 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
   const createMutation = useMutation({
     mutationFn: () => createSubGroup(groupId, { name: newName.trim() }),
     onSuccess: () => {
-      toast.success(`Đã tạo ${subgroupLabelLower}`);
+      toast.success(t('groups.created', { label: subgroupLabelLower }));
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       qc.invalidateQueries({ queryKey: ['org-groups'] }); // update subgroup_count badge
       setNewName('');
       setShowCreate(false);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || `Lỗi tạo ${subgroupLabelLower}`),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.createFailed', { label: subgroupLabelLower }))),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateSubGroup(id, { name }),
     onSuccess: () => {
-      toast.success('Đã cập nhật');
+      toast.success(t('groups.updated'));
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       setEditId(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi cập nhật'),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.updateFailed'))),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSubGroup(id),
     onSuccess: (_, id) => {
-      toast.success(`Đã xóa ${subgroupLabelLower}`);
+      toast.success(t('groups.deleted', { label: subgroupLabelLower }));
       qc.invalidateQueries({ queryKey: ['sub-groups', groupId] });
       qc.invalidateQueries({ queryKey: ['org-groups'] });
       if (selectedId === id) onSelect('');
     },
-    onError: () => toast.error(`Lỗi xóa ${subgroupLabelLower}`),
+    onError: () => toast.error(t('groups.deleteFailed', { label: subgroupLabelLower })),
   });
 
   const subgroups: SubGroup[] = data?.subgroups ?? [];
 
   const handleDelete = (sg: SubGroup) => {
     confirmDialog({
-      title: `Xóa ${labels.subgroup}`,
-      description: `Xóa "${sg.name}" sẽ xóa toàn bộ ${teamLabelLower} bên trong.`,
+      title: t('groups.deleteTitle', { label: labels.subgroup }),
+      description: t('groups.deleteSubgroupDescription', { name: sg.name, team: teamLabelLower }),
       variant: 'destructive',
       onConfirm: () => deleteMutation.mutate(sg.id),
     });
@@ -89,7 +92,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{labels.subgroup}</span>
         {canAdd && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setShowCreate(true)}>
-          <Plus className="h-3.5 w-3.5" /> Tạo mới
+          <Plus className="h-3.5 w-3.5" /> {t('groups.createNew')}
         </Button>}
       </div>
 
@@ -97,7 +100,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
         <div className="px-3 py-2 border-b border-border bg-muted/30 flex gap-2">
           <Input
             autoFocus
-            placeholder={`Tên ${subgroupLabelLower}...`}
+            placeholder={t('groups.namePlaceholder', { label: subgroupLabelLower })}
             className="h-8 text-sm"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -108,7 +111,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
           />
           <Button size="sm" className="h-8 px-3" disabled={!newName.trim() || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
-            Tạo
+            {t('groups.create')}
           </Button>
         </div>
       )}
@@ -124,7 +127,7 @@ export function SubGroupPanel({ groupId, selectedId, onSelect }: Props) {
         ) : subgroups.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">Chưa có {subgroupLabelLower} nào</p>
+            <p className="text-xs text-muted-foreground">{t('groups.none', { label: subgroupLabelLower })}</p>
           </div>
         ) : subgroups.map(sg => (
           <div

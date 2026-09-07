@@ -5,9 +5,11 @@
 import { useNavigate } from 'react-router-dom';
 import { ShieldX, ArrowLeft, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 export default function NotFoundPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="flex items-center justify-center min-h-[80vh] px-6">
@@ -27,12 +29,12 @@ export default function NotFoundPage() {
 
         {/* Title */}
         <h2 className="text-xl font-bold text-foreground mb-2">
-          Không tìm thấy trang
+          {t('notFound.title')}
         </h2>
 
         {/* Description */}
         <p className="text-sm text-muted-foreground leading-relaxed mb-8 max-w-xs mx-auto">
-          Trang bạn đang tìm không tồn tại, đã bị xóa, hoặc bạn không có quyền truy cập module này.
+          {t('notFound.description')}
         </p>
 
         {/* Actions */}
@@ -43,14 +45,14 @@ export default function NotFoundPage() {
             className="gap-2 rounded-xl"
           >
             <ArrowLeft className="h-4 w-4" />
-            Quay lại
+            {t('common.back')}
           </Button>
           <Button
             onClick={() => navigate('/library')}
             className="gap-2 rounded-xl"
           >
             <Home className="h-4 w-4" />
-            Trang chủ
+            {t('notFound.home')}
           </Button>
         </div>
       </div>

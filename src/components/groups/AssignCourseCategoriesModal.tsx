@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, Loader2, FolderCheck, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import { assignTeamCourseCategories } from '@/api/custom-groups';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import { useDebounce } from '@/hooks/use-debounce';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface Props {
   open: boolean;
@@ -22,6 +24,7 @@ interface Props {
 const PAGE_SIZE = 30;
 
 export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSuccess }: Props) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -47,14 +50,14 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
   const mutation = useMutation({
     mutationFn: () => assignTeamCourseCategories(teamId, selected),
     onSuccess: (res) => {
-      toast.success(`Đã phân ${res.assigned} danh mục khóa học${res.skipped ? ` (${res.skipped} đã có)` : ''}`);
+      toast.success(t('groups.assignCourseCategoriesSuccess', { count: res.assigned, skipped: res.skipped ? t('groups.skippedExisting', { count: res.skipped }) : '' }));
       setSelected([]);
       setSearch('');
       setPage(1);
       onOpenChange(false);
       onSuccess();
     },
-    onError: (e: any) => toast.error(e.response?.data?.error || 'Lỗi phân danh mục khóa học'),
+    onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('groups.assignCourseCategoriesFailed'))),
   });
 
   const categories = data?.results ?? [];
@@ -86,14 +89,14 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Phân danh mục khóa học cho {targetLabel}</DialogTitle>
+          <DialogTitle>{t('groups.assignCourseCategoriesTitle', { target: targetLabel })}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Tìm danh mục khóa học..."
+            placeholder={t('groups.searchCourseCategories')}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -107,7 +110,7 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
               </div>
             ) : categories.length === 0 ? (
               <div className="flex h-24 items-center justify-center text-center text-sm text-muted-foreground">
-                {search ? 'Không tìm thấy danh mục' : 'Chưa có danh mục khóa học nào. Hãy tạo trong mục Danh mục khóa học.'}
+                {search ? t('groups.noCategories') : t('groups.noCourseCategories')}
               </div>
             ) : categories.map(c => {
               const isAssigned = Boolean(c.is_assigned_to_team);
@@ -133,16 +136,16 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{c.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{c.course_count} khóa học</p>
+                    <p className="text-[10px] text-muted-foreground">{t('groups.courseCount', { count: c.course_count })}</p>
                   </div>
                   {isAssigned && (
                     <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                      Đã phân
+                      {t('groups.assigned')}
                     </span>
                   )}
                   {isPublic && (
                     <span className="flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-300">
-                      <Globe className="h-3 w-3" /> Công khai
+                      <Globe className="h-3 w-3" /> {t('groups.public')}
                     </span>
                   )}
                 </div>
@@ -154,11 +157,11 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Checkbox checked={allSelected} onCheckedChange={toggleAll} disabled={availableCategories.length === 0} id="select-all-course-cats-add" />
-            <label htmlFor="select-all-course-cats-add" className="cursor-pointer text-xs font-medium">Chọn tất cả trang này</label>
+            <label htmlFor="select-all-course-cats-add" className="cursor-pointer text-xs font-medium">{t('groups.selectAllPage')}</label>
           </div>
           {selected.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Đã chọn <span className="font-semibold text-primary">{selected.length}</span> danh mục
+              {t('groups.selectedItems', { count: selected.length, item: t('groups.categories') })}
             </p>
           )}
         </div>
@@ -167,20 +170,20 @@ export function AssignCourseCategoriesModal({ open, teamId, onOpenChange, onSucc
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1 || isFetching} className="h-7 w-7 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground">Trang {page} / {Math.max(1, totalPages)}</span>
+          <span className="text-xs text-muted-foreground">{t('groups.page', { page, total: Math.max(1, totalPages) })}</span>
           <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || isFetching} className="h-7 w-7 p-0">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={handleClose}>Hủy</Button>
+          <Button variant="outline" onClick={handleClose}>{t('common.cancel')}</Button>
           <Button
             disabled={selected.length === 0 || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Phân {selected.length > 0 ? `(${selected.length})` : ''}
+            {t('groups.assign')} {selected.length > 0 ? `(${selected.length})` : ''}
           </Button>
         </DialogFooter>
       </DialogContent>

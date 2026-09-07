@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { toast } from "sonner";
@@ -11,6 +12,9 @@ import { useAuthStore } from "@/utils/store";
 import { useHeaderInfo } from "@/utils/header-store";
 import { PageHeader } from '@/components/shared/page-header';
 import { getModuleDisplayName } from "@/utils/module-labels";
+import { useLocaleStore } from "@/utils/locale-store";
+import { formatLocaleDate } from "@/utils/locale-format";
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,15 +47,23 @@ import { fetchUsers, type CustomUser } from "@/api/custom-users";
 import { AppTooltip } from '@/components/ui/tooltip';
 
 const ACTIONS = ["can_view", "can_add", "can_edit", "can_delete"] as const;
-const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  can_view: { label: "Xem", icon: Eye, color: "text-blue-500" },
-  can_add: { label: "Thêm", icon: PlusCircle, color: "text-emerald-500" },
-  can_edit: { label: "Sửa", icon: Edit3, color: "text-amber-500" },
-  can_delete: { label: "Xóa", icon: Trash, color: "text-red-500" },
+const ACTION_META: Record<string, { icon: React.ElementType; color: string }> = {
+  can_view: { icon: Eye, color: "text-blue-500" },
+  can_add: { icon: PlusCircle, color: "text-emerald-500" },
+  can_edit: { icon: Edit3, color: "text-amber-500" },
+  can_delete: { icon: Trash, color: "text-red-500" },
 };
 
 export default function PermissionGroupsPage() {
-  useHeaderInfo("Nhóm quyền");
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  useHeaderInfo(t("permissionGroups.title"));
+  const actionLabels: Record<(typeof ACTIONS)[number], string> = {
+    can_view: t("permissionGroups.actions.view"),
+    can_add: t("permissionGroups.actions.add"),
+    can_edit: t("permissionGroups.actions.edit"),
+    can_delete: t("permissionGroups.actions.delete"),
+  };
 
   // ── List state ──
   const [groups, setGroups] = useState<PermissionGroup[]>([]);
@@ -104,9 +116,9 @@ export default function PermissionGroupsPage() {
       const result = await fetchPermGroups({ page, page_size: limit, search: search || undefined });
       setGroups(result.data);
       setTotal(result.total);
-    } catch { toast.error("Không thể tải danh sách nhóm quyền"); }
+    } catch { toast.error(t("permissionGroups.loadFailed")); }
     finally { setLoading(false); }
-  }, [page, limit, search, activeTenantId]);
+  }, [page, limit, search, activeTenantId, t]);
 
   useEffect(function init() { loadGroups(); }, [loadGroups]);
   useEffect(function resetPage() { setPage(1); }, [search, limit]);
@@ -130,7 +142,7 @@ export default function PermissionGroupsPage() {
       const d = await fetchPermGroupById(groupId);
       setDetail(d);
       setMatrixPerms(d.permissions);
-    } catch { toast.error("Lỗi tải chi tiết nhóm quyền"); setShowDetail(false); }
+    } catch { toast.error(t("permissionGroups.detailLoadFailed")); setShowDetail(false); }
     finally { setDetailLoading(false); }
   }
 
@@ -193,7 +205,7 @@ export default function PermissionGroupsPage() {
         await addMembersToGroup(detail.id, pendingAddMembers.map(m => m.id));
       }
 
-      toast.success("Đã lưu thay đổi");
+      toast.success(t("permissionGroups.saved"));
       setMatrixDirty(false);
       setPendingAddMembers([]);
       setPendingRemoveIds([]);
@@ -202,21 +214,21 @@ export default function PermissionGroupsPage() {
 
       // Reload group list
       loadGroups();
-    } catch { toast.error("Lỗi lưu thay đổi"); }
+    } catch { toast.error(t("permissionGroups.saveFailed")); }
     finally { setSaving(false); }
   }
 
   // ── CRUD ──
   async function handleCreate() {
-    if (!formName.trim()) { toast.error("Nhập tên nhóm quyền"); return; }
-    if (isSuperadmin && !formTenantId) { toast.error("Chọn doanh nghiệp"); return; }
+    if (!formName.trim()) { toast.error(t("permissionGroups.nameRequired")); return; }
+    if (isSuperadmin && !formTenantId) { toast.error(t("permissionGroups.tenantRequired")); return; }
     setSaving(true);
     try {
       await createPermGroup({ name: formName, description: formDesc, tenant_id: isSuperadmin ? formTenantId : undefined });
-      toast.success("Tạo nhóm quyền thành công");
+      toast.success(t("permissionGroups.created"));
       setShowCreate(false); setFormName(""); setFormDesc(""); setFormTenantId("");
       loadGroups();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi tạo nhóm quyền"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("permissionGroups.createFailed"))); }
     finally { setSaving(false); }
   }
 
@@ -225,25 +237,25 @@ export default function PermissionGroupsPage() {
     setSaving(true);
     try {
       await updatePermGroup(editGroup.id, { name: formName, description: formDesc });
-      toast.success("Cập nhật thành công");
+      toast.success(t("permissionGroups.updated"));
       setEditGroup(null);
       loadGroups();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi cập nhật"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("permissionGroups.updateFailed"))); }
     finally { setSaving(false); }
   }
 
   function handleDeleteConfirm(groupId: string) {
     confirmDialog({
-      title: "Xóa nhóm quyền",
-      description: "Xóa nhóm quyền sẽ gỡ quyền của tất cả thành viên. Thao tác không thể hoàn tác.",
+      title: t("permissionGroups.deleteTitle"),
+      description: t("permissionGroups.deleteDescription"),
       variant: "destructive",
       onConfirm: async function doDelete() {
         try {
           await deletePermGroup(groupId);
-          toast.success("Xóa thành công");
+          toast.success(t("permissionGroups.deleted"));
           loadGroups();
           if (detail?.id === groupId) { setShowDetail(false); setDetail(null); }
-        } catch { toast.error("Lỗi xóa nhóm quyền"); }
+        } catch { toast.error(t("permissionGroups.deleteFailed")); }
       },
     });
   }
@@ -255,7 +267,7 @@ export default function PermissionGroupsPage() {
       const result = await fetchUsers({ page: 1, page_size: 100, role: "staff,learner_plus", search: searchTerm || undefined });
       // Show all staff/learner_plus — those already in THIS group will be hidden; those in OTHER groups will be disabled
       setMemberResults(result.data);
-    } catch { toast.error("Lỗi tải danh sách người dùng"); }
+    } catch { toast.error(t("permissionGroups.usersLoadFailed")); }
     finally { setMemberLoading(false); }
   }
 
@@ -301,7 +313,7 @@ export default function PermissionGroupsPage() {
     setSelectedUserIds([]);
     setMemberSearch("");
     setMemberResults([]);
-    toast.success(`Đã thêm ${usersToAdd.length} thành viên (chưa lưu)`);
+    toast.success(t("permissionGroups.membersAddedPending", { count: usersToAdd.length }));
   }
 
   // Remove member locally (pending until save)
@@ -309,12 +321,12 @@ export default function PermissionGroupsPage() {
     // If this is a pending add, just remove from pending
     if (pendingAddMembers.some(m => m.id === userId)) {
       setPendingAddMembers(prev => prev.filter(m => m.id !== userId));
-      toast.success(`Đã bỏ ${username} (chưa lưu)`);
+      toast.success(t("permissionGroups.memberRemovedPending", { username }));
       return;
     }
     // If this is an original member, mark for removal
     setPendingRemoveIds(prev => [...prev, userId]);
-    toast.success(`Đã đánh dấu xóa ${username} (chưa lưu)`);
+    toast.success(t("permissionGroups.memberMarkedForRemoval", { username }));
   }
 
   // Undo a pending removal
@@ -344,15 +356,15 @@ export default function PermissionGroupsPage() {
       {/* ── Page Header ── */}
       <PageHeader
         icon={ShieldCheck}
-        title="Nhóm quyền"
-        description="Quản lý phân quyền cho các vai trò trong hệ thống"
+        title={t("permissionGroups.title")}
+        description={t("permissionGroups.description")}
         actions={
           canAdd ? (
             <Button
               onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20 border-0 gap-2"
             >
-              <Plus className="h-4 w-4" /> Tạo nhóm
+              <Plus className="h-4 w-4" /> {t("permissionGroups.createGroup")}
             </Button>
           ) : undefined
         }
@@ -362,7 +374,7 @@ export default function PermissionGroupsPage() {
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
         <Input
-          placeholder="Tìm nhóm quyền theo tên..."
+          placeholder={t("permissionGroups.searchPlaceholder")}
           className="pl-10 h-11 bg-card border-border/50 rounded-xl text-sm shadow-sm focus-visible:ring-primary/30"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -400,16 +412,16 @@ export default function PermissionGroupsPage() {
           <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
             <ShieldCheck className="w-8 h-8 text-muted-foreground/30" />
           </div>
-          <p className="text-sm font-semibold text-foreground mb-1">Chưa có nhóm quyền</p>
+          <p className="text-sm font-semibold text-foreground mb-1">{t("permissionGroups.emptyTitle")}</p>
           <p className="text-xs text-muted-foreground max-w-xs">
-            Tạo nhóm quyền để phân quyền truy cập cho nhân sự và người dùng trong hệ thống.
+            {t("permissionGroups.emptyDescription")}
           </p>
           <Button
             onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
             className="mt-5 gap-2"
             variant="outline"
           >
-            <Plus className="h-4 w-4" /> Tạo nhóm đầu tiên
+            <Plus className="h-4 w-4" /> {t("permissionGroups.createFirst")}
           </Button>
         </div>
       ) : (
@@ -444,19 +456,19 @@ export default function PermissionGroupsPage() {
                   {(canEdit || canDelete) && (
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                       {canEdit && (
-                        <AppTooltip content="Sửa"><button
+                        <AppTooltip content={t("common.edit")}><button
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                           onClick={function edit() { setFormName(g.name); setFormDesc(g.description); setEditGroup(g); }}
-                          aria-label="Sửa"
+                          aria-label={t("common.edit")}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button></AppTooltip>
                       )}
                       {canDelete && (
-                        <AppTooltip content="Xóa"><button
+                        <AppTooltip content={t("common.delete")}><button
                           className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                           onClick={function del() { handleDeleteConfirm(g.id); }}
-                          aria-label="Xóa"
+                          aria-label={t("common.delete")}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button></AppTooltip>
@@ -469,10 +481,10 @@ export default function PermissionGroupsPage() {
 
                 <div className="flex items-center gap-2 mt-auto pt-1">
                   <Badge variant="secondary" className="text-[10px] font-medium gap-1 bg-primary/8 text-primary border-primary/15 hover:bg-primary/12 px-2 py-0.5">
-                    <Users className="h-3 w-3" />{g.member_count} thành viên
+                    <Users className="h-3 w-3" />{t("permissionGroups.memberCount", { count: g.member_count })}
                   </Badge>
                   <span className="text-[10px] text-muted-foreground/50">
-                    {g.created_at ? new Date(g.created_at).toLocaleDateString("vi-VN") : ""}
+                    {g.created_at ? formatLocaleDate(g.created_at, locale) : ""}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 ml-auto group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                 </div>
@@ -484,7 +496,7 @@ export default function PermissionGroupsPage() {
 
       {/* ── Pagination ── */}
       {!loading && groups.length > 0 && (
-        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label="nhóm quyền" />
+        <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t("permissionGroups.groups")} />
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
@@ -494,8 +506,8 @@ export default function PermissionGroupsPage() {
         if (!v) {
           if (isDirty) {
             confirmDialog({
-              title: "Có thay đổi chưa lưu",
-              description: "Bạn có thay đổi chưa lưu. Nếu đóng, tất cả thay đổi sẽ bị mất.",
+              title: t("permissionGroups.unsavedTitle"),
+              description: t("permissionGroups.unsavedDescription"),
               variant: "destructive",
               onConfirm: function discard() {
                 setShowDetail(false);
@@ -528,7 +540,7 @@ export default function PermissionGroupsPage() {
                 {/* Change summary badges */}
                 <div className="flex items-center gap-1.5">
                   {matrixDirty && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">Quyền</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">{t("permissionGroups.permissions")}</span>
                   )}
                   {pendingAddMembers.length > 0 && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">+{pendingAddMembers.length}</span>
@@ -544,7 +556,7 @@ export default function PermissionGroupsPage() {
                   className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 gap-1.5 shadow-md shadow-primary/20"
                 >
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Lưu thay đổi
+                  {t("permissionGroups.saveChanges")}
                 </Button>
               </div>
             )}
@@ -569,10 +581,10 @@ export default function PermissionGroupsPage() {
             <Tabs defaultValue="permissions" className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: '55vh' }}>
               <TabsList className="shrink-0 mx-6 mt-4 bg-muted/50 p-1 rounded-xl h-auto">
                 <TabsTrigger value="permissions" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm gap-2 text-xs font-medium py-2 px-4">
-                  <Shield className="h-3.5 w-3.5" /> Ma trận phân quyền
+                  <Shield className="h-3.5 w-3.5" /> {t("permissionGroups.permissionMatrix")}
                 </TabsTrigger>
                 <TabsTrigger value="members" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm gap-2 text-xs font-medium py-2 px-4">
-                  <Users className="h-3.5 w-3.5" /> Thành viên
+                  <Users className="h-3.5 w-3.5" /> {t("permissionGroups.members")}
                   <Badge variant="secondary" className={`ml-0.5 text-[10px] px-1.5 py-0 h-4 font-mono ${(pendingAddMembers.length > 0 || pendingRemoveIds.length > 0) ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : ''}`}>{localMembers.length}</Badge>
                 </TabsTrigger>
               </TabsList>
@@ -589,7 +601,7 @@ export default function PermissionGroupsPage() {
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-border/50 bg-muted/30">
                         <TableHead className="min-w-[220px] pl-4 py-3">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tính năng</span>
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("permissionGroups.features")}</span>
                         </TableHead>
                         {ACTIONS.map(function renderHead(action) {
                           const meta = ACTION_META[action];
@@ -597,19 +609,19 @@ export default function PermissionGroupsPage() {
                           const allOn = matrixPerms.every(p => p[action]);
                           return (
                             <TableHead key={action} className="text-center w-24 py-3">
-                              <AppTooltip content={allOn ? "Tắt tất cả" : "Bật tất cả"}><button
+                              <AppTooltip content={allOn ? t("permissionGroups.turnAllOff") : t("permissionGroups.turnAllOn")}><button
                                 className="flex flex-col items-center gap-1 mx-auto group/col cursor-pointer"
                                 onClick={() => toggleAllForAction(action)}
-                                aria-label={allOn ? "Tắt tất cả" : "Bật tất cả"}
+                                aria-label={allOn ? t("permissionGroups.turnAllOff") : t("permissionGroups.turnAllOn")}
                               >
                                 <Icon className={`h-3.5 w-3.5 ${meta.color} opacity-70 group-hover/col:opacity-100 transition-opacity`} />
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{meta.label}</span>
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{actionLabels[action]}</span>
                               </button></AppTooltip>
                             </TableHead>
                           );
                         })}
                         <TableHead className="w-20 text-center py-3">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tất cả</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t("permissionGroups.all")}</span>
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -642,7 +654,7 @@ export default function PermissionGroupsPage() {
                               );
                             })}
                             <TableCell className="text-center py-2.5">
-                              <AppTooltip content={allOn ? "Tắt tất cả" : "Bật tất cả"}><button
+                              <AppTooltip content={allOn ? t("permissionGroups.turnAllOff") : t("permissionGroups.turnAllOn")}><button
                                 onClick={() => toggleAllForModule(p.code)}
                                 className={`inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
                                   allOn
@@ -651,7 +663,7 @@ export default function PermissionGroupsPage() {
                                       ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
                                       : 'bg-muted/30 text-muted-foreground/40 hover:bg-muted/50'
                                 }`}
-                                aria-label={allOn ? "Tắt tất cả" : "Bật tất cả"}
+                                aria-label={allOn ? t("permissionGroups.turnAllOff") : t("permissionGroups.turnAllOn")}
                               >
                                 {enabled}/{ACTIONS.length}
                               </button></AppTooltip>
@@ -675,11 +687,11 @@ export default function PermissionGroupsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-muted-foreground">
-                        {localMembers.length > 0 ? `${localMembers.length} thành viên` : 'Chưa có thành viên'}
+                        {localMembers.length > 0 ? t("permissionGroups.memberCount", { count: localMembers.length }) : t("permissionGroups.noMembers")}
                       </p>
                       {(pendingAddMembers.length > 0 || pendingRemoveIds.length > 0) && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium italic">
-                          chưa lưu
+                          {t("permissionGroups.unsaved")}
                         </span>
                       )}
                     </div>
@@ -688,7 +700,7 @@ export default function PermissionGroupsPage() {
                       onClick={function open() { setShowAddMember(true); setMemberSearch(""); setMemberResults([]); setSelectedUserIds([]); loadStaffForAdd(); }}
                       className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground border-0 shadow-sm"
                     >
-                      <UserPlus className="h-3.5 w-3.5" /> Thêm thành viên
+                      <UserPlus className="h-3.5 w-3.5" /> {t("permissionGroups.addMembers")}
                     </Button>}
                   </div>
 
@@ -703,14 +715,14 @@ export default function PermissionGroupsPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm text-red-600 dark:text-red-400 truncate line-through opacity-60">{m.full_name || m.username}</p>
-                              <p className="text-[10px] text-red-400 dark:text-red-500 truncate">Đánh dấu xóa</p>
+                              <p className="text-[10px] text-red-400 dark:text-red-500 truncate">{t("permissionGroups.markedForRemoval")}</p>
                             </div>
-                            <AppTooltip content="Hoàn tác"><button
+                            <AppTooltip content={t("permissionGroups.undo")}><button
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
                               onClick={function undo() { undoRemoveMember(m.id); }}
-                              aria-label="Hoàn tác"
+                              aria-label={t("permissionGroups.undo")}
                             >
-                              <Undo2 className="h-3 w-3" /> Hoàn tác
+                              <Undo2 className="h-3 w-3" /> {t("permissionGroups.undo")}
                             </button></AppTooltip>
                           </div>
                         );
@@ -723,8 +735,8 @@ export default function PermissionGroupsPage() {
                       <div className="w-14 h-14 rounded-2xl bg-muted/30 flex items-center justify-center mb-3">
                         <Users className="w-7 h-7 text-muted-foreground/20" />
                       </div>
-                      <p className="text-sm font-medium text-muted-foreground mb-1">Chưa có thành viên nào</p>
-                      <p className="text-xs text-muted-foreground/60 max-w-xs">Thêm thành viên để áp dụng bộ quyền này cho họ.</p>
+                      <p className="text-sm font-medium text-muted-foreground mb-1">{t("permissionGroups.noMembersYet")}</p>
+                      <p className="text-xs text-muted-foreground/60 max-w-xs">{t("permissionGroups.noMembersDescription")}</p>
                     </div>
                   ) : (
                     <div className="grid gap-2">
@@ -747,16 +759,16 @@ export default function PermissionGroupsPage() {
                               <div className="flex items-center gap-1.5">
                                 <p className="font-medium text-sm text-foreground truncate">{m.full_name || m.username}</p>
                                 {isPendingAdd && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium shrink-0">Mới</span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium shrink-0">{t("permissionGroups.new")}</span>
                                 )}
                               </div>
                               <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
                             </div>
                             {canEdit && (
-                              <AppTooltip content="Xóa khỏi nhóm"><button
+                              <AppTooltip content={t("permissionGroups.removeFromGroup")}><button
                                 className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
                                 onClick={function remove() { handleRemoveMemberLocal(m.id, m.full_name || m.username); }}
-                                aria-label="Xóa khỏi nhóm"
+                                aria-label={t("permissionGroups.removeFromGroup")}
                               >
                                 <X className="h-4 w-4" />
                               </button></AppTooltip>
@@ -780,16 +792,16 @@ export default function PermissionGroupsPage() {
         <DialogContent className="max-w-lg rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" /> Thêm thành viên
+              <UserPlus className="h-5 w-5 text-primary" /> {t("permissionGroups.addMembers")}
             </DialogTitle>
-            <DialogDescription>Chọn nhân sự hoặc học viên nâng cao để thêm vào nhóm "{detail?.name}"</DialogDescription>
+            <DialogDescription>{t("permissionGroups.addMembersDescription", { group: detail?.name || "" })}</DialogDescription>
           </DialogHeader>
 
           {/* Info: 1 group per user rule */}
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
             <Shield className="h-3.5 w-3.5 text-blue-500 mt-0.5 shrink-0" />
             <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
-              Mỗi người dùng chỉ được gán vào <span className="font-semibold">1 nhóm quyền duy nhất</span>. Người đã có nhóm sẽ không thể chọn.
+              {t("permissionGroups.memberRuleBefore")} <span className="font-semibold">{t("permissionGroups.oneGroupOnly")}</span>. {t("permissionGroups.memberRuleAfter")}
             </p>
           </div>
 
@@ -797,7 +809,7 @@ export default function PermissionGroupsPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
               <Input
-                placeholder="Tìm tên đăng nhập hoặc email..."
+                placeholder={t("permissionGroups.searchUsersPlaceholder")}
                 className="pl-9 h-10 rounded-xl"
                 value={memberSearch}
                 onChange={function onChange(e) { setMemberSearch(e.target.value); }}
@@ -819,7 +831,7 @@ export default function PermissionGroupsPage() {
                 <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                   <Search className="h-6 w-6 text-muted-foreground/20 mb-2" />
                   <p className="text-xs text-muted-foreground">
-                    {memberLoading ? "Đang tải..." : memberSearch ? "Không tìm thấy nhân sự" : "Nhập từ khóa rồi nhấn phím Enter để tìm"}
+                    {memberLoading ? t("common.loading") : memberSearch ? t("permissionGroups.noStaffFound") : t("permissionGroups.searchUsersHint")}
                   </p>
                 </div>
               ) : (
@@ -868,11 +880,11 @@ export default function PermissionGroupsPage() {
                         {inOtherGroup ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 shrink-0">
                             <Shield className="h-2.5 w-2.5" />
-                            {u.permission_group_name || "Nhóm khác"}
+                            {u.permission_group_name || t("permissionGroups.otherGroup")}
                           </span>
                         ) : (
                           <Badge variant="outline" className="shrink-0 text-[10px] rounded-md text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10">
-                            Chưa gán
+                            {t("permissionGroups.unassigned")}
                           </Badge>
                         )}
                       </div>
@@ -885,25 +897,25 @@ export default function PermissionGroupsPage() {
             {selectedUserIds.length > 0 && (
               <div className="flex items-center gap-2 py-1">
                 <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
-                  {selectedUserIds.length} đã chọn
+                  {t("permissionGroups.selectedCount", { count: selectedUserIds.length })}
                 </Badge>
                 <button
                   className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                   onClick={function clear() { setSelectedUserIds([]); }}
                 >
-                  Bỏ chọn tất cả
+                  {t("permissionGroups.clearSelection")}
                 </button>
               </div>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <DialogClose asChild><Button variant="outline" className="rounded-xl">Hủy</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline" className="rounded-xl">{t("common.cancel")}</Button></DialogClose>
             <Button
               onClick={handleAddMembersLocal}
               disabled={selectedUserIds.length === 0}
               className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 rounded-xl gap-1.5"
             >
-              Thêm {selectedUserIds.length > 0 ? `(${selectedUserIds.length})` : ''}
+              {t("permissionGroups.addSelected", { count: selectedUserIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -917,35 +929,35 @@ export default function PermissionGroupsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editGroup ? <Pencil className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5 text-primary" />}
-              {editGroup ? "Sửa nhóm quyền" : "Tạo nhóm quyền mới"}
+              {editGroup ? t("permissionGroups.editTitle") : t("permissionGroups.createTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Tên nhóm <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium text-foreground">{t("permissionGroups.groupName")} <span className="text-destructive">*</span></label>
               <Input
                 value={formName}
                 onChange={function onChange(e) { setFormName(e.target.value); }}
-                placeholder="VD: Biên tập nội dung, Điều phối viên..."
+                placeholder={t("permissionGroups.namePlaceholder")}
                 className="rounded-xl h-10"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Mô tả</label>
+              <label className="text-sm font-medium text-foreground">{t("permissionGroups.groupDescription")}</label>
               <Textarea
                 value={formDesc}
                 onChange={function onChange(e) { setFormDesc(e.target.value); }}
-                placeholder="Mô tả ngắn gọn về quyền hạn của nhóm..."
+                placeholder={t("permissionGroups.descriptionPlaceholder")}
                 rows={3}
                 className="rounded-xl resize-none"
               />
             </div>
             {isSuperadmin && showCreate && (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Doanh nghiệp <span className="text-destructive">*</span></label>
+                <label className="text-sm font-medium text-foreground">{t("permissionGroups.tenant")} <span className="text-destructive">*</span></label>
                 <Select value={formTenantId} onValueChange={setFormTenantId}>
                   <SelectTrigger className="rounded-xl h-10">
-                    <SelectValue placeholder="Chọn doanh nghiệp..." />
+                    <SelectValue placeholder={t("permissionGroups.selectTenant")} />
                   </SelectTrigger>
                   <SelectContent>
                     {tenantList.map(function renderOpt(t) {
@@ -957,14 +969,14 @@ export default function PermissionGroupsPage() {
             )}
           </div>
           <DialogFooter className="gap-2">
-            <DialogClose asChild><Button variant="outline" className="rounded-xl">Hủy</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline" className="rounded-xl">{t("common.cancel")}</Button></DialogClose>
             <Button
               onClick={editGroup ? handleUpdate : handleCreate}
               disabled={saving}
               className="bg-primary hover:bg-primary/90 text-primary-foreground border-0 rounded-xl gap-1.5"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              {editGroup ? "Cập nhật" : "Tạo nhóm"}
+              {editGroup ? t("permissionGroups.update") : t("permissionGroups.createGroup")}
             </Button>
           </DialogFooter>
         </DialogContent>

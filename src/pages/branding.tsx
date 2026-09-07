@@ -3,6 +3,8 @@
  * Premium UI cho admin upload/xóa ảnh branding (FE + Admin Dashboard).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +15,7 @@ import { getBranding, uploadBrandingImage, deleteBrandingImage } from '@/api/cus
 import { getDashboardContent, updateDashboardContent } from '@/api/custom-dashboard-content';
 import type { UpsertDashboardContentPayload } from '@/api/custom-dashboard-content';
 import { storageUrl } from '@/utils/storage-url';
+import { getLocalizedApiError } from '@/utils/localized-error';
 import {
   Palette, Upload, Trash2, Image as ImageIcon, AlertCircle,
   Loader2, Info, Monitor, Moon, Users, Layers, ImagePlus,
@@ -55,52 +58,51 @@ interface SectionConfig {
   isDynamic?: boolean;
 }
 
-const SECTIONS: SectionConfig[] = [
+function getSections(t: TFunction): SectionConfig[] {
+  return [
   {
     id: 'backgrounds',
-    title: 'Ảnh nền trang Login / Register',
-    subtitle: 'Ảnh nền panel trái hiển thị trên trang đăng nhập và đăng ký (FE)',
+    title: t('branding.backgroundsTitle'),
+    subtitle: t('branding.backgroundsSubtitle'),
     icon: Layers,
     accentColor: 'violet',
     gridCols: 'grid-cols-1 lg:grid-cols-2',
     portrait: true,
     slots: [
-      { key: 'left_panel_bg', label: 'Ảnh nền đăng nhập', sizeHint: '1200×1600px (3:4)', description: 'Ảnh nền panel trái — trang Đăng nhập', icon: Monitor },
-      { key: 'register_bg', label: 'Ảnh nền đăng ký', sizeHint: '1200×1600px (3:4)', description: 'Ảnh nền panel trái — trang Đăng ký', icon: Monitor },
+      { key: 'left_panel_bg', label: t('branding.loginBackground'), sizeHint: '1200×1600px (3:4)', description: t('branding.loginBackgroundDescription'), icon: Monitor },
+      { key: 'register_bg', label: t('branding.registerBackground'), sizeHint: '1200×1600px (3:4)', description: t('branding.registerBackgroundDescription'), icon: Monitor },
     ],
   },
   {
     id: 'logos',
-    title: 'Logo',
-    subtitle: 'Logo hiển thị trên FE (Login, Header) và Admin Dashboard (Login, Sidebar)',
+    title: t('branding.logosTitle'),
+    subtitle: t('branding.logosSubtitle'),
     icon: Sparkles,
     accentColor: 'blue',
     gridCols: 'grid-cols-2 lg:grid-cols-4',
     darkPreview: true,
     slots: [
-      { key: 'white_logo', label: 'Logo trắng', sizeHint: '~300×36px, PNG', description: 'Trang Đăng nhập/Đăng ký (FE) + Đăng nhập (Admin)', icon: Moon },
-      { key: 'square_icon', label: 'Biểu tượng vuông', sizeHint: '96×96px', description: 'Cạnh form đăng nhập (FE) và ảnh trên tab trình duyệt', icon: ImageIcon },
-      { key: 'header_logo', label: 'Logo — Sáng', sizeHint: '~300×40px', description: 'Header + Sidebar chế độ sáng', icon: Monitor },
-      { key: 'header_logo_dark', label: 'Logo — Tối', sizeHint: '~300×40px', description: 'Header + Sidebar chế độ tối', icon: Moon },
+      { key: 'white_logo', label: t('branding.whiteLogo'), sizeHint: '~300×36px, PNG', description: t('branding.whiteLogoDescription'), icon: Moon },
+      { key: 'square_icon', label: t('branding.squareIcon'), sizeHint: '96×96px', description: t('branding.squareIconDescription'), icon: ImageIcon },
+      { key: 'header_logo', label: t('branding.lightLogo'), sizeHint: '~300×40px', description: t('branding.lightLogoDescription'), icon: Monitor },
+      { key: 'header_logo_dark', label: t('branding.darkLogo'), sizeHint: '~300×40px', description: t('branding.darkLogoDescription'), icon: Moon },
     ],
   },
   {
     id: 'people',
-    title: 'Ảnh đại diện',
-    subtitle: 'Ảnh avatar hiển thị trong badge "Được tin dùng bởi 100+ doanh nghiệp" (FE)',
+    title: t('branding.peopleTitle'),
+    subtitle: t('branding.peopleSubtitle'),
     icon: Users,
     accentColor: 'emerald',
     gridCols: 'grid-cols-2 md:grid-cols-4',
     compact: true,
     darkPreview: true,
     slots: [
-      { key: 'person_1', label: 'Người 1', sizeHint: '96×96px', description: 'Ảnh đại diện #1' },
-      { key: 'person_2', label: 'Người 2', sizeHint: '96×96px', description: 'Ảnh đại diện #2' },
-      { key: 'person_3', label: 'Người 3', sizeHint: '96×96px', description: 'Ảnh đại diện #3' },
-      { key: 'person_4', label: 'Người 4', sizeHint: '96×96px', description: 'Ảnh đại diện #4' },
+      ...[1, 2, 3, 4].map((count) => ({ key: `person_${count}`, label: t('branding.person', { count }), sizeHint: '96×96px', description: t('branding.personDescription', { count }) })),
     ],
   },
-];
+  ];
+}
 
 const MAX_CAROUSEL = 10;
 
@@ -141,7 +143,8 @@ const accentMap: Record<string, { bg: string; border: string; text: string; badg
 // ═══════════════════════════════════════════════════════════════
 
 export default function BrandingPage() {
-  useHeaderInfo('Branding');
+  const { t } = useTranslation();
+  useHeaderInfo(t('branding.title'));
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const queryClient = useQueryClient();
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
@@ -157,10 +160,10 @@ export default function BrandingPage() {
     mutationFn: (args: { imageKey: string; file: File }) => uploadBrandingImage(args.imageKey, args.file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branding', activeTenantId] });
-      toast.success('Upload ảnh thành công');
+      toast.success(t('branding.uploadSuccess'));
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Lỗi upload ảnh');
+    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('branding.uploadFailed')));
     },
   });
 
@@ -168,26 +171,26 @@ export default function BrandingPage() {
     mutationFn: (imageKey: string) => deleteBrandingImage(imageKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branding', activeTenantId] });
-      toast.success('Đã xóa ảnh');
+      toast.success(t('branding.deleteSuccess'));
       setDeletingKey(null);
     },
     onError: () => {
-      toast.error('Lỗi xóa ảnh');
+      toast.error(t('branding.deleteFailed'));
     },
   });
 
   const handleFileSelect = useCallback((imageKey: string, file: File) => {
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('File quá lớn. Tối đa 5MB');
+      toast.error(t('branding.fileTooLarge'));
       return;
     }
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/gif'];
     if (!validTypes.includes(file.type)) {
-      toast.error('Định dạng không hỗ trợ. Chấp nhận: JPEG, PNG, WEBP, SVG, GIF');
+      toast.error(t('branding.unsupportedType'));
       return;
     }
     uploadMutation.mutate({ imageKey, file });
-  }, [uploadMutation]);
+  }, [t, uploadMutation]);
 
   // ── Loading ──
   if (isLoading) {
@@ -214,8 +217,8 @@ export default function BrandingPage() {
         <div className="bg-destructive/10 border border-destructive/20 text-destructive p-6 rounded-2xl flex items-start gap-4">
           <div className="p-2 rounded-lg bg-destructive/10"><AlertCircle className="h-5 w-5" /></div>
           <div>
-            <h3 className="font-semibold text-base">Lỗi tải branding</h3>
-            <p className="text-sm mt-1 opacity-80">Không thể kết nối đến server. Vui lòng thử lại sau.</p>
+            <h3 className="font-semibold text-base">{t('branding.loadFailed')}</h3>
+            <p className="text-sm mt-1 opacity-80">{t('branding.loadFailedDescription')}</p>
           </div>
         </div>
       </div>
@@ -232,14 +235,14 @@ export default function BrandingPage() {
         {/* ── Page Header ── */}
         <PageHeader
           icon={Palette}
-          title="Thương hiệu"
-          description={`Quản lý ảnh thương hiệu cho ${data?.tenant_name || 'tenant'}`}
+          title={t('branding.title')}
+          description={t('branding.tenantDescription', { tenant: data?.tenant_name || 'tenant' })}
           actions={
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50 border border-border text-sm shrink-0">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              <span className="text-muted-foreground">Đã upload</span>
+              <span className="text-muted-foreground">{t('branding.uploaded')}</span>
               <span className="font-bold text-foreground">{uploadedCount}</span>
-              <span className="text-muted-foreground">ảnh</span>
+              <span className="text-muted-foreground">{t('branding.images')}</span>
             </div>
           }
         />
@@ -250,16 +253,15 @@ export default function BrandingPage() {
             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           </div>
           <div className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-            <p className="font-semibold">Hướng dẫn</p>
+            <p className="font-semibold">{t('branding.guideTitle')}</p>
             <p className="leading-relaxed opacity-90">
-              Upload ảnh cho từng vị trí bên dưới. Kích thước gợi ý ghi trên mỗi card.
-              Nếu chưa upload, hệ thống hiển thị ảnh mặc định. Hỗ trợ: JPEG, PNG, WEBP, SVG, GIF (tối đa 5MB).
+              {t('branding.guideDescription')}
             </p>
           </div>
         </div>
 
         {/* ── Sections ── */}
-        {SECTIONS.map((section) => (
+        {getSections(t).map((section) => (
           <BrandingSection
             key={section.id}
             section={section}
@@ -276,8 +278,8 @@ export default function BrandingPage() {
         <BrandingSection
           section={{
             id: 'carousel',
-            title: 'Logo đối tác',
-            subtitle: `Logo đối tác hiển thị dạng cuộn ngang trên trang Đăng nhập (FE). Tối đa ${MAX_CAROUSEL} logo.`,
+            title: t('branding.partnerLogos'),
+            subtitle: t('branding.partnerLogosSubtitle', { count: MAX_CAROUSEL }),
             icon: Layers,
             accentColor: 'amber',
             gridCols: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5',
@@ -285,9 +287,9 @@ export default function BrandingPage() {
             darkPreview: true,
             slots: Array.from({ length: Math.min(Math.max(carousels.length + 1, 1), MAX_CAROUSEL) }).map((_, idx) => ({
               key: `carousel_${idx + 1}`,
-              label: `Đối tác ${idx + 1}`,
+              label: t('branding.partner', { count: idx + 1 }),
               sizeHint: '~200×28px, PNG',
-              description: `Logo đối tác #${idx + 1}`,
+              description: t('branding.partnerDescription', { count: idx + 1 }),
             })),
           }}
           images={Object.fromEntries(
@@ -308,21 +310,21 @@ export default function BrandingPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Trash2 className="h-5 w-5 text-destructive" />
-                Xác nhận xóa ảnh
+                {t('branding.deleteTitle')}
               </DialogTitle>
               <DialogDescription className="pt-2">
-                Bạn có chắc chắn muốn xóa ảnh này? Hệ thống sẽ hiển thị ảnh mặc định thay thế.
+                {t('branding.deleteDescription')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:gap-0">
-              <DialogClose asChild><Button variant="outline">Hủy</Button></DialogClose>
+              <DialogClose asChild><Button variant="outline">{t('common.cancel')}</Button></DialogClose>
               <Button
                 variant="destructive"
                 onClick={() => deletingKey && deleteMutation.mutate(deletingKey)}
                 disabled={deleteMutation.isPending}
               >
                 {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Xóa ảnh
+                {t('branding.deleteImage')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -333,7 +335,7 @@ export default function BrandingPage() {
           <DialogContent className="sm:max-w-3xl p-2 bg-black/95 border-white/10">
             <DialogHeader className="sr-only">
               <DialogTitle>{previewImage?.label}</DialogTitle>
-              <DialogDescription>Xem trước ảnh</DialogDescription>
+              <DialogDescription>{t('branding.imagePreview')}</DialogDescription>
             </DialogHeader>
             {previewImage && (
               <div className="relative flex items-center justify-center min-h-[300px] max-h-[80vh]">
@@ -446,6 +448,7 @@ function ImageCard({
   darkPreview?: boolean;
   onPreview: (img: { url: string; label: string }) => void;
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -513,7 +516,7 @@ function ImageCard({
               <div className="h-10 w-10 rounded-full border-2 border-primary/20" />
               <Loader2 className="absolute inset-0 m-auto h-5 w-5 animate-spin text-primary" />
             </div>
-            <span className="text-xs font-medium text-muted-foreground">Đang upload...</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('branding.uploading')}</span>
           </div>
         ) : currentUrl ? (
           <>
@@ -526,7 +529,7 @@ function ImageCard({
             {/* Hover overlay */}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200 flex items-center justify-center rounded-xl">
               <span className="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm">
-                Nhấn để xem
+                {t('branding.clickToView')}
               </span>
             </div>
           </>
@@ -534,7 +537,7 @@ function ImageCard({
           <div className="flex flex-col items-center gap-2 text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">
             <ImagePlus className={compact ? 'h-5 w-5' : 'h-7 w-7'} strokeWidth={1.5} />
             <span className="text-[10px] font-medium tracking-wide uppercase">
-              {isDragOver ? 'Thả ảnh tại đây' : 'Kéo thả hoặc click'}
+              {isDragOver ? t('branding.dropHere') : t('branding.dragOrClick')}
             </span>
           </div>
         )}
@@ -566,7 +569,7 @@ function ImageCard({
           disabled={isUploading}
         >
           <Upload className="h-3 w-3" />
-          {currentUrl ? 'Thay ảnh' : 'Tải lên'}
+          {currentUrl ? t('branding.changeImage') : t('branding.upload')}
         </Button>
         {currentUrl && (
           <Tooltip>
@@ -581,7 +584,7 @@ function ImageCard({
                 <Trash2 className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">Xóa ảnh</TooltipContent>
+            <TooltipContent side="top" className="text-xs">{t('branding.deleteImageTooltip')}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -624,6 +627,7 @@ const DEFAULT_EXPLORE_BADGE = "COURSE";
 const DEFAULT_EXPLORE_TITLE = "Khám phá hành trình học tập của tôi";
 
 function DashboardContentSection() {
+  const { t } = useTranslation();
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
   const queryClient = useQueryClient();
 
@@ -665,10 +669,10 @@ function DashboardContentSection() {
     mutationFn: (payload: UpsertDashboardContentPayload) => updateDashboardContent(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard-content', activeTenantId] });
-      toast.success('Đã lưu nội dung Dashboard');
+      toast.success(t('branding.dashboardContentSaved'));
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Lỗi lưu nội dung');
+    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('branding.dashboardContentSaveFailed')));
     },
   });
 
@@ -679,8 +683,8 @@ function DashboardContentSection() {
     const hasHeroBadge = !!heroBadge.trim();
     const hasHeroTitle = !!heroTitle.trim();
     if (hasHeroBadge || hasHeroTitle) {
-      if (!hasHeroBadge) errors.push('Badge (Hero Card Dashboard)');
-      if (!hasHeroTitle) errors.push('Tiêu đề (Hero Card Dashboard)');
+      if (!hasHeroBadge) errors.push(t('branding.dashboardHeroBadge'));
+      if (!hasHeroTitle) errors.push(t('branding.dashboardHeroTitle'));
     }
 
     // ── Scope 2: Tips (2 trang, mỗi trang cần đủ câu nói + tác giả) ──
@@ -688,22 +692,22 @@ function DashboardContentSection() {
     const hasTip2 = !!(tip2Title.trim() || tip2Desc.trim());
     if (hasTip1 || hasTip2) {
       // Nếu nhập bất kỳ tip nào → cần đủ cả 2 trang
-      if (!tip1Title.trim()) errors.push('Câu nói Trang 1');
-      if (!tip1Desc.trim()) errors.push('Tác giả Trang 1');
-      if (!tip2Title.trim()) errors.push('Câu nói Trang 2');
-      if (!tip2Desc.trim()) errors.push('Tác giả Trang 2');
+      if (!tip1Title.trim()) errors.push(t('branding.tipOneQuote'));
+      if (!tip1Desc.trim()) errors.push(t('branding.tipOneAuthor'));
+      if (!tip2Title.trim()) errors.push(t('branding.tipTwoQuote'));
+      if (!tip2Desc.trim()) errors.push(t('branding.tipTwoAuthor'));
     }
 
     // ── Scope 3: Explore Hero Card (badge + title) ──
     const hasExploreBadge = !!exploreHeroBadge.trim();
     const hasExploreTitle = !!exploreHeroTitle.trim();
     if (hasExploreBadge || hasExploreTitle) {
-      if (!hasExploreBadge) errors.push('Badge (Hero Card Explore)');
-      if (!hasExploreTitle) errors.push('Tiêu đề (Hero Card Explore)');
+      if (!hasExploreBadge) errors.push(t('branding.exploreHeroBadge'));
+      if (!hasExploreTitle) errors.push(t('branding.exploreHeroTitle'));
     }
 
     if (errors.length > 0) {
-      toast.error(`Vui lòng nhập đầy đủ: ${errors.join(', ')}`);
+      toast.error(t('branding.requiredFields', { fields: errors.join(', ') }));
       return;
     }
 
@@ -740,7 +744,7 @@ function DashboardContentSection() {
           setExploreHeroBadge('');
           setExploreHeroTitle('');
           queryClient.invalidateQueries({ queryKey: ['dashboard-content', activeTenantId] });
-          toast.success('Đã reset về nội dung mặc định');
+          toast.success(t('branding.dashboardContentReset'));
         },
       },
     );
@@ -790,9 +794,9 @@ function DashboardContentSection() {
           <LayoutDashboard className="h-4.5 w-4.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">Nội dung trang Khám phá và Chương trình học</h2>
+          <h2 className="text-base font-semibold tracking-tight">{t('branding.dashboardContentTitle')}</h2>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            Chỉnh sửa text Hero Card, Tips hiển thị trên trang Dashboard và Hero Card trang Explore (FE). Để trống sẽ dùng nội dung mặc định.
+            {t('branding.dashboardContentDescription')}
           </p>
         </div>
       </div>
@@ -804,14 +808,14 @@ function DashboardContentSection() {
         <div className="space-y-6">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Hero Card</h3>
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">{t('branding.heroCard')}</h3>
           </div>
 
           {/* Form Fields */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="hero-badge" className="text-xs font-semibold text-foreground">
-                Badge (ví dụ: SKILLS, COURSE)
+                {t('branding.badgeLabel', { examples: 'SKILLS, COURSE' })}
               </Label>
               <Input
                 id="hero-badge"
@@ -824,7 +828,7 @@ function DashboardContentSection() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="hero-title" className="text-xs font-semibold text-foreground">
-                Tiêu đề
+                {t('branding.fieldTitle')}
               </Label>
               <Textarea
                 id="hero-title"
@@ -843,7 +847,7 @@ function DashboardContentSection() {
             <div className="w-full max-w-[828px]">
               <div className="mb-4 flex items-center justify-center gap-2">
                 <Monitor className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Preview Hero Card (Kích thước PC)</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('branding.previewHeroDesktop')}</span>
               </div>
 
               <div
@@ -873,14 +877,14 @@ function DashboardContentSection() {
                 </div>
 
                 <div className="relative z-10 mt-auto inline-flex items-center text-sm font-semibold text-primary gap-1 w-fit cursor-pointer hover:underline">
-                  Bắt đầu ngay <ArrowRight className="w-4 h-4" />
+                  {t('branding.startNow')} <ArrowRight className="w-4 h-4" />
                 </div>
 
                 {/* Image */}
                 <div className="absolute right-2 md:right-0 top-0 bottom-0 md:top-auto h-full w-[50%] md:w-[45%] lg:w-[40%] flex items-center md:items-end justify-end md:pr-8 md:py-6 pointer-events-none select-none z-0">
                   <img
                     src={heroImg}
-                    alt="Illustration"
+                    alt={t('branding.heroIllustration')}
                     className="max-h-[85%] md:max-h-full h-[75%] md:h-full w-auto object-contain object-right md:object-right-bottom"
                   />
                 </div>
@@ -896,7 +900,7 @@ function DashboardContentSection() {
         <div className="space-y-6">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Tips (tối đa 2 trang)</h3>
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">{t('branding.tipsMaximum')}</h3>
           </div>
 
           <div className="flex flex-col xl:flex-row gap-8 xl:items-start">
@@ -904,10 +908,10 @@ function DashboardContentSection() {
             <div className="flex-1 space-y-4">
               {/* Tip 1 */}
               <div className="app-liquid-card rounded-xl p-5 space-y-4">
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 1</p>
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t('branding.page', { count: 1 })}</p>
                 <div className="space-y-2">
                   <Label htmlFor="tip1-title" className="text-xs font-medium text-muted-foreground">
-                    Câu nói
+                    {t('branding.quote')}
                   </Label>
                   <Textarea
                     id="tip1-title"
@@ -921,7 +925,7 @@ function DashboardContentSection() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tip1-desc" className="text-xs font-medium text-muted-foreground">
-                    Tác giả
+                    {t('branding.author')}
                   </Label>
                   <Input
                     id="tip1-desc"
@@ -936,10 +940,10 @@ function DashboardContentSection() {
 
               {/* Tip 2 */}
               <div className="app-liquid-card rounded-xl p-5 space-y-4">
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Trang 2</p>
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t('branding.page', { count: 2 })}</p>
                 <div className="space-y-2">
                   <Label htmlFor="tip2-title" className="text-xs font-medium text-muted-foreground">
-                    Câu nói
+                    {t('branding.quote')}
                   </Label>
                   <Textarea
                     id="tip2-title"
@@ -953,7 +957,7 @@ function DashboardContentSection() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tip2-desc" className="text-xs font-medium text-muted-foreground">
-                    Tác giả
+                    {t('branding.author')}
                   </Label>
                   <Input
                     id="tip2-desc"
@@ -971,7 +975,7 @@ function DashboardContentSection() {
             <div className="app-liquid-card w-full xl:w-[320px] shrink-0 rounded-2xl p-6 flex flex-col items-center">
               <div className="mb-4 flex items-center justify-center gap-2 w-full">
                 <Monitor className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Preview Tips (Kích thước PC)</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('branding.previewTipsDesktop')}</span>
               </div>
 
               <div
@@ -984,7 +988,7 @@ function DashboardContentSection() {
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-6 text-foreground">
                   <Lightbulb className="w-6 h-6" strokeWidth={2.2} />
-                  <h3 className="text-xl font-bold">Tips</h3>
+                  <h3 className="text-xl font-bold">{t('branding.tips')}</h3>
                 </div>
 
                 {/* Content (Quote + Author) */}
@@ -1022,7 +1026,7 @@ function DashboardContentSection() {
                       key={idx}
                       onClick={() => setCurrentPreviewTip(idx)}
                       className={`w-1.5 h-1.5 rounded-full transition-colors ${currentPreviewTip === idx ? "bg-primary" : "bg-primary/20 hover:bg-primary/40"}`}
-                      aria-label={`Go to tip ${idx + 1}`}
+                      aria-label={t('branding.goToTip', { count: idx + 1 })}
                     />
                   ))}
                 </div>
@@ -1038,14 +1042,14 @@ function DashboardContentSection() {
         <div className="space-y-6">
           <div className="flex items-center gap-2 border-b border-border pb-3">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">Hero Card — Trang Explore</h3>
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wide">{t('branding.exploreHeroCard')}</h3>
           </div>
 
           {/* Form Fields */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="explore-hero-badge" className="text-xs font-semibold text-foreground">
-                Badge (ví dụ: COURSE, TRAINING)
+                {t('branding.badgeLabel', { examples: 'COURSE, TRAINING' })}
               </Label>
               <Input
                 id="explore-hero-badge"
@@ -1058,7 +1062,7 @@ function DashboardContentSection() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="explore-hero-title" className="text-xs font-semibold text-foreground">
-                Tiêu đề
+                {t('branding.fieldTitle')}
               </Label>
               <Textarea
                 id="explore-hero-title"
@@ -1077,7 +1081,7 @@ function DashboardContentSection() {
             <div className="w-full max-w-[1000px]">
               <div className="mb-4 flex items-center justify-center gap-2">
                 <Monitor className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Preview Hero Card Explore (Kích thước PC)</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('branding.previewExploreDesktop')}</span>
               </div>
 
               <div
@@ -1114,7 +1118,7 @@ function DashboardContentSection() {
                   <div className="mt-auto flex w-full max-w-[340px] items-center gap-2.5 rounded-full border border-border bg-card px-5 py-2.5 shadow-sm">
                     <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="flex-1 text-[14px] font-normal leading-[18px] text-muted-foreground/60">
-                      Tìm khoá học...
+                      {t('branding.searchCourses')}
                     </span>
                   </div>
                 </div>
@@ -1122,7 +1126,7 @@ function DashboardContentSection() {
                 {/* Illustration */}
                 <img
                   src={exploreHeroImg}
-                  alt="Khám phá hành trình học tập"
+                  alt={t('branding.exploreIllustration')}
                   className="hidden md:block absolute right-0 bottom-0 h-full w-auto max-w-[400px] object-contain pointer-events-none select-none z-0 pr-3 mr-20"
                 />
               </div>
@@ -1143,7 +1147,7 @@ function DashboardContentSection() {
             ) : (
               <RotateCcw className="h-4 w-4" />
             )}
-            Reset mặc định
+            {t('branding.resetDefault')}
           </Button>
           <Button
             onClick={handleSave}
@@ -1155,7 +1159,7 @@ function DashboardContentSection() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            Lưu nội dung
+            {t('branding.saveContent')}
           </Button>
         </div>
       </div>

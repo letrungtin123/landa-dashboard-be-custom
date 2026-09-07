@@ -7,6 +7,7 @@ import CustomShapeNode, { type DiagramNodeData } from './CustomShapeNode';
 import JunctionNode from './JunctionNode';
 import OrthogonalEdge from './OrthogonalEdge';
 import { useTheme } from 'next-themes';
+import { useTranslation } from 'react-i18next';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -16,6 +17,8 @@ const nodeTypes = {
 const edgeTypes = {
   orthogonal: OrthogonalEdge,
 };
+
+const EMPTY_DIAGRAM: Diagram = { id: '', name: '', nodes: [], edges: [] };
 
 export interface Diagram {
   id: string;
@@ -33,6 +36,7 @@ interface DiagramPreviewInteractiveProps {
 }
 
 export default function DiagramPreviewInteractive({ data }: DiagramPreviewInteractiveProps) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const diagrams = data?.diagrams || [];
   const startDiagramId = data?.start_diagram_id || (diagrams.length > 0 ? diagrams[0].id : null);
@@ -41,6 +45,7 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
   
   const currentDiagramId = history.length > 0 ? history[history.length - 1] : startDiagramId;
   const activeDiagram = diagrams.find((d) => d.id === currentDiagramId);
+  const previewDiagram: Diagram = activeDiagram ?? EMPTY_DIAGRAM;
 
   const handleNodeClick = (event: React.MouseEvent, node: Node) => {
     const targetId = (node.data as any)?.target_diagram_id;
@@ -55,15 +60,7 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
     }
   };
 
-  if (!activeDiagram) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 rounded-xl border-2 border-dashed border-border text-muted-foreground text-sm">
-        Sơ đồ chưa có dữ liệu hoặc đã bị xóa.
-      </div>
-    );
-  }
-
-  const initialNodes = activeDiagram.nodes.map((n) => ({
+  const initialNodes = previewDiagram.nodes.map((n) => ({
     ...n,
     draggable: false,
     selectable: false,
@@ -71,7 +68,7 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
     data: { ...n.data, hidePorts: true },
   }));
 
-  const initialEdges = activeDiagram.edges.map((e) => ({
+  const initialEdges = previewDiagram.edges.map((e) => ({
     ...e,
     animated: false,
     type: 'orthogonal' as const,
@@ -82,19 +79,27 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
 
   // Sync state if activeDiagram's nodes/edges change
   React.useEffect(() => {
-    setNodes(activeDiagram.nodes.map((n) => ({
+    setNodes(previewDiagram.nodes.map((n) => ({
       ...n,
       draggable: false,
       selectable: false,
       connectable: false,
       data: { ...n.data, hidePorts: true },
     })));
-    setEdges(activeDiagram.edges.map((e) => ({
+    setEdges(previewDiagram.edges.map((e) => ({
       ...e,
       animated: false,
       type: 'orthogonal' as const,
     })));
-  }, [activeDiagram, setNodes, setEdges]);
+  }, [previewDiagram, setNodes, setEdges]);
+
+  if (!activeDiagram) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 rounded-xl border-2 border-dashed border-border text-muted-foreground text-sm">
+        {t('courseEditorForms.noDiagramData')}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-[400px] flex flex-col border border-border rounded-xl overflow-hidden bg-background">
@@ -102,7 +107,7 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
         <div className="flex items-center gap-3">
           {history.length > 1 && (
             <Button variant="outline" size="sm" onClick={goBack} className="h-8 gap-1 text-xs">
-              <ArrowLeft className="w-3.5 h-3.5" /> Quay lại
+              <ArrowLeft className="w-3.5 h-3.5" /> {t('courseEditorForms.back')}
             </Button>
           )}
           <h3 className="font-semibold text-primary">{activeDiagram.name}</h3>

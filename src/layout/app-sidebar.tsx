@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/utils/store';
 import { useBranding } from '@/hooks/useBranding';
 import { getRoleLabel } from '@/utils/role-labels';
+import { useTranslation } from 'react-i18next';
 
 import { getIconComponent } from '@/utils/icon-map';
 import {
@@ -22,71 +23,72 @@ import {
 
 // === Types ===
 interface NavItem {
-  title: string;
+  titleKey: string;
   url: string;
   module: string;
   fallbackIcon: string;
 }
 
 interface NavGroup {
-  group: string;
+  groupKey: string;
   items: NavItem[];
 }
 
 // === Flat navigation config — each former subtab is now an independent module ===
 const NAV_GROUPS: NavGroup[] = [
   {
-    group: 'Tổng quan',
+    groupKey: 'nav.groups.overview',
     items: [
       // { title: 'Bảng điều khiển', url: '/dashboard', module: 'dashboard', fallbackIcon: 'LayoutDashboard' },
     ],
   },
   {
-    group: 'Nội dung',
+    groupKey: 'nav.groups.content',
     items: [
-      { title: 'Thư viện', url: '/library', module: 'library', fallbackIcon: 'Library' },
-      { title: 'Khóa học', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
-      { title: 'Danh mục khóa học', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
-      { title: 'Quản lý huy hiệu', url: '/badge-management', module: 'badge_management', fallbackIcon: 'Award' },
-      { title: 'AI Chatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
+      { titleKey: 'nav.items.library', url: '/library', module: 'library', fallbackIcon: 'Library' },
+      { titleKey: 'nav.items.courses', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
+      { titleKey: 'nav.items.courseCategories', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
+      { titleKey: 'nav.items.badgeManagement', url: '/badge-management', module: 'badge_management', fallbackIcon: 'Award' },
+      { titleKey: 'nav.items.aiChatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
     ],
   },
   {
-    group: 'Người dùng',
+    groupKey: 'nav.groups.users',
     items: [
-      { title: 'Người dùng', url: '/accounts', module: 'account', fallbackIcon: 'Users' },
-      { title: 'Nhóm', url: '/groups', module: 'groups', fallbackIcon: 'FolderTree' },
-      { title: 'Nhóm quyền', url: '/permission-groups', module: 'permission_groups', fallbackIcon: 'ShieldCheck' },
-      { title: 'Nhật ký hoạt động', url: '/audit-logs', module: 'audit_log', fallbackIcon: 'ScrollText' },
+      { titleKey: 'nav.items.users', url: '/accounts', module: 'account', fallbackIcon: 'Users' },
+      { titleKey: 'nav.items.groups', url: '/groups', module: 'groups', fallbackIcon: 'FolderTree' },
+      { titleKey: 'nav.items.permissionGroups', url: '/permission-groups', module: 'permission_groups', fallbackIcon: 'ShieldCheck' },
+      { titleKey: 'nav.items.auditLogs', url: '/audit-logs', module: 'audit_log', fallbackIcon: 'ScrollText' },
     ],
   },
   {
-    group: 'Phân tích',
+    groupKey: 'nav.groups.analytics',
     items: [
-      { title: 'Báo cáo tổng hợp', url: '/report-summary', module: 'report_summary', fallbackIcon: 'BarChart3' },
+      { titleKey: 'nav.items.reportSummary', url: '/report-summary', module: 'report_summary', fallbackIcon: 'BarChart3' },
     ],
   },
   {
-    group: 'Hỗ trợ',
+    groupKey: 'nav.groups.support',
     items: [
-      { title: 'Tài liệu hướng dẫn', url: '/help-docs', module: 'help_docs', fallbackIcon: 'BookOpen' },
+      { titleKey: 'nav.items.helpDocs', url: '/help-docs', module: 'help_docs', fallbackIcon: 'BookOpen' },
     ],
   },
   {
-    group: 'Hệ thống',
+    groupKey: 'nav.groups.system',
     items: [
-      { title: 'Quản lí doanh nghiệp', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
-      { title: 'Thương hiệu', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
-      { title: 'Mẫu email', url: '/email-templates', module: 'email_templates', fallbackIcon: 'MailCheck' },
-      { title: 'Prompt hệ thống', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
-      { title: 'Huy hiệu', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
-      { title: 'Quản lý SSO', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },
-      { title: 'Demo QR Login', url: '/demo-login-settings', module: 'superadmin_only', fallbackIcon: 'QrCode' },
+      { titleKey: 'nav.items.tenantManagement', url: '/tenants', module: 'tenant_management', fallbackIcon: 'Building2' },
+      { titleKey: 'nav.items.branding', url: '/branding', module: 'branding', fallbackIcon: 'Palette' },
+      { titleKey: 'nav.items.emailTemplates', url: '/email-templates', module: 'email_templates', fallbackIcon: 'MailCheck' },
+      { titleKey: 'nav.items.promptTemplates', url: '/prompt-templates', module: 'tenant_management', fallbackIcon: 'Drama' },
+      { titleKey: 'nav.items.badges', url: '/badges', module: 'superadmin_only', fallbackIcon: 'Award' },
+      { titleKey: 'nav.items.ssoManagement', url: '/sso-management', module: 'superadmin_only', fallbackIcon: 'Key' },
+      { titleKey: 'nav.items.demoLogin', url: '/demo-login-settings', module: 'superadmin_only', fallbackIcon: 'QrCode' },
     ],
   }
 ];
 
 export function AppSidebar() {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
   const { theme } = useTheme();
   const { branding, isLoading: brandingLoading } = useBranding();
@@ -138,7 +140,7 @@ export function AppSidebar() {
 
   // Build filtered nav groups
   const filteredNavGroups = NAV_GROUPS.map((group) => ({
-    group: group.group,
+    groupKey: group.groupKey,
     items: group.items.filter(canSeeModule),
   })).filter((group) => group.items.length > 0);
   const tenantInitials = (branding.tenantName || user?.tenant_name || 'LA')
@@ -179,10 +181,10 @@ export function AppSidebar() {
       {/* Body */}
       <SidebarContent className="px-3 group-data-[collapsible=icon]:px-2 pt-5 group-data-[collapsible=icon]:pt-2">
         {filteredNavGroups.map((group, groupIdx) => (
-          <SidebarGroup key={group.group} className={`!py-0.5 ${groupIdx > 0 ? 'mt-0.5 group-data-[collapsible=icon]:mt-0.5' : ''}`}>
+          <SidebarGroup key={group.groupKey} className={`!py-0.5 ${groupIdx > 0 ? 'mt-0.5 group-data-[collapsible=icon]:mt-0.5' : ''}`}>
             {/* Group label */}
             <SidebarGroupLabel className="text-[10px] font-semibold text-sidebar-foreground/45 uppercase tracking-[0.15em] px-2 mb-0.5 group-data-[collapsible=icon]:hidden">
-              {group.group}
+              {t(group.groupKey)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:items-center">
@@ -195,7 +197,7 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        tooltip={item.title}
+                        tooltip={t(item.titleKey)}
                         className={`h-9 rounded-xl group-data-[collapsible=icon]:!w-8 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:!rounded-xl ${isActive
                           ? 'sidebar-liquid-active font-semibold'
                           : 'text-sidebar-foreground/68 hover:bg-white/45 hover:text-sidebar-foreground dark:hover:bg-white/[0.07]'
@@ -204,7 +206,7 @@ export function AppSidebar() {
                         <Link to={item.url}>
                           <Icon className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-current' : 'text-sidebar-foreground/45'} group-data-[collapsible=icon]:w-[18px] group-data-[collapsible=icon]:h-[18px]`} />
                           <span className={`font-medium text-[13px] group-data-[collapsible=icon]:hidden ${isActive ? 'text-current' : ''}`}>
-                            {item.title}
+                            {t(item.titleKey)}
                           </span>
                         </Link>
                       </SidebarMenuButton>
@@ -246,7 +248,7 @@ export function AppSidebar() {
                     {getRoleLabel(
                       user?.role,
                       roleLabels,
-                      user?.role === 'superadmin' ? 'Quản trị viên hệ thống' : user?.role === 'superuser' ? 'Quản trị viên' : user?.role === 'staff' ? 'Nhân viên' : user?.role === 'learner_plus' ? 'Học viên nâng cao' : 'Học viên',
+                      user?.role === 'superadmin' ? t('nav.roles.systemAdmin') : user?.role === 'superuser' ? t('nav.roles.administrator') : user?.role === 'staff' ? t('nav.roles.staff') : user?.role === 'learner_plus' ? t('nav.roles.advancedLearner') : t('nav.roles.learner'),
                     )}
                   </span>
                 </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   getCategories, getAllCategories, createCategory, updateCategory, getCategoryPublicImpact, deleteCategory,
   bulkDeleteCategories, type DocCategory,
@@ -25,8 +26,10 @@ import { Plus, Pencil, Trash2, FolderOpen, Loader2, X, Globe } from 'lucide-reac
 import { useAuthStore } from '@/utils/store';
 import { getGroupLabelSet } from '@/utils/group-labels';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 export default function CategoriesTab() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAdd = hasPermission('library', 'can_add');
@@ -67,11 +70,11 @@ export default function CategoriesTab() {
     mutationFn: (name: string) => createCategory(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
-      toast.success('Đã tạo danh mục');
+      toast.success(t('library.categoryCreated'));
       setDialogOpen(false);
       setCatName('');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Tạo thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('library.categoryCreateFailed'))),
   });
 
   // Update
@@ -79,12 +82,12 @@ export default function CategoriesTab() {
     mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
-      toast.success('Đã cập nhật');
+      toast.success(t('library.categoryUpdated'));
       setDialogOpen(false);
       setEditCat(null);
       setCatName('');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Cập nhật thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('library.categoryUpdateFailed'))),
   });
 
   // Delete
@@ -92,7 +95,7 @@ export default function CategoriesTab() {
     mutationFn: deleteCategory,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
-      toast.success('Đã xóa danh mục');
+      toast.success(t('library.categoryDeleted'));
     },
   });
 
@@ -102,7 +105,7 @@ export default function CategoriesTab() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
       setSelected([]);
-      toast.success(`Đã xóa ${result.deleted} danh mục`);
+      toast.success(t('library.categoriesDeleted', { count: result.deleted }));
     },
   });
 
@@ -129,8 +132,8 @@ export default function CategoriesTab() {
 
   const handleDelete = (cat: DocCategory) => {
     confirmDialog({
-      title: 'Xóa danh mục',
-      description: `Xóa "${cat.name}"? Tài liệu sẽ không bị xóa nhưng sẽ mất danh mục.`,
+      title: t('library.deleteCategoryTitle'),
+      description: t('library.deleteCategoryDescription', { name: cat.name }),
       variant: 'destructive',
       onConfirm: () => deleteMut.mutate(cat.id),
     });
@@ -138,8 +141,8 @@ export default function CategoriesTab() {
 
   const handleBulkDelete = () => {
     confirmDialog({
-      title: 'Xóa hàng loạt',
-      description: `Xóa ${selected.length} danh mục đã chọn?`,
+      title: t('library.bulkDeleteTitle'),
+      description: t('library.bulkDeleteDescription', { count: selected.length }),
       variant: 'destructive',
       onConfirm: () => bulkDeleteMut.mutate(selected),
     });
@@ -158,9 +161,9 @@ export default function CategoriesTab() {
       queryClient.invalidateQueries({ queryKey: ['landa-categories'] });
       queryClient.invalidateQueries({ queryKey: ['landa-categories-all'] });
       queryClient.invalidateQueries({ queryKey: ['team-detail'] });
-      toast.success('Đã cập nhật trạng thái công khai danh mục');
+      toast.success(t('library.publicStatusUpdated'));
     },
-    onError: (err: any) => toast.error(err?.response?.data?.error || 'Cập nhật trạng thái công khai thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('library.publicStatusUpdateFailed'))),
   });
 
   const handleTogglePublic = async (cat: DocCategory) => {
@@ -176,18 +179,19 @@ export default function CategoriesTab() {
       const extra = Math.max(0, impact.total - impact.assignments.length);
       const labelSet = getGroupLabelSet(useAuthStore.getState().groupLabels);
       const scopeText = `${labelSet.group}/${labelSet.subgroup}/${labelSet.team}`;
-      const teamLabel = labelSet.team.toLocaleLowerCase('vi-VN');
-      const suffix = extra > 0 ? `\n... và ${extra} ${teamLabel} khác` : "";
+      const suffix = extra > 0 ? t('library.andOtherTeams', { count: extra, team: labelSet.team }) : "";
       confirmDialog({
-        title: 'Bật Công khai danh mục tài liệu',
-        description: `Nếu bật danh mục này công khai, tất cả học viên không phân biệt ${scopeText} sẽ đều nhìn thấy tài liệu trong danh mục và có thể truy cập. Hệ thống sẽ tự động xoá danh mục này khỏi ${scopeText} hiện tại${assignmentText ? `:\n${assignmentText}${suffix}` : '.'}`,
-        confirmText: 'Bật Công khai',
-        cancelText: 'Hủy',
+        title: t('library.publicImpactTitle'),
+        description: assignmentText
+          ? t('library.publicImpactWithAssignments', { scope: scopeText, assignments: assignmentText, suffix })
+          : t('library.publicImpactWithoutAssignments', { scope: scopeText }),
+        confirmText: t('library.enablePublic'),
+        cancelText: t('common.cancel'),
         variant: 'destructive',
         onConfirm: () => publicMut.mutate({ id: cat.id, isPublic: true }),
       });
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Không thể kiểm tra phân quyền danh mục');
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('library.publicImpactFailed')));
     }
   };
 
@@ -200,14 +204,14 @@ export default function CategoriesTab() {
       <TableToolbar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm danh mục..."
+        searchPlaceholder={t('library.searchCategories')}
         filters={[
           {
             key: 'doc_count',
-            placeholder: 'Tài liệu',
+            placeholder: t('library.documentsFilter'),
             options: [
-              { value: 'has_docs', label: 'Có tài liệu' },
-              { value: 'empty', label: 'Trống' },
+              { value: 'has_docs', label: t('library.hasDocuments') },
+              { value: 'empty', label: t('library.empty') },
             ],
           },
         ]}
@@ -219,7 +223,7 @@ export default function CategoriesTab() {
         actions={
           canAdd ? (
             <Button size="sm" onClick={openCreate} className="h-8 text-xs shadow-sm">
-              <Plus className="mr-1 h-3.5 w-3.5" /> Thêm danh mục
+              <Plus className="mr-1 h-3.5 w-3.5" /> {t('library.addCategory')}
             </Button>
           ) : undefined
         }
@@ -233,7 +237,7 @@ export default function CategoriesTab() {
             onCheckedChange={toggleAll}
           />
           <span className="text-sm font-medium text-foreground whitespace-nowrap">
-            {selected.length} đã chọn
+            {t('library.selectedCount', { count: selected.length })}
           </span>
 
           <div className="h-5 w-px bg-border" />
@@ -245,15 +249,15 @@ export default function CategoriesTab() {
             disabled={bulkDeleteMut.isPending}
             className="h-8 text-xs font-semibold shadow-sm"
           >
-            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Xóa ({selected.length})
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> {t('library.deleteSelected', { count: selected.length })}
           </Button>
 
-          <AppTooltip content="Bỏ chọn tất cả"><Button
+          <AppTooltip content={t('library.clearSelection')}><Button
             size="icon"
             variant="ghost"
             onClick={() => setSelected([])}
             className="h-7 w-7 ml-auto text-muted-foreground hover:text-foreground"
-            aria-label="Bỏ chọn tất cả"
+            aria-label={t('library.clearSelection')}
           >
             <X className="h-4 w-4" />
           </Button></AppTooltip>
@@ -281,7 +285,7 @@ export default function CategoriesTab() {
           ) : cats.length === 0 ? (
             <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
               <FolderOpen className="mb-2 h-8 w-8 opacity-20" />
-              <p className="text-sm">{debouncedSearch || docCountFilter !== 'all' ? 'Không tìm thấy danh mục' : 'Chưa có danh mục'}</p>
+              <p className="text-sm">{debouncedSearch || docCountFilter !== 'all' ? t('library.noMatchingCategories') : t('library.noCategories')}</p>
             </div>
           ) : (
             cats.map((cat) => (
@@ -293,7 +297,7 @@ export default function CategoriesTab() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <div className="line-clamp-2 text-sm font-semibold text-foreground">{cat.name}</div>
-                          {cat.is_public && <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> Công khai</Badge>}
+                          {cat.is_public && <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> {t('library.public')}</Badge>}
                         </div>
                         <div className="mt-1 truncate text-xs font-mono text-muted-foreground">{cat.slug}</div>
                       </div>
@@ -302,26 +306,26 @@ export default function CategoriesTab() {
 
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                       <div>
-                        <div className="mb-0.5 text-muted-foreground">Số tài liệu</div>
+                        <div className="mb-0.5 text-muted-foreground">{t('library.documentCount')}</div>
                         <div className="font-medium">{cat.doc_count}</div>
                       </div>
                       <div>
-                        <div className="mb-0.5 text-muted-foreground">Thứ tự</div>
+                        <div className="mb-0.5 text-muted-foreground">{t('library.sortOrder')}</div>
                         <div className="font-medium">{cat.sort_order}</div>
                       </div>
                     </div>
 
                     <div className="mt-3 flex items-center justify-end gap-1">
-                      {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="ghost" size="icon-sm" onClick={() => handleTogglePublic(cat)}
-                        className={cat.is_public ? "text-sky-600" : "text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                      {canEdit && <AppTooltip content={cat.is_public ? t('library.turnPublicOff') : t('library.turnPublicOn')}><Button variant="ghost" size="icon-sm" onClick={() => handleTogglePublic(cat)}
+                        className={cat.is_public ? "text-sky-600" : "text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? t('library.turnPublicOff') : t('library.turnPublicOn')}>
                         <Globe className="h-3.5 w-3.5" />
                       </Button></AppTooltip>}
-                      {canEdit && <AppTooltip content="Sửa"><Button variant="ghost" size="icon-sm" onClick={() => openEdit(cat)}
-                        className="text-muted-foreground hover:text-foreground" aria-label="Sửa">
+                      {canEdit && <AppTooltip content={t('common.edit')}><Button variant="ghost" size="icon-sm" onClick={() => openEdit(cat)}
+                        className="text-muted-foreground hover:text-foreground" aria-label={t('common.edit')}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button></AppTooltip>}
-                      {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon-sm" onClick={() => handleDelete(cat)}
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa">
+                      {canDelete && <AppTooltip content={t('common.delete')}><Button variant="ghost" size="icon-sm" onClick={() => handleDelete(cat)}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label={t('common.delete')}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button></AppTooltip>}
                     </div>
@@ -339,11 +343,11 @@ export default function CategoriesTab() {
                 <TableHead className="w-10 pl-4">
                   <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Tên danh mục</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Mã danh mục</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Số tài liệu</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">Thứ tự</TableHead>
-                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">Thao tác</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.categoryName')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.categoryCode')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.documentCount')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider">{t('library.sortOrder')}</TableHead>
+                <TableHead className="font-medium text-xs text-muted-foreground uppercase tracking-wider text-right pr-5">{t('library.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className={isFetching && cats.length > 0 ? 'opacity-50 pointer-events-none' : ''}>
@@ -363,7 +367,7 @@ export default function CategoriesTab() {
                   <TableCell colSpan={6} className="h-32 text-center">
                     <div className="flex flex-col items-center text-muted-foreground">
                       <FolderOpen className="w-8 h-8 mb-2 opacity-20" />
-                      <p className="text-sm">{debouncedSearch || docCountFilter !== 'all' ? 'Không tìm thấy danh mục' : 'Chưa có danh mục'}</p>
+                      <p className="text-sm">{debouncedSearch || docCountFilter !== 'all' ? t('library.noMatchingCategories') : t('library.noCategories')}</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -374,7 +378,7 @@ export default function CategoriesTab() {
                       <Checkbox checked={selected.includes(cat.id)} onCheckedChange={() => toggleOne(cat.id)} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2"><span className="font-medium text-sm">{cat.name}</span>{cat.is_public && <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> Công khai</Badge>}</div>
+                      <div className="flex items-center gap-2"><span className="font-medium text-sm">{cat.name}</span>{cat.is_public && <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"><Globe className="h-3 w-3" /> {t('library.public')}</Badge>}</div>
                     </TableCell>
                     <TableCell>
                       <span className="text-xs font-mono text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">{cat.slug}</span>
@@ -385,16 +389,16 @@ export default function CategoriesTab() {
                     <TableCell className="text-muted-foreground text-sm">{cat.sort_order}</TableCell>
                     <TableCell className="text-right pr-5">
                       <div className="flex items-center justify-end gap-1">
-                        {canEdit && <AppTooltip content={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}><Button variant="ghost" size="icon" onClick={() => handleTogglePublic(cat)}
-                          className={cat.is_public ? "h-8 w-8 text-sky-600" : "h-8 w-8 text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? "Tắt Công khai" : "Bật Công khai"}>
+                        {canEdit && <AppTooltip content={cat.is_public ? t('library.turnPublicOff') : t('library.turnPublicOn')}><Button variant="ghost" size="icon" onClick={() => handleTogglePublic(cat)}
+                          className={cat.is_public ? "h-8 w-8 text-sky-600" : "h-8 w-8 text-muted-foreground hover:text-sky-600"} aria-label={cat.is_public ? t('library.turnPublicOff') : t('library.turnPublicOn')}>
                           <Globe className="h-3.5 w-3.5" />
                         </Button></AppTooltip>}
-                        {canEdit && <AppTooltip content="Sửa"><Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label="Sửa">
+                        {canEdit && <AppTooltip content={t('common.edit')}><Button variant="ghost" size="icon" onClick={() => openEdit(cat)}
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={t('common.edit')}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button></AppTooltip>}
-                        {canDelete && <AppTooltip content="Xóa"><Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Xóa">
+                        {canDelete && <AppTooltip content={t('common.delete')}><Button variant="ghost" size="icon" onClick={() => handleDelete(cat)}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label={t('common.delete')}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button></AppTooltip>}
                       </div>
@@ -413,7 +417,7 @@ export default function CategoriesTab() {
           totalPages={totalPages}
           onPageChange={setPage}
           onLimitChange={setLimit}
-          label="danh mục"
+          label={t('library.categories')}
         />
       </div>
 
@@ -421,11 +425,11 @@ export default function CategoriesTab() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>{editCat ? 'Sửa danh mục' : 'Thêm danh mục'}</DialogTitle>
+            <DialogTitle>{editCat ? t('library.editCategory') : t('library.newCategory')}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <Input
-              placeholder="Tên danh mục"
+              placeholder={t('library.categoryNamePlaceholder')}
               value={catName}
               onChange={(e) => setCatName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
@@ -433,10 +437,10 @@ export default function CategoriesTab() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Hủy</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={handleSave} disabled={!catName.trim() || isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editCat ? 'Cập nhật' : 'Tạo mới'}
+              {editCat ? t('library.update') : t('library.createNew')}
             </Button>
           </DialogFooter>
         </DialogContent>

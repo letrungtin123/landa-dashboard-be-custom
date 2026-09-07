@@ -3,6 +3,7 @@
 // =========================
 import * as React from "react";
 import * as SliderPrimitive from "@radix-ui/react-slider";
+import { useTranslation } from "react-i18next";
 
 function cn(...a: Array<string | false | null | undefined>) {
   return a.filter(Boolean).join(" ");
@@ -12,6 +13,8 @@ export const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
 >(({ className, ...props }, ref) => {
+  const { t } = useTranslation();
+
   return (
     <SliderPrimitive.Root
       ref={ref}
@@ -46,7 +49,7 @@ export const Slider = React.forwardRef<
           "pointer-events-auto cursor-grab active:cursor-grabbing",
           "disabled:pointer-events-none disabled:opacity-50"
         )}
-        aria-label="Slider thumb"
+        aria-label={t("common.sliderThumb")}
       />
     </SliderPrimitive.Root>
   );

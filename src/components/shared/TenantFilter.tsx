@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTranslation } from 'react-i18next';
 
 interface TenantFilterProps {
   /** Optional className cho container */
@@ -23,6 +24,7 @@ interface TenantFilterProps {
 }
 
 export function TenantFilter({ className }: TenantFilterProps) {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const managedTenants = useAuthStore((s) => s.managedTenants);
   const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
@@ -56,7 +58,7 @@ export function TenantFilter({ className }: TenantFilterProps) {
     return (
       <div className={`flex items-center gap-2 text-sm text-muted-foreground ${className || ''}`}>
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span>Đang tải tenants...</span>
+        <span>{t('tenantFilter.loading')}</span>
       </div>
     );
   }
@@ -68,7 +70,7 @@ export function TenantFilter({ className }: TenantFilterProps) {
       <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
       <Select value={activeTenantId || undefined} onValueChange={handleChange}>
         <SelectTrigger className="h-8 w-[200px] text-xs font-medium border-dashed">
-          <SelectValue placeholder="Chọn tenant..." />
+          <SelectValue placeholder={t('tenantFilter.select')} />
         </SelectTrigger>
         <SelectContent>
           {tenants.map(t => (
@@ -80,7 +82,7 @@ export function TenantFilter({ className }: TenantFilterProps) {
       </Select>
       {activeTenantName && (
         <span className="text-[10px] text-muted-foreground/60 hidden lg:inline">
-          Data scope: {activeTenantName}
+          {t('tenantFilter.dataScope', { tenant: activeTenantName })}
         </span>
       )}
     </div>

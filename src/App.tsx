@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const queryClient = new QueryClient();
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { ThemeProvider } from '@/components/theme-provider';
+import { LocaleProvider } from '@/components/providers/locale-provider';
 import { AuthProvider } from '@/components/providers/auth-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { GlobalConfirmDialog } from '@/components/global-confirm-dialog';
@@ -110,25 +111,27 @@ export default function App() {
   // Wrap Google OAuth provider nếu có client ID
   const content = (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        <TooltipProvider delayDuration={300}>
-          <AuthProvider>
-            <MotionProvider>
-              <Suspense fallback={null}>
-                <RouteProgress />
-              </Suspense>
-              <AppRoutes />
-              <Toaster position="top-right" richColors />
-              <GlobalConfirmDialog />
-            </MotionProvider>
-          </AuthProvider>
-        </TooltipProvider>
-      </ThemeProvider>
+      <LocaleProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TooltipProvider delayDuration={300}>
+            <AuthProvider>
+              <MotionProvider>
+                <Suspense fallback={null}>
+                  <RouteProgress />
+                </Suspense>
+                <AppRoutes />
+                <Toaster position="top-right" richColors />
+                <GlobalConfirmDialog />
+              </MotionProvider>
+            </AuthProvider>
+          </TooltipProvider>
+        </ThemeProvider>
+      </LocaleProvider>
     </QueryClientProvider>
   );
 

@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useTenantStore } from "@/utils/tenant-store";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Trash2, Search, Loader2, Upload, FileText, FolderOpen, ArrowLeft,
@@ -37,6 +38,7 @@ import {
   PaginationBar, TableSkeleton,
 } from "./ai-chatbot-helpers";
 import { AppTooltip } from '@/components/ui/tooltip';
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 const TiptapEditor = lazy(() => import("@/components/shared/tiptap-editor"));
 
@@ -44,6 +46,7 @@ const TiptapEditor = lazy(() => import("@/components/shared/tiptap-editor"));
 // Document Manager (entry point)
 // ═══════════════════════════════════════════════════════════════
 export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () => void }) {
+  const { t } = useTranslation();
   const [docTab, setDocTab] = useState("files");
   const [restoringKb, setRestoringKb] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
@@ -89,9 +92,9 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
     try {
       await restoreKnowledgebase(kbState.id);
       await refreshKbState();
-      toast.success("Đã đưa kho tri thức vào hàng đợi khôi phục");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || err.message || "Lỗi khôi phục kho tri thức");
+      toast.success(t("aiChatbot.restoreQueued"));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t("aiChatbot.restoreFailed")));
     } finally {
       setRestoringKb(false);
     }
@@ -100,10 +103,10 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onBack} className="gap-1.5"><ArrowLeft className="h-4 w-4" /> Quay lại</Button>
+        <Button variant="outline" size="sm" onClick={onBack} className="gap-1.5"><ArrowLeft className="h-4 w-4" /> {t("aiChatbot.back")}</Button>
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2"><FolderOpen className="h-5 w-5 text-primary" /> {kbState.name}</h3>
-          <p className="text-sm text-muted-foreground">Quản lý tài liệu cho Knowledge Base</p>
+          <p className="text-sm text-muted-foreground">{t("aiChatbot.manageKnowledgeBaseDocuments")}</p>
         </div>
       </div>
       {(restoreRequired || restoreActive || restoreState === "failed") && (
@@ -112,16 +115,16 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
             {restoreActive ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <AlertTriangle className="mt-0.5 h-5 w-5" />}
             <div className="min-w-0 flex-1 space-y-1">
               <div className="text-sm font-semibold">
-                {restoreActive ? "Kho tri thức đang được khôi phục" : "Kho tri thức cần khôi phục"}
+                {restoreActive ? t("aiChatbot.knowledgeBaseRestoring") : t("aiChatbot.knowledgeBaseNeedsRestore")}
               </div>
               <p className="text-sm opacity-90">
                 {restoreActive
-                  ? "Hệ thống đang tạo store mới và học lại tài liệu bằng key Google/Gemini hiện tại. Tạm thời không thể upload, xoá hoặc sửa tài liệu."
-                  : (kbState.restore_error_reason || kbState.restore_reason || "Key Google/Gemini đã thay đổi hoặc store hiện tại không còn truy cập được.")}
+                  ? t("aiChatbot.restoreInProgressDescription")
+                  : (kbState.restore_error_reason || kbState.restore_reason || t("aiChatbot.restoreUnavailableReason"))}
               </p>
               {restoreProgress && (
                 <div className="text-xs opacity-80">
-                  Tiến độ: {restoreDone}/{restoreTotal} tài liệu · thành công {restoreProgress.learned_docs} · lỗi {restoreProgress.failed_docs} · bỏ qua {restoreProgress.skipped_docs}
+                  {t("aiChatbot.restoreProgress", { done: restoreDone, total: restoreTotal, learned: restoreProgress.learned_docs, failed: restoreProgress.failed_docs, skipped: restoreProgress.skipped_docs })}
                 </div>
               )}
             </div>
@@ -139,34 +142,34 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           onClick={() => setRestoreDialogOpen(true)}
         >
           {restoringKb ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Khôi phục lại kho tri thức
+          {t("aiChatbot.restoreKnowledgeBase")}
         </Button>
       </div>
       )}
       <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Khôi phục lại kho tri thức</DialogTitle>
+            <DialogTitle>{t("aiChatbot.restoreKnowledgeBase")}</DialogTitle>
             <DialogDescription>
-              Hệ thống sẽ tạo File Search store mới bằng key Google/Gemini hiện tại và học lại các file gốc đang có trong kho. Store cũ không truy cập được bằng key mới sẽ được ghi nhận riêng để tránh mismatch.
+              {t("aiChatbot.restoreKnowledgeBaseDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" disabled={restoringKb}>Huỷ</Button>
+              <Button variant="outline" disabled={restoringKb}>{t("aiChatbot.cancel")}</Button>
             </DialogClose>
             <Button variant="destructive" onClick={handleRestoreKb} disabled={restoringKb} className="gap-2">
               {restoringKb && <Loader2 className="h-4 w-4 animate-spin" />}
-              Xác nhận khôi phục
+              {t("aiChatbot.confirmRestore")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <Tabs value={docTab} onValueChange={setDocTab}>
         <TabsList className="grid w-full max-w-lg grid-cols-3">
-          <TabsTrigger value="files" className="gap-2"><FileText className="h-4 w-4" /> Tệp tin</TabsTrigger>
-          <TabsTrigger value="faqs" className="gap-2"><FileSpreadsheet className="h-4 w-4" /> Câu hỏi</TabsTrigger>
-          <TabsTrigger value="articles" className="gap-2"><FileEdit className="h-4 w-4" /> Bài viết</TabsTrigger>
+          <TabsTrigger value="files" className="gap-2"><FileText className="h-4 w-4" /> {t("aiChatbot.files")}</TabsTrigger>
+          <TabsTrigger value="faqs" className="gap-2"><FileSpreadsheet className="h-4 w-4" /> {t("aiChatbot.questions")}</TabsTrigger>
+          <TabsTrigger value="articles" className="gap-2"><FileEdit className="h-4 w-4" /> {t("aiChatbot.articles")}</TabsTrigger>
         </TabsList>
         <TabsContent value="files" className="mt-4"><FilesSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
         <TabsContent value="faqs" className="mt-4"><FaqsSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
@@ -180,6 +183,7 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
 // Files Sub-Tab
 // ───────────────────────────────────────
 function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+  const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -201,8 +205,8 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
     try {
       const r = await fetchDocuments(kb.id, { page, page_size: pageSize, search: searchDebounced || undefined, status: filterStatus !== "__all__" ? filterStatus : undefined, type: "file" });
       setDocs(r.data); setTotal(r.total);
-    } catch { toast.error("Lỗi tải tài liệu"); } finally { setLoading(false); }
-  }, [kb.id, page, pageSize, searchDebounced, filterStatus]);
+    } catch { toast.error(t("aiChatbot.loadDocumentsFailed")); } finally { setLoading(false); }
+  }, [kb.id, page, pageSize, searchDebounced, filterStatus, t]);
   useEffect(() => { loadDocs(); }, [loadDocs]);
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
   useEffect(() => { setSelectedIds(new Set()); }, [page, searchDebounced, filterStatus]);
@@ -212,27 +216,27 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
   const errorSelected = docs.filter(d => selectedIds.has(d.id) && d.status === "error");
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể upload"); return; }
+    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotUpload")); return; }
     const fl = e.target.files; if (!fl || fl.length === 0) return;
-    const files = Array.from(fl); if (files.length > 20) { toast.error("Tối đa 20 file"); return; }
+    const files = Array.from(fl); if (files.length > 20) { toast.error(t("aiChatbot.maxFiles")); return; }
     setUploading(true);
-    try { const r = await uploadDocuments(kb.id, files); if (r.uploaded > 0) toast.success(`Upload ${r.uploaded} file OK`); if (r.failed > 0) r.results.filter(x => !x.success).forEach(x => toast.error(`${x.file}: ${x.error}`)); loadDocs(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi upload"); }
+    try { const r = await uploadDocuments(kb.id, files); if (r.uploaded > 0) toast.success(t("aiChatbot.uploadSucceeded", { count: r.uploaded })); if (r.failed > 0) r.results.filter(x => !x.success).forEach(x => toast.error(`${x.file}: ${x.error}`)); loadDocs(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.uploadFailed"))); }
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
   async function handleBulkDelete() {
-    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể xoá tài liệu"); return; }
+    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotDelete")); return; }
     if (!selectedIds.size) return;
     const idsToDelete = Array.from(selectedIds);
     setConfirmBulkDelete(false);
     setDocs(prev => prev.map(d => idsToDelete.includes(d.id) ? { ...d, status: 'deleting' } : d));
     setSelectedIds(new Set());
-    try { const r = await bulkDeleteDocuments(kb.id, idsToDelete); toast.success(`Đã xoá ${r.deleted} tài liệu`); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi xoá"); }
+    try { const r = await bulkDeleteDocuments(kb.id, idsToDelete); toast.success(t("aiChatbot.documentsDeleted", { count: r.deleted })); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.deleteFailed"))); }
     finally { loadDocs(); }
   }
-  async function handleRetry() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể retry"); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); setSelectedIds(new Set()); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
-  async function handleRetryAll() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể retry"); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(`Retry ${r.retried}`); loadDocs(); } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setRetrying(false); } }
+  async function handleRetry() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotRetry")); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); setSelectedIds(new Set()); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
+  async function handleRetryAll() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotRetry")); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
 
   const hasErrors = docs.some(d => d.status === "error");
   const totalPages = Math.ceil(total / pageSize);
@@ -240,28 +244,28 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{total} file</span>
+        <span className="text-sm text-muted-foreground">{t("aiChatbot.fileCount", { count: total })}</span>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên</Button>
+          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> {t("aiChatbot.refresh")}</Button>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {t("aiChatbot.upload")}</Button>
           <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.pptx,.csv" multiple onChange={handleUpload} />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Tìm theo tên file..." value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
+        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchFileName")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
         <Select value={filterStatus} onValueChange={v => setFilterStatus(v)}><SelectTrigger className="w-[180px]"><Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" /><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="__all__">Tất cả trạng thái</SelectItem><SelectItem value="learned">Đã học</SelectItem><SelectItem value="learning">Đang học</SelectItem><SelectItem value="error">Lỗi</SelectItem><SelectItem value="draft">Nháp</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="__all__">{t("aiChatbot.allStatuses")}</SelectItem><SelectItem value="learned">{t("aiChatbot.learned")}</SelectItem><SelectItem value="learning">{t("aiChatbot.learning")}</SelectItem><SelectItem value="error">{t("aiChatbot.error")}</SelectItem><SelectItem value="draft">{t("aiChatbot.draft")}</SelectItem></SelectContent>
         </Select>
       </div>
       {someSelected && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-        <span className="text-sm font-medium">{selectedIds.size} đã chọn</span>
+        <span className="text-sm font-medium">{t("aiChatbot.selectedCount", { count: selectedIds.size })}</span>
         <div className="flex gap-2 ml-auto">
-          {errorSelected.length > 0 && <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying || restoreLocked} className="gap-1.5">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry ({errorSelected.length})</Button>}
-          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} disabled={restoreLocked} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> Xoá ({selectedIds.size})</Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Bỏ chọn</Button>
+          {errorSelected.length > 0 && <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying || restoreLocked} className="gap-1.5">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} {t("aiChatbot.retryCount", { count: errorSelected.length })}</Button>}
+          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} disabled={restoreLocked} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> {t("aiChatbot.deleteCount", { count: selectedIds.size })}</Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>{t("aiChatbot.deselect")}</Button>
         </div>
       </motion.div>}
-      {hasErrors && !someSelected && <Button variant="outline" size="sm" onClick={handleRetryAll} disabled={retrying || restoreLocked} className="gap-1.5 text-orange-500 border-orange-500/30 hover:bg-orange-500/10">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Retry tất cả lỗi</Button>}
+      {hasErrors && !someSelected && <Button variant="outline" size="sm" onClick={handleRetryAll} disabled={retrying || restoreLocked} className="gap-1.5 text-orange-500 border-orange-500/30 hover:bg-orange-500/10">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} {t("aiChatbot.retryAllErrors")}</Button>}
 
       <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={6} rows={5} />
@@ -269,8 +273,8 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
       </div>
       <PaginationBar page={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={s => { setPageSize(s); setPage(1); }} />
 
-      <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}><DialogContent><DialogHeader><DialogTitle>Xoá {selectedIds.size} tài liệu</DialogTitle><DialogDescription>Không thể hoàn tác.</DialogDescription></DialogHeader>
-        <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button variant="destructive" onClick={handleBulkDelete}>Xoá {selectedIds.size}</Button></DialogFooter>
+      <Dialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}><DialogContent><DialogHeader><DialogTitle>{t("aiChatbot.deleteDocuments", { count: selectedIds.size })}</DialogTitle><DialogDescription>{t("aiChatbot.irreversible")}</DialogDescription></DialogHeader>
+        <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button variant="destructive" onClick={handleBulkDelete}>{t("aiChatbot.deleteDocuments", { count: selectedIds.size })}</Button></DialogFooter>
       </DialogContent></Dialog>
     </div>
   );
@@ -280,6 +284,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
 // FAQs Sub-Tab
 // ───────────────────────────────────────
 function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+  const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -298,23 +303,23 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
     try {
       const r = await fetchDocuments(kb.id, { page, page_size: pageSize, search: searchDebounced || undefined, status: filterStatus !== "__all__" ? filterStatus : undefined, type: "faq" });
       setDocs(r.data); setTotal(r.total);
-    } catch { toast.error("Lỗi tải FAQs"); } finally { setLoading(false); }
-  }, [kb.id, page, pageSize, searchDebounced, filterStatus]);
+    } catch { toast.error(t("aiChatbot.loadFaqsFailed")); } finally { setLoading(false); }
+  }, [kb.id, page, pageSize, searchDebounced, filterStatus, t]);
   useEffect(() => { loadDocs(); }, [loadDocs]);
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể upload FAQ"); return; }
+    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotUploadFaq")); return; }
     const file = e.target.files?.[0]; if (!file) return;
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    if (ext !== '.xlsx' && ext !== '.xls') { toast.error("Chỉ hỗ trợ file .xlsx hoặc .xls"); return; }
+    if (ext !== '.xlsx' && ext !== '.xls') { toast.error(t("aiChatbot.excelOnly")); return; }
     setUploading(true);
-    try { await uploadFaqDocument(kb.id, file); toast.success("Upload FAQ thành công. Đang xử lý..."); loadDocs(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi upload FAQ"); }
+    try { await uploadFaqDocument(kb.id, file); toast.success(t("aiChatbot.faqUploadSuccess")); loadDocs(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.faqUploadFailed"))); }
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
-  async function handleDownloadTemplate() { try { await downloadFaqTemplate(kb.id); } catch { toast.error("Lỗi tải template"); } }
+  async function handleDownloadTemplate() { try { await downloadFaqTemplate(kb.id); } catch { toast.error(t("aiChatbot.templateDownloadFailed")); } }
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -322,27 +327,27 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-sm text-muted-foreground">{total} file FAQ</span>
-          <p className="text-xs text-muted-foreground mt-1">Upload file Excel (.xlsx) với 2 cột: <strong>Question</strong> và <strong>Answer</strong></p>
+          <span className="text-sm text-muted-foreground">{t("aiChatbot.faqFileCount", { count: total })}</span>
+          <p className="text-xs text-muted-foreground mt-1">{t("aiChatbot.faqUploadHelp")}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="gap-1.5"><Download className="h-3.5 w-3.5" /> Tải mẫu</Button>
-          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Tải lên FAQ</Button>
+          <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="gap-1.5"><Download className="h-3.5 w-3.5" /> {t("aiChatbot.downloadTemplate")}</Button>
+          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> {t("aiChatbot.refresh")}</Button>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || restoreLocked} className="gap-2">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {t("aiChatbot.uploadFaq")}</Button>
           <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls" onChange={handleUpload} />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Tìm theo tên file..." value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
+        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchFileName")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
         <Select value={filterStatus} onValueChange={v => setFilterStatus(v)}><SelectTrigger className="w-[180px]"><Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" /><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="__all__">Tất cả trạng thái</SelectItem><SelectItem value="learned">Đã học</SelectItem><SelectItem value="learning">Đang học</SelectItem><SelectItem value="error">Lỗi</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="__all__">{t("aiChatbot.allStatuses")}</SelectItem><SelectItem value="learned">{t("aiChatbot.learned")}</SelectItem><SelectItem value="learning">{t("aiChatbot.learning")}</SelectItem><SelectItem value="error">{t("aiChatbot.error")}</SelectItem></SelectContent>
         </Select>
       </div>
       <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={5} rows={4} />
-        : <Table><TableHeader><TableRow><TableHead>Tên file</TableHead><TableHead className="text-center">Rows</TableHead><TableHead className="text-center">Kích thước</TableHead><TableHead className="text-center">Trạng thái</TableHead><TableHead>Ngày upload</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader>
+        : <Table><TableHeader><TableRow><TableHead>{t("aiChatbot.fileName")}</TableHead><TableHead className="text-center">{t("aiChatbot.rows")}</TableHead><TableHead className="text-center">{t("aiChatbot.size")}</TableHead><TableHead className="text-center">{t("aiChatbot.status")}</TableHead><TableHead>{t("aiChatbot.uploadDate")}</TableHead><TableHead className="text-right">{t("aiChatbot.actions")}</TableHead></TableRow></TableHeader>
           <TableBody>
-            {docs.length === 0 ? <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">{searchDebounced || filterStatus !== "__all__" ? "Không tìm thấy." : "Chưa có FAQ. Upload file xlsx để bắt đầu."}</TableCell></TableRow>
+            {docs.length === 0 ? <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">{searchDebounced || filterStatus !== "__all__" ? t("aiChatbot.notFound") : t("aiChatbot.noFaqs")}</TableCell></TableRow>
             : <AnimatePresence>{docs.map(doc => (
               <motion.tr key={doc.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <TableCell><div className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-emerald-500 shrink-0" /><span className="font-medium truncate max-w-[250px]">{doc.name}</span></div></TableCell>
@@ -351,8 +356,8 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
                 <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1">
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
             ))}</AnimatePresence>}
@@ -368,6 +373,7 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
 // Articles Sub-Tab
 // ───────────────────────────────────────
 function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+  const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -392,30 +398,30 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
     try {
       const r = await fetchDocuments(kb.id, { page, page_size: pageSize, search: searchDebounced || undefined, status: filterStatus !== "__all__" ? filterStatus : undefined, type: "article" });
       setDocs(r.data); setTotal(r.total);
-    } catch { toast.error("Lỗi tải bài viết"); } finally { setLoading(false); }
-  }, [kb.id, page, pageSize, searchDebounced, filterStatus]);
+    } catch { toast.error(t("aiChatbot.loadArticlesFailed")); } finally { setLoading(false); }
+  }, [kb.id, page, pageSize, searchDebounced, filterStatus, t]);
   useEffect(() => { loadDocs(); }, [loadDocs]);
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
 
-  function openCreate() { if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể tạo bài viết"); return; } setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
+  function openCreate() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotCreateArticle")); return; } setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
   async function openEdit(docId: string) {
-    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể sửa bài viết"); return; }
+    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotEditArticle")); return; }
     setLoadingArticle(true); setShowEditor(true); setEditDocId(docId); setArticleUpdatedAt(null);
     try { const doc = await getArticle(kb.id, docId); setArticleTitle(doc.name); setArticleContent(doc.content || ""); setArticleUpdatedAt(doc.updated_at || null); }
-    catch { toast.error("Lỗi tải bài viết"); setShowEditor(false); }
+    catch { toast.error(t("aiChatbot.loadArticlesFailed")); setShowEditor(false); }
     finally { setLoadingArticle(false); }
   }
   async function handleSave() {
-    if (restoreLocked) { toast.error("Kho tri thức đang khôi phục, tạm thời không thể lưu bài viết"); return; }
-    if (!articleTitle.trim()) { toast.error("Tiêu đề không được trống"); return; }
-    if (!articleContent.trim()) { toast.error("Nội dung không được trống"); return; }
+    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotSaveArticle")); return; }
+    if (!articleTitle.trim()) { toast.error(t("aiChatbot.articleTitleRequired")); return; }
+    if (!articleContent.trim()) { toast.error(t("aiChatbot.articleContentRequired")); return; }
     setSaving(true);
     try {
-      if (editDocId) { await updateArticle(kb.id, editDocId, { title: articleTitle, content: articleContent, expected_updated_at: articleUpdatedAt || undefined }); toast.success("Đã lưu — đang huấn luyện..."); }
-      else { await createArticle(kb.id, { title: articleTitle, content: articleContent }); toast.success("Đã tạo — đang huấn luyện..."); }
+      if (editDocId) { await updateArticle(kb.id, editDocId, { title: articleTitle, content: articleContent, expected_updated_at: articleUpdatedAt || undefined }); toast.success(t("aiChatbot.articleSavedTraining")); }
+      else { await createArticle(kb.id, { title: articleTitle, content: articleContent }); toast.success(t("aiChatbot.articleCreatedTraining")); }
       setShowEditor(false); loadDocs();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi lưu bài viết"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.saveArticleFailed"))); }
     finally { setSaving(false); }
   }
 
@@ -426,25 +432,25 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-sm text-muted-foreground">{total} bài viết</span>
-          <p className="text-xs text-muted-foreground mt-1">Viết bài viết → tự động chuyển đổi .md → huấn luyện cho AI chatbot</p>
+          <span className="text-sm text-muted-foreground">{t("aiChatbot.articleCount", { count: total })}</span>
+          <p className="text-xs text-muted-foreground mt-1">{t("aiChatbot.articleTrainingHelp")}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> Làm mới</Button>
-          <Button onClick={openCreate} disabled={restoreLocked} className="gap-2"><Plus className="h-4 w-4" /> Tạo bài viết</Button>
+          <Button variant="outline" size="sm" onClick={loadDocs} className="gap-1"><RefreshCw className="h-3.5 w-3.5" /> {t("aiChatbot.refresh")}</Button>
+          <Button onClick={openCreate} disabled={restoreLocked} className="gap-2"><Plus className="h-4 w-4" /> {t("aiChatbot.createArticle")}</Button>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Tìm theo tiêu đề..." value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
+        <div className="relative flex-1 min-w-[200px] max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchArticleTitle")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
         <Select value={filterStatus} onValueChange={v => setFilterStatus(v)}><SelectTrigger className="w-[180px]"><Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" /><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="__all__">Tất cả trạng thái</SelectItem><SelectItem value="learned">Đã học</SelectItem><SelectItem value="learning">Đang học</SelectItem><SelectItem value="error">Lỗi</SelectItem></SelectContent>
+          <SelectContent><SelectItem value="__all__">{t("aiChatbot.allStatuses")}</SelectItem><SelectItem value="learned">{t("aiChatbot.learned")}</SelectItem><SelectItem value="learning">{t("aiChatbot.learning")}</SelectItem><SelectItem value="error">{t("aiChatbot.error")}</SelectItem></SelectContent>
         </Select>
       </div>
       <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={4} rows={4} />
-        : <Table><TableHeader><TableRow><TableHead>Tiêu đề</TableHead><TableHead className="text-center">Trạng thái</TableHead><TableHead>Ngày tạo</TableHead><TableHead className="text-right">Thao tác</TableHead></TableRow></TableHeader>
+        : <Table><TableHeader><TableRow><TableHead>{t("aiChatbot.titleLabel")}</TableHead><TableHead className="text-center">{t("aiChatbot.status")}</TableHead><TableHead>{t("aiChatbot.createdDate")}</TableHead><TableHead className="text-right">{t("aiChatbot.actions")}</TableHead></TableRow></TableHeader>
           <TableBody>
-            {docs.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-12 text-muted-foreground">{searchDebounced || filterStatus !== "__all__" ? "Không tìm thấy." : "Chưa có bài viết. Tạo mới để bắt đầu."}</TableCell></TableRow>
+            {docs.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-12 text-muted-foreground">{searchDebounced || filterStatus !== "__all__" ? t("aiChatbot.notFound") : t("aiChatbot.noArticles")}</TableCell></TableRow>
             : <AnimatePresence>{docs.map(doc => {
               const isLearning = doc.status === "learning";
               return (
@@ -457,8 +463,8 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" disabled={isLearning || restoreLocked} onClick={() => openEdit(doc.id)}><Pencil className="h-4 w-4" /></Button>
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success("Retry..."); loadDocs(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
               );
@@ -470,18 +476,18 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
 
       <Dialog open={showEditor} onOpenChange={v => { if (!v) setShowEditor(false); }}>
         <DialogContent className="sm:max-w-[70vw] max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editDocId ? "Sửa bài viết" : "Tạo bài viết mới"}</DialogTitle><DialogDescription>Nội dung được chuyển đổi thành .md → tải lên Gemini. Ảnh chỉ hiển thị trên giao diện.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editDocId ? t("aiChatbot.editArticle") : t("aiChatbot.createNewArticle")}</DialogTitle><DialogDescription>{t("aiChatbot.articleEditorDescription")}</DialogDescription></DialogHeader>
           {loadingArticle ? <div className="py-12"><TableSkeleton cols={1} rows={6} /></div> : (
             <div className="space-y-4 py-4">
-              <div className="space-y-2"><label className="text-sm font-medium">Tiêu đề</label><Input value={articleTitle} onChange={e => setArticleTitle(e.target.value)} placeholder="VD: Hướng dẫn sử dụng sản phẩm" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium">Nội dung</label>
+              <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.titleLabel")}</label><Input value={articleTitle} onChange={e => setArticleTitle(e.target.value)} placeholder={t("aiChatbot.articleTitlePlaceholder")} /></div>
+              <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.contentLabel")}</label>
                 <Suspense fallback={<Skeleton className="h-[200px] w-full" />}>
-                  <TiptapEditor content={articleContent} onChange={setArticleContent} placeholder="Viết nội dung bài viết tại đây..." />
+                  <TiptapEditor content={articleContent} onChange={setArticleContent} placeholder={t("aiChatbot.articleContentPlaceholder")} />
                 </Suspense>
               </div>
             </div>
           )}
-          <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button onClick={handleSave} disabled={saving || loadingArticle}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editDocId ? "Cập nhật & Huấn luyện lại" : "Tạo & Huấn luyện"}</Button></DialogFooter>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button onClick={handleSave} disabled={saving || loadingArticle}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editDocId ? t("aiChatbot.updateAndRetrain") : t("aiChatbot.createAndTrain")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -498,14 +504,15 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
   onSetDeleting?: (id: string) => void;
   restoreLocked?: boolean;
 }) {
+  const { t } = useTranslation();
   const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
   return (
     <Table><TableHeader><TableRow>
       <TableHead className="w-[40px]"><Checkbox checked={allSelected && docs.length > 0} onCheckedChange={onToggleAll} /></TableHead>
-      <TableHead>Tên file</TableHead><TableHead>Loại</TableHead><TableHead className="text-center">Kích thước</TableHead><TableHead className="text-center">Trạng thái</TableHead><TableHead>Ngày upload</TableHead><TableHead className="text-right">Thao tác</TableHead>
+      <TableHead>{t("aiChatbot.fileName")}</TableHead><TableHead>{t("aiChatbot.type")}</TableHead><TableHead className="text-center">{t("aiChatbot.size")}</TableHead><TableHead className="text-center">{t("aiChatbot.status")}</TableHead><TableHead>{t("aiChatbot.uploadDate")}</TableHead><TableHead className="text-right">{t("aiChatbot.actions")}</TableHead>
     </TableRow></TableHeader>
       <TableBody>
-        {docs.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">{searchActive ? "Không tìm thấy." : "Chưa có file. Upload PDF, DOCX, TXT..."}</TableCell></TableRow>
+        {docs.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">{searchActive ? t("aiChatbot.notFound") : t("aiChatbot.noFiles")}</TableCell></TableRow>
         : <AnimatePresence>{docs.map(doc => {
           const isSelected = selectedIds.has(doc.id);
           return (
@@ -517,8 +524,8 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
               <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
               <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-1">
-                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kbId, [doc.id]); toast.success("Retry..."); onRefresh(); } catch { toast.error("Lỗi"); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success("Đã xoá"); } catch { toast.error("Lỗi xoá"); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
+                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kbId, [doc.id]); toast.success(t("aiChatbot.retry")); onRefresh(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
               </div></TableCell>
             </motion.tr>
           );

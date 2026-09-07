@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
 
 interface PaginationProps {
   page: number;
@@ -27,8 +28,10 @@ export function Pagination({
   onPageChange,
   onLimitChange,
   limitOptions = [5, 10, 20],
-  label = 'bản ghi',
+  label,
 }: PaginationProps) {
+  const { t } = useTranslation();
+  const translatedLabel = label || t('pagination.records');
   if (total <= 0) return null;
 
   // Hiển thị trang đầu, trang cuối và các trang gần trang hiện tại.
@@ -39,7 +42,7 @@ export function Pagination({
     <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-muted/20 gap-4 sm:gap-0" style={{ borderTop: '1px solid transparent', borderImage: 'linear-gradient(to right, transparent, var(--border), transparent) 1' }}>
       <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
         <div className="flex items-center gap-2">
-          <span>Số dòng:</span>
+          <span>{t('pagination.rowsPerPage')}</span>
           <Select
             value={limit.toString()}
             onValueChange={(v) => {
@@ -60,10 +63,16 @@ export function Pagination({
           </Select>
         </div>
         <div className="hidden sm:block">
-          Hiển thị{' '}
-          <span className="text-foreground">{(page - 1) * limit + 1}</span> đến{' '}
-          <span className="text-foreground">{Math.min(page * limit, total)}</span>{' '}
-          trong tổng <span className="text-foreground">{total}</span> {label}
+          <Trans
+            i18nKey="pagination.showing"
+            values={{
+              start: (page - 1) * limit + 1,
+              end: Math.min(page * limit, total),
+              total,
+              label: translatedLabel,
+            }}
+            components={{ accent: <span className="text-foreground" /> }}
+          />
         </div>
       </div>
       <div className="flex items-center gap-2">

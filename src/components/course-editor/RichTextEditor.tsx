@@ -15,6 +15,7 @@ import {
   isTransientHtmlImageSrc,
 } from '@/utils/storage-url';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -107,6 +108,7 @@ interface RichTextEditorProps {
 }
 
 const MenuBar = ({ editor }: { editor: any }) => {
+  const { t } = useTranslation();
   if (!editor) {
     return null;
   }
@@ -157,7 +159,7 @@ const MenuBar = ({ editor }: { editor: any }) => {
       <div className="w-px h-6 bg-border mx-1" />
 
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-        const url = window.prompt('URL hình ảnh:');
+        const url = window.prompt(t('courseEditorForms.imageUrlPrompt'));
         if (url) editor.chain().focus().setImage({ src: url }).run();
       }}>
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
@@ -187,12 +189,12 @@ const MenuBar = ({ editor }: { editor: any }) => {
       <div className="flex-1" />
 
       <div className="flex items-center gap-1 pr-2">
-        <AppTooltip content="Màu chữ"><input
+        <AppTooltip content={t('courseEditorForms.textColor')}><input
           type="color"
           onInput={event => editor.chain().focus().setColor((event.target as HTMLInputElement).value).run()}
           value={editor.getAttributes('textStyle').color || '#000000'}
           className="w-6 h-6 p-0 border-0 rounded cursor-pointer overflow-hidden"
-          aria-label="Màu chữ"
+          aria-label={t('courseEditorForms.textColor')}
         /></AppTooltip>
       </div>
     </div>

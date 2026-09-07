@@ -16,6 +16,8 @@ import {
   toYoutubeUrl,
   type ProblemMedia,
 } from '../problemMedia';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface SortableItem {
   id: number;
@@ -44,6 +46,7 @@ export default function SortableEditor({
   courseId,
   onAutoSave,
 }: SortableEditorProps) {
+  const { t } = useTranslation();
   const [nextId, setNextId] = useState(() => {
     const maxId = items.reduce((m, i) => Math.max(m, i.id), 0);
     return maxId + 1;
@@ -89,7 +92,7 @@ export default function SortableEditor({
   const handleUploadImages = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!courseId) {
-      toast.error('Thiếu courseId, không thể upload ảnh');
+      toast.error(t('courseEditorForms.courseIdRequired'));
       return;
     }
     setUploading(true);
@@ -110,7 +113,7 @@ export default function SortableEditor({
         updateProblemMedia(nextMedia);
         try {
           await persistMediaDraft(nextMedia);
-          toast.success(`Đã upload ${uploaded.length} ảnh và lưu draft`);
+          toast.success(t('courseEditorForms.imageUploadSaved', { count: uploaded.length }));
         } catch (saveErr) {
           await Promise.allSettled(uploadedPaths.map(path => deleteCourseAssetByStoragePath(courseId, path)));
           updateProblemMedia(currentMedia);
@@ -118,7 +121,7 @@ export default function SortableEditor({
         }
       }
     } catch (err: any) {
-      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally {
       setUploading(false);
     }
@@ -126,14 +129,14 @@ export default function SortableEditor({
 
   const handleUploadVideo = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    if (!courseId) { toast.error('Thiếu courseId'); return; }
+    if (!courseId) { toast.error(t('courseEditorForms.courseIdRequired')); return; }
     const file = files[0];
     if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
-      toast.error(`Video quá lớn (${(file.size / 1024 / 1024).toFixed(1)}MB). Tối đa ${COURSE_ASSET_MAX_UPLOAD_LABEL}.`);
+      toast.error(t('courseEditorForms.videoTooLarge', { size: `${(file.size / 1024 / 1024).toFixed(1)}MB`, limit: COURSE_ASSET_MAX_UPLOAD_LABEL }));
       return;
     }
     if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
-      toast.error('Chỉ chấp nhận MP4, WebM, MOV.'); return;
+      toast.error(t('courseEditorForms.unsupportedVideoFormat')); return;
     }
     setVideoUploading(true);
     try {
@@ -146,7 +149,7 @@ export default function SortableEditor({
         setYoutubeInput('');
         try {
           await persistMediaDraft(nextMedia);
-          toast.success('Upload video thành công và đã lưu draft');
+          toast.success(t('courseEditorForms.videoUploadedSaved'));
         } catch (saveErr) {
           await deleteCourseAssetByStoragePath(courseId, path).catch(() => {});
           updateProblemMedia(previousMedia);
@@ -154,7 +157,7 @@ export default function SortableEditor({
         }
       }
     } catch (err: any) {
-      toast.error('Upload video thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.videoUploadFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     } finally { setVideoUploading(false); }
   };
 
@@ -169,16 +172,18 @@ export default function SortableEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Lưu thay đổi media thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.mediaSaveFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
       return;
     }
     if (courseId) {
       try {
         const result = await deleteCourseAssetByStoragePath(courseId, videoPath);
         pendingDelete = !!result?.pending_delete;
-      } catch {}
+      } catch {
+        // The draft remains valid even if the old published asset is retained.
+      }
     }
-    toast.success(pendingDelete ? 'Đã gỡ video khỏi bản nháp; file published được giữ để learner không lỗi.' : 'Đã xóa video');
+    toast.success(pendingDelete ? t('courseEditorForms.videoRemovedDraft') : t('courseEditorForms.videoDeleted'));
   };
 
   const handleRemoveImage = async (idx: number) => {
@@ -190,10 +195,10 @@ export default function SortableEditor({
     try {
       await persistMediaDraft(nextMedia);
       if (courseId) await deleteCourseAssetByStoragePath(courseId, removedImage.src).catch(() => {});
-      toast.success('Đã xóa ảnh và lưu draft');
+      toast.success(t('courseEditorForms.imageDeletedSaved'));
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageDeleteFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -209,7 +214,7 @@ export default function SortableEditor({
       await persistMediaDraft(nextMedia);
     } catch (err: any) {
       updateProblemMedia(currentMedia);
-      toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.error || err.message || 'Unknown'));
+      toast.error(t('courseEditorForms.imageOrderFailed', { message: getLocalizedApiError(err, t('courseUnit.unknownError')) }));
     }
   };
 
@@ -250,7 +255,7 @@ export default function SortableEditor({
 
   return (
     <div className="space-y-5">
-      <Field label="Tên hiển thị">
+      <Field label={t('courseUnit.displayName')}>
         <input
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           value={displayName}
@@ -261,14 +266,14 @@ export default function SortableEditor({
       {/* ── Media minh họa ── */}
       <div className="app-liquid-card rounded-xl border border-border bg-muted/10 p-4 space-y-4">
         <div>
-          <h3 className="text-sm font-bold">Media minh họa</h3>
+          <h3 className="text-sm font-bold">{t('courseEditorForms.mediaIllustration')}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Video sẽ hiển thị trước ảnh và nằm ngay phía trên bài tập.
+            {t('courseEditorForms.mediaIllustrationHint')}
           </p>
         </div>
 
         {!media.video_storage_path && (
-          <Field label="YouTube URL hoặc Video ID">
+          <Field label={t('courseEditorForms.youtubeUrlOrId')}>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Video className="h-4 w-4 text-muted-foreground" />
@@ -277,11 +282,11 @@ export default function SortableEditor({
                 className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm font-mono focus:ring-2 focus:ring-ring focus:outline-none"
                 value={youtubeInput}
                 onChange={e => handleYoutubeChange(e.target.value)}
-                placeholder="https://youtube.com/watch?v=... hoặc dQw4w9WgXcQ"
+                placeholder={t('courseEditorForms.youtubePlaceholder')}
               />
             </div>
             {youtubeInput && !youtubeId && (
-              <p className="text-xs text-destructive mt-2">Chỉ chấp nhận link YouTube hoặc Video ID hợp lệ.</p>
+              <p className="text-xs text-destructive mt-2">{t('courseEditorForms.invalidYoutube')}</p>
             )}
           </Field>
         )}
@@ -293,7 +298,7 @@ export default function SortableEditor({
               width="100%"
               height="100%"
               src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
-              title="YouTube Preview"
+              title={t('courseEditorForms.youtubePreviewTitle')}
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -307,7 +312,7 @@ export default function SortableEditor({
               <UploadedVideoPreview storagePath={media.video_storage_path} />
             <div className="flex justify-end">
               <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5" onClick={handleDeleteVideo}>
-                <Trash2 className="h-3.5 w-3.5" /> Xóa video
+                <Trash2 className="h-3.5 w-3.5" /> {t('courseEditorForms.deleteVideo')}
               </Button>
             </div>
           </div>
@@ -318,9 +323,9 @@ export default function SortableEditor({
           <div className="app-liquid-card flex items-center gap-3 rounded-lg border border-border bg-background p-3">
             <Button type="button" variant="default" size="sm" className="gap-2" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
               {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload video
+              {t('courseEditorForms.youtubeUpload')}
             </Button>
-            <span className="text-xs text-muted-foreground">Tối đa {COURSE_ASSET_MAX_UPLOAD_LABEL} • MP4, WebM, MOV</span>
+            <span className="text-xs text-muted-foreground">{t('courseEditorForms.videoFormatHint', { size: COURSE_ASSET_MAX_UPLOAD_LABEL })}</span>
             <input ref={videoFileInputRef} type="file" accept=".mp4,.webm,.mov" className="hidden" onChange={e => { handleUploadVideo(e.target.files); e.target.value = ''; }} />
           </div>
         )}
@@ -336,9 +341,9 @@ export default function SortableEditor({
               disabled={uploading}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              Upload ảnh
+              {t('courseEditorForms.uploadImage')}
             </Button>
-            <span className="text-xs text-muted-foreground">Từ 2 ảnh trở lên sẽ hiển thị dạng carousel.</span>
+            <span className="text-xs text-muted-foreground">{t('courseEditorForms.imageCarouselHint')}</span>
             <input
               ref={fileInputRef}
               type="file"
@@ -388,32 +393,32 @@ export default function SortableEditor({
         </div>
       </div>
 
-      <Field label="Câu hỏi / Hướng dẫn">
+      <Field label={t('courseEditorForms.sortableQuestion')}>
         <textarea
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
           rows={3}
           value={questionText}
           onChange={e => onQuestionChange(e.target.value)}
-          placeholder="Hãy sắp xếp các bước theo đúng thứ tự..."
+          placeholder={t('courseEditorForms.sortablePlaceholder')}
         />
       </Field>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-sm font-medium">Các bước / Items ({items.length})</label>
+            <label className="text-sm font-medium">{t('courseEditorForms.sortableItems', { count: items.length })}</label>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Kéo thả để đổi thứ tự. Thứ tự này là thứ tự <strong>đúng</strong> — học sinh sẽ thấy thứ tự xáo trộn.
+              {t('courseEditorForms.sortableHint')}
             </p>
           </div>
           <Button size="sm" variant="outline" className="h-7 gap-1 text-xs shrink-0" onClick={addItem}>
-            <Plus className="h-3.5 w-3.5" /> Thêm bước
+            <Plus className="h-3.5 w-3.5" /> {t('courseEditorForms.addStep')}
           </Button>
         </div>
 
         {items.length === 0 && (
           <div className="border-2 border-dashed border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-            Chưa có bước nào. Nhấn "Thêm bước" để bắt đầu.
+            {t('courseEditorForms.sortableEmpty')}
           </div>
         )}
 
@@ -437,7 +442,7 @@ export default function SortableEditor({
                 className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
                 value={item.text}
                 onChange={e => updateItem(idx, e.target.value)}
-                placeholder={`Bước ${idx + 1}...`}
+                placeholder={t('courseEditorForms.stepPlaceholder', { count: idx + 1 })}
               />
               <Button
                 variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
@@ -451,7 +456,7 @@ export default function SortableEditor({
       </div>
 
       <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 text-xs text-violet-700 dark:text-violet-300">
-        <strong>Lưu ý:</strong> Học sinh sẽ thấy các bước bị xáo trộn ngẫu nhiên. Thứ tự bạn đặt ở đây là thứ tự <strong>đúng</strong> để chấm điểm.
+        <strong>{t('courseEditorForms.note')}</strong> {t('courseEditorForms.sortableNote')}
       </div>
     </div>
   );

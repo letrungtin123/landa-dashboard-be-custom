@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCourseOutlineIndex, type CourseIndexSection } from '@/api/custom-course-authoring';
 import { useHeaderInfo } from '@/utils/header-store';
@@ -63,17 +64,18 @@ function hasBlock(node: CourseIndexSection | undefined, blockId: string | null):
 // ─────────────────────────────────────────────
 
 function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, displayName: string, onStructureChange: () => void }) {
+  const { t } = useTranslation();
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(displayName);
 
   const renameMut = useMutation({
     mutationFn: () => renameBlock(id, renameValue),
     onSuccess: () => {
-      toast.success('Đã đổi tên khóa học');
+      toast.success(t('courseEditor.courseRenamed'));
       setIsRenaming(false);
       onStructureChange();
     },
-    onError: () => toast.error('Đổi tên thất bại'),
+    onError: () => toast.error(t('courseEditor.renameFailed')),
   });
 
   return (
@@ -91,9 +93,9 @@ function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, 
             }}
           />
         ) : (
-          <AppTooltip content={displayName || 'Tên khóa học'}><h2 className="text-base font-bold text-foreground truncate flex-1 min-w-0 flex items-center gap-1.5" >
+          <AppTooltip content={displayName || t('courseEditor.courseName')}><h2 className="text-base font-bold text-foreground truncate flex-1 min-w-0 flex items-center gap-1.5" >
             <BookOpen className="h-4 w-4 shrink-0 text-primary" />
-            <span className="truncate">{displayName || 'Tên khóa học'}</span>
+            <span className="truncate">{displayName || t('courseEditor.courseName')}</span>
           </h2></AppTooltip>
         )}
 
@@ -117,8 +119,9 @@ function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, 
 }
 
 export default function CourseEditorPage() {
+  const { t } = useTranslation();
   const { courseId } = useParams<{ courseId: string }>();
-  useHeaderInfo('Chỉnh sửa khóa học');
+  useHeaderInfo(t('courseEditor.title'));
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
@@ -212,7 +215,7 @@ export default function CourseEditorPage() {
 
       const path = findBlockPath(courseStructure, blockId);
       if (!path) {
-        toast.error('Không tìm thấy phần được chọn trong mục lục hiện tại');
+        toast.error(t('courseEditor.selectionNotFound'));
         return;
       }
 
@@ -234,12 +237,12 @@ export default function CourseEditorPage() {
         setFocusedComponentId(null);
       }
 
-      toast.success(`Đã mở ${target.display_name || 'mục đã chọn'}`);
+      toast.success(t('courseEditor.openedSelection', { name: target.display_name || t('courseEditor.selectedItem') }));
     };
 
     window.addEventListener('landa:focus-course-block', handleFocusCourseBlock);
     return () => window.removeEventListener('landa:focus-course-block', handleFocusCourseBlock);
-  }, [courseId, courseStructure]);
+  }, [courseId, courseStructure, t]);
 
   useEffect(() => {
     const handleCourseOutlineUpdated = (event: Event) => {
@@ -273,9 +276,9 @@ export default function CourseEditorPage() {
         <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-5 rounded-xl flex gap-3">
           <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
           <div>
-            <h3 className="font-semibold">Lỗi tải mục lục</h3>
+            <h3 className="font-semibold">{t('courseEditor.outlineLoadFailed')}</h3>
             <p className="text-sm mt-1 opacity-80">
-              Không thể kết nối đến hệ thống soạn bài. Kiểm tra lại kết nối và quyền truy cập.
+              {t('courseEditor.outlineLoadFailedDescription')}
             </p>
           </div>
         </div>
@@ -298,7 +301,7 @@ export default function CourseEditorPage() {
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 flex gap-2">
               <Menu className="h-4 w-4" />
-              Mục lục
+              {t('courseEditor.outline')}
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-[300px] p-0 flex flex-col">
@@ -383,8 +386,8 @@ export default function CourseEditorPage() {
               </svg>
             </div>
             <div className="text-center">
-              <p className="text-base font-medium">Chưa chọn bài học nào</p>
-              <p className="text-sm opacity-60 mt-1">Chọn một bài học ở cột bên trái để bắt đầu chỉnh sửa</p>
+              <p className="text-base font-medium">{t('courseEditor.noLessonSelected')}</p>
+              <p className="text-sm opacity-60 mt-1">{t('courseEditor.selectLessonHint')}</p>
             </div>
           </div>
         )}

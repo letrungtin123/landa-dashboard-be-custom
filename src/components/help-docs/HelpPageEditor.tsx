@@ -6,6 +6,7 @@
  * Superadmin: edit mode (RichTextEditor + title + publish toggle)
  */
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { deleteHelpImage, getHelpPage, updateHelpPage, uploadHelpImage } from '@/api/custom-help-docs';
 import type { HelpPageDetail } from '@/api/custom-help-docs';
@@ -14,6 +15,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { htmlImageDisplaySrc, htmlImageStoragePath } from '@/utils/storage-url';
+import { formatLocaleDate } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
+import { getLocalizedApiError } from '@/utils/localized-error';
 import { toast } from 'sonner';
 import {
   Save, Eye, Pencil, Globe, EyeOff, ImagePlus,
@@ -25,7 +29,7 @@ interface HelpPageEditorProps {
   canManage: boolean;
 }
 
-function renderHelpPageContent(html: string): string {
+function renderHelpPageContent(html: string, imageZoomHint: string): string {
   if (!html || typeof DOMParser === 'undefined') return html;
 
   try {
@@ -35,7 +39,7 @@ function renderHelpPageContent(html: string): string {
       img.setAttribute('src', htmlImageDisplaySrc(src));
       img.setAttribute('role', 'button');
       img.setAttribute('tabindex', '0');
-      img.setAttribute('title', 'Nhấn để phóng to ảnh');
+      img.setAttribute('title', imageZoomHint);
     });
     return doc.body.innerHTML;
   } catch {
@@ -61,6 +65,8 @@ function extractHelpPageImagePaths(html: string): Set<string> {
 }
 
 export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProps) {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
@@ -160,12 +166,12 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
         markSessionUploadsSaved(variables.content);
         void cleanupSessionUploads('unused');
       }
-      toast.success('Đã lưu');
+      toast.success(t('helpDocs.saved'));
       syncDirtyState(titleRef.current, contentRef.current);
       queryClient.invalidateQueries({ queryKey: ['help-page', pageId] });
       queryClient.invalidateQueries({ queryKey: ['help-pages'] });
     },
-    onError: () => toast.error('Lưu thất bại'),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.saveFailed'))),
   });
 
   const persistImageContent = useCallback(async (nextContent: string, options?: { keepDirty?: boolean }) => {
@@ -203,7 +209,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      toast.error('Vui lòng chọn file ảnh');
+      toast.error(t('helpDocs.chooseImage'));
       return;
     }
 
@@ -215,7 +221,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
       const result = await uploadHelpImage(file);
       storagePath = htmlImageStoragePath(result.url);
       if (storagePath) sessionUploadedPathsRef.current.add(storagePath);
-      if (!result.url || !editorRef.current) throw new Error('Không thể chèn ảnh vào trình soạn thảo');
+      if (!result.url || !editorRef.current) throw new Error(t('helpDocs.imageInsertFailed'));
 
       const editor = editorRef.current;
       editor.chain().focus().setImage({ src: htmlImageDisplaySrc(result.url) }).run();
@@ -223,18 +229,18 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
       setContent(nextContent);
       contentRef.current = nextContent;
       await persistImageContent(nextContent, { keepDirty: wasDirtyBeforeUpload });
-      toast.success('Đã tải lên và lưu ảnh');
-    } catch (error: any) {
+      toast.success(t('helpDocs.imageUploaded'));
+    } catch (error: unknown) {
       if (storagePath) await deleteUploadedPaths([storagePath]);
-      if (editorRef.current) editorRef.current.commands.setContent(renderHelpPageContent(previousContent));
+      if (editorRef.current) editorRef.current.commands.setContent(renderHelpPageContent(previousContent, t('helpDocs.imageZoomHint')));
       setContent(previousContent);
       contentRef.current = previousContent;
       syncDirtyState(titleRef.current, previousContent);
-      toast.error(error?.response?.data?.message || error?.response?.data?.error || 'Upload hoặc lưu ảnh thất bại');
+      toast.error(getLocalizedApiError(error, t('helpDocs.imageUploadFailed')));
     } finally {
       setIsImageUploading(false);
     }
-  }, [deleteUploadedPaths, persistImageContent, syncDirtyState]);
+  }, [deleteUploadedPaths, persistImageContent, syncDirtyState, t]);
 
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
@@ -266,9 +272,9 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
     if (!src) return;
     setPreviewImage({
       src,
-      alt: image.getAttribute('alt')?.trim() || page?.title || 'Ảnh hướng dẫn',
+      alt: image.getAttribute('alt')?.trim() || page?.title || t('helpDocs.helpImage'),
     });
-  }, [page?.title]);
+  }, [page?.title, t]);
 
   const handleRenderedContentClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
@@ -299,8 +305,8 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
   if (isError || !page) {
     return (
       <div className="bg-destructive/10 border-l-4 border-destructive text-destructive p-5 rounded-xl">
-        <h3 className="font-semibold">Lỗi tải trang</h3>
-        <p className="text-sm mt-1 opacity-80">Không thể tải nội dung trang này.</p>
+        <h3 className="font-semibold">{t('helpDocs.pageLoadFailed')}</h3>
+        <p className="text-sm mt-1 opacity-80">{t('helpDocs.pageLoadFailedDescription')}</p>
       </div>
     );
   }
@@ -315,7 +321,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
               className="text-xl font-bold w-full bg-transparent border-b-2 border-primary/30 focus:border-primary outline-none pb-1 transition-colors"
               value={title}
               onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Tiêu đề trang..."
+              placeholder={t('helpDocs.pageTitlePlaceholder')}
             />
           ) : (
             <h1 className="text-xl font-bold text-foreground">{page.title}</h1>
@@ -325,8 +331,8 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               {page.is_published
-                ? <><Globe className="h-3 w-3 text-emerald-500" /> Đã xuất bản</>
-                : <><EyeOff className="h-3 w-3 text-slate-400" /> Bản nháp</>
+                ? <><Globe className="h-3 w-3 text-emerald-500" /> {t('helpDocs.published')}</>
+                : <><EyeOff className="h-3 w-3 text-slate-400" /> {t('helpDocs.draft')}</>
               }
             </span>
             {page.updated_by && (
@@ -337,10 +343,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
             {page.updated_at && (
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {new Date(page.updated_at).toLocaleDateString('vi-VN', {
-                  day: '2-digit', month: '2-digit', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
+                {formatLocaleDate(page.updated_at, locale, { dateStyle: 'short', timeStyle: 'short' })}
               </span>
             )}
           </div>
@@ -355,7 +358,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                   variant="outline" size="sm"
                   onClick={handleCancelEdit}
                 >
-                  <Eye className="h-4 w-4 mr-1.5" /> Xem
+                  <Eye className="h-4 w-4 mr-1.5" /> {t('helpDocs.view')}
                 </Button>
                 <Button
                   size="sm"
@@ -365,7 +368,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                 >
                   {saveMut.isPending
                     ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <><Save className="h-4 w-4 mr-1.5" /> Lưu</>
+                    : <><Save className="h-4 w-4 mr-1.5" /> {t('helpDocs.save')}</>
                   }
                 </Button>
                 <Button
@@ -375,15 +378,15 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                   disabled={saveMut.isPending || isImageUploading}
                 >
                   {page.is_published
-                    ? <><EyeOff className="h-4 w-4 mr-1.5" /> Ẩn</>
-                    : <><Globe className="h-4 w-4 mr-1.5" /> Publish</>
+                    ? <><EyeOff className="h-4 w-4 mr-1.5" /> {t('helpDocs.hide')}</>
+                    : <><Globe className="h-4 w-4 mr-1.5" /> {t('helpDocs.publish')}</>
                   }
                 </Button>
               </>
             ) : (
               <>
                 <Button size="sm" onClick={() => setIsEditing(true)}>
-                  <Pencil className="h-4 w-4 mr-1.5" /> Chỉnh sửa
+                  <Pencil className="h-4 w-4 mr-1.5" /> {t('helpDocs.edit')}
                 </Button>
                 <Button
                   variant={page.is_published ? 'outline' : 'default'}
@@ -392,8 +395,8 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                   disabled={saveMut.isPending || isImageUploading}
                 >
                   {page.is_published
-                    ? <><EyeOff className="h-4 w-4 mr-1.5" /> Ẩn</>
-                    : <><Globe className="h-4 w-4 mr-1.5" /> Publish</>
+                    ? <><EyeOff className="h-4 w-4 mr-1.5" /> {t('helpDocs.hide')}</>
+                    : <><Globe className="h-4 w-4 mr-1.5" /> {t('helpDocs.publish')}</>
                   }
                 </Button>
               </>
@@ -416,7 +419,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                 ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                 : <ImagePlus className="h-4 w-4 mr-1.5" />
               }
-              Upload ảnh
+              {t('helpDocs.uploadImage')}
             </Button>
             <input
               ref={fileInputRef}
@@ -429,7 +432,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
                 e.target.value = '';
               }}
             />
-            <span className="text-xs text-muted-foreground">JPG, PNG, GIF, WebP — tối đa 5MB</span>
+            <span className="text-xs text-muted-foreground">{t('helpDocs.imageFormats')}</span>
           </div>
 
           <RichTextEditor
@@ -447,15 +450,15 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
               className="prose prose-sm sm:prose-base dark:prose-invert max-w-none p-6 help-page-content"
               onClick={handleRenderedContentClick}
               onKeyDown={handleRenderedContentKeyDown}
-              dangerouslySetInnerHTML={{ __html: renderHelpPageContent(page.content) }}
+              dangerouslySetInnerHTML={{ __html: renderHelpPageContent(page.content, t('helpDocs.imageZoomHint')) }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
               <FileTextIcon className="h-12 w-12 opacity-20" />
-              <p className="text-sm">Chưa có nội dung</p>
+              <p className="text-sm">{t('helpDocs.noContent')}</p>
               {canManage && (
                 <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                  <Pencil className="h-4 w-4 mr-1.5" /> Bắt đầu viết
+                  <Pencil className="h-4 w-4 mr-1.5" /> {t('helpDocs.startWriting')}
                 </Button>
               )}
             </div>
@@ -470,7 +473,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
           className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 rounded-none border-none bg-black/95 p-0 text-white shadow-none ring-0 sm:rounded-none"
         >
           <DialogHeader className="sr-only">
-            <DialogTitle>{previewImage?.alt || 'Ảnh hướng dẫn'}</DialogTitle>
+            <DialogTitle>{previewImage?.alt || t('helpDocs.helpImage')}</DialogTitle>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
             {previewImage && (

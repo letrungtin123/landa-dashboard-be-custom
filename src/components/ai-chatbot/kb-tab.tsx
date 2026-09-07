@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Trash2, Pencil, Search, Loader2, FileText, Database, AlertTriangle, RefreshCw,
@@ -20,8 +21,10 @@ import {
   type Knowledgebase,
 } from "@/api/custom-ai-chatbot";
 import { cardVariants, formatDate, useDebounce, PaginationBar, KbCardSkeleton } from "./ai-chatbot-helpers";
+import { getLocalizedApiError } from "@/utils/localized-error";
 
 export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebase) => void }) {
+  const { t } = useTranslation();
   const [kbs, setKbs] = useState<Knowledgebase[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -43,35 +46,35 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
     try {
       const r = await fetchKnowledgebases({ page, page_size: pageSize, search: searchDebounced || undefined });
       setKbs(r.data); setTotal(r.total);
-    } catch { toast.error("Lỗi tải Kho tri thức"); } finally { setLoading(false); }
-  }, [page, pageSize, searchDebounced]);
+    } catch { toast.error(t("aiChatbot.loadKnowledgeBasesFailed")); } finally { setLoading(false); }
+  }, [page, pageSize, searchDebounced, t]);
   useEffect(() => { loadKbs(); }, [loadKbs]);
 
   async function handleCreate() {
-    if (!formName.trim()) { toast.error("Tên Kho tri thức không được trống"); return; }
+    if (!formName.trim()) { toast.error(t("aiChatbot.knowledgeBaseNameRequired")); return; }
     setSaving(true);
-    try { await createKnowledgebase({ name: formName, description: formDesc }); toast.success("Tạo Kho tri thức thành công"); setShowCreate(false); setFormName(""); setFormDesc(""); loadKbs(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setSaving(false); }
+    try { await createKnowledgebase({ name: formName, description: formDesc }); toast.success(t("aiChatbot.knowledgeBaseCreated")); setShowCreate(false); setFormName(""); setFormDesc(""); loadKbs(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setSaving(false); }
   }
   async function handleUpdate() {
     if (!editKb || !formName.trim()) return; setSaving(true);
-    try { await updateKnowledgebase(editKb.id, { name: formName, description: formDesc }); toast.success("Cập nhật OK"); setEditKb(null); loadKbs(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); } finally { setSaving(false); }
+    try { await updateKnowledgebase(editKb.id, { name: formName, description: formDesc }); toast.success(t("aiChatbot.knowledgeBaseUpdated")); setEditKb(null); loadKbs(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setSaving(false); }
   }
   async function handleDelete() {
     if (!deletingId) return;
-    try { await deleteKnowledgebase(deletingId); toast.success("Xoá OK"); setDeletingId(null); loadKbs(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    try { await deleteKnowledgebase(deletingId); toast.success(t("aiChatbot.knowledgeBaseDeleted")); setDeletingId(null); loadKbs(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
   }
 
   const totalPages = Math.ceil(total / pageSize);
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2"><Database className="h-5 w-5 text-primary" /> Kho tri thức <Badge variant="outline" className="ml-1">{total}</Badge></h3>
-        <Button onClick={() => { setFormName(""); setFormDesc(""); setShowCreate(true); }} className="gap-2"><Plus className="h-4 w-4" /> Tạo mới</Button>
+        <h3 className="text-lg font-semibold flex items-center gap-2"><Database className="h-5 w-5 text-primary" /> {t("aiChatbot.knowledgeBases")} <Badge variant="outline" className="ml-1">{total}</Badge></h3>
+        <Button onClick={() => { setFormName(""); setFormDesc(""); setShowCreate(true); }} className="gap-2"><Plus className="h-4 w-4" /> {t("aiChatbot.create")}</Button>
       </div>
-      <div className="relative max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Tìm Kho tri thức..." value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
+      <div className="relative max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchKnowledgeBases")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
 
       {/* Card Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -79,7 +82,7 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
           : kbs.length === 0 ? (
             <div className="col-span-full text-center py-16 text-muted-foreground">
               <Database className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{searchDebounced ? "Không tìm thấy Kho tri thức nào." : "Chưa có Kho tri thức nào. Tạo mới để bắt đầu!"}</p>
+              <p className="text-sm">{searchDebounced ? t("aiChatbot.noKnowledgeBasesFound") : t("aiChatbot.noKnowledgeBases")}</p>
             </div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -93,7 +96,7 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold truncate group-hover:text-primary transition-colors">{kb.name}</h4>
-                        <p className="text-sm text-muted-foreground truncate mt-0.5">{kb.description || "Không có mô tả"}</p>
+                        <p className="text-sm text-muted-foreground truncate mt-0.5">{kb.description || t("aiChatbot.noDescription")}</p>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setFormName(kb.name); setFormDesc(kb.description || ""); setEditKb(kb); }}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -101,9 +104,9 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
                       </div>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <Badge variant="secondary" className="gap-1"><FileText className="h-3 w-3" /> {kb.document_count || 0} tài liệu</Badge>
-                      {kb.restore_required && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Cần khôi phục</Badge>}
-                      {(kb.restore_state === "queued" || kb.restore_state === "restoring" || kb.restore_state === "uploading") && <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700"><RefreshCw className="h-3 w-3 animate-spin" /> Đang khôi phục</Badge>}
+                      <Badge variant="secondary" className="gap-1"><FileText className="h-3 w-3" /> {t("aiChatbot.documentsCount", { count: kb.document_count || 0 })}</Badge>
+                      {kb.restore_required && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> {t("aiChatbot.restoreRequired")}</Badge>}
+                      {(kb.restore_state === "queued" || kb.restore_state === "restoring" || kb.restore_state === "uploading") && <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700"><RefreshCw className="h-3 w-3 animate-spin" /> {t("aiChatbot.restoring")}</Badge>}
                       <span>{formatDate(kb.created_at)}</span>
                     </div>
                   </div>
@@ -117,17 +120,17 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
 
       {/* Create / Edit Dialog */}
       <Dialog open={showCreate || !!editKb} onOpenChange={() => { setShowCreate(false); setEditKb(null); }}>
-        <DialogContent><DialogHeader><DialogTitle>{editKb ? "Sửa Kho tri thức" : "Tạo Kho tri thức"}</DialogTitle><DialogDescription>Kho tri thức chứa tài liệu để AI chatbot tham khảo.</DialogDescription></DialogHeader>
+        <DialogContent><DialogHeader><DialogTitle>{editKb ? t("aiChatbot.editKnowledgeBase") : t("aiChatbot.createKnowledgeBase")}</DialogTitle><DialogDescription>{t("aiChatbot.knowledgeBaseDescription")}</DialogDescription></DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2"><label className="text-sm font-medium">Tên</label><Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="VD: Tài liệu sản phẩm" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium">Mô tả</label><Textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Mô tả..." rows={3} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.name")}</label><Input value={formName} onChange={e => setFormName(e.target.value)} placeholder={t("aiChatbot.knowledgeBaseNamePlaceholder")} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{t("aiChatbot.descriptionLabel")}</label><Textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder={t("aiChatbot.descriptionPlaceholder")} rows={3} /></div>
           </div>
-          <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button onClick={editKb ? handleUpdate : handleCreate} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editKb ? "Cập nhật" : "Tạo"}</Button></DialogFooter>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button onClick={editKb ? handleUpdate : handleCreate} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editKb ? t("aiChatbot.update") : t("aiChatbot.create")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}>
-        <DialogContent><DialogHeader><DialogTitle>Xoá Kho tri thức</DialogTitle><DialogDescription>Xoá Kho tri thức sẽ xoá tất cả tài liệu bên trong.</DialogDescription></DialogHeader>
-          <DialogFooter><DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose><Button variant="destructive" onClick={handleDelete}>Xoá</Button></DialogFooter>
+        <DialogContent><DialogHeader><DialogTitle>{t("aiChatbot.deleteKnowledgeBase")}</DialogTitle><DialogDescription>{t("aiChatbot.deleteKnowledgeBaseDescription")}</DialogDescription></DialogHeader>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose><Button variant="destructive" onClick={handleDelete}>{t("aiChatbot.delete")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

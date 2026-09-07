@@ -38,6 +38,7 @@ import { useDiagramHistory } from './diagram/useDiagramHistory';
 import { useSmartGuides } from './diagram/useSmartGuides';
 import SmartGuideLines from './diagram/SmartGuideLines';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -49,6 +50,7 @@ function DeletableEdge({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition, style, markerEnd, data,
 }: EdgeProps) {
+  const { t } = useTranslation();
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
@@ -73,17 +75,17 @@ function DeletableEdge({
             }}
             className="nodrag nopan flex items-center gap-1"
           >
-            <AppTooltip content="Tạo điểm rẽ nhánh (Junction)"><button
+            <AppTooltip content={t('courseEditorForms.splitConnection')}><button
               onClick={(e) => { e.stopPropagation(); onSplit?.(id, labelX, labelY); }}
               className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-110 transition-transform cursor-pointer"
-              aria-label="Tạo điểm rẽ nhánh (Junction)"
+              aria-label={t('courseEditorForms.splitConnection')}
             >
               <Plus className="w-3 h-3" />
             </button></AppTooltip>
-            <AppTooltip content="Xóa đường nối"><button
+            <AppTooltip content={t('courseEditorForms.deleteConnection')}><button
               onClick={(e) => { e.stopPropagation(); onDelete(id); }}
               className="flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-white shadow-lg hover:scale-110 transition-transform cursor-pointer"
-              aria-label="Xóa đường nối"
+              aria-label={t('courseEditorForms.deleteConnection')}
             >
               <X className="w-3 h-3" />
             </button></AppTooltip>
@@ -136,6 +138,7 @@ export default function DiagramEditor({
   onCancel,
   isSaving,
 }: DiagramEditorProps) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   
   const { undo, redo, takeSnapshot, canUndo, canRedo } = useDiagramHistory(diagramData, onDiagramDataChange);
@@ -468,20 +471,20 @@ export default function DiagramEditor({
           <div className="h-14 px-3 border-b border-border bg-background flex items-center gap-2 shrink-0">
             <Button variant="ghost" size="sm" onClick={onCancel} className="h-8 px-2 text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4 mr-1.5" />
-              Trở về
+              {t('courseEditorForms.back')}
             </Button>
-            <span className="text-xs font-semibold uppercase text-muted-foreground ml-auto">Diagram Editor</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground ml-auto">{t('courseEditorForms.diagramEditor')}</span>
           </div>
           
           <div className="p-4 border-b border-border bg-muted/30">
             <div className="text-sm font-bold text-foreground mb-3 flex items-center justify-between">
-              Sơ đồ (Diagrams)
+              {t('courseEditorForms.diagrams')}
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={addNewDiagram}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold uppercase text-muted-foreground">Tên Block (Display Name)</label>
+              <label className="text-[10px] font-semibold uppercase text-muted-foreground">{t('courseUnit.displayName')}</label>
               <input
                 className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
                 value={displayName}
@@ -502,12 +505,12 @@ export default function DiagramEditor({
                   {d.name}
                 </button>
                 {diagrams.length > 1 && d.id !== startDiagramId && (
-                  <AppTooltip content="Xóa Sơ đồ này"><Button
+                  <AppTooltip content={t('courseEditorForms.deleteDiagram')}><Button
                     variant="ghost" 
                     size="icon" 
                     className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0" 
                     onClick={(e) => { e.stopPropagation(); deleteDiagram(d.id); }}
-                    aria-label="Xóa Sơ đồ này"
+                    aria-label={t('courseEditorForms.deleteDiagram')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button></AppTooltip>
@@ -518,12 +521,12 @@ export default function DiagramEditor({
 
           <div className="p-4 border-t border-border">
             <div className="text-xs font-semibold uppercase text-muted-foreground mb-3 flex justify-between items-center">
-              Thêm Shape
+              {t('courseEditorForms.addShape')}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button size="sm" variant="outline" onClick={() => addNode('rectangle')}>Vuông</Button>
-              <Button size="sm" variant="outline" onClick={() => addNode('rounded')}>Bo góc</Button>
-              <Button size="sm" variant="outline" className="col-span-2" onClick={() => addNode('ellipse')}>Tròn (Ellipse)</Button>
+              <Button size="sm" variant="outline" onClick={() => addNode('rectangle')}>{t('courseEditorForms.rectangle')}</Button>
+              <Button size="sm" variant="outline" onClick={() => addNode('rounded')}>{t('courseEditorForms.roundedRectangle')}</Button>
+              <Button size="sm" variant="outline" className="col-span-2" onClick={() => addNode('ellipse')}>{t('courseEditorForms.ellipse')}</Button>
             </div>
           </div>
 
@@ -531,7 +534,7 @@ export default function DiagramEditor({
           <div className="p-4 border-t border-border bg-muted/20 mt-auto">
             <Button className="w-full gap-2" size="sm" onClick={onSave} disabled={isSaving}>
               <Save className="h-4 w-4" />
-              {isSaving ? 'Đang lưu...' : 'Lưu Sơ đồ'}
+              {isSaving ? t('courseOutline.saving') : t('courseEditorForms.saveDiagram')}
             </Button>
           </div>
         </div>
@@ -539,7 +542,7 @@ export default function DiagramEditor({
         {/* Canvas */}
         <div className="flex-1 relative flex flex-col">
           <div className="h-14 border-b border-border flex items-center px-4 bg-background z-10 shrink-0 gap-4">
-            <span className="text-sm font-semibold text-muted-foreground whitespace-nowrap">Tên sơ đồ hiện tại:</span>
+            <span className="text-sm font-semibold text-muted-foreground whitespace-nowrap">{t('courseEditorForms.activeDiagramName')}</span>
             <input
               className="flex h-8 w-64 rounded-md border border-transparent hover:border-input focus:border-input bg-transparent px-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
               value={activeDiagram.name}
@@ -568,12 +571,12 @@ export default function DiagramEditor({
               deleteKeyCode="Delete"
             >
               <Controls>
-                <AppTooltip content="Undo"><ControlButton onClick={undo} disabled={!canUndo} aria-label="Undo">
+                <AppTooltip content={t('courseEditorForms.undo')}><ControlButton onClick={undo} disabled={!canUndo} aria-label={t('courseEditorForms.undo')}>
                   <div className="w-full h-full flex items-center justify-center">
                     <Undo2 className="!w-3.5 !h-3.5" style={{ fill: 'none' }} />
                   </div>
                 </ControlButton></AppTooltip>
-                <AppTooltip content="Redo"><ControlButton onClick={redo} disabled={!canRedo} aria-label="Redo">
+                <AppTooltip content={t('courseEditorForms.redo')}><ControlButton onClick={redo} disabled={!canRedo} aria-label={t('courseEditorForms.redo')}>
                   <div className="w-full h-full flex items-center justify-center">
                     <Redo2 className="!w-3.5 !h-3.5" style={{ fill: 'none' }} />
                   </div>
@@ -591,12 +594,12 @@ export default function DiagramEditor({
           <div className="w-72 border-l border-border bg-background flex flex-col h-full z-10 relative">
             <div className="h-14 px-4 border-b border-border bg-background flex items-center gap-2 shrink-0 text-primary">
               <Settings className="w-4 h-4" />
-              <h3 className="font-bold text-sm">Thuộc tính Shape</h3>
+              <h3 className="font-bold text-sm">{t('courseEditorForms.shapeProperties')}</h3>
             </div>
             <div className="p-4 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
               <div className="space-y-1.5">
                 <label className="text-[13px] font-semibold flex items-center gap-1.5 mb-1 text-foreground">
-                  <Type className="w-3.5 h-3.5 text-muted-foreground" /> Text hiển thị
+                  <Type className="w-3.5 h-3.5 text-muted-foreground" /> {t('courseEditorForms.shapeText')}
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm"
@@ -608,7 +611,7 @@ export default function DiagramEditor({
               <div className="app-liquid-card grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg border border-border/50">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold flex items-center gap-1.5 mb-1 text-muted-foreground">
-                    <Palette className="w-3.5 h-3.5" /> Màu nền
+                    <Palette className="w-3.5 h-3.5" /> {t('courseEditorForms.backgroundColor')}
                   </label>
                   <div className="flex items-center gap-2 border border-input rounded-md h-9 px-3 bg-background relative overflow-hidden focus-within:ring-2 focus-within:ring-ring focus-within:border-primary transition-all">
                     <div className="w-4 h-4 rounded-full border border-border shadow-sm shrink-0" style={{ backgroundColor: selectedNode.data.bgColor }} />
@@ -623,7 +626,7 @@ export default function DiagramEditor({
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold flex items-center gap-1.5 mb-1 text-muted-foreground">
-                    <Type className="w-3.5 h-3.5" /> Màu chữ
+                    <Type className="w-3.5 h-3.5" /> {t('courseEditorForms.textColor')}
                   </label>
                   <div className="flex items-center gap-2 border border-input rounded-md h-9 px-3 bg-background relative overflow-hidden focus-within:ring-2 focus-within:ring-ring focus-within:border-primary transition-all">
                     <div className="w-4 h-4 rounded-full border border-border shadow-sm shrink-0" style={{ backgroundColor: selectedNode.data.textColor }} />
@@ -639,48 +642,48 @@ export default function DiagramEditor({
               </div>
               <div className="space-y-1.5">
                 <label className="text-[13px] font-semibold flex items-center gap-1.5 mb-1 text-foreground">
-                  <Hexagon className="w-3.5 h-3.5 text-muted-foreground" /> Hình dáng
+                  <Hexagon className="w-3.5 h-3.5 text-muted-foreground" /> {t('courseEditorForms.shape')}
                 </label>
                 <Select value={selectedNode.data.shape} onValueChange={(v) => updateSelectedNode({ shape: v as any })}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Chọn hình dáng" />
+                    <SelectValue placeholder={t('courseEditorForms.chooseShape')} />
                   </SelectTrigger>
                   <SelectContent className="z-[10000]">
                     <SelectItem value="rectangle">
-                      <div className="flex items-center gap-2"><Square className="w-3.5 h-3.5 text-muted-foreground" /> Chữ nhật vuông</div>
+                      <div className="flex items-center gap-2"><Square className="w-3.5 h-3.5 text-muted-foreground" /> {t('courseEditorForms.rectangleShape')}</div>
                     </SelectItem>
                     <SelectItem value="rounded">
-                      <div className="flex items-center gap-2"><Square className="w-3.5 h-3.5 text-muted-foreground rounded" /> Chữ nhật bo góc</div>
+                      <div className="flex items-center gap-2"><Square className="w-3.5 h-3.5 text-muted-foreground rounded" /> {t('courseEditorForms.roundedRectangleShape')}</div>
                     </SelectItem>
                     <SelectItem value="ellipse">
-                      <div className="flex items-center gap-2"><Circle className="w-3.5 h-3.5 text-muted-foreground" /> Hình oval / tròn</div>
+                      <div className="flex items-center gap-2"><Circle className="w-3.5 h-3.5 text-muted-foreground" /> {t('courseEditorForms.ovalShape')}</div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[13px] font-semibold flex items-center gap-1.5 mb-1 text-foreground">
-                  <CornerDownRight className="w-3.5 h-3.5 text-muted-foreground" /> Ghi chú (Tooltip)
+                  <CornerDownRight className="w-3.5 h-3.5 text-muted-foreground" /> {t('courseEditorForms.tooltip')}
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all shadow-sm"
                   value={selectedNode.data.tooltip || ''}
                   onChange={e => updateSelectedNode({ tooltip: e.target.value })}
-                  placeholder="Hiển thị khi hover chuột..."
+                  placeholder={t('courseEditorForms.tooltipPlaceholder')}
                   rows={2}
                 />
               </div>
               <div className="space-y-1.5 pt-4 border-t border-border">
                 <label className="text-[13px] font-bold flex items-center gap-1.5 mb-1 text-primary">
-                  <LinkIcon className="w-3.5 h-3.5" /> Điều hướng (Link)
+                  <LinkIcon className="w-3.5 h-3.5" /> {t('courseEditorForms.navigation')}
                 </label>
-                <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">Click vào shape này sẽ mở sơ đồ con tương ứng:</p>
+                <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">{t('courseEditorForms.navigationHint')}</p>
                 <Select value={selectedNode.data.target_diagram_id || 'none'} onValueChange={(v) => updateSelectedNode({ target_diagram_id: v === 'none' ? '' : v })}>
                   <SelectTrigger className="h-9 border-primary/30 hover:border-primary/50 transition-colors focus:ring-primary/20">
-                    <SelectValue placeholder="-- Không có --" />
+                    <SelectValue placeholder={t('courseEditorForms.none')} />
                   </SelectTrigger>
                   <SelectContent className="z-[10000]">
-                    <SelectItem value="none" className="text-muted-foreground italic">-- Không có --</SelectItem>
+                    <SelectItem value="none" className="text-muted-foreground italic">{t('courseEditorForms.none')}</SelectItem>
                     {diagrams.filter(d => d.id !== activeDiagram.id).map(d => (
                       <SelectItem key={d.id} value={d.id} className="font-medium text-primary">{d.name}</SelectItem>
                     ))}
@@ -690,10 +693,10 @@ export default function DiagramEditor({
             </div>
             <div className="p-4 border-t border-border bg-muted/10 space-y-2">
               <Button variant="outline" className="w-full gap-2 shadow-sm" onClick={duplicateSelectedNode}>
-                <Copy className="w-4 h-4" /> Nhân bản Shape
+                <Copy className="w-4 h-4" /> {t('courseEditorForms.duplicateShape')}
               </Button>
               <Button variant="destructive" className="w-full gap-2 shadow-sm" onClick={deleteSelectedNode}>
-                <Trash2 className="w-4 h-4" /> Xóa Shape
+                <Trash2 className="w-4 h-4" /> {t('courseEditorForms.deleteShape')}
               </Button>
             </div>
           </div>

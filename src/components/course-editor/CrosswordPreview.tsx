@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 /**
  * CrosswordPreviewInteractive
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
  * - showAnswers: nếu true, hiển thị đáp án sẵn (dùng trong Editor preview)
  */
 export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { parsed: any; showAnswers?: boolean }) {
+  const { t } = useTranslation();
   const words: any[] = parsed?.words || [];
   const keywordCoords: any[] = parsed?.keyword_coordinates || [];
   
@@ -173,7 +175,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
   if (words.length === 0) {
     return (
       <div className="p-8 border-2 border-dashed border-primary/30 rounded-2xl text-center text-muted-foreground bg-background">
-        Chưa có từ vựng nào để hiển thị.
+        {t('courseEditorForms.crosswordEmpty')}
       </div>
     );
   }
@@ -189,7 +191,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
 
       {/* Danh sách câu hỏi */}
       <div className="app-liquid-card mt-6 min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-10 sm:p-6">
-        <h3 className="mb-4 text-lg font-bold text-card-foreground sm:mb-6">Danh sách câu hỏi</h3>
+        <h3 className="mb-4 text-lg font-bold text-card-foreground sm:mb-6">{t('courseEditorForms.crosswordQuestions')}</h3>
         <ul className="min-w-0 space-y-3 text-[15px] text-muted-foreground">
           {words.map((w: any, idx: number) => (
             <li
@@ -198,10 +200,10 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
             >
               <span className="font-bold text-primary shrink-0 mt-0.5">{w.id ?? idx + 1}.</span>
               <div className="min-w-0 flex-1">
-                <span className="break-words leading-relaxed">{w.clue || '(Chưa có gợi ý)'}</span>
+                <span className="break-words leading-relaxed">{w.clue || t('courseEditorForms.noClue')}</span>
                 {w.hint && (
                   <span className="mt-1 block break-words text-xs text-amber-600 dark:text-amber-400">
-                    💡 Hint: {w.hint}
+                    💡 {t('courseUnit.hint')}: {w.hint}
                   </span>
                 )}
               </div>
@@ -241,7 +243,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
               </div>
             )}
             <p className="min-w-0 break-words text-sm font-bold text-foreground">
-              {allCorrect ? 'Chính xác! 🎉' : 'Chưa đúng, hãy thử lại.'}
+              {allCorrect ? t('courseEditorForms.crosswordCorrect') : t('courseEditorForms.crosswordIncorrect')}
             </p>
           </div>
         );
@@ -265,7 +267,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
                   if (!(inputs[key] || '').trim()) { allFilled = false; break; }
                 }
                 if (!allFilled) {
-                  setValidationMsg('Vui lòng nhập hết từ vào ô trống trước khi nộp bài.');
+                  setValidationMsg(t('courseEditorForms.crosswordCompleteRequired'));
                   return;
                 }
                 setValidationMsg('');
@@ -273,7 +275,7 @@ export function CrosswordPreviewInteractive({ parsed, showAnswers = false }: { p
               }
             }}
           >
-            {submitted ? 'Thử lại' : 'Nộp bài chấm điểm'}
+            {submitted ? t('courseEditorForms.retry') : t('courseEditorForms.submitForReview')}
           </Button>
         </div>
       )}

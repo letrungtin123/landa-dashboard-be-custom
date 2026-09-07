@@ -22,9 +22,8 @@ interface TiptapEditorProps {
 }
 
 function MenuBar({ editor }: { editor: Editor | null }) {
-  if (!editor) return null;
-
   const addLink = useCallback(() => {
+    if (!editor) return;
     const url = window.prompt('URL:');
     if (url) {
       editor.chain().focus().setLink({ href: url }).run();
@@ -32,6 +31,7 @@ function MenuBar({ editor }: { editor: Editor | null }) {
   }, [editor]);
 
   const addImage = useCallback(() => {
+    if (!editor) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -50,6 +50,8 @@ function MenuBar({ editor }: { editor: Editor | null }) {
     };
     input.click();
   }, [editor]);
+
+  if (!editor) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b p-1.5 bg-muted/30">
@@ -141,7 +143,7 @@ export default function TiptapEditor({ content = '', onChange, placeholder }: Ti
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content);
     }
-  }, [content]);
+  }, [content, editor]);
 
   return (
     <div className="rounded-md border bg-background overflow-hidden [&_[data-active]]:bg-accent [&_[data-active]]:text-accent-foreground">

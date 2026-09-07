@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Bot, Brain, Camera, Loader2, Save, Settings,
@@ -40,6 +41,7 @@ import {
 import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
 import { InputFilterTab } from "@/components/ai-chatbot/input-filter-tab";
+import { getLocalizedApiError } from "@/utils/localized-error";
 // ── Mascot palette ──
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 function getMascotColor(i: number) { return MASCOT_COLORS[i % MASCOT_COLORS.length]; }
@@ -70,6 +72,7 @@ function DetailSkeleton() {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 export function BotDetail({ botId, onBack }: BotDetailProps) {
+  const { t } = useTranslation();
   const [bot, setBot] = useState<Chatbot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -117,16 +120,16 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
     try {
       const [b, kr] = await Promise.all([fetchBot(botId), fetchKnowledgebases({ page: 1, page_size: 100 })]);
       setBot(b); setFormName(b.name); setFormKbId(b.kb_id); setKbs(kr.data); setIsDirty(false);
-    } catch { toast.error("Lỗi tải thông tin bot"); onBack(); }
+    } catch { toast.error(t("aiChatbot.loadBotFailed")); onBack(); }
     finally { setLoading(false); }
-  }, [botId, onBack]);
+  }, [botId, onBack, t]);
 
   const loadPersonas = useCallback(async () => {
     setPersonasLoading(true);
     try { const data = await fetchBotPersonas(botId); setPersonas(data); }
-    catch { toast.error("Lỗi tải nhân cách"); }
+    catch { toast.error(t("aiChatbot.loadPersonasFailed")); }
     finally { setPersonasLoading(false); }
-  }, [botId]);
+  }, [botId, t]);
 
   useEffect(() => { loadBot(); loadPersonas(); }, [loadBot, loadPersonas]);
   useEffect(() => {
@@ -136,12 +139,12 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
 
   // ── Settings handlers ──
   async function handleSave() {
-    if (!formName.trim()) { toast.error("Tên bot không được trống"); return; }
+    if (!formName.trim()) { toast.error(t("aiChatbot.botNameRequired")); return; }
     setSaving(true);
     try {
       const updated = await updateBot(botId, { name: formName, kb_id: formKbId });
-      setBot(updated); setIsDirty(false); toast.success("Đã cập nhật bot");
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi cập nhật"); }
+      setBot(updated); setIsDirty(false); toast.success(t("aiChatbot.botUpdated"));
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.updateBotFailed"))); }
     finally { setSaving(false); }
   }
 
@@ -150,8 +153,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     setUploadingAvatar(true);
-    try { const updated = await uploadBotAvatar(botId, file); setBot(updated); toast.success("Avatar đã cập nhật"); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi upload avatar"); }
+    try { const updated = await uploadBotAvatar(botId, file); setBot(updated); toast.success(t("aiChatbot.avatarUpdated")); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.uploadAvatarFailed"))); }
     finally { setUploadingAvatar(false); if (avatarInputRef.current) avatarInputRef.current.value = ""; }
   }
 
@@ -172,30 +175,30 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
         custom_description: editDesc,
         custom_prompt: editPrompt,
       });
-      toast.success("Đã cập nhật nhân cách"); setEditingPersona(null); loadPersonas();
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+      toast.success(t("aiChatbot.personaUpdated")); setEditingPersona(null); loadPersonas();
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSavingPersona(false); }
   }
 
   async function handleResetPersona(personaId: string) {
     setResettingId(personaId);
-    try { await resetBotPersona(botId, personaId); toast.success("Đã reset về mặc định"); loadPersonas(); if (editingPersona?.id === personaId) setEditingPersona(null); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    try { await resetBotPersona(botId, personaId); toast.success(t("aiChatbot.resetToDefault")); loadPersonas(); if (editingPersona?.id === personaId) setEditingPersona(null); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setResettingId(null); }
   }
 
   async function handleRemovePersona() {
     if (!confirmRemoveId) return;
     setRemovingId(confirmRemoveId);
-    try { await removeBotPersona(botId, confirmRemoveId); toast.success("Đã xoá nhân cách"); setConfirmRemoveId(null); loadPersonas(); }
-    catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    try { await removeBotPersona(botId, confirmRemoveId); toast.success(t("aiChatbot.personaDeleted")); setConfirmRemoveId(null); loadPersonas(); }
+    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setRemovingId(null); }
   }
 
   async function openAddModal() {
     setShowAddModal(true); setTemplatesLoading(true);
     try { setActiveTemplates(await fetchActiveTemplates()); }
-    catch { toast.error("Lỗi tải danh sách nhân cách"); }
+    catch { toast.error(t("aiChatbot.loadPersonaListFailed")); }
     finally { setTemplatesLoading(false); }
   }
 
@@ -203,9 +206,9 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
     setAddingTemplateId(templateId);
     try {
       await addBotPersona(botId, templateId);
-      toast.success("Đã thêm nhân cách"); loadPersonas();
+      toast.success(t("aiChatbot.personaAdded")); loadPersonas();
       setActiveTemplates(await fetchActiveTemplates());
-    } catch (err: any) { toast.error(err?.response?.data?.message || "Lỗi"); }
+    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setAddingTemplateId(null); }
   }
 
@@ -239,7 +242,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" disabled={!isDirty || saving} onClick={handleSave} className="gap-1.5">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu thay đổi
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {t("aiChatbot.saveChanges")}
           </Button>
         </div>
       </div>
@@ -247,13 +250,13 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
       {/* ── Tabs ── */}
       <Tabs defaultValue="settings" className="w-full">
         <TabsList className="w-full max-w-2xl">
-          <TabsTrigger value="settings" className="gap-2 flex-1"><Settings className="h-4 w-4" /> Cài đặt chung</TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2 flex-1"><Settings className="h-4 w-4" /> {t("aiChatbot.generalSettings")}</TabsTrigger>
           <TabsTrigger value="personas" className="gap-2 flex-1">
-            <Drama className="h-4 w-4" /> Nhân cách
+            <Drama className="h-4 w-4" /> {t("aiChatbot.persona")}
             {personas.length > 0 && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">{personas.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="input-filter" className="gap-2 flex-1">
-            <ShieldCheck className="h-4 w-4" /> Bộ lọc đầu vào
+            <ShieldCheck className="h-4 w-4" /> {t("aiChatbot.inputFilter")}
           </TabsTrigger>
         </TabsList>
 
@@ -261,7 +264,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
         <TabsContent value="settings" className="mt-5">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="app-liquid-card rounded-xl border bg-card overflow-hidden">
             <div className="p-6 border-b">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Avatar</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">{t("aiChatbot.botAvatar")}</h3>
               <div className="flex items-center gap-6">
                 <input ref={avatarInputRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleAvatarUpload} />
                 <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
@@ -271,26 +274,26 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                   <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="h-6 w-6 text-white" /></div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Ảnh đại diện bot</p>
-                  <p className="text-xs text-muted-foreground">JPEG, PNG, WebP hoặc GIF. Tối đa 5MB.</p>
-                  <Button variant="outline" size="sm" className="mt-2 text-xs" onClick={() => avatarInputRef.current?.click()}>{bot.avatar_url ? "Đổi ảnh" : "Tải ảnh lên"}</Button>
+                  <p className="text-sm font-medium">{t("aiChatbot.botAvatar")}</p>
+                  <p className="text-xs text-muted-foreground">{t("aiChatbot.avatarFormats")}</p>
+                  <Button variant="outline" size="sm" className="mt-2 text-xs" onClick={() => avatarInputRef.current?.click()}>{bot.avatar_url ? t("aiChatbot.changeImage") : t("aiChatbot.uploadImage")}</Button>
                 </div>
               </div>
             </div>
             <div className="p-6 space-y-5">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Thông tin cơ bản</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">{t("aiChatbot.basicInformation")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tên Bot <span className="text-destructive">*</span></label>
-                  <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="VD: Trợ lý tư vấn" className="h-10" />
+                  <label className="text-sm font-medium">{t("aiChatbot.botName")} <span className="text-destructive">*</span></label>
+                  <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder={t("aiChatbot.botNamePlaceholder")} className="h-10" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Kho tri thức</label>
+                  <label className="text-sm font-medium">{t("aiChatbot.knowledgeBases")}</label>
                   <Select value={formKbId || "__none__"} onValueChange={v => setFormKbId(v === "__none__" ? null : v)}>
-                    <SelectTrigger className="h-10"><SelectValue placeholder="Chọn Kho tri thức..." /></SelectTrigger>
+                    <SelectTrigger className="h-10"><SelectValue placeholder={t("aiChatbot.selectKnowledgeBase")} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">— Không gán Kho tri thức —</SelectItem>
-                      {kbs.map(kb => <SelectItem key={kb.id} value={kb.id}>{kb.name} ({kb.document_count} tài liệu)</SelectItem>)}
+                      <SelectItem value="__none__">{t("aiChatbot.noKnowledgeBaseAssignment")}</SelectItem>
+                      {kbs.map(kb => <SelectItem key={kb.id} value={kb.id}>{kb.name} ({t("aiChatbot.documentsCount", { count: kb.document_count })})</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -298,10 +301,10 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             </div>
             {isDirty && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="px-6 py-4 border-t bg-muted/30 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">Bạn có thay đổi chưa lưu</p>
+                <p className="text-sm text-muted-foreground">{t("aiChatbot.unsavedChanges")}</p>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={loadBot}>Huỷ</Button>
-                  <Button size="sm" disabled={saving} onClick={handleSave} className="gap-1.5">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu</Button>
+                  <Button variant="ghost" size="sm" onClick={loadBot}>{t("aiChatbot.cancel")}</Button>
+                  <Button size="sm" disabled={saving} onClick={handleSave} className="gap-1.5">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {t("aiChatbot.save")}</Button>
                 </div>
               </motion.div>
             )}
@@ -314,12 +317,12 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-lg font-semibold flex items-center gap-2"><Drama className="h-5 w-5 text-primary" /> Nhân cách</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">Mỗi nhân cách tương ứng 1 mascot với prompt riêng. Tối đa 6 / bot.</p>
+                <h3 className="text-lg font-semibold flex items-center gap-2"><Drama className="h-5 w-5 text-primary" /> {t("aiChatbot.persona")}</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">{t("aiChatbot.personasDescription")}</p>
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant="outline" className="text-sm">{personas.length}/6</Badge>
-                <Button onClick={openAddModal} disabled={personas.length >= 6} size="sm" className="gap-1.5"><Plus className="h-4 w-4" /> Thêm nhân cách</Button>
+                <Button onClick={openAddModal} disabled={personas.length >= 6} size="sm" className="gap-1.5"><Plus className="h-4 w-4" /> {t("aiChatbot.addPersona")}</Button>
               </div>
             </div>
 
@@ -340,8 +343,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             ) : personas.length === 0 ? (
               <div className="app-liquid-card text-center py-16 text-muted-foreground rounded-xl border bg-card">
                 <Drama className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Bot này chưa có nhân cách nào.</p>
-                <Button variant="outline" size="sm" onClick={openAddModal} className="gap-1.5 mt-4"><Plus className="h-4 w-4" /> Thêm nhân cách</Button>
+                <p className="text-sm">{t("aiChatbot.noPersonas")}</p>
+                <Button variant="outline" size="sm" onClick={openAddModal} className="gap-1.5 mt-4"><Plus className="h-4 w-4" /> {t("aiChatbot.addPersona")}</Button>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -376,7 +379,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                           {/* Custom badge */}
                           {isCustom && (
                             <Badge className="absolute top-2 left-2 bg-amber-500/90 text-white gap-0.5 text-[10px] h-5 shadow">
-                              <Pencil className="h-2.5 w-2.5" /> Đã tuỳ chỉnh
+                              <Pencil className="h-2.5 w-2.5" /> {t("aiChatbot.customized")}
                             </Badge>
                           )}
 
@@ -390,10 +393,10 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-36">
                                 <DropdownMenuItem onClick={() => openEditPersona(p)} className="gap-2 cursor-pointer">
-                                  <Pencil className="h-3.5 w-3.5" /> Chỉnh sửa
+                                  <Pencil className="h-3.5 w-3.5" /> {t("aiChatbot.edit")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setConfirmRemoveId(p.id)} className="gap-2 cursor-pointer text-destructive focus:text-destructive">
-                                  <Trash2 className="h-3.5 w-3.5" /> Xoá
+                                  <Trash2 className="h-3.5 w-3.5" /> {t("aiChatbot.delete")}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -437,8 +440,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
       <Dialog open={!!editingPersona} onOpenChange={() => setEditingPersona(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Drama className="h-5 w-5 text-primary" /> Chỉnh sửa nhân cách</DialogTitle>
-            <DialogDescription>Tuỳ chỉnh tên, mô tả và prompt cho nhân cách này. Reset để trở về mặc định hệ thống.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Drama className="h-5 w-5 text-primary" /> {t("aiChatbot.editPersona")}</DialogTitle>
+            <DialogDescription>{t("aiChatbot.editPersonaDescription")}</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto space-y-5 py-4 -mx-1 px-1">
             {/* Mascot preview */}
@@ -451,36 +454,36 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">Mặc định: <strong>{editingPersona?.template_name}</strong></p>
+                <p className="text-xs text-muted-foreground">{t("aiChatbot.defaultValue")} <strong>{editingPersona?.template_name}</strong></p>
                 {editingPersona?.template_description && <p className="text-[11px] text-muted-foreground/70 line-clamp-1 mt-0.5">{editingPersona.template_description}</p>}
               </div>
               {(editingPersona?.custom_prompt !== null || editingPersona?.custom_name !== null || editingPersona?.custom_description !== null) && (
-                <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 gap-0.5 text-[10px] shrink-0"><Pencil className="h-2.5 w-2.5" /> Đã tuỳ chỉnh</Badge>
+                <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 gap-0.5 text-[10px] shrink-0"><Pencil className="h-2.5 w-2.5" /> {t("aiChatbot.customized")}</Badge>
               )}
             </div>
 
             {/* Name */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tên nhân cách</label>
-              <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder={editingPersona?.template_name || "Tên..."} className="h-10" />
+              <label className="text-sm font-medium">{t("aiChatbot.personaName")}</label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder={editingPersona?.template_name || t("aiChatbot.personaNamePlaceholder")} className="h-10" />
               {editingPersona?.custom_name !== null && editName !== editingPersona?.template_name && (
-                <p className="text-[11px] text-muted-foreground">Mặc định: {editingPersona?.template_name}</p>
+                <p className="text-[11px] text-muted-foreground">{t("aiChatbot.defaultValue")} {editingPersona?.template_name}</p>
               )}
             </div>
 
             {/* Description */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Mô tả</label>
-              <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2} className="resize-none text-sm" placeholder={editingPersona?.template_description || "Mô tả nhân cách..."} />
+              <label className="text-sm font-medium">{t("aiChatbot.personaDescription")}</label>
+              <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2} className="resize-none text-sm" placeholder={editingPersona?.template_description || t("aiChatbot.personaDescriptionPlaceholder")} />
               {editingPersona?.custom_description !== null && editDesc !== (editingPersona?.template_description ?? '') && (
-                <p className="text-[11px] text-muted-foreground">Mặc định: {editingPersona?.template_description || '(trống)'}</p>
+                <p className="text-[11px] text-muted-foreground">{t("aiChatbot.defaultValue")} {editingPersona?.template_description || t("aiChatbot.empty")}</p>
               )}
             </div>
 
             {/* Default prompt reference */}
             {(editingPersona?.custom_prompt !== null) && (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Prompt mặc định (tham khảo)</label>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("aiChatbot.defaultPromptReference")}</label>
                 <div className="bg-muted/40 rounded-lg p-3 max-h-24 overflow-y-auto">
                   <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{editingPersona?.template_prompt}</p>
                 </div>
@@ -489,9 +492,9 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
 
             {/* Editable prompt */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">System Prompt</label>
-              <Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} rows={8} className="resize-none font-mono text-sm" placeholder="Nhập system prompt..." />
-              <p className="text-xs text-muted-foreground">{editPrompt.length.toLocaleString()} / 20,000 ký tự</p>
+              <label className="text-sm font-medium">{t("aiChatbot.systemPrompt")}</label>
+              <Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} rows={8} className="resize-none font-mono text-sm" placeholder={t("aiChatbot.systemPromptPlaceholder")} />
+              <p className="text-xs text-muted-foreground">{t("aiChatbot.characterLimit", { count: editPrompt.length.toLocaleString() })}</p>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t">
@@ -503,12 +506,12 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                 onClick={() => editingPersona && handleResetPersona(editingPersona.id)}
               >
                 {resettingId === editingPersona?.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                Reset tất cả về mặc định
+                {t("aiChatbot.resetAllToDefault")}
               </Button>
             )}
-            <DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose>
             <Button onClick={handleSavePersona} disabled={savingPersona} className="gap-1.5">
-              {savingPersona ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu
+              {savingPersona ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {t("aiChatbot.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -518,13 +521,13 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
       <Dialog open={!!confirmRemoveId} onOpenChange={() => setConfirmRemoveId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5 text-destructive" /> Xoá nhân cách</DialogTitle>
-            <DialogDescription>Nhân cách sẽ bị gỡ khỏi bot. Bạn có thể thêm lại sau.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5 text-destructive" /> {t("aiChatbot.deletePersona")}</DialogTitle>
+            <DialogDescription>{t("aiChatbot.deletePersonaDescription")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Huỷ</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline">{t("aiChatbot.cancel")}</Button></DialogClose>
             <Button variant="destructive" onClick={handleRemovePersona} disabled={removingId === confirmRemoveId} className="gap-1.5">
-              {removingId === confirmRemoveId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Xoá
+              {removingId === confirmRemoveId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} {t("aiChatbot.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -534,8 +537,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader className="pb-4 border-b">
-            <DialogTitle className="flex items-center gap-2 text-lg"><Sparkles className="h-5 w-5 text-primary" /> Chọn nhân cách cho bot</DialogTitle>
-            <DialogDescription>Chọn mascot để thêm làm nhân cách cho bot. Nhân cách đã gán sẽ được đánh dấu.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-lg"><Sparkles className="h-5 w-5 text-primary" /> {t("aiChatbot.choosePersona")}</DialogTitle>
+            <DialogDescription>{t("aiChatbot.choosePersonaDescription")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto py-4 -mx-1 px-1">
@@ -551,8 +554,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
             ) : activeTemplates.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <Drama className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Chưa có nhân cách nào được bật.</p>
-                <p className="text-xs mt-1">Hãy liên hệ superadmin để tạo System Prompts.</p>
+                <p className="text-sm">{t("aiChatbot.noPersonasEnabled")}</p>
+                <p className="text-xs mt-1">{t("aiChatbot.contactSuperadminForPrompts")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -579,7 +582,7 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                           )}
                           {isAssigned && (
                             <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center">
-                              <Badge className="bg-primary/90 text-primary-foreground gap-1 shadow-lg">✓ Đã thêm</Badge>
+                              <Badge className="bg-primary/90 text-primary-foreground gap-1 shadow-lg">✓ {t("aiChatbot.added")}</Badge>
                             </div>
                           )}
                         </div>
@@ -592,10 +595,10 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
                           <h4 className="font-semibold text-sm truncate">{tpl.name}</h4>
                           {tpl.description && <p className="text-xs text-muted-foreground truncate">{tpl.description}</p>}
                           {isAssigned ? (
-                            <div className="flex items-center justify-center h-8 rounded-lg bg-muted/50 text-[11px] text-muted-foreground font-medium">Đã gán cho bot</div>
+                            <div className="flex items-center justify-center h-8 rounded-lg bg-muted/50 text-[11px] text-muted-foreground font-medium">{t("aiChatbot.assignedToBot")}</div>
                           ) : (
                             <Button variant="outline" size="sm" className="w-full gap-1.5 h-8 hover:bg-primary hover:text-primary-foreground hover:border-primary text-xs" onClick={() => handleAddPersona(tpl.id)} disabled={isAdding || personas.length >= 6}>
-                              {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Thêm
+                              {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} {t("aiChatbot.addPersona")}
                             </Button>
                           )}
                         </div>
@@ -608,8 +611,8 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
           </div>
 
           <div className="pt-4 border-t flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">{personas.length}/6 nhân cách đã gán{personas.length >= 6 && <span className="text-destructive font-medium ml-1">• Đã đủ</span>}</p>
-            <DialogClose asChild><Button variant="outline" className="gap-1.5"><X className="h-4 w-4" /> Đóng</Button></DialogClose>
+            <p className="text-xs text-muted-foreground">{t("aiChatbot.personasCount", { count: personas.length })}{personas.length >= 6 && <span className="text-destructive font-medium ml-1">• {t("aiChatbot.full")}</span>}</p>
+            <DialogClose asChild><Button variant="outline" className="gap-1.5"><X className="h-4 w-4" /> {t("aiChatbot.close")}</Button></DialogClose>
           </div>
         </DialogContent>
       </Dialog>

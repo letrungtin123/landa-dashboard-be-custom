@@ -18,6 +18,8 @@ import {
   type HtmlMediaImage,
 } from '../htmlMedia';
 import { Field } from './VideoEditor';
+import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface HtmlEditorProps {
   blockId: string;
@@ -42,6 +44,7 @@ export default function HtmlEditor({
   courseId,
   onImmediateSaved,
 }: HtmlEditorProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = React.useState(false);
   const [deletingPath, setDeletingPath] = React.useState<string | null>(null);
@@ -59,7 +62,7 @@ export default function HtmlEditor({
   }, [uploadedImages]);
 
   const persistImages = React.useCallback(async (nextImages: HtmlMediaImage[]) => {
-    if (!blockId) throw new Error('Block ID không hợp lệ');
+    if (!blockId) throw new Error(t('courseEditorForms.invalidBlockId'));
     const nextMetadata = htmlMediaMetadata(metadataRef.current, nextImages);
     const run = saveQueueRef.current.then(async () => {
       await updateXBlock(blockId, { metadata: nextMetadata });
@@ -70,7 +73,7 @@ export default function HtmlEditor({
     uploadedImagesRef.current = nextImages;
     onMetadataChange(nextMetadata);
     onImmediateSaved?.();
-  }, [blockId, onImmediateSaved, onMetadataChange]);
+  }, [blockId, onImmediateSaved, onMetadataChange, t]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
@@ -80,7 +83,7 @@ export default function HtmlEditor({
     try {
       const result = await uploadCourseAsset(courseId, file);
       uploadedPath = htmlImageStoragePath(result?.url) || '';
-      if (!uploadedPath) throw new Error('Upload response không có storage path');
+      if (!uploadedPath) throw new Error(t('courseEditorForms.uploadResponseMissingPath'));
 
       const currentImages = uploadedImagesRef.current;
       const exists = currentImages.some((image) => image.src === uploadedPath);
@@ -96,12 +99,14 @@ export default function HtmlEditor({
           ];
 
       await persistImages(nextImages);
-      toast.success('Đã upload và lưu ảnh');
+      toast.success(t('courseEditorForms.imageUploaded'));
     } catch (err: any) {
       if (uploadedPath) {
         deleteCourseAssetByStoragePath(courseId, uploadedPath).catch(() => {});
       }
-      toast.error('Upload ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+      toast.error(t('courseEditorForms.imageUploadFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     } finally {
       setUploading(false);
     }
@@ -114,9 +119,11 @@ export default function HtmlEditor({
       const nextImages = currentImages.filter((item) => item.src !== image.src);
       await persistImages(nextImages);
       await deleteCourseAssetByStoragePath(courseId, image.src);
-      toast.success('Đã xóa ảnh');
+      toast.success(t('courseEditorForms.imageDeleted'));
     } catch (err: any) {
-      toast.error('Xóa ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+      toast.error(t('courseEditorForms.imageDeleteFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
     } finally {
       setDeletingPath(null);
     }
@@ -129,15 +136,17 @@ export default function HtmlEditor({
     nextImages.splice(toIndex, 0, moved);
 
     persistImages(nextImages)
-      .then(() => toast.success('Đã cập nhật thứ tự ảnh'))
+      .then(() => toast.success(t('courseEditorForms.imageOrderUpdated')))
       .catch((err: any) => {
-        toast.error('Cập nhật thứ tự ảnh thất bại: ' + (err?.response?.data?.message || err?.response?.data?.error || err.message));
+        toast.error(t('courseEditorForms.imageOrderFailed', {
+          message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+        }));
       });
   };
 
   return (
     <div className="space-y-6">
-      <Field label="Tên hiển thị">
+      <Field label={t('courseUnit.displayName')}>
         <input
           className="flex h-11 w-full rounded-xl border border-input bg-background/50 px-4 text-sm font-medium shadow-sm transition-all duration-200 hover:bg-background focus:border-primary focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10"
           value={displayName}
@@ -145,7 +154,7 @@ export default function HtmlEditor({
         />
       </Field>
 
-      <Field label="Ảnh upload riêng">
+      <Field label={t('courseEditorForms.uploadedImages')}>
         <div className="app-liquid-card space-y-3 rounded-xl border border-border bg-muted/30 p-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -156,10 +165,10 @@ export default function HtmlEditor({
               disabled={uploading || !courseId || !blockId}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              Upload ảnh
+              {t('courseEditorForms.uploadImage')}
             </Button>
             <span className="text-xs text-muted-foreground/80 font-medium">
-              Ảnh upload ở đây được lưu ngay sau khi upload thành công. Khi có từ 2 ảnh, hai FE sẽ hiển thị dạng carousel.
+              {t('courseEditorForms.uploadedImageHint')}
             </span>
             <input
               ref={fileInputRef}
@@ -176,7 +185,7 @@ export default function HtmlEditor({
 
           {uploadedImages.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground">
-              Chưa có ảnh upload riêng.
+              {t('courseEditorForms.noUploadedImages')}
             </div>
           ) : (
             <div className="space-y-4">
@@ -210,9 +219,9 @@ export default function HtmlEditor({
         </div>
       </Field>
 
-      <Field label="Nội dung bài học (Rich Text + ảnh paste từ web)">
+      <Field label={t('courseEditorForms.lessonContent')}>
         <p className="mb-2 text-xs font-medium text-muted-foreground">
-          Nội dung HTML bên dưới chỉ được lưu khi bấm nút Lưu thay đổi. Ảnh paste từ website khác sẽ giữ nguyên vị trí trong HTML và không bị đưa vào carousel.
+          {t('courseEditorForms.lessonContentHint')}
         </p>
         <div className="rounded-xl overflow-hidden border border-input bg-background shadow-sm focus-within:ring-4 focus-within:ring-primary/10 focus-within:border-primary transition-all duration-200">
           <RichTextEditorWithRef
@@ -231,12 +240,13 @@ function RichTextEditorWithRef({
   content: string;
   onChange: (v: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <RichTextEditor
       content={content}
       onChange={onChange}
       onUnsupportedImagePaste={() => {
-        toast.warning('Clipboard image không có URL bên ngoài. Hãy dùng nút Upload ảnh để lưu ảnh vào hệ thống.');
+        toast.warning(t('courseEditorForms.clipboardExternalUrlNeeded'));
       }}
     />
   );

@@ -12,6 +12,7 @@ import { storageUrl } from "@/utils/storage-url";
 import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { toast } from "sonner";
 import { AppTooltip } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 interface BadgeAdminCardProps {
   tenantId: string;
@@ -22,6 +23,7 @@ interface BadgeAdminCardProps {
 }
 
 export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImageUploaded }: BadgeAdminCardProps) {
+  const { t } = useTranslation();
   const [showPreview, setShowPreview] = useState(false);
   const [previewImageSrc, setPreviewImageSrc] = useState<string | null>(null);
   const [uploadingCard, setUploadingCard] = useState(false);
@@ -60,10 +62,10 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
     setUploadingCard(true);
     try {
       await badgesApi.uploadCardImage(tenantId, badge.id, file);
-      toast.success("Upload ảnh card thành công");
+      toast.success(t('badges.cardUploaded'));
       onImageUploaded?.();
     } catch {
-      toast.error("Lỗi upload ảnh card");
+      toast.error(t('badges.cardUploadFailed'));
     } finally {
       setUploadingCard(false);
       if (cardInputRef.current) cardInputRef.current.value = "";
@@ -76,10 +78,10 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
     setUploadingIcon(true);
     try {
       await badgesApi.uploadIconImage(tenantId, badge.id, file);
-      toast.success("Upload ảnh icon thành công");
+      toast.success(t('badges.iconUploaded'));
       onImageUploaded?.();
     } catch {
-      toast.error("Lỗi upload ảnh icon");
+      toast.error(t('badges.iconUploadFailed'));
     } finally {
       setUploadingIcon(false);
       if (iconInputRef.current) iconInputRef.current.value = "";
@@ -92,10 +94,10 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
     setUploadingMobileCard(true);
     try {
       await badgesApi.uploadMobileCardImage(tenantId, badge.id, file);
-      toast.success("Upload ảnh card mobile thành công");
+      toast.success(t('badges.mobileCardUploaded'));
       onImageUploaded?.();
     } catch {
-      toast.error("Lỗi upload ảnh card mobile");
+      toast.error(t('badges.mobileCardUploadFailed'));
     } finally {
       setUploadingMobileCard(false);
       if (mobileCardInputRef.current) mobileCardInputRef.current.value = "";
@@ -127,20 +129,20 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
             isActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
           )}>
             <BadgeCheck className="h-3.5 w-3.5" />
-            {isActive ? "Đang bật" : "Đã tắt"}
+            {isActive ? t('badges.active') : t('badges.inactive')}
           </div>
           <div className="flex items-center justify-between gap-2 min-[420px]:justify-end">
-            <AppTooltip content="Reset title và mô tả về mặc định"><Button
+            <AppTooltip content={t('badges.resetDefault')}><Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleResetText}
               disabled={!hasTextOverride}
               className="h-7 gap-1.5 whitespace-nowrap rounded-full border-border/70 bg-background/70 px-2.5 text-[11px] font-bold text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/[0.04]"
-              aria-label="Reset title và mô tả về mặc định"
+              aria-label={t('badges.resetDefault')}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              Mặc định
+              {t('badges.default')}
             </Button></AppTooltip>
             <Switch
               checked={isActive}
@@ -153,7 +155,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
         <div className="grid gap-3">
           <div className="space-y-1.5">
             <label htmlFor={`badge-name-${badge.id}`} className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Tiêu đề
+              {t('badges.fieldTitle')}
             </label>
             <Input
               id={`badge-name-${badge.id}`}
@@ -161,12 +163,12 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
               maxLength={200}
               onChange={(event) => onTextChange?.(badge.id, { name: event.target.value })}
               className="h-10 rounded-xl border-border/70 bg-background/80 px-3 text-[15px] font-bold shadow-inner shadow-black/5 focus-visible:ring-2 dark:border-white/10 dark:bg-white/[0.04]"
-              placeholder={badge.default_name || "Tiêu đề huy hiệu"}
+              placeholder={badge.default_name || t('badges.namePlaceholder')}
             />
           </div>
           <div className="space-y-1.5">
             <label htmlFor={`badge-description-${badge.id}`} className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Mô tả
+              {t('badges.fieldDescription')}
             </label>
             <Textarea
               id={`badge-description-${badge.id}`}
@@ -175,7 +177,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
               rows={2}
               onChange={(event) => onTextChange?.(badge.id, { description: event.target.value })}
               className="min-h-[68px] resize-none rounded-xl border-border/70 bg-background/80 px-3 py-2.5 text-sm font-medium leading-relaxed shadow-inner shadow-black/5 focus-visible:ring-2 dark:border-white/10 dark:bg-white/[0.04]"
-              placeholder={badge.default_description || "Mô tả huy hiệu"}
+              placeholder={badge.default_description || t('badges.descriptionPlaceholder')}
             />
           </div>
         </div>
@@ -190,7 +192,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
         >
           <img 
             src={imgSrc} 
-            alt="Card preview" 
+            alt={t('badges.cardPreview')}
             loading="lazy"
             className={cn(
               "w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-105",
@@ -215,12 +217,12 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           <div className={assetLabelClass}><ImageIcon className="h-3 w-3" />CARD</div>
 
           {/* Upload button for card */}
-          <AppTooltip content="Upload ảnh card mới"><button
+          <AppTooltip content={t('badges.uploadCard')}><button
             type="button"
             onClick={(e) => { e.stopPropagation(); cardInputRef.current?.click(); }}
             disabled={uploadingCard}
             className={uploadButtonClass}
-            aria-label="Upload ảnh card mới"
+            aria-label={t('badges.uploadCard')}
           >
             {uploadingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button></AppTooltip>
@@ -234,7 +236,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
         >
           <img
             src={mobileCardSrc}
-            alt="Mobile card preview"
+            alt={t('badges.mobileCardPreview')}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover/mobile:scale-105"
           />
@@ -254,12 +256,12 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           </div>
           <div className={assetLabelClass}><Smartphone className="h-3 w-3" />MOBILE</div>
 
-          <AppTooltip content="Upload mobile card"><button
+          <AppTooltip content={t('badges.uploadMobileCard')}><button
             type="button"
             onClick={(e) => { e.stopPropagation(); mobileCardInputRef.current?.click(); }}
             disabled={uploadingMobileCard}
             className={uploadButtonClass}
-            aria-label="Upload mobile card"
+            aria-label={t('badges.uploadMobileCard')}
           >
             {uploadingMobileCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button></AppTooltip>
@@ -271,7 +273,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           {isActive ? (
             <motion.img 
               src={iconSrc} 
-              alt="Icon preview"
+              alt={t('badges.iconPreview')}
               loading="lazy"
               className="h-16 w-16 object-contain filter drop-shadow-[0_0_25px_rgba(255,215,0,0.6)] sm:h-20 sm:w-20 min-[1800px]:h-32 min-[1800px]:w-32"
               animate={{ 
@@ -288,7 +290,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           ) : (
             <img 
               src={iconSrc} 
-              alt="Icon preview"
+              alt={t('badges.iconPreview')}
               loading="lazy"
               className="h-16 w-16 object-contain filter drop-shadow-md transition-transform duration-500 group-hover/icon:scale-110 group-hover/icon:-translate-y-2 sm:h-20 sm:w-20 min-[1800px]:h-32 min-[1800px]:w-32"
             />
@@ -308,12 +310,12 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
           <div className="absolute inset-x-0 bottom-3 z-20"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/80 transition-colors group-hover/icon:text-primary">ICON</p></div>
 
           {/* Upload button for icon */}
-          <AppTooltip content="Upload ảnh icon mới"><button
+          <AppTooltip content={t('badges.uploadIcon')}><button
             type="button"
             onClick={() => iconInputRef.current?.click()}
             disabled={uploadingIcon}
             className={uploadButtonClass}
-            aria-label="Upload ảnh icon mới"
+            aria-label={t('badges.uploadIcon')}
           >
             {uploadingIcon ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button></AppTooltip>
@@ -329,7 +331,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
               </span>
-              Đã vô hiệu hóa
+              {t('badges.inactiveOverlay')}
            </div>
         </div>
       )}
@@ -361,7 +363,7 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
                 </button>
                 <img 
                   src={previewImageSrc || imgSrc}
-                  alt={`${badge.name} Full Preview`} 
+                  alt={t('badges.fullPreview', { name: badge.name })}
                   className={cn(
                     "block max-h-[85vh] max-w-[90vw] object-contain",
                     badge.id === "omnipotent_master" && previewImageSrc === imgSrc && "scale-[1.06]"
