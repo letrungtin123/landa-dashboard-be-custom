@@ -6,6 +6,13 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { config } from "@/config/env";
 import { ensureTokenRefresh } from "./refresh-manager";
+import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
+
+type QuotaTrackedRequestConfig = InternalAxiosRequestConfig & {
+  tenantDataQuotaRefreshTenantId?: string;
+};
+
+const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
 export const customApiClient = axios.create({
   baseURL: config.customApiUrl,
@@ -25,6 +32,16 @@ async function getTenantStore() {
   return useTenantStore;
 }
 
+function getHeaderTenantId(req: InternalAxiosRequestConfig): string | null {
+  const rawValue = req.headers['X-Tenant-Id'] ?? req.headers['x-tenant-id'];
+  return typeof rawValue === 'string' && rawValue.trim() ? rawValue.trim() : null;
+}
+
+function isQuotaRelevantMutation(req: InternalAxiosRequestConfig): boolean {
+  const method = req.method?.toLowerCase();
+  return Boolean(method && MUTATING_METHODS.has(method) && req.url?.startsWith('/api/'));
+}
+
 // ── Request Interceptor: gắn Bearer token + X-Tenant-Id (superadmin/superuser) ──
 customApiClient.interceptors.request.use(async (req) => {
   const store = await getAuthStore();
@@ -42,12 +59,28 @@ customApiClient.interceptors.request.use(async (req) => {
     }
   }
 
+  // Keep the tenant that this request was sent for. If a superadmin switches
+  // tenant while a request is in flight, its successful response must never
+  // refresh the header for the newly selected tenant by mistake.
+  if (isQuotaRelevantMutation(req)) {
+    const requestTenantId = getHeaderTenantId(req) || (user?.role !== 'superadmin' ? user?.tenant_id : null);
+    if (requestTenantId) {
+      (req as QuotaTrackedRequestConfig).tenantDataQuotaRefreshTenantId = requestTenantId;
+    }
+  }
+
   return req;
 });
 
 // ── Response Interceptor: 401 → refresh (shared singleton) → retry ──
 customApiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const request = res.config as QuotaTrackedRequestConfig;
+    if (request.tenantDataQuotaRefreshTenantId) {
+      scheduleTenantDataQuotaRefresh(request.tenantDataQuotaRefreshTenantId);
+    }
+    return res;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
 

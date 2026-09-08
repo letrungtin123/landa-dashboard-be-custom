@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
 import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail, Network, HardDrive } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
@@ -203,7 +202,6 @@ export default function TenantManagementPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
-  const queryClient = useQueryClient();
   const refreshRoleLabels = useAuthStore((s) => s.refreshRoleLabels);
   const refreshGroupLabels = useAuthStore((s) => s.refreshGroupLabels);
 
@@ -378,12 +376,6 @@ export default function TenantManagementPage() {
         settings: updSettings,
       });
       coreTenantUpdated = true;
-
-      // The header owns a separate React Query cache. Refresh it immediately
-      // when the superadmin has changed the quota of the selected tenant.
-      if (editTenant.id === activeTenantId) {
-        void queryClient.invalidateQueries({ queryKey: ["tenant-data-quota-header", editTenant.id] });
-      }
 
       const labels = normalizeRoleLabels(formRoleLabels);
       if (haveRoleLabelsChanged(labels, originalRoleLabels)) {

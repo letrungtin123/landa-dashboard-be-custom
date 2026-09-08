@@ -6,6 +6,7 @@ import { customApiClient } from "./custom-client";
 import { config } from "@/config/env";
 import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
+import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
 
 interface ApiResponse<T> { success: boolean; data: T; }
 
@@ -281,9 +282,13 @@ export function sendMessageStream(
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
   };
+  let quotaTenantId = user?.tenant_id ?? null;
   if (user?.role === 'superadmin') {
     const { activeTenantId } = useTenantStore.getState();
-    if (activeTenantId) headers['X-Tenant-Id'] = activeTenantId;
+    if (activeTenantId) {
+      headers['X-Tenant-Id'] = activeTenantId;
+      quotaTenantId = activeTenantId;
+    }
   }
 
   const url = `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${conversationId}/messages`;
@@ -317,6 +322,11 @@ export function sendMessageStream(
         return;
       }
 
+      // This endpoint streams outside customApiClient. A 2xx response means
+      // the server accepted the message write; refresh once now and again when
+      // the streamed assistant result is finalized below.
+      scheduleTenantDataQuotaRefresh(quotaTenantId);
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -336,7 +346,11 @@ export function sendMessageStream(
           try {
             const event = JSON.parse(line.slice(6));
             if (event.type === 'chunk') onChunk(event.text);
-            else if (event.type === 'done') { receivedDone = true; onDone(); }
+            else if (event.type === 'done') {
+              receivedDone = true;
+              scheduleTenantDataQuotaRefresh(quotaTenantId);
+              onDone();
+            }
             else if (event.type === 'error') { receivedError = true; onError(event.message || 'Lỗi không xác định'); }
             else if (event.type === 'proposal') options.onProposal?.(event);
           } catch { /* skip malformed line */ }
@@ -344,7 +358,10 @@ export function sendMessageStream(
       }
 
       // Safety: if stream ended without done/error event, still notify
-      if (!receivedDone && !receivedError) onDone();
+      if (!receivedDone && !receivedError) {
+        scheduleTenantDataQuotaRefresh(quotaTenantId);
+        onDone();
+      }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         onError(normalizeStreamErrorMessage(err));

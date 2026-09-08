@@ -27,6 +27,7 @@ import { fetchCurrentTenantDataQuota } from '@/api/custom-tenants';
 import { formatQuotaGigabytes } from '@/utils/locale-format';
 import { useLocaleStore } from '@/utils/locale-store';
 import { storageUrl } from '@/utils/storage-url';
+import { subscribeTenantDataQuotaRefresh } from '@/utils/tenant-data-quota-refresh';
 import { useTranslation } from 'react-i18next';
 
 export function Header() {
@@ -45,8 +46,9 @@ export function Header() {
   const isSuperadmin = user?.role === 'superadmin';
   const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
   const quotaTenantId = isSuperadmin ? activeTenantId : user?.tenant_id;
+  const quotaQueryKey = ['tenant-data-quota-header', quotaTenantId] as const;
   const dataQuotaQuery = useQuery({
-    queryKey: ['tenant-data-quota-header', quotaTenantId],
+    queryKey: quotaQueryKey,
     queryFn: fetchCurrentTenantDataQuota,
     enabled: Boolean(quotaTenantId),
     staleTime: 15_000,
@@ -86,6 +88,20 @@ export function Header() {
   useEffect(() => {
     setAvatarLoadFailed(false);
   }, [userAvatar]);
+
+  // The mutation client emits only after a successful server response. Refetch
+  // the authoritative total for this exact tenant instead of doing optimistic
+  // byte arithmetic in the browser.
+  useEffect(() => {
+    return subscribeTenantDataQuotaRefresh((changedTenantId) => {
+      if (!quotaTenantId || changedTenantId !== quotaTenantId) return;
+      void qc.invalidateQueries({
+        queryKey: ['tenant-data-quota-header', quotaTenantId],
+        exact: true,
+        refetchType: 'active',
+      });
+    });
+  }, [qc, quotaTenantId]);
 
   // Fetch tenants on mount for superadmin
   useEffect(() => {
