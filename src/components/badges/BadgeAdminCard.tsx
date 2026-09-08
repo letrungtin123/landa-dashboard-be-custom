@@ -13,6 +13,7 @@ import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { toast } from "sonner";
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface BadgeAdminCardProps {
   tenantId: string;
@@ -64,8 +65,8 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
       await badgesApi.uploadCardImage(tenantId, badge.id, file);
       toast.success(t('badges.cardUploaded'));
       onImageUploaded?.();
-    } catch {
-      toast.error(t('badges.cardUploadFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('badges.cardUploadFailed')));
     } finally {
       setUploadingCard(false);
       if (cardInputRef.current) cardInputRef.current.value = "";
@@ -80,8 +81,8 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
       await badgesApi.uploadIconImage(tenantId, badge.id, file);
       toast.success(t('badges.iconUploaded'));
       onImageUploaded?.();
-    } catch {
-      toast.error(t('badges.iconUploadFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('badges.iconUploadFailed')));
     } finally {
       setUploadingIcon(false);
       if (iconInputRef.current) iconInputRef.current.value = "";
@@ -96,8 +97,8 @@ export function BadgeAdminCard({ tenantId, badge, onToggle, onTextChange, onImag
       await badgesApi.uploadMobileCardImage(tenantId, badge.id, file);
       toast.success(t('badges.mobileCardUploaded'));
       onImageUploaded?.();
-    } catch {
-      toast.error(t('badges.mobileCardUploadFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('badges.mobileCardUploadFailed')));
     } finally {
       setUploadingMobileCard(false);
       if (mobileCardInputRef.current) mobileCardInputRef.current.value = "";

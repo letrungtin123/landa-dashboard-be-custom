@@ -31,6 +31,7 @@ import { useAuthStore } from '@/utils/store';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useLocaleStore } from '@/utils/locale-store';
 import { formatLocaleDate } from '@/utils/locale-format';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface CourseFilesModalProps {
   courseId: string;
@@ -207,8 +208,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
       toast.success(t('courseFiles.uploadSuccess'));
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error || t('courseFiles.uploadFailed'));
+    onError: (err: unknown) => {
+      toast.error(getLocalizedApiError(err, t('courseFiles.uploadFailed')));
     }
   });
 
@@ -219,7 +220,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       toast.success(t('courseFiles.deleted'));
       setSelectedIds([]);
     },
-    onError: () => toast.error(t('courseFiles.deleteFailed'))
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courseFiles.deleteFailed')))
   });
 
   const lockMut = useMutation({
@@ -229,7 +230,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
       toast.success(t('courseFiles.lockUpdated'));
     },
-    onError: () => toast.error(t('courseFiles.updateFailed'))
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courseFiles.updateFailed')))
   });
 
   const refMut = useMutation({
@@ -239,7 +240,7 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
       toast.success(t('courseFiles.referenceUpdated'));
     },
-    onError: () => toast.error(t('courseFiles.updateFailed'))
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courseFiles.updateFailed')))
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,8 +295,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       toast.success(t('courseFiles.bulkDeleted', { count: editableIds.length }));
       setSelectedIds([]);
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
-    } catch {
-      toast.error(t('courseFiles.bulkDeleteFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('courseFiles.bulkDeleteFailed')));
     } finally {
       setIsBulkOperating(false);
     }
@@ -313,8 +314,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       await Promise.all(editableIds.map(id => updateCourseAssetLock(courseId, id, locked)));
       toast.success(t('courseFiles.bulkLockUpdated', { state: locked ? t('courseFiles.locked') : t('courseFiles.unlocked'), count: editableIds.length }));
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
-    } catch {
-      toast.error(t('courseFiles.updateFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('courseFiles.updateFailed')));
     } finally {
       setIsBulkOperating(false);
     }
@@ -327,8 +328,8 @@ export function CourseFilesModal({ courseId, isOpen, onClose }: CourseFilesModal
       await updateCourseAssetReference(courseId, selectedIds, isReference);
       toast.success(t('courseFiles.bulkReferenceUpdated', { state: isReference ? t('courseFiles.shown') : t('courseFiles.hidden'), count: selectedIds.length }));
       queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
-    } catch {
-      toast.error(t('courseFiles.updateFailed'));
+    } catch (err: unknown) {
+      toast.error(getLocalizedApiError(err, t('courseFiles.updateFailed')));
     } finally {
       setIsBulkOperating(false);
     }

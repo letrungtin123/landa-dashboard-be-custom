@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from "@/components/ui/button";
 
 import { useTenantStore } from "@/utils/tenant-store";
+import { getLocalizedApiError } from "@/utils/localized-error";
 import { badgesApi, type BadgeSetting } from "@/api/custom-badges";
 import { BadgeAdminCard } from "@/components/badges/BadgeAdminCard";
 
@@ -97,9 +98,9 @@ export default function BadgesPage() {
       setBadges(result.data);
       setLoadedTenantId(tenantId);
       toast.success(t('badges.saved'));
-    } catch {
+    } catch (err: unknown) {
       if (activeTenantIdRef.current === tenantId && saveSequence === saveSequenceRef.current) {
-        toast.error(t('badges.saveFailed'));
+        toast.error(getLocalizedApiError(err, t('badges.saveFailed')));
       }
     } finally {
       if (saveSequence === saveSequenceRef.current) setSaving(false);

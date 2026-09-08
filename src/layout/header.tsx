@@ -5,7 +5,7 @@ import { useAuthStore } from '@/utils/store';
 import { useHeaderStore } from '@/utils/header-store';
 import { useTenantStore } from '@/utils/tenant-store';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
@@ -17,12 +17,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw, GraduationCap } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, Building2, Check, RefreshCw, GraduationCap, HardDrive } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { useBranding } from '@/hooks/useBranding';
 import { customGenerateOttApi } from '@/api/custom-auth';
+import { fetchCurrentTenantDataQuota } from '@/api/custom-tenants';
+import { formatQuotaGigabytes } from '@/utils/locale-format';
+import { useLocaleStore } from '@/utils/locale-store';
 import { storageUrl } from '@/utils/storage-url';
 import { useTranslation } from 'react-i18next';
 
@@ -35,15 +38,50 @@ export function Header() {
   const refreshGroupLabels = useAuthStore((state) => state.refreshGroupLabels);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const locale = useLocaleStore((state) => state.locale);
   const { theme, setTheme } = useTheme();
   const { title, description } = useHeaderStore();
 
   const isSuperadmin = user?.role === 'superadmin';
   const { activeTenantId, activeTenantName, tenants, isLoading, fetchTenants, setActiveTenant } = useTenantStore();
+  const quotaTenantId = isSuperadmin ? activeTenantId : user?.tenant_id;
+  const dataQuotaQuery = useQuery({
+    queryKey: ['tenant-data-quota-header', quotaTenantId],
+    queryFn: fetchCurrentTenantDataQuota,
+    enabled: Boolean(quotaTenantId),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
   const { branding } = useBranding();
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const userAvatar = user?.avatar_url || user?.avatar;
   const showUserAvatar = Boolean(userAvatar) && !avatarLoadFailed;
+  const dataQuota = dataQuotaQuery.data;
+  const hasVerifiedStorageUsage = dataQuota?.state === 'enforced';
+  const storageUsage = hasVerifiedStorageUsage
+    ? formatQuotaGigabytes(dataQuota.totalUsedBytes, locale)
+    : '—';
+  const storageLimit = dataQuota?.limitBytes === null
+    ? t('header.storageUnlimited')
+    : formatQuotaGigabytes(dataQuota?.limitBytes, locale);
+  const compactStorageLimit = dataQuota?.limitBytes === null ? '∞' : storageLimit;
+  const storagePercent = (() => {
+    if (!hasVerifiedStorageUsage || !dataQuota?.limitBytes) return null;
+    try {
+      const limit = BigInt(dataQuota.limitBytes);
+      const used = BigInt(dataQuota.totalUsedBytes);
+      if (limit <= 0n) return 100;
+      return Math.min(100, Number((used * 100n) / limit));
+    } catch {
+      return null;
+    }
+  })();
+  const storageBarClass = storagePercent !== null && storagePercent >= 100
+    ? 'bg-rose-500 dark:bg-rose-400'
+    : storagePercent !== null && storagePercent >= 90
+      ? 'bg-amber-500 dark:bg-amber-400'
+      : 'bg-primary';
 
   useEffect(() => {
     setAvatarLoadFailed(false);
@@ -81,7 +119,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/70 bg-white px-6 dark:border-white/[0.06] dark:bg-[#080b16]">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/70 bg-white px-3 sm:px-6 dark:border-white/[0.06] dark:bg-[#080b16]">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="-ml-1 h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-lg" />
         {title && (
@@ -96,7 +134,7 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-0 sm:gap-1">
         {/* ── Tenant Switcher (superadmin only) ── */}
         {isSuperadmin && tenants.length > 0 && (
           <DropdownMenu>
@@ -144,6 +182,62 @@ export function Header() {
             <span className="text-xs font-medium hidden sm:inline-block max-w-[140px] truncate">
               {user.tenant_name || t('header.noTenant')}
             </span>
+          </div>
+        )}
+
+        {quotaTenantId && (
+          <div
+            className="flex h-8 w-[126px] shrink-0 items-center rounded-lg border border-slate-200/80 bg-slate-50/75 px-2 sm:h-10 sm:w-[250px] sm:rounded-xl sm:px-3 dark:border-white/[0.08] dark:bg-white/[0.035]"
+            aria-live="polite"
+            aria-label={t('header.storageUsage')}
+          >
+            {dataQuotaQuery.isLoading ? (
+              <div className="flex w-full items-center gap-2 animate-pulse">
+                <div className="h-3.5 w-3.5 shrink-0 rounded bg-slate-200 dark:bg-white/10" />
+                <div className="h-2.5 flex-1 rounded-full bg-slate-200 dark:bg-white/10" />
+                <div className="hidden h-2.5 w-16 rounded-full bg-slate-200 dark:bg-white/10 sm:block" />
+              </div>
+            ) : dataQuotaQuery.isError || !dataQuota ? (
+              <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+                <HardDrive className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden truncate sm:inline">{t('header.storageUsageUnavailable')}</span>
+                <span className="sr-only">{t('header.storageUsageUnavailable')}</span>
+              </div>
+            ) : (
+              <div className="flex min-w-0 w-full items-center gap-1.5 sm:gap-2">
+                <HardDrive className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center justify-between gap-1 sm:gap-2 leading-none">
+                    <span className="hidden min-w-0 items-center gap-1.5 text-[10px] font-semibold text-muted-foreground sm:flex">
+                      <span className="truncate">{t('header.storage')}</span>
+                      {!hasVerifiedStorageUsage && (
+                        <span
+                          className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
+                          role="status"
+                        >
+                          <RefreshCw className="h-2.5 w-2.5 animate-spin text-amber-600 dark:text-amber-300" aria-hidden="true" />
+                          <span className="sr-only">{t('header.storageUsagePreparing')}</span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[10px] font-semibold tabular-nums text-foreground sm:text-[11px]">
+                      {storageUsage}{' '}
+                      <span className="font-normal text-muted-foreground">
+                        / <span className="sm:hidden">{compactStorageLimit}</span><span className="hidden sm:inline">{storageLimit}</span>
+                      </span>
+                    </span>
+                  </div>
+                  {hasVerifiedStorageUsage && (
+                    <div className="mt-1 hidden h-1 overflow-hidden rounded-full bg-slate-200/90 sm:block dark:bg-white/[0.10]">
+                      <div
+                        className={`h-full rounded-full transition-[width,background-color] duration-300 ${storageBarClass}`}
+                        style={{ width: `${storagePercent ?? 0}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

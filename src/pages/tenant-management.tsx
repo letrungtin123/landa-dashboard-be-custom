@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail, Network } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail, Network, HardDrive } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
 import { getIconComponent } from "@/utils/icon-map";
@@ -11,7 +12,7 @@ import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 import { useHeaderInfo } from "@/utils/header-store";
 import { useLocaleStore } from "@/utils/locale-store";
-import { formatLocaleDate } from "@/utils/locale-format";
+import { formatLocaleDate, formatQuotaGigabytes } from "@/utils/locale-format";
 import { getLocalizedApiError } from "@/utils/localized-error";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 import {
   fetchTenants, createTenant, updateTenant, deleteTenant,
@@ -78,6 +82,72 @@ function hasAnyGroupLabel(labels: GroupLabelMap): boolean {
   return SYSTEM_GROUP_LABEL_KEYS.some(key => !!labels[key]?.trim());
 }
 
+function haveRoleLabelsChanged(current: RoleLabelMap, original: RoleLabelMap): boolean {
+  return SYSTEM_ROLE_KEYS.some(role => (current[role]?.trim() || "") !== (original[role]?.trim() || ""));
+}
+
+function haveGroupLabelsChanged(current: GroupLabelMap, original: GroupLabelMap): boolean {
+  return SYSTEM_GROUP_LABEL_KEYS.some(key => (current[key]?.trim() || "") !== (original[key]?.trim() || ""));
+}
+
+// The product unit is decimal GB: 1 GB = 1,000,000,000 bytes.
+// Quota arithmetic remains byte-exact and never passes through Number.
+const GIGABYTE_BYTES = 1_000_000_000n;
+const MAX_POSTGRES_BIGINT = 9223372036854775807n;
+const MAX_GIGABYTE_DECIMAL_DIGITS = 12;
+
+function getTenantDataUsedBytes(tenant: Tenant): string {
+  try {
+    return (
+      BigInt(tenant.database_used_bytes || "0")
+      + BigInt(tenant.storage_used_bytes || "0")
+      + BigInt(tenant.storage_reserved_bytes || "0")
+    ).toString();
+  } catch {
+    return "0";
+  }
+}
+
+function getDataLimitFormValue(value: string | null): string {
+  if (!value) return "";
+  try {
+    const bytes = BigInt(value);
+    if (bytes < 0n) return "";
+
+    const whole = bytes / GIGABYTE_BYTES;
+    const remainder = bytes % GIGABYTE_BYTES;
+    if (remainder === 0n) return whole.toString();
+
+    const scale = 10n ** BigInt(MAX_GIGABYTE_DECIMAL_DIGITS);
+    const fraction = (remainder * scale + GIGABYTE_BYTES / 2n) / GIGABYTE_BYTES;
+    const normalizedWhole = whole + fraction / scale;
+    const normalizedFraction = (fraction % scale).toString()
+      .padStart(MAX_GIGABYTE_DECIMAL_DIGITS, "0")
+      .replace(/0+$/, "");
+    return normalizedFraction ? `${normalizedWhole}.${normalizedFraction}` : normalizedWhole.toString();
+  } catch {
+    // A malformed API value must never be submitted back as a different limit.
+  }
+  return "";
+}
+
+function parseGigabytesToBytes(value: string): string | undefined {
+  const normalized = value.trim().replace(",", ".");
+  const match = /^(\d+)(?:\.(\d{1,12}))?$/.exec(normalized);
+  if (!match) return undefined;
+
+  try {
+    const whole = BigInt(match[1]);
+    const fraction = match[2] || "";
+    const scale = 10n ** BigInt(fraction.length);
+    const scaledGigabytes = whole * scale + BigInt(fraction || "0");
+    const bytes = (scaledGigabytes * GIGABYTE_BYTES + scale / 2n) / scale;
+    return bytes <= MAX_POSTGRES_BIGINT ? bytes.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function TenantManagementPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -122,14 +192,18 @@ export default function TenantManagementPage() {
   const [formDomainAdmin, setFormDomainAdmin] = useState("");
   const [formMaxUsers, setFormMaxUsers] = useState<string>("");
   const [formMaxCourses, setFormMaxCourses] = useState<string>("");
+  const [formDataLimit, setFormDataLimit] = useState<string>("");
+  const [formDataLimitOriginalBytes, setFormDataLimitOriginalBytes] = useState<string | null>(null);
+  const [formDataLimitDirty, setFormDataLimitDirty] = useState(false);
   const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
   const [formRoleLabels, setFormRoleLabels] = useState<RoleLabelMap>({});
-  const [formRoleLabelsHadSaved, setFormRoleLabelsHadSaved] = useState(false);
+  const [originalRoleLabels, setOriginalRoleLabels] = useState<RoleLabelMap>({});
   const [formGroupLabels, setFormGroupLabels] = useState<GroupLabelMap>({});
-  const [formGroupLabelsHadSaved, setFormGroupLabelsHadSaved] = useState(false);
+  const [originalGroupLabels, setOriginalGroupLabels] = useState<GroupLabelMap>({});
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const queryClient = useQueryClient();
   const refreshRoleLabels = useAuthStore((s) => s.refreshRoleLabels);
   const refreshGroupLabels = useAuthStore((s) => s.refreshGroupLabels);
 
@@ -162,8 +236,21 @@ export default function TenantManagementPage() {
     return true;
   }
 
+  /** Returns undefined only for an invalid user entry; null means unlimited. */
+  function getDataLimitBytes(): string | null | undefined {
+    if (!formDataLimitDirty) return formDataLimitOriginalBytes;
+    const amount = formDataLimit.trim();
+    if (!amount) return null;
+    return parseGigabytesToBytes(amount);
+  }
+
   function validateForm(): boolean {
     if (!formName.trim() || !formSlug.trim()) { toast.error(t("tenantManagement.requiredFields")); return false; }
+
+    if (getDataLimitBytes() === undefined) {
+      toast.error(t("tenantManagement.invalidStorageLimit"));
+      return false;
+    }
 
     const dl = formDomainLearner.trim();
     if (dl && !validateDomain(dl, t("tenantManagement.learnerDomain"))) return false;
@@ -181,11 +268,14 @@ export default function TenantManagementPage() {
     setFormDomainAdmin("");
     setFormMaxUsers("");
     setFormMaxCourses("");
+    setFormDataLimit("");
+    setFormDataLimitOriginalBytes(null);
+    setFormDataLimitDirty(false);
     setFormGeminiApiKey("");
     setFormRoleLabels({});
-    setFormRoleLabelsHadSaved(false);
+    setOriginalRoleLabels({});
     setFormGroupLabels({});
-    setFormGroupLabelsHadSaved(false);
+    setOriginalGroupLabels({});
     setShowApiKey(false);
   }
 
@@ -204,13 +294,16 @@ export default function TenantManagementPage() {
     setFormDomainAdmin(tenant.domain_admin || "");
     setFormMaxUsers(tenant.max_users !== null ? String(tenant.max_users) : "");
     setFormMaxCourses(tenant.max_courses !== null ? String(tenant.max_courses) : "");
+    setFormDataLimit(getDataLimitFormValue(tenant.data_limit_bytes));
+    setFormDataLimitOriginalBytes(tenant.data_limit_bytes);
+    setFormDataLimitDirty(false);
     const existingKey = (tenant.settings?.gemini_api_key as string) || "";
     setFormGeminiApiKey(existingKey);
     setShowApiKey(false);
     setFormRoleLabels({});
-    setFormRoleLabelsHadSaved(false);
+    setOriginalRoleLabels({});
     setFormGroupLabels({});
-    setFormGroupLabelsHadSaved(false);
+    setOriginalGroupLabels({});
     setEditTenant(tenant);
 
     try {
@@ -221,9 +314,9 @@ export default function TenantManagementPage() {
       const roleLabels = normalizeRoleLabels(roleLabelsResult);
       const groupLabels = normalizeGroupLabels(groupLabelsResult);
       setFormRoleLabels(roleLabels);
-      setFormRoleLabelsHadSaved(hasAnyRoleLabel(roleLabels));
+      setOriginalRoleLabels(roleLabels);
       setFormGroupLabels(groupLabels);
-      setFormGroupLabelsHadSaved(hasAnyGroupLabel(groupLabels));
+      setOriginalGroupLabels(groupLabels);
     } catch {
       toast.error(t("tenantManagement.labelsLoadFailed"));
     }
@@ -243,6 +336,7 @@ export default function TenantManagementPage() {
         domain_admin: formDomainAdmin.trim().replace(/\/+$/, '') || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
+        data_limit_bytes: getDataLimitBytes(),
         settings: Object.keys(settings).length > 0 ? settings : undefined,
       });
       const labels = normalizeRoleLabels(formRoleLabels);
@@ -267,6 +361,7 @@ export default function TenantManagementPage() {
     if (!editTenant) return;
     if (!validateForm()) return;
     setSaving(true);
+    let coreTenantUpdated = false;
     try {
       const updSettings: Record<string, unknown> = { ...(editTenant.settings || {}) };
       const nextGeminiApiKey = formGeminiApiKey.trim();
@@ -279,15 +374,26 @@ export default function TenantManagementPage() {
         domain_admin: formDomainAdmin.trim().replace(/\/+$/, '') || null,
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
+        data_limit_bytes: getDataLimitBytes(),
         settings: updSettings,
       });
+      coreTenantUpdated = true;
+
+      // The header owns a separate React Query cache. Refresh it immediately
+      // when the superadmin has changed the quota of the selected tenant.
+      if (editTenant.id === activeTenantId) {
+        void queryClient.invalidateQueries({ queryKey: ["tenant-data-quota-header", editTenant.id] });
+      }
+
       const labels = normalizeRoleLabels(formRoleLabels);
-      if (hasAnyRoleLabel(labels) || formRoleLabelsHadSaved) {
+      if (haveRoleLabelsChanged(labels, originalRoleLabels)) {
         await updateTenantRoleLabels(editTenant.id, labels);
+        setOriginalRoleLabels(labels);
       }
       const groupLabels = normalizeGroupLabels(formGroupLabels);
-      if (hasAnyGroupLabel(groupLabels) || formGroupLabelsHadSaved) {
+      if (haveGroupLabelsChanged(groupLabels, originalGroupLabels)) {
         await updateTenantGroupLabels(editTenant.id, groupLabels);
+        setOriginalGroupLabels(groupLabels);
       }
       if (editTenant.id === activeTenantId) {
         await Promise.all([refreshRoleLabels(), refreshGroupLabels()]);
@@ -296,7 +402,18 @@ export default function TenantManagementPage() {
       setEditTenant(null);
       loadTenants();
     } catch (err: unknown) {
-      toast.error(getLocalizedApiError(err, t("tenantManagement.updateFailed")));
+      if (coreTenantUpdated) {
+        // A quota rejection can only be legitimate here when the administrator
+        // actually changed quota-managed labels after the tenant details were
+        // already saved. Keep the dialog open so that only the remaining
+        // label edit can be retried.
+        toast.error(t("tenantManagement.coreUpdateSavedLabelsFailed", {
+          message: getLocalizedApiError(err, t("tenantManagement.updateFailed")),
+        }));
+        loadTenants();
+      } else {
+        toast.error(getLocalizedApiError(err, t("tenantManagement.updateFailed")));
+      }
     } finally { setSaving(false); }
   }
 
@@ -460,34 +577,36 @@ export default function TenantManagementPage() {
       {/* Table */}
       <TooltipProvider delayDuration={300}>
       <div className="app-data-table-shell rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
+        <Table className="min-w-[1390px]">
+          <TableHeader className="bg-muted/10">
             <TableRow>
-              <TableHead>{t("tenantManagement.name")}</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>{t("tenantManagement.learnerDomain")}</TableHead>
-              <TableHead>{t("tenantManagement.adminDomain")}</TableHead>
-              <TableHead className="text-center">{t("tenantManagement.userLimit")}</TableHead>
-              <TableHead className="text-center">{t("tenantManagement.courseLimit")}</TableHead>
-              <TableHead className="text-center">{t("tenantManagement.status")}</TableHead>
-              <TableHead>{t("tenantManagement.createdAt")}</TableHead>
-              <TableHead className="text-right">{t("tenantManagement.actions")}</TableHead>
+              <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.name")}</TableHead>
+              <TableHead className="w-[96px] whitespace-nowrap">Slug</TableHead>
+              <TableHead className="w-[270px] whitespace-nowrap">{t("tenantManagement.learnerDomain")}</TableHead>
+              <TableHead className="w-[270px] whitespace-nowrap">{t("tenantManagement.adminDomain")}</TableHead>
+              <TableHead className="w-[126px] whitespace-nowrap text-center">{t("tenantManagement.userLimit")}</TableHead>
+              <TableHead className="w-[126px] whitespace-nowrap text-center">{t("tenantManagement.courseLimit")}</TableHead>
+              <TableHead className="w-[172px] whitespace-nowrap text-center">{t("tenantManagement.storageUsed")}</TableHead>
+              <TableHead className="w-[144px] whitespace-nowrap text-center">{t("tenantManagement.storageLimit")}</TableHead>
+              <TableHead className="w-[118px] whitespace-nowrap text-center">{t("tenantManagement.status")}</TableHead>
+              <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.createdAt")}</TableHead>
+              <TableHead className="w-[158px] whitespace-nowrap text-right">{t("tenantManagement.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
             ) : tenants.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-12 text-muted-foreground">{t("tenantManagement.empty")}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="text-center py-12 text-muted-foreground">{t("tenantManagement.empty")}</TableCell></TableRow>
             ) : (
               <AnimatePresence>
                 {tenants.map(function renderRow(tenant) {
                   return (
                     <motion.tr key={tenant.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       className="border-b transition-colors hover:bg-muted/50">
-                      <TableCell className="font-medium">{tenant.name}</TableCell>
-                      <TableCell><code className="text-xs bg-muted px-2 py-1 rounded">{tenant.slug}</code></TableCell>
-                      <TableCell>
+                      <TableCell className="w-[116px] font-medium">{tenant.name}</TableCell>
+                      <TableCell className="w-[96px]"><code className="text-xs bg-muted px-2 py-1 rounded">{tenant.slug}</code></TableCell>
+                      <TableCell className="w-[270px]">
                         {tenant.domain_learner ? (
                           <code className="text-xs bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-1 rounded flex items-center gap-1 w-fit">
                             <Globe className="h-3 w-3" />
@@ -497,7 +616,7 @@ export default function TenantManagementPage() {
                           <span className="text-xs text-muted-foreground italic">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[270px]">
                         {tenant.domain_admin ? (
                           <code className="text-xs bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded flex items-center gap-1 w-fit">
                             <Globe className="h-3 w-3" />
@@ -507,7 +626,7 @@ export default function TenantManagementPage() {
                           <span className="text-xs text-muted-foreground italic">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="w-[126px] text-center">
                         <span className="text-xs font-mono">
                           {tenant.max_users !== null ? (
                             <span className="inline-flex items-center gap-1">
@@ -519,7 +638,7 @@ export default function TenantManagementPage() {
                           )}
                         </span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="w-[126px] text-center">
                         <span className="text-xs font-mono">
                           {tenant.max_courses !== null ? (
                             <span className="inline-flex items-center gap-1">
@@ -531,13 +650,47 @@ export default function TenantManagementPage() {
                           )}
                         </span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="w-[172px] text-center">
+                        {tenant.data_quota_state === "enforced" ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex cursor-help items-center gap-1.5 whitespace-nowrap text-xs font-mono">
+                                <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                {formatQuotaGigabytes(getTenantDataUsedBytes(tenant), locale)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("tenantManagement.storageUsageBreakdown", {
+                                database: formatQuotaGigabytes(tenant.database_used_bytes, locale),
+                                storage: formatQuotaGigabytes(tenant.storage_used_bytes, locale),
+                                reserved: formatQuotaGigabytes(tenant.storage_reserved_bytes, locale),
+                              })}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-mono text-muted-foreground">
+                              <HardDrive className="h-3 w-3" />
+                              —
+                            </span>
+                            <div className="mt-1 text-[10px] text-muted-foreground">{t("tenantManagement.storageUsageNotVerified")}</div>
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell className="w-[144px] text-center">
+                        <span className="text-xs font-mono whitespace-nowrap">
+                          {tenant.data_limit_bytes === null
+                            ? <span className="text-muted-foreground">∞</span>
+                            : formatQuotaGigabytes(tenant.data_limit_bytes, locale)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="w-[118px] text-center">
                         <Badge variant={tenant.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={function click() { handleToggleActive(tenant); }}>
                           {tenant.is_active ? t("tenantManagement.active") : t("tenantManagement.inactive")}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatLocaleDate(tenant.created_at, locale)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="w-[116px] whitespace-nowrap text-sm text-muted-foreground">{formatLocaleDate(tenant.created_at, locale)}</TableCell>
+                      <TableCell className="w-[158px] text-right">
                         <div className="flex gap-1 justify-end">
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -646,6 +799,28 @@ export default function TenantManagementPage() {
                 />
                 <p className="text-xs text-muted-foreground">{t("tenantManagement.unlimitedHint")}</p>
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                {t("tenantManagement.storageLimit")}
+              </label>
+              <div className="relative">
+                <Input
+                  inputMode="decimal"
+                  value={formDataLimit}
+                  onChange={function onChange(e) {
+                    setFormDataLimit(e.target.value);
+                    setFormDataLimitDirty(true);
+                  }}
+                  placeholder={t("tenantManagement.storageLimitPlaceholder")}
+                  className="pr-12 font-mono"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center font-mono text-xs font-semibold text-muted-foreground">
+                  GB
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("tenantManagement.storageLimitHint")}</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-1.5">

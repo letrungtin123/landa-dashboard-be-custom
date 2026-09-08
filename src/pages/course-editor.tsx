@@ -15,6 +15,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 type FocusCourseBlockEventDetail = {
   courseId?: string;
@@ -75,7 +76,7 @@ function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, 
       setIsRenaming(false);
       onStructureChange();
     },
-    onError: () => toast.error(t('courseEditor.renameFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('courseEditor.renameFailed'))),
   });
 
   return (

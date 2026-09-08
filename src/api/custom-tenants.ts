@@ -22,6 +22,13 @@ export interface Tenant {
   domain_admin: string | null;
   max_users: number | null;
   max_courses: number | null;
+  /** Bigint values are transported as decimal strings to avoid JS precision loss. */
+  data_limit_bytes: string | null;
+  database_used_bytes: string;
+  storage_used_bytes: string;
+  storage_reserved_bytes: string;
+  data_quota_state: "initializing" | "observing" | "enforced" | "reconciling" | "drifted";
+  data_quota_last_verified_at: string | null;
   is_active: boolean;
   settings: Record<string, unknown>;
   created_at: string;
@@ -33,6 +40,18 @@ export interface TenantQuotaUsage {
   max_courses: number | null;
   current_users: number;
   current_courses: number;
+  data_quota: TenantDataQuota | null;
+}
+
+export interface TenantDataQuota {
+  limitBytes: string | null;
+  databaseUsedBytes: string;
+  storageUsedBytes: string;
+  storageReservedBytes: string;
+  totalUsedBytes: string;
+  availableBytes: string | null;
+  state: "initializing" | "observing" | "enforced" | "reconciling" | "drifted";
+  lastVerifiedAt: string | null;
 }
 
 export interface TenantModule {
@@ -85,13 +104,13 @@ export async function fetchTenantById(id: string) {
 }
 
 /** Tạo tenant */
-export async function createTenant(input: { name: string; slug: string; domain_learner?: string | null; domain_admin?: string | null; max_users?: number | null; max_courses?: number | null; settings?: Record<string, unknown> }) {
+export async function createTenant(input: { name: string; slug: string; domain_learner?: string | null; domain_admin?: string | null; max_users?: number | null; max_courses?: number | null; data_limit_bytes?: string | null; settings?: Record<string, unknown> }) {
   const { data } = await customApiClient.post<ApiResponse<Tenant>>("/api/tenants", input);
   return data.data;
 }
 
 /** Cập nhật tenant */
-export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain_learner: string | null; domain_admin: string | null; max_users: number | null; max_courses: number | null; is_active: boolean; settings: Record<string, unknown> }>) {
+export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain_learner: string | null; domain_admin: string | null; max_users: number | null; max_courses: number | null; data_limit_bytes: string | null; is_active: boolean; settings: Record<string, unknown> }>) {
   const { data } = await customApiClient.put<ApiResponse<Tenant>>(`/api/tenants/${id}`, input);
   return data.data;
 }
@@ -145,6 +164,12 @@ export async function setUserTenants(userId: string, tenantIds: string[]): Promi
 /** Lấy quota usage hiện tại của tenant */
 export async function fetchTenantQuota(tenantId: string): Promise<TenantQuotaUsage> {
   const { data } = await customApiClient.get<ApiResponse<TenantQuotaUsage>>(`/api/tenants/${tenantId}/quota`);
+  return data.data;
+}
+
+/** Quota của tenant được xác định ở backend từ phiên hiện tại. */
+export async function fetchCurrentTenantDataQuota(): Promise<TenantDataQuota> {
+  const { data } = await customApiClient.get<ApiResponse<TenantDataQuota>>('/api/tenants/current/data-quota');
   return data.data;
 }
 

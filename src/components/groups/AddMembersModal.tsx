@@ -31,6 +31,7 @@ import { addTeamMembers, getGroupNotificationSmtpStatus } from '@/api/custom-gro
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
 import { cn } from '@/utils/utils';
+import { getLocalizedApiError } from '@/utils/localized-error';
 
 interface Props {
   open: boolean;
@@ -149,7 +150,7 @@ export function AddMembersModal({ open, teamId, onOpenChange, onSuccess }: Props
       onOpenChange(false);
       onSuccess();
     },
-    onError: () => toast.error(t('groups.addMembersFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('groups.addMembersFailed'))),
   });
 
   const users: CustomUser[] = data?.data ?? [];

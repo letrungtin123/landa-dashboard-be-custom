@@ -29,6 +29,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { getLocalizedApiError } from '@/utils/localized-error';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -106,9 +107,9 @@ export default function HelpDocsTree({
         toast.success(t('helpDocs.folderOrderSaved'));
         invalidate();
       },
-      onError: () => {
+      onError: (err: unknown) => {
         setLocalFolders(previousFolders);
-        toast.error(t('helpDocs.folderOrderSaveFailed'));
+        toast.error(getLocalizedApiError(err, t('helpDocs.folderOrderSaveFailed')));
         invalidate();
       },
     });
@@ -130,9 +131,9 @@ export default function HelpDocsTree({
         toast.success(t('helpDocs.pageOrderSaved'));
         invalidate();
       },
-      onError: () => {
+      onError: (err: unknown) => {
         setLocalPages(previousPages);
-        toast.error(t('helpDocs.pageOrderSaveFailed'));
+        toast.error(getLocalizedApiError(err, t('helpDocs.pageOrderSaveFailed')));
         invalidate();
       },
     });
@@ -219,13 +220,13 @@ function FolderNode({ folder, pages, selectedPageId, onSelectPage, onStructureCh
   const renameMut = useMutation({
     mutationFn: () => updateHelpFolder(folder.id, { title: renameValue }),
     onSuccess: () => { toast.success(t('helpDocs.folderRenamed')); setIsRenaming(false); onStructureChange(); },
-    onError: () => toast.error(t('helpDocs.folderRenameFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.folderRenameFailed'))),
   });
 
   const deleteMut = useMutation({
     mutationFn: () => deleteHelpFolder(folder.id),
     onSuccess: () => { toast.success(t('helpDocs.folderDeleted')); onStructureChange(); },
-    onError: () => toast.error(t('helpDocs.deleteFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.deleteFailed'))),
   });
 
   return (
@@ -441,7 +442,7 @@ function PageNode({ page, isSelected, onSelect, onStructureChange, canReorder, c
   const deleteMut = useMutation({
     mutationFn: () => deleteHelpPage(page.id),
     onSuccess: () => { toast.success(t('helpDocs.pageDeleted')); onStructureChange(); },
-    onError: () => toast.error(t('helpDocs.deleteFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.deleteFailed'))),
   });
 
   return (
@@ -527,7 +528,7 @@ function AddFolderButton({ onStructureChange }: { onStructureChange: () => void 
       setName('');
       onStructureChange();
     },
-    onError: () => toast.error(t('helpDocs.folderCreateFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.folderCreateFailed'))),
   });
 
   if (isAdding) {
@@ -585,7 +586,7 @@ function AddPageButton({ folderId, onStructureChange }: {
       setName('');
       onStructureChange();
     },
-    onError: () => toast.error(t('helpDocs.pageCreateFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, t('helpDocs.pageCreateFailed'))),
   });
 
   if (isAdding) {
