@@ -8,6 +8,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
@@ -21,15 +23,18 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { storageUrl } from '@/utils/storage-url';
 import { useAuthStore } from '@/utils/store';
+import { useTenantStore } from '@/utils/tenant-store';
 import {
   fetchActiveBot, fetchConversations, createConversation,
   deleteConversation, fetchMessages, sendMessageStream,
-  fetchLessonAuthorSettings, applyLessonAuthorJob,
+  fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
+  fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
+  type BotPersona,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
   type OutlineMention, type LessonAuthorSourceDocument,
+  type RagMessageSource,
 } from '@/api/custom-chat';
-import { fetchBotPersonas, fetchDocuments, type BotPersona } from '@/api/custom-ai-chatbot';
 import {
   getCourseOutlineIndex,
   type CourseIndexResponse,
@@ -44,6 +49,7 @@ import { getLocalizedApiError } from '@/utils/localized-error';
 // ── Types ──
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
 type ChatSurface = 'admin' | 'lesson_author';
+type ChatRuntimeAvailability = 'loading' | 'available' | 'unavailable';
 type OutlineMentionOption = OutlineMention & { label: string; depth: number };
 type OutlineAncestor = { id: string; block_type: string };
 type VoiceCaptureState = 'idle' | 'requesting' | 'listening';
@@ -113,6 +119,45 @@ function formatCallDuration(totalSeconds: number): string {
   const minutes = Math.floor(safeSeconds / 60);
   const seconds = safeSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeBotMarkdownText(content: string): string {
+  return content
+    .replace(/\\\*\\\*/g, '**')
+    .replace(/\\_/g, '_')
+    .trim();
+}
+
+function BotMarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="my-0 leading-relaxed">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+        ul: ({ children }) => <ul className="my-1.5 list-disc space-y-1 pl-4">{children}</ul>,
+        ol: ({ children }) => <ol className="my-1.5 list-decimal space-y-1 pl-4">{children}</ol>,
+        li: ({ children }) => <li className="pl-0.5 leading-relaxed">{children}</li>,
+        a: ({ href, children }) => (
+          <a className="font-medium text-primary underline underline-offset-2" href={href} target="_blank" rel="noreferrer">
+            {children}
+          </a>
+        ),
+        code: ({ children }) => <code className="rounded bg-background/80 px-1 py-0.5 text-[0.92em]">{children}</code>,
+        pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg bg-background/80 p-2 text-xs leading-5">{children}</pre>,
+        blockquote: ({ children }) => <blockquote className="my-2 border-l-2 border-primary/40 pl-3 text-muted-foreground">{children}</blockquote>,
+        table: ({ children }) => (
+          <div className="my-2 max-w-full overflow-x-auto rounded-lg border bg-background/50">
+            <table className="min-w-full border-collapse text-xs">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => <th className="border-b px-2 py-1.5 text-left font-semibold">{children}</th>,
+        td: ({ children }) => <td className="border-b px-2 py-1.5 align-top">{children}</td>,
+      }}
+    >
+      {normalizeBotMarkdownText(content)}
+    </ReactMarkdown>
+  );
 }
 
 
@@ -212,6 +257,48 @@ function getMessageSourceDocuments(metadata: unknown): LessonAuthorSourceDocumen
     .filter(item => item.document_id);
 }
 
+function getMessageRagSources(metadata: unknown): RagMessageSource[] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
+  const sources = (metadata as { rag_sources?: unknown }).rag_sources;
+  if (!Array.isArray(sources)) return [];
+
+  const seen = new Set<string>();
+  return sources
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .map((item): RagMessageSource => ({
+      document_id: typeof item.document_id === 'string' ? item.document_id : undefined,
+      document_name: typeof item.document_name === 'string' && item.document_name.trim()
+        ? item.document_name
+        : 'Knowledge Base',
+      source_page: typeof item.source_page === 'number' ? item.source_page : null,
+      source_section: typeof item.source_section === 'string' ? item.source_section : null,
+      score: typeof item.score === 'number' ? item.score : null,
+      vector_score: typeof item.vector_score === 'number' ? item.vector_score : null,
+      keyword_score: typeof item.keyword_score === 'number' ? item.keyword_score : null,
+      method: typeof item.method === 'string' ? item.method : null,
+      methods: Array.isArray(item.methods) ? item.methods.filter((method): method is string => typeof method === 'string') : [],
+    }))
+    .filter((item) => {
+      const key = [item.document_id, item.document_name, item.source_page ?? '', item.source_section ?? ''].join(':');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function formatRagSourceLocation(source: RagMessageSource): string | null {
+  if (source.source_section) return source.source_section;
+  if (typeof source.source_page === 'number' && source.source_page > 0) return i18n.t('chatWidget.ragSourcePage', { page: source.source_page });
+  return null;
+}
+
+function formatRagSourceScore(source: RagMessageSource): string | null {
+  if (typeof source.score !== 'number' || !Number.isFinite(source.score)) return null;
+  const percent = Math.max(0, Math.min(100, Math.round(source.score * 100)));
+  return i18n.t('chatWidget.ragSourceScore', { score: percent });
+}
+
 function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorProposalEvent | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const metadata = messages[index].metadata;
@@ -241,6 +328,7 @@ export default function ChatWidget() {
   const [fullscreen, setFullscreen] = useState(false);
   const [surface, setSurface] = useState<ChatSurface>('admin');
   const [state, setState] = useState<WidgetState>('loading');
+  const [runtimeAvailability, setRuntimeAvailabilityState] = useState<ChatRuntimeAvailability>('loading');
   const [activeBot, setActiveBot] = useState<ActiveBot | null>(null);
   const [lessonSettings, setLessonSettings] = useState<LessonAuthorSettings | null>(null);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -296,6 +384,8 @@ export default function ChatWidget() {
   const botAudioGainRef = useRef<GainNode | null>(null);
   const botAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const botSpeechRequestIdRef = useRef(0);
+  const runtimeAvailabilityRequestRef = useRef(0);
+  const openRef = useRef(false);
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -526,8 +616,11 @@ export default function ChatWidget() {
   const dragRef = useRef({ sx: 0, sy: 0, sl: 0, st: 0, active: false, moved: false });
 
   const user = useAuthStore(s => s.user);
-  const permissions = useAuthStore(s => s.permissions);
-  const hasPermission = user?.role === 'superadmin' || (permissions as any)?.ai_chatbot?.can_view;
+  const activeTenantId = useTenantStore(s => s.activeTenantId);
+  const hasPermission = useAuthStore(s => s.hasPermission);
+  const canManageAiChatbot = hasPermission('ai_chatbot', 'can_view');
+  const runtimeTenantId = user?.role === 'superadmin' ? activeTenantId : user?.tenant_id ?? null;
+  const canUseChatWidget = runtimeAvailability === 'available';
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -536,13 +629,72 @@ export default function ChatWidget() {
   const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
 
-  // ── Pre-load bot avatar on mount (for FAB) ──
+  const setRuntimeAvailability = useCallback((next: ChatRuntimeAvailability) => {
+    setRuntimeAvailabilityState(next);
+  }, []);
+
   useEffect(() => {
-    if (!hasPermission) return;
-    fetchActiveBot()
-      .then(bot => { if (bot) setActiveBot(bot); })
-      .catch(() => {});
-  }, [hasPermission]);
+    openRef.current = open;
+  }, [open]);
+
+  // Runtime chat is governed by a deployed bot, not by the ai_chatbot management module.
+  // On course editing pages, a lesson-author deployment is also sufficient to expose the FAB.
+  const refreshRuntimeAvailability = useCallback(async (forceBotPreview = false) => {
+    const requestId = ++runtimeAvailabilityRequestRef.current;
+    if (!runtimeTenantId) {
+      setRuntimeAvailability('unavailable');
+      setActiveBot(null);
+      return;
+    }
+
+    setRuntimeAvailability('loading');
+    try {
+      const [adminBot, lessonSettings] = await Promise.all([
+        fetchActiveBot('admin'),
+        isCourseOutline ? fetchLessonAuthorChatSettings() : Promise.resolve(null),
+      ]);
+      if (requestId !== runtimeAvailabilityRequestRef.current) return;
+
+      const lessonAuthorBot = lessonSettings?.active_bot ?? null;
+      const fallbackBot = adminBot ?? lessonAuthorBot;
+      if (forceBotPreview || !openRef.current) setActiveBot(fallbackBot);
+      setRuntimeAvailability(fallbackBot ? 'available' : 'unavailable');
+
+      if (!adminBot && lessonAuthorBot && isCourseOutline) {
+        setSurface(current => current === 'admin' ? 'lesson_author' : current);
+      }
+      if (!fallbackBot) setOpen(false);
+    } catch {
+      if (requestId !== runtimeAvailabilityRequestRef.current) return;
+      setActiveBot(null);
+      setRuntimeAvailability('unavailable');
+      setOpen(false);
+    }
+  }, [isCourseOutline, runtimeTenantId, setRuntimeAvailability]);
+
+  useEffect(() => {
+    setRuntimeAvailability('loading');
+    void refreshRuntimeAvailability();
+  }, [refreshRuntimeAvailability, setRuntimeAvailability]);
+
+  useEffect(() => {
+    const handleAssignmentChanged = (event: Event) => {
+      const tenantId = (event as CustomEvent<{ tenantId?: unknown }>).detail?.tenantId;
+      if (tenantId !== runtimeTenantId) return;
+      setOpen(false);
+      setFullscreen(false);
+      setRuntimeAvailability('loading');
+      void refreshRuntimeAvailability(true);
+    };
+    const handleWindowFocus = () => { void refreshRuntimeAvailability(); };
+
+    window.addEventListener('landa:ai-bot-assignment-changed', handleAssignmentChanged);
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('landa:ai-bot-assignment-changed', handleAssignmentChanged);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [refreshRuntimeAvailability, runtimeTenantId, setRuntimeAvailability]);
 
   // ── Load full data when widget opens ──
   const resetMindmapState = useCallback(() => {
@@ -605,7 +757,7 @@ export default function ChatWidget() {
           return;
         }
 
-        const settings = await fetchLessonAuthorSettings();
+        const settings = await fetchLessonAuthorChatSettings();
         setLessonSettings(settings);
         setActiveBot(settings.active_bot);
 
@@ -633,6 +785,12 @@ export default function ChatWidget() {
       const bot = await fetchActiveBot('admin');
       setActiveBot(bot);
       if (!bot) { setState('no-bot'); return; }
+      if (bot.ai_active_engine === 'self_built_rag' && !bot.bot_kb_id) {
+        setConversations([]);
+        setPersonas([]);
+        setState('config-warning');
+        return;
+      }
 
       setLoadingConvs(true);
       const convs = await fetchConversations({ target: 'admin' });
@@ -640,7 +798,7 @@ export default function ChatWidget() {
       setLoadingConvs(false);
 
       if (convs.length === 0) {
-        const p = await fetchBotPersonas(bot.bot_id);
+        const p = await fetchActiveBotPersonas('admin');
         setPersonas(p);
         setState('persona-picker');
       } else {
@@ -673,21 +831,11 @@ export default function ChatWidget() {
     }
     setLoadingSourceDocuments(true);
     try {
-      const result = await fetchDocuments(lessonSettings.active_kb.kb_id, {
-        page: 1,
-        page_size: 20,
-        type: 'file',
-        status: 'learned',
+      const documents = await fetchLessonAuthorSourceDocuments({
+        limit: 20,
         search: search?.trim() || undefined,
       });
-      setSourceDocumentOptions(result.data.map(doc => ({
-        document_id: doc.id,
-        kb_id: doc.kb_id,
-        name: doc.name,
-        type: doc.type,
-        status: doc.status,
-        source_info: doc.source_info,
-      })));
+      setSourceDocumentOptions(documents);
     } catch {
       setSourceDocumentOptions([]);
       toast.error(i18n.t('chatWidget.loadKnowledgeFilesFailed'));
@@ -826,7 +974,7 @@ export default function ChatWidget() {
       return;
     }
     try {
-      const p = await fetchBotPersonas(activeBot.bot_id);
+      const p = await fetchActiveBotPersonas('admin');
       setPersonas(p);
       setState('persona-picker');
     } catch {
@@ -862,7 +1010,7 @@ export default function ChatWidget() {
       return;
     }
     try {
-      const p = await fetchBotPersonas(activeBot.bot_id);
+      const p = await fetchActiveBotPersonas('admin');
       setPersonas(p);
       setState('persona-picker');
     } catch { toast.error(i18n.t('chatWidget.loadPersonasFailed')); }
@@ -958,17 +1106,15 @@ export default function ChatWidget() {
       (message) => {
         const partial = streamAccRef.current.trim();
         cancelBotSpeech();
-        if (isLessonAuthor) {
-          const assistantMsg: ChatMessage = {
-            id: 'err-' + Date.now(),
-            conversation_id: currentConv.id,
-            role: 'assistant',
-            content: partial ? `${partial}\n\n${message}` : message,
-            metadata: { kind: 'lesson_author_stream_error' },
-            created_at: new Date().toISOString(),
-          };
-          setMessages(msgs => [...msgs, assistantMsg]);
-        }
+        const assistantMsg: ChatMessage = {
+          id: 'err-' + Date.now(),
+          conversation_id: currentConv.id,
+          role: 'assistant',
+          content: partial ? `${partial}\n\n${message}` : message,
+          metadata: { kind: isLessonAuthor ? 'lesson_author_stream_error' : 'chat_stream_error' },
+          created_at: new Date().toISOString(),
+        };
+        setMessages(msgs => [...msgs, assistantMsg]);
         toast.error(message);
         setStreaming(false);
         setStreamText('');
@@ -1273,11 +1419,12 @@ export default function ChatWidget() {
   }, [courseId]);
 
   const handleSourceDocumentClick = useCallback((doc: LessonAuthorSourceDocument) => {
+    if (!canManageAiChatbot) return;
     if (!doc.kb_id) return;
     navigate(`/ai-chatbot?tab=kb&kbId=${encodeURIComponent(doc.kb_id)}`);
-  }, [navigate]);
+  }, [canManageAiChatbot, navigate]);
 
-  if (!hasPermission) return null;
+  if (!canUseChatWidget) return null;
 
   const widgetClass = fullscreen
     ? 'fixed inset-4 z-[9998] rounded-2xl'
@@ -1371,7 +1518,11 @@ export default function ChatWidget() {
               {state === 'loading' && <LoadingState />}
               {state === 'no-bot' && <NoBotState />}
               {state === 'config-warning' && (
-                <LessonAuthorWarning settings={lessonSettings} />
+                isLessonAuthor ? (
+                  <LessonAuthorWarning settings={lessonSettings} />
+                ) : (
+                  <BotKnowledgebaseWarning bot={activeBot} />
+                )
               )}
               {state === 'persona-picker' && (
                 <PersonaPicker
@@ -1428,7 +1579,7 @@ export default function ChatWidget() {
                   loadingSourceDocuments={loadingSourceDocuments}
                   onLoadSourceDocuments={loadSourceDocuments}
                   onSelectedSourceDocumentsChange={setSelectedSourceDocuments}
-                  onSourceDocumentClick={handleSourceDocumentClick}
+                  onSourceDocumentClick={canManageAiChatbot ? handleSourceDocumentClick : undefined}
                   scrollRef={scrollRef}
                   inputRef={inputRef}
                   proposalEvent={proposalEvent}
@@ -1559,6 +1710,30 @@ function LessonAuthorWarning({ settings }: { settings: LessonAuthorSettings | nu
       <p className="text-[11px] text-muted-foreground max-w-xs">
         {t('chatWidget.expertSetupHint')}
       </p>
+    </div>
+  );
+}
+
+function BotKnowledgebaseWarning({ bot }: { bot: ActiveBot | null }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center">
+        <AlertTriangle className="h-8 w-8 text-amber-600" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold">{t('aiChatbot.botKbMissing')}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {t('chatWidget.aiRagKbNotAssigned')}
+        </p>
+      </div>
+      {bot?.bot_name && (
+        <div className="app-liquid-card w-full max-w-xs rounded-lg border bg-muted/30 p-3 text-left">
+          <p className="text-[11px] font-medium text-muted-foreground mb-1">{t('chatWidget.chatWithAi')}</p>
+          <p className="text-sm font-semibold truncate">{bot.bot_name}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -2193,8 +2368,8 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
             ))}
             {streaming && streamText && (
               <div className="flex justify-start">
-                <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm whitespace-pre-wrap break-words">
-                  {streamText}
+                <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm break-words">
+                  <BotMarkdownContent content={streamText} />
                   <span className="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 animate-pulse rounded-sm" />
                   {isBotVoiceActive && <Volume2 className="ml-1 inline-block h-3.5 w-3.5 animate-pulse text-primary" />}
                 </div>
@@ -2517,6 +2692,44 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
   );
 }
 
+function RagSourceList({ sources }: { sources: RagMessageSource[] }) {
+  const { t } = useTranslation();
+  if (sources.length === 0) return null;
+
+  return (
+    <div className="mt-2.5 rounded-lg border border-border/70 bg-background/70 p-2 shadow-sm">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+        <Network className="h-3.5 w-3.5 text-primary" />
+        <span>{t('chatWidget.ragSources')}</span>
+      </div>
+      <div className="space-y-1.5">
+        {sources.map((source, index) => {
+          const location = formatRagSourceLocation(source);
+          const score = formatRagSourceScore(source);
+          return (
+            <div
+              key={`${source.document_id ?? source.document_name}-${source.source_page ?? index}-${source.source_section ?? ''}`}
+              className="flex min-w-0 items-start gap-2 rounded-md border border-border/60 bg-muted/25 px-2 py-1.5"
+            >
+              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-foreground">{source.document_name}</div>
+                {(location || score) && (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                    {location && <span>{location}</span>}
+                    {location && score && <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />}
+                    {score && <span>{score}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
@@ -2525,6 +2738,7 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
   const sourceDocuments = getMessageSourceDocuments(message.metadata);
+  const ragSources = isUser ? [] : getMessageRagSources(message.metadata);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -2532,9 +2746,9 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap break-words ${
+        className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm break-words ${
           isUser
-            ? 'bg-primary text-primary-foreground rounded-br-md'
+            ? 'bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap'
             : 'bg-muted/50 rounded-bl-md'
         }`}
       >
@@ -2558,7 +2772,8 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
             ))}
           </div>
         )}
-        {message.content && <div>{message.content}</div>}
+        {message.content && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
+        {!isUser && <RagSourceList sources={ragSources} />}
       </div>
     </motion.div>
   );

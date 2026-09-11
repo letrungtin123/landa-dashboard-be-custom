@@ -60,6 +60,23 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
     ? restoreProgress.learned_docs + restoreProgress.failed_docs + restoreProgress.skipped_docs
     : 0;
   const restoreTotal = restoreProgress?.total_docs || 0;
+  const aiTransitionState = kbState.ai_transition_state || "idle";
+  const aiTransitionActive = aiTransitionState === "queued" || aiTransitionState === "running";
+  const aiTransitionFailed = aiTransitionState === "failed";
+  const aiTransitionProgress = kbState.ai_transition_progress;
+  const aiTransitionDone = aiTransitionProgress?.processed_documents || 0;
+  const aiTransitionTotal = aiTransitionProgress?.total_documents || 0;
+  const aiTransitionToFileSearch = kbState.ai_pending_engine === "gemini_file_search";
+  const aiTransitionTitle = aiTransitionToFileSearch
+    ? t("aiChatbot.aiTransitionRunningToFileSearch")
+    : t("aiChatbot.aiTransitionRunningToRag");
+  const aiTransitionDescription = aiTransitionToFileSearch
+    ? t("aiChatbot.aiTransitionRunningToFileSearchDescription")
+    : t("aiChatbot.aiTransitionRunningDescription");
+  const writeLocked = restoreActive || aiTransitionActive;
+  const lockedMutationMessage = aiTransitionActive
+    ? (aiTransitionToFileSearch ? t("aiChatbot.aiTransitionCannotModifyToFileSearch") : t("aiChatbot.aiTransitionCannotModify"))
+    : t("aiChatbot.knowledgeBaseRestoring");
 
   useEffect(() => { setKbState(kb); }, [kb]);
 
@@ -72,10 +89,10 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
   }, [kb.id]);
 
   useEffect(() => {
-    if (!restoreActive && !restoringKb) return;
+    if (!restoreActive && !restoringKb && !aiTransitionActive) return;
     const timer = window.setInterval(refreshKbState, 3000);
     return () => window.clearInterval(timer);
-  }, [restoreActive, restoringKb, refreshKbState]);
+  }, [restoreActive, restoringKb, aiTransitionActive, refreshKbState]);
 
   // Tự động quay lại KB list khi superadmin đổi tenant
   const activeTenantId = useTenantStore(s => s.activeTenantId);
@@ -109,6 +126,28 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           <p className="text-sm text-muted-foreground">{t("aiChatbot.manageKnowledgeBaseDocuments")}</p>
         </div>
       </div>
+      {(aiTransitionActive || aiTransitionFailed) && (
+        <div className={`rounded-lg border p-4 ${aiTransitionActive ? "border-sky-300 bg-sky-50 text-sky-950" : "border-destructive/30 bg-destructive/5 text-destructive"}`}>
+          <div className="flex items-start gap-3">
+            {aiTransitionActive ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin" /> : <AlertTriangle className="mt-0.5 h-5 w-5" />}
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="text-sm font-semibold">
+                {aiTransitionActive ? aiTransitionTitle : t("aiChatbot.aiTransitionFailed")}
+              </div>
+              <p className="text-sm opacity-90">
+                {aiTransitionActive
+                  ? aiTransitionDescription
+                  : (aiTransitionProgress?.last_error || t("aiChatbot.aiTransitionFailedDescription"))}
+              </p>
+              {aiTransitionProgress && (
+                <div className="text-xs opacity-80">
+                  {t("aiChatbot.aiTransitionProgress", { done: aiTransitionDone, total: aiTransitionTotal })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {(restoreRequired || restoreActive || restoreState === "failed") && (
         <div className={`rounded-lg border p-4 ${restoreActive ? "border-amber-300 bg-amber-50 text-amber-950" : "border-destructive/30 bg-destructive/5 text-destructive"}`}>
           <div className="flex items-start gap-3">
@@ -171,9 +210,9 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
           <TabsTrigger value="faqs" className="gap-2"><FileSpreadsheet className="h-4 w-4" /> {t("aiChatbot.questions")}</TabsTrigger>
           <TabsTrigger value="articles" className="gap-2"><FileEdit className="h-4 w-4" /> {t("aiChatbot.articles")}</TabsTrigger>
         </TabsList>
-        <TabsContent value="files" className="mt-4"><FilesSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
-        <TabsContent value="faqs" className="mt-4"><FaqsSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
-        <TabsContent value="articles" className="mt-4"><ArticlesSubTab kb={kbState} restoreLocked={restoreActive} /></TabsContent>
+        <TabsContent value="files" className="mt-4"><FilesSubTab kb={kbState} restoreLocked={writeLocked} lockMessage={lockedMutationMessage} /></TabsContent>
+        <TabsContent value="faqs" className="mt-4"><FaqsSubTab kb={kbState} restoreLocked={writeLocked} lockMessage={lockedMutationMessage} /></TabsContent>
+        <TabsContent value="articles" className="mt-4"><ArticlesSubTab kb={kbState} restoreLocked={writeLocked} lockMessage={lockedMutationMessage} /></TabsContent>
       </Tabs>
     </div>
   );
@@ -182,7 +221,7 @@ export function DocumentManager({ kb, onBack }: { kb: Knowledgebase; onBack: () 
 // ───────────────────────────────────────
 // Files Sub-Tab
 // ───────────────────────────────────────
-function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; restoreLocked: boolean; lockMessage: string }) {
   const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
@@ -216,7 +255,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
   const errorSelected = docs.filter(d => selectedIds.has(d.id) && d.status === "error");
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotUpload")); return; }
+    if (restoreLocked) { toast.error(lockMessage); return; }
     const fl = e.target.files; if (!fl || fl.length === 0) return;
     const files = Array.from(fl); if (files.length > 20) { toast.error(t("aiChatbot.maxFiles")); return; }
     setUploading(true);
@@ -225,7 +264,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
   async function handleBulkDelete() {
-    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotDelete")); return; }
+    if (restoreLocked) { toast.error(lockMessage); return; }
     if (!selectedIds.size) return;
     const idsToDelete = Array.from(selectedIds);
     setConfirmBulkDelete(false);
@@ -235,8 +274,8 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
     catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.deleteFailed"))); }
     finally { loadDocs(); }
   }
-  async function handleRetry() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotRetry")); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); setSelectedIds(new Set()); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
-  async function handleRetryAll() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotRetry")); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
+  async function handleRetry() { if (restoreLocked) { toast.error(lockMessage); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); setSelectedIds(new Set()); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
+  async function handleRetryAll() { if (restoreLocked) { toast.error(lockMessage); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
 
   const hasErrors = docs.some(d => d.status === "error");
   const totalPages = Math.ceil(total / pageSize);
@@ -269,7 +308,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
 
       <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={6} rows={5} />
-        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} restoreLocked={restoreLocked} />}
+        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} restoreLocked={restoreLocked} lockMessage={lockMessage} />}
       </div>
       <PaginationBar page={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={s => { setPageSize(s); setPage(1); }} />
 
@@ -283,7 +322,7 @@ function FilesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: 
 // ───────────────────────────────────────
 // FAQs Sub-Tab
 // ───────────────────────────────────────
-function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+function FaqsSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; restoreLocked: boolean; lockMessage: string }) {
   const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
@@ -309,7 +348,7 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotUploadFaq")); return; }
+    if (restoreLocked) { toast.error(lockMessage); return; }
     const file = e.target.files?.[0]; if (!file) return;
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (ext !== '.xlsx' && ext !== '.xls') { toast.error(t("aiChatbot.excelOnly")); return; }
@@ -356,8 +395,8 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
                 <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1">
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
             ))}</AnimatePresence>}
@@ -372,7 +411,7 @@ function FaqsSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: b
 // ───────────────────────────────────────
 // Articles Sub-Tab
 // ───────────────────────────────────────
-function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocked: boolean }) {
+function ArticlesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; restoreLocked: boolean; lockMessage: string }) {
   const { t } = useTranslation();
   const [docs, setDocs] = useState<KbDocument[]>([]);
   const [total, setTotal] = useState(0);
@@ -404,16 +443,16 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
 
 
-  function openCreate() { if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotCreateArticle")); return; } setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
+  function openCreate() { if (restoreLocked) { toast.error(lockMessage); return; } setEditDocId(null); setArticleTitle(""); setArticleContent(""); setArticleUpdatedAt(null); setShowEditor(true); }
   async function openEdit(docId: string) {
-    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotEditArticle")); return; }
+    if (restoreLocked) { toast.error(lockMessage); return; }
     setLoadingArticle(true); setShowEditor(true); setEditDocId(docId); setArticleUpdatedAt(null);
     try { const doc = await getArticle(kb.id, docId); setArticleTitle(doc.name); setArticleContent(doc.content || ""); setArticleUpdatedAt(doc.updated_at || null); }
     catch { toast.error(t("aiChatbot.loadArticlesFailed")); setShowEditor(false); }
     finally { setLoadingArticle(false); }
   }
   async function handleSave() {
-    if (restoreLocked) { toast.error(t("aiChatbot.restoringCannotSaveArticle")); return; }
+    if (restoreLocked) { toast.error(lockMessage); return; }
     if (!articleTitle.trim()) { toast.error(t("aiChatbot.articleTitleRequired")); return; }
     if (!articleContent.trim()) { toast.error(t("aiChatbot.articleContentRequired")); return; }
     setSaving(true);
@@ -463,8 +502,8 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
                 <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
                 <TableCell className="text-right"><div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" disabled={isLearning || restoreLocked} onClick={() => openEdit(doc.id)}><Pencil className="h-4 w-4" /></Button>
-                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
+                  {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } try { await retryDocuments(kb.id, [doc.id]); toast.success(t("aiChatbot.retry")); loadDocs(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                  {doc.status !== "deleting" && !isLearning && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'deleting' } : d)); try { await deleteDocument(kb.id, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } loadDocs(); }}><Trash2 className="h-4 w-4" /></Button>}
                 </div></TableCell>
               </motion.tr>
               );
@@ -497,12 +536,13 @@ function ArticlesSubTab({ kb, restoreLocked }: { kb: Knowledgebase; restoreLocke
 // ───────────────────────────────────────
 // Shared Document Table (Files tab)
 // ───────────────────────────────────────
-function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onRefresh, searchActive, onSetDeleting, restoreLocked }: {
+function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onRefresh, searchActive, onSetDeleting, restoreLocked, lockMessage }: {
   docs: KbDocument[]; loading: boolean; selectedIds: Set<string>;
   onToggleAll: () => void; onToggle: (id: string) => void;
   kbId: string; onRefresh: () => void; searchActive: boolean;
   onSetDeleting?: (id: string) => void;
   restoreLocked?: boolean;
+  lockMessage: string;
 }) {
   const { t } = useTranslation();
   const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
@@ -524,8 +564,8 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
               <TableCell className="text-center"><div className="flex flex-col items-center gap-1">{statusBadge(doc.status)}{doc.error_reason && <AppTooltip content={doc.error_reason}><span className="text-xs text-destructive max-w-[150px] truncate" >{doc.error_reason}</span></AppTooltip>}</div></TableCell>
               <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-1">
-                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; try { await retryDocuments(kbId, [doc.id]); toast.success(t("aiChatbot.retry")); onRefresh(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) return; onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
+                {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } try { await retryDocuments(kbId, [doc.id]); toast.success(t("aiChatbot.retry")); onRefresh(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
+                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
               </div></TableCell>
             </motion.tr>
           );

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Building2, Plus, Pencil, Trash2, Search, Power, Loader2, Settings2, X, Check, Globe, Users, BookOpen, Key, Eye, EyeOff, Layers, Mail, Network, HardDrive } from "lucide-react";
 import { PageHeader } from '@/components/shared/page-header';
 import { cn } from "@/utils/utils";
@@ -36,7 +37,8 @@ import {
   fetchTenantRoleLabels, updateTenantRoleLabels,
   fetchTenantGroupLabels, updateTenantGroupLabels,
   fetchTenantSmtpConfig, updateTenantSmtpConfig,
-  type Tenant, type TenantModule,
+  fetchTenantAiSettings, updateTenantAiSettings,
+  type Tenant, type TenantModule, type TenantAiEngine,
 } from "@/api/custom-tenants";
 import {
   getLocalizedDefaultGroupLabel,
@@ -147,6 +149,21 @@ function parseGigabytesToBytes(value: string): string | undefined {
   }
 }
 
+function formatTokenCount(value: string | null | undefined, locale: string): string {
+  if (!value) return "0";
+  try {
+    return BigInt(value).toLocaleString(locale === "vi" ? "vi-VN" : "en-US");
+  } catch {
+    return value;
+  }
+}
+
+function getAiEngineLabel(t: TFunction, engine: TenantAiEngine | null | undefined): string {
+  return engine === "self_built_rag"
+    ? t("tenantManagement.aiEngineRag")
+    : t("tenantManagement.aiEngineFileSearch");
+}
+
 export default function TenantManagementPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -195,6 +212,9 @@ export default function TenantManagementPage() {
   const [formDataLimitOriginalBytes, setFormDataLimitOriginalBytes] = useState<string | null>(null);
   const [formDataLimitDirty, setFormDataLimitDirty] = useState(false);
   const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
+  const [formAiEngine, setFormAiEngine] = useState<TenantAiEngine>("gemini_file_search");
+  const [formAiTokenLimit, setFormAiTokenLimit] = useState("");
+  const [formHasAiKey, setFormHasAiKey] = useState(false);
   const [formRoleLabels, setFormRoleLabels] = useState<RoleLabelMap>({});
   const [originalRoleLabels, setOriginalRoleLabels] = useState<RoleLabelMap>({});
   const [formGroupLabels, setFormGroupLabels] = useState<GroupLabelMap>({});
@@ -249,6 +269,10 @@ export default function TenantManagementPage() {
       toast.error(t("tenantManagement.invalidStorageLimit"));
       return false;
     }
+    if (formAiTokenLimit.trim() && !/^\d+$/.test(formAiTokenLimit.trim())) {
+      toast.error(t("tenantManagement.invalidAiTokenLimit"));
+      return false;
+    }
 
     const dl = formDomainLearner.trim();
     if (dl && !validateDomain(dl, t("tenantManagement.learnerDomain"))) return false;
@@ -270,6 +294,9 @@ export default function TenantManagementPage() {
     setFormDataLimitOriginalBytes(null);
     setFormDataLimitDirty(false);
     setFormGeminiApiKey("");
+    setFormAiEngine("gemini_file_search");
+    setFormAiTokenLimit("");
+    setFormHasAiKey(false);
     setFormRoleLabels({});
     setOriginalRoleLabels({});
     setFormGroupLabels({});
@@ -295,8 +322,10 @@ export default function TenantManagementPage() {
     setFormDataLimit(getDataLimitFormValue(tenant.data_limit_bytes));
     setFormDataLimitOriginalBytes(tenant.data_limit_bytes);
     setFormDataLimitDirty(false);
-    const existingKey = (tenant.settings?.gemini_api_key as string) || "";
-    setFormGeminiApiKey(existingKey);
+    setFormGeminiApiKey("");
+    setFormAiEngine(tenant.ai_active_engine || "gemini_file_search");
+    setFormAiTokenLimit(tenant.ai_monthly_token_limit || "");
+    setFormHasAiKey(false);
     setShowApiKey(false);
     setFormRoleLabels({});
     setOriginalRoleLabels({});
@@ -305,9 +334,10 @@ export default function TenantManagementPage() {
     setEditTenant(tenant);
 
     try {
-      const [roleLabelsResult, groupLabelsResult] = await Promise.all([
+      const [roleLabelsResult, groupLabelsResult, aiSettings] = await Promise.all([
         fetchTenantRoleLabels(tenant.id),
         fetchTenantGroupLabels(tenant.id),
+        fetchTenantAiSettings(tenant.id),
       ]);
       const roleLabels = normalizeRoleLabels(roleLabelsResult);
       const groupLabels = normalizeGroupLabels(groupLabelsResult);
@@ -315,6 +345,9 @@ export default function TenantManagementPage() {
       setOriginalRoleLabels(roleLabels);
       setFormGroupLabels(groupLabels);
       setOriginalGroupLabels(groupLabels);
+      setFormAiEngine(aiSettings.activeEngine);
+      setFormAiTokenLimit(aiSettings.monthlyTokenLimit || "");
+      setFormHasAiKey(aiSettings.hasGoogleAiStudioKey);
     } catch {
       toast.error(t("tenantManagement.labelsLoadFailed"));
     }
@@ -325,8 +358,6 @@ export default function TenantManagementPage() {
     if (!validateForm()) return;
     setSaving(true);
     try {
-      const settings: Record<string, unknown> = {};
-      if (formGeminiApiKey.trim()) settings.gemini_api_key = formGeminiApiKey.trim();
       const tenant = await createTenant({
         name: formName,
         slug: formSlug,
@@ -335,7 +366,11 @@ export default function TenantManagementPage() {
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         data_limit_bytes: getDataLimitBytes(),
-        settings: Object.keys(settings).length > 0 ? settings : undefined,
+      });
+      await updateTenantAiSettings(tenant.id, {
+        active_engine: formAiEngine,
+        monthly_token_limit: formAiTokenLimit.trim() || null,
+        ...(formGeminiApiKey.trim() ? { google_ai_studio_api_key: formGeminiApiKey.trim() } : {}),
       });
       const labels = normalizeRoleLabels(formRoleLabels);
       if (hasAnyRoleLabel(labels)) {
@@ -361,10 +396,6 @@ export default function TenantManagementPage() {
     setSaving(true);
     let coreTenantUpdated = false;
     try {
-      const updSettings: Record<string, unknown> = { ...(editTenant.settings || {}) };
-      const nextGeminiApiKey = formGeminiApiKey.trim();
-      if (nextGeminiApiKey) updSettings.gemini_api_key = nextGeminiApiKey;
-      else delete updSettings.gemini_api_key;
       await updateTenant(editTenant.id, {
         name: formName,
         slug: formSlug,
@@ -373,7 +404,11 @@ export default function TenantManagementPage() {
         max_users: formMaxUsers ? parseInt(formMaxUsers, 10) : null,
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         data_limit_bytes: getDataLimitBytes(),
-        settings: updSettings,
+      });
+      await updateTenantAiSettings(editTenant.id, {
+        active_engine: formAiEngine,
+        monthly_token_limit: formAiTokenLimit.trim() || null,
+        ...(formGeminiApiKey.trim() ? { google_ai_studio_api_key: formGeminiApiKey.trim() } : {}),
       });
       coreTenantUpdated = true;
 
@@ -466,13 +501,11 @@ export default function TenantManagementPage() {
     if (!modulesTenant) return;
     setSaving(true);
     try {
-      await Promise.all([
-        updateTenantModules(
-          modulesTenant.id,
-          modules.map(function mapMod(m) { return { module_id: m.module_id, is_enabled: m.is_enabled }; })
-        ),
-        updateTenantCourseComponentPermissions(modulesTenant.id, courseComponentPermissions),
-      ]);
+      await updateTenantModules(
+        modulesTenant.id,
+        modules.map(function mapMod(m) { return { module_id: m.module_id, is_enabled: m.is_enabled }; })
+      );
+      await updateTenantCourseComponentPermissions(modulesTenant.id, courseComponentPermissions);
       toast.success(t("tenantManagement.modulesUpdated"));
       setModulesTenant(null);
     } catch { toast.error(t("tenantManagement.modulesUpdateFailed")); }
@@ -569,7 +602,7 @@ export default function TenantManagementPage() {
       {/* Table */}
       <TooltipProvider delayDuration={300}>
       <div className="app-data-table-shell rounded-lg border bg-card">
-        <Table className="min-w-[1390px]">
+        <Table className="min-w-[1640px]">
           <TableHeader className="bg-muted/10">
             <TableRow>
               <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.name")}</TableHead>
@@ -580,6 +613,8 @@ export default function TenantManagementPage() {
               <TableHead className="w-[126px] whitespace-nowrap text-center">{t("tenantManagement.courseLimit")}</TableHead>
               <TableHead className="w-[172px] whitespace-nowrap text-center">{t("tenantManagement.storageUsed")}</TableHead>
               <TableHead className="w-[144px] whitespace-nowrap text-center">{t("tenantManagement.storageLimit")}</TableHead>
+              <TableHead className="w-[150px] whitespace-nowrap text-center">{t("tenantManagement.aiEngine")}</TableHead>
+              <TableHead className="w-[160px] whitespace-nowrap text-center">{t("tenantManagement.aiTokenMonth")}</TableHead>
               <TableHead className="w-[118px] whitespace-nowrap text-center">{t("tenantManagement.status")}</TableHead>
               <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.createdAt")}</TableHead>
               <TableHead className="w-[158px] whitespace-nowrap text-right">{t("tenantManagement.actions")}</TableHead>
@@ -587,9 +622,9 @@ export default function TenantManagementPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={11} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
             ) : tenants.length === 0 ? (
-              <TableRow><TableCell colSpan={11} className="text-center py-12 text-muted-foreground">{t("tenantManagement.empty")}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-12 text-muted-foreground">{t("tenantManagement.empty")}</TableCell></TableRow>
             ) : (
               <AnimatePresence>
                 {tenants.map(function renderRow(tenant) {
@@ -675,6 +710,37 @@ export default function TenantManagementPage() {
                             ? <span className="text-muted-foreground">∞</span>
                             : formatQuotaGigabytes(tenant.data_limit_bytes, locale)}
                         </span>
+                      </TableCell>
+                      <TableCell className="w-[150px] text-center">
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <Badge variant={tenant.ai_active_engine === "self_built_rag" ? "outline" : "secondary"} className="whitespace-nowrap">
+                            {getAiEngineLabel(t, tenant.ai_active_engine)}
+                          </Badge>
+                          {tenant.ai_transition_state !== "idle" && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {t(`tenantManagement.aiTransition.${tenant.ai_transition_state}`)}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="w-[160px] text-center">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex cursor-help items-center gap-1.5 whitespace-nowrap text-xs font-mono">
+                              <Key className="h-3 w-3 text-muted-foreground" />
+                              {formatTokenCount(tenant.ai_token_total_used, locale)}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t("tenantManagement.aiTokenTooltip", {
+                              used: formatTokenCount(tenant.ai_token_total_used, locale),
+                              reserved: formatTokenCount(tenant.ai_token_reserved, locale),
+                              limit: tenant.ai_monthly_token_limit
+                                ? formatTokenCount(tenant.ai_monthly_token_limit, locale)
+                                : t("tenantManagement.unlimited"),
+                            })}
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                       <TableCell className="w-[118px] text-center">
                         <Badge variant={tenant.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={function click() { handleToggleActive(tenant); }}>
@@ -814,30 +880,64 @@ export default function TenantManagementPage() {
               </div>
               <p className="text-xs text-muted-foreground">{t("tenantManagement.storageLimitHint")}</p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-1.5">
-                <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                Gemini API Key <span className="text-muted-foreground font-normal">{t("tenantManagement.optional")}</span>
-              </label>
-              <div className="relative">
-                <Input
-                  type={showApiKey ? "text" : "password"}
-                  value={formGeminiApiKey}
-                  onChange={function onChange(e) { setFormGeminiApiKey(e.target.value); }}
-                  placeholder="AIzaSy..."
-                  className="pr-10"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={function toggle() { setShowApiKey(!showApiKey); }}
-                >
-                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
+            <div className="app-liquid-card space-y-4 rounded-lg border bg-muted/10 p-4">
+              <div className="flex items-start gap-2">
+                <Key className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <div>
+                  <label className="text-sm font-medium">{t("tenantManagement.aiSettings")}</label>
+                  <p className="text-xs text-muted-foreground">{t("tenantManagement.aiSettingsHint")}</p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">{t("tenantManagement.geminiHint")}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t("tenantManagement.aiEngine")}</label>
+                  <Select value={formAiEngine} onValueChange={function change(value) { setFormAiEngine(value as TenantAiEngine); }}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gemini_file_search">{t("tenantManagement.aiEngineFileSearch")}</SelectItem>
+                      <SelectItem value="self_built_rag">{t("tenantManagement.aiEngineRag")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t("tenantManagement.aiTokenLimit")}</label>
+                  <Input
+                    inputMode="numeric"
+                    value={formAiTokenLimit}
+                    onChange={function onChange(e) { setFormAiTokenLimit(e.target.value); }}
+                    placeholder={t("tenantManagement.unlimited")}
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1.5">
+                  Google AI Studio API Key <span className="text-muted-foreground font-normal">{t("tenantManagement.optional")}</span>
+                </label>
+                <div className="relative">
+                  <Input
+                    type={showApiKey ? "text" : "password"}
+                    name={editTenant ? `tenant-ai-api-key-${editTenant.id}` : "tenant-ai-api-key"}
+                    autoComplete="new-password"
+                    value={formGeminiApiKey}
+                    onChange={function onChange(e) { setFormGeminiApiKey(e.target.value); }}
+                    placeholder={formHasAiKey ? t("tenantManagement.aiKeyConfiguredPlaceholder") : "AIzaSy..."}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={function toggle() { setShowApiKey(!showApiKey); }}
+                  >
+                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("tenantManagement.aiKeyHint")}</p>
+              </div>
             </div>
             <div className="app-liquid-card space-y-3 rounded-lg border bg-muted/10 p-4">
               <div className="flex items-start gap-2">
@@ -946,7 +1046,7 @@ export default function TenantManagementPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Host</label>
-                  <Input value={smtpForm.host} onChange={function change(e) { setSmtpField("host", e.target.value); }} placeholder="smtp.gmail.com" />
+                  <Input name="smtp-host" autoComplete="off" value={smtpForm.host} onChange={function change(e) { setSmtpField("host", e.target.value); }} placeholder="smtp.gmail.com" />
                 </div>
                 <div className="grid grid-cols-[1fr_auto] gap-3">
                   <div className="space-y-1.5">
@@ -962,12 +1062,14 @@ export default function TenantManagementPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Username</label>
-                  <Input value={smtpForm.username} onChange={function change(e) { setSmtpField("username", e.target.value); }} placeholder="admin@company.com" />
+                  <Input name="smtp-username" autoComplete="off" value={smtpForm.username} onChange={function change(e) { setSmtpField("username", e.target.value); }} placeholder="admin@company.com" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Password/App password</label>
                   <Input
                     type="password"
+                    name={`smtp-password-${smtpTenant?.id || 'draft'}`}
+                    autoComplete="new-password"
                     value={smtpForm.password}
                     onChange={function change(e) { setSmtpField("password", e.target.value); }}
                     placeholder={smtpHasPassword ? t("tenantManagement.keepExistingPassword") : t("tenantManagement.enterAppPassword")}

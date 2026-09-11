@@ -76,8 +76,41 @@ export function prepareContentForSave(html: string): string {
   });
 }
 
+function removePastedColors(html: string): string {
+  if (!html || typeof DOMParser === 'undefined') return html;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll<HTMLElement>('*').forEach((element) => {
+      element.removeAttribute('color');
+      element.removeAttribute('bgcolor');
+      element.style.removeProperty('color');
+      element.style.removeProperty('background-color');
+      element.style.removeProperty('background');
+      element.style.removeProperty('-webkit-text-fill-color');
+
+      if (!element.getAttribute('style')?.trim()) {
+        element.removeAttribute('style');
+      }
+    });
+
+    // <font> is purely presentational here. Unwrap it so copied font face/size
+    // cannot bypass the editor's current light/dark typography.
+    doc.querySelectorAll('font').forEach((font) => {
+      const parent = font.parentNode;
+      if (!parent) return;
+      while (font.firstChild) parent.insertBefore(font.firstChild, font);
+      font.remove();
+    });
+
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
 function sanitizePastedHtml(html: string): string {
-  return transformImageSources(html, (src) => {
+  return transformImageSources(removePastedColors(html), (src) => {
     if (isTransientHtmlImageSrc(src)) return null;
     return htmlImageDisplaySrc(src);
   });

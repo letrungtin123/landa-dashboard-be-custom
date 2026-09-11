@@ -23,6 +23,10 @@ import {
 import { cardVariants, formatDate, useDebounce, PaginationBar, KbCardSkeleton } from "./ai-chatbot-helpers";
 import { getLocalizedApiError } from "@/utils/localized-error";
 
+function isAiTransitionActive(kb: Knowledgebase): boolean {
+  return kb.ai_transition_state === "queued" || kb.ai_transition_state === "running";
+}
+
 export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebase) => void }) {
   const { t } = useTranslation();
   const [kbs, setKbs] = useState<Knowledgebase[]>([]);
@@ -68,12 +72,39 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
   }
 
   const totalPages = Math.ceil(total / pageSize);
+  const tenantAiTransitionActive = kbs.some(isAiTransitionActive);
+  const activeTransitionKb = kbs.find(isAiTransitionActive);
+  const transitionToFileSearch = activeTransitionKb?.ai_pending_engine === "gemini_file_search";
+  const transitionTitle = transitionToFileSearch
+    ? t("aiChatbot.aiTransitionRunningToFileSearch")
+    : t("aiChatbot.aiTransitionRunningToRag");
+  const transitionNotice = transitionToFileSearch
+    ? t("aiChatbot.aiTransitionListNoticeToFileSearch")
+    : t("aiChatbot.aiTransitionListNotice");
+
+  useEffect(() => {
+    if (!tenantAiTransitionActive) return;
+    const timer = window.setInterval(loadKbs, 3000);
+    return () => window.clearInterval(timer);
+  }, [tenantAiTransitionActive, loadKbs]);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2"><Database className="h-5 w-5 text-primary" /> {t("aiChatbot.knowledgeBases")} <Badge variant="outline" className="ml-1">{total}</Badge></h3>
         <Button onClick={() => { setFormName(""); setFormDesc(""); setShowCreate(true); }} className="gap-2"><Plus className="h-4 w-4" /> {t("aiChatbot.create")}</Button>
       </div>
+      {tenantAiTransitionActive && (
+        <div className="rounded-lg border border-sky-300 bg-sky-50 p-4 text-sky-950">
+          <div className="flex items-start gap-3">
+            <Loader2 className="mt-0.5 h-5 w-5 animate-spin" />
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">{transitionTitle}</div>
+              <p className="text-sm opacity-90">{transitionNotice}</p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="relative max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t("aiChatbot.searchKnowledgeBases")} value={searchInput} onChange={e => setSearchInput(e.target.value)} className="pl-9" /></div>
 
       {/* Card Grid */}
@@ -105,6 +136,8 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <Badge variant="secondary" className="gap-1"><FileText className="h-3 w-3" /> {t("aiChatbot.documentsCount", { count: kb.document_count || 0 })}</Badge>
+                      {isAiTransitionActive(kb) && <Badge variant="outline" className="gap-1 border-sky-300 text-sky-700"><RefreshCw className="h-3 w-3 animate-spin" /> {t("aiChatbot.aiTransitioning")}</Badge>}
+                      {kb.ai_transition_state === "failed" && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> {t("aiChatbot.aiTransitionFailedShort")}</Badge>}
                       {kb.restore_required && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> {t("aiChatbot.restoreRequired")}</Badge>}
                       {(kb.restore_state === "queued" || kb.restore_state === "restoring" || kb.restore_state === "uploading") && <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700"><RefreshCw className="h-3 w-3 animate-spin" /> {t("aiChatbot.restoring")}</Badge>}
                       <span>{formatDate(kb.created_at)}</span>

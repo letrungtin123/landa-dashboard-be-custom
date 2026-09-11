@@ -29,10 +29,65 @@ export interface Tenant {
   storage_reserved_bytes: string;
   data_quota_state: "initializing" | "observing" | "enforced" | "reconciling" | "drifted";
   data_quota_last_verified_at: string | null;
+  ai_active_engine: TenantAiEngine;
+  ai_monthly_token_limit: string | null;
+  ai_token_total_used: string;
+  ai_token_reserved: string;
+  ai_transition_state: "idle" | "queued" | "running" | "failed";
+  ai_pending_engine: TenantAiEngine | null;
   is_active: boolean;
   settings: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export type TenantAiEngine = "gemini_file_search" | "self_built_rag";
+
+export interface TenantAiSettings {
+  tenantId: string;
+  activeEngine: TenantAiEngine;
+  provider: "google_ai_studio";
+  monthlyTokenLimit: string | null;
+  tokenTimezone: string;
+  chatModel: string;
+  lessonAuthorModel: string;
+  embeddingModel: string;
+  embeddingDimensions: number;
+  transitionState: "idle" | "queued" | "running" | "failed";
+  activeTransitionJobId: string | null;
+  hasGoogleAiStudioKey: boolean;
+  tokenPeriodStart: string;
+  tokenInputUsed: string;
+  tokenOutputUsed: string;
+  tokenEmbeddingUsed: string;
+  tokenTotalUsed: string;
+  tokenReserved: string;
+  tokenRemaining: string | null;
+  estimatedCostVnd: string;
+  pendingEngine: TenantAiEngine | null;
+}
+
+export interface AiPricingRateCard {
+  id: string;
+  provider: 'google_ai_studio';
+  model: string;
+  inputVndPer1M: string;
+  outputVndPer1M: string;
+  embeddingVndPer1M: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  sourceUrl: string | null;
+  sourceNote: string | null;
+  status: 'active' | 'draft' | 'retired';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateTenantAiSettingsInput {
+  active_engine?: TenantAiEngine;
+  monthly_token_limit?: string | null;
+  google_ai_studio_api_key?: string | null;
+  clear_google_ai_studio_api_key?: boolean;
 }
 
 export interface TenantQuotaUsage {
@@ -112,6 +167,37 @@ export async function createTenant(input: { name: string; slug: string; domain_l
 /** Cập nhật tenant */
 export async function updateTenant(id: string, input: Partial<{ name: string; slug: string; domain_learner: string | null; domain_admin: string | null; max_users: number | null; max_courses: number | null; data_limit_bytes: string | null; is_active: boolean; settings: Record<string, unknown> }>) {
   const { data } = await customApiClient.put<ApiResponse<Tenant>>(`/api/tenants/${id}`, input);
+  return data.data;
+}
+
+export async function fetchTenantAiSettings(tenantId: string): Promise<TenantAiSettings> {
+  const { data } = await customApiClient.get<ApiResponse<TenantAiSettings>>(`/api/tenants/${tenantId}/ai-settings`);
+  return data.data;
+}
+
+export async function updateTenantAiSettings(
+  tenantId: string,
+  input: UpdateTenantAiSettingsInput,
+): Promise<TenantAiSettings> {
+  const { data } = await customApiClient.put<ApiResponse<TenantAiSettings>>(`/api/tenants/${tenantId}/ai-settings`, input);
+  return data.data;
+}
+
+export async function fetchAiPricingRateCards(): Promise<AiPricingRateCard[]> {
+  const { data } = await customApiClient.get<ApiResponse<AiPricingRateCard[]>>('/api/tenants/ai-pricing/rate-cards');
+  return data.data;
+}
+
+export async function createAiPricingRateCard(input: {
+  provider: 'google_ai_studio';
+  model: string;
+  input_vnd_per_1m: string;
+  output_vnd_per_1m: string;
+  embedding_vnd_per_1m: string;
+  source_url?: string;
+  source_note?: string;
+}): Promise<AiPricingRateCard> {
+  const { data } = await customApiClient.post<ApiResponse<AiPricingRateCard>>('/api/tenants/ai-pricing/rate-cards', input);
   return data.data;
 }
 

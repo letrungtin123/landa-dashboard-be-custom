@@ -514,12 +514,12 @@ export default function ProfilePage() {
                     <p className="font-semibold">{t('profile.passwordChanged')}</p>
                   </div>
                 ) : (
-                  <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                  <form autoComplete="off" onSubmit={handlePasswordSubmit} className="space-y-4">
                     {/* Current Password */}
                     <div>
                       <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.currentPassword')}</label>
                       <div className="relative">
-                        <Input type={showPw ? 'text' : 'password'} value={pwForm.current} onChange={(e) => setPwForm((p) => ({ ...p, current: e.target.value }))} placeholder={t('profile.enterCurrentPassword')} className="pr-10" />
+                        <Input name="profile-current-password" autoComplete="new-password" type={showPw ? 'text' : 'password'} value={pwForm.current} onChange={(e) => setPwForm((p) => ({ ...p, current: e.target.value }))} placeholder={t('profile.enterCurrentPassword')} className="pr-10" />
                         <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPw(!showPw)}>
                           {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -528,12 +528,12 @@ export default function ProfilePage() {
                     {/* New Password */}
                     <div>
                       <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.newPassword')}</label>
-                      <Input type={showPw ? 'text' : 'password'} value={pwForm.newPw} onChange={(e) => setPwForm((p) => ({ ...p, newPw: e.target.value }))} placeholder={t('profile.passwordMinimum')} />
+                      <Input name="profile-new-password" autoComplete="new-password" type={showPw ? 'text' : 'password'} value={pwForm.newPw} onChange={(e) => setPwForm((p) => ({ ...p, newPw: e.target.value }))} placeholder={t('profile.passwordMinimum')} />
                     </div>
                     {/* Confirm Password */}
                     <div>
                       <label className="text-sm font-medium text-muted-foreground mb-1.5 block">{t('profile.confirmPassword')}</label>
-                      <Input type={showPw ? 'text' : 'password'} value={pwForm.confirm} onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))} placeholder={t('profile.repeatNewPassword')} />
+                      <Input name="profile-confirm-password" autoComplete="new-password" type={showPw ? 'text' : 'password'} value={pwForm.confirm} onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))} placeholder={t('profile.repeatNewPassword')} />
                     </div>
 
                     {pwError && (

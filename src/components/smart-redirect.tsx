@@ -33,7 +33,10 @@ export function SmartRedirect() {
   }
 
   // Tìm module đầu tiên mà user có quyền can_view
-  const firstAllowed = MODULE_ROUTES.find((m) => hasPermission(m.module, 'can_view'));
+  const firstAllowed = MODULE_ROUTES.find((m) => {
+    if (m.module === 'permission_groups' && user?.role !== 'superuser' && user?.role !== 'superadmin') return false;
+    return hasPermission(m.module, 'can_view');
+  });
 
   if (firstAllowed) {
     return <Navigate to={firstAllowed.path} replace />;

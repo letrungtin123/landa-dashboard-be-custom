@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bot, Brain, Rocket } from "lucide-react";
+import { BarChart3, Bot, Brain, Rocket } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +21,7 @@ import { DocumentManager } from "@/components/ai-chatbot/doc-manager";
 import { ChatbotTab } from "@/components/ai-chatbot/bot-tab";
 import { BotDetail } from "@/components/ai-chatbot/bot-detail";
 import { DeploySection } from "@/components/ai-chatbot/deploy-section";
+import { AiOverviewTab } from "@/components/ai-chatbot/ai-overview-tab";
 
 export default function AiChatbotPage() {
   const { t } = useTranslation();
@@ -115,14 +116,16 @@ export default function AiChatbotPage() {
     <div className="p-6 space-y-6">
       <PageHeader icon={Bot} title={t("aiChatbot.title")} description={t("aiChatbot.description")} />
       <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="kb" className="gap-2"><Brain className="h-4 w-4" /> {t("aiChatbot.knowledgeBases")}</TabsTrigger>
           <TabsTrigger value="bots" className="gap-2"><Bot className="h-4 w-4" /> {t("aiChatbot.chatbots")}</TabsTrigger>
           <TabsTrigger value="deploy" className="gap-2"><Rocket className="h-4 w-4" /> {t("aiChatbot.deploy")}</TabsTrigger>
+          <TabsTrigger value="overview" className="gap-2"><BarChart3 className="h-4 w-4" /> {t("aiChatbot.overview")}</TabsTrigger>
         </TabsList>
         <TabsContent value="kb" className="mt-6"><KnowledgeBaseTab key={activeTenantId} onSelectKb={handleSelectKb} /></TabsContent>
         <TabsContent value="bots" className="mt-6"><ChatbotTab key={activeTenantId} onSelectBot={handleSelectBot} /></TabsContent>
         <TabsContent value="deploy" className="mt-6"><DeploySection key={activeTenantId} /></TabsContent>
+        <TabsContent value="overview" className="mt-6"><AiOverviewTab key={activeTenantId} /></TabsContent>
       </Tabs>
     </div>
   );

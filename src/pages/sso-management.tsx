@@ -398,6 +398,8 @@ export default function SsoManagementPage() {
                             Client ID {draft.is_enabled && <span className="text-destructive">*</span>}
                           </label>
                           <Input
+                            name={`sso-${provider}-client-id`}
+                            autoComplete="off"
                             value={draft.client_id}
                             onChange={(event) => setDrafts((current) => ({
                               ...current,
@@ -422,6 +424,8 @@ export default function SsoManagementPage() {
                             )}
                           </div>
                           <PasswordInput
+                            name={`sso-${provider}-client-secret`}
+                            autoComplete="new-password"
                             value={draft.client_secret}
                             onChange={(event) => setDrafts((current) => ({
                               ...current,

@@ -31,20 +31,16 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/shared/pagination";
-import { TableToolbar } from "@/components/shared/table-toolbar";
 import { confirmDialog } from "@/utils/confirm-store";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 
 import {
   fetchPermGroups, fetchPermGroupById, createPermGroup, updatePermGroup, deletePermGroup,
-  updatePermMatrix, addMembersToGroup, removeMemberFromGroup,
+  savePermGroupConfiguration,
   type PermissionGroup, type PermissionGroupDetail, type ModulePermission, type GroupMember,
 } from "@/api/custom-permissions";
-import { fetchTenants, type Tenant } from "@/api/custom-tenants";
 import { fetchUsers, type CustomUser } from "@/api/custom-users";
 import { AppTooltip } from '@/components/ui/tooltip';
+import { PermissionGroupHistoryTab } from '@/components/permission-groups/permission-group-history-tab';
 
 const ACTIONS = ["can_view", "can_add", "can_edit", "can_delete"] as const;
 const ACTION_META: Record<string, { icon: React.ElementType; color: string }> = {
@@ -96,18 +92,22 @@ export default function PermissionGroupsPage() {
   const [editGroup, setEditGroup] = useState<PermissionGroup | null>(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
-  const [formTenantId, setFormTenantId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'groups' | 'history'>('groups');
 
   // ── Auth ──
   const user = useAuthStore(function getUser(s) { return s.user; });
-  const hasPermission = useAuthStore(function getPerm(s) { return s.hasPermission; });
   const isSuperadmin = user?.role === "superadmin";
-  const canAdd = hasPermission('permission_groups', 'can_add');
-  const canEdit = hasPermission('permission_groups', 'can_edit');
-  const canDelete = hasPermission('permission_groups', 'can_delete');
-  const [tenantList, setTenantList] = useState<Tenant[]>([]);
+  const canManagePermissionGroups = user?.role === 'superuser' || user?.role === 'superadmin';
+  const currentUserId = user?.id || null;
+  const canAdd = canManagePermissionGroups;
+  const canEdit = canManagePermissionGroups;
+  const canDelete = canManagePermissionGroups;
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
+
+  function isCurrentUser(userId: string) {
+    return !!currentUserId && userId === currentUserId;
+  }
 
   // ── Load groups ──
   const loadGroups = useCallback(async function loadGroups() {
@@ -123,14 +123,6 @@ export default function PermissionGroupsPage() {
   useEffect(function init() { loadGroups(); }, [loadGroups]);
   useEffect(function resetPage() { setPage(1); }, [search, limit]);
 
-  // Load tenants cho superadmin
-  useEffect(function loadTenants() {
-    if (!isSuperadmin) return;
-    fetchTenants({ page: 1, page_size: 100 })
-      .then(function onOk(res) { setTenantList(res.data); })
-      .catch(function onErr() { /* ignore */ });
-  }, [isSuperadmin]);
-
   // ── Open detail ──
   async function openDetail(groupId: string) {
     setDetailLoading(true);
@@ -141,7 +133,8 @@ export default function PermissionGroupsPage() {
     try {
       const d = await fetchPermGroupById(groupId);
       setDetail(d);
-      setMatrixPerms(d.permissions);
+      // Defence in depth: backend excludes this protected module too.
+      setMatrixPerms(d.permissions.filter((permission) => permission.code !== 'permission_groups'));
     } catch { toast.error(t("permissionGroups.detailLoadFailed")); setShowDetail(false); }
     finally { setDetailLoading(false); }
   }
@@ -183,27 +176,22 @@ export default function PermissionGroupsPage() {
   // ── Unified save: matrix + member changes ──
   async function saveAll() {
     if (!detail) return;
+    if (pendingRemoveIds.some(function checkSelfRemoval(id) { return isCurrentUser(id); })) {
+      setPendingRemoveIds(function filterSelfRemoval(prev) {
+        return prev.filter(function keep(id) { return !isCurrentUser(id); });
+      });
+      toast.error(t("permissionGroups.cannotRemoveSelfFromGroup"));
+      return;
+    }
     setSaving(true);
     try {
-      // 1) Save permission matrix if changed
-      if (matrixDirty) {
-        await updatePermMatrix(
-          detail.id,
-          matrixPerms.map(function mapPerm(p) {
-            return { module_code: p.code, can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_delete: p.can_delete };
-          })
-        );
-      }
-
-      // 2) Remove members
-      for (const userId of pendingRemoveIds) {
-        await removeMemberFromGroup(detail.id, userId);
-      }
-
-      // 3) Add new members
-      if (pendingAddMembers.length > 0) {
-        await addMembersToGroup(detail.id, pendingAddMembers.map(m => m.id));
-      }
+      await savePermGroupConfiguration(detail.id, {
+        permissions: matrixPerms.map(function mapPerm(p) {
+          return { module_code: p.code, can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_delete: p.can_delete };
+        }),
+        add_user_ids: pendingAddMembers.map((member) => member.id),
+        remove_user_ids: pendingRemoveIds,
+      });
 
       toast.success(t("permissionGroups.saved"));
       setMatrixDirty(false);
@@ -221,12 +209,11 @@ export default function PermissionGroupsPage() {
   // ── CRUD ──
   async function handleCreate() {
     if (!formName.trim()) { toast.error(t("permissionGroups.nameRequired")); return; }
-    if (isSuperadmin && !formTenantId) { toast.error(t("permissionGroups.tenantRequired")); return; }
     setSaving(true);
     try {
-      await createPermGroup({ name: formName, description: formDesc, tenant_id: isSuperadmin ? formTenantId : undefined });
+      await createPermGroup({ name: formName, description: formDesc });
       toast.success(t("permissionGroups.created"));
-      setShowCreate(false); setFormName(""); setFormDesc(""); setFormTenantId("");
+      setShowCreate(false); setFormName(""); setFormDesc("");
       loadGroups();
     } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("permissionGroups.createFailed"))); }
     finally { setSaving(false); }
@@ -318,6 +305,10 @@ export default function PermissionGroupsPage() {
 
   // Remove member locally (pending until save)
   function handleRemoveMemberLocal(userId: string, username: string) {
+    if (isCurrentUser(userId)) {
+      toast.error(t("permissionGroups.cannotRemoveSelfFromGroup"));
+      return;
+    }
     // If this is a pending add, just remove from pending
     if (pendingAddMembers.some(m => m.id === userId)) {
       setPendingAddMembers(prev => prev.filter(m => m.id !== userId));
@@ -361,7 +352,7 @@ export default function PermissionGroupsPage() {
         actions={
           canAdd ? (
             <Button
-              onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
+              onClick={function open() { setFormName(""); setFormDesc(""); setShowCreate(true); }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20 border-0 gap-2"
             >
               <Plus className="h-4 w-4" /> {t("permissionGroups.createGroup")}
@@ -370,6 +361,13 @@ export default function PermissionGroupsPage() {
         }
       />
 
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'groups' | 'history')} className="space-y-4">
+        <TabsList className="h-auto rounded-xl border border-border/50 bg-card/70 p-1">
+          <TabsTrigger value="groups" className="rounded-lg px-4 py-2 text-xs font-semibold">{t("permissionGroups.title")}</TabsTrigger>
+          <TabsTrigger value="history" className="rounded-lg px-4 py-2 text-xs font-semibold">{t("permissionGroups.history.tab")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="groups" className="mt-0 space-y-5">
       {/* ── Search Bar ── */}
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
@@ -417,7 +415,7 @@ export default function PermissionGroupsPage() {
             {t("permissionGroups.emptyDescription")}
           </p>
           <Button
-            onClick={function open() { setFormName(""); setFormDesc(""); setFormTenantId(""); setShowCreate(true); }}
+            onClick={function open() { setFormName(""); setFormDesc(""); setShowCreate(true); }}
             className="mt-5 gap-2"
             variant="outline"
           >
@@ -498,6 +496,12 @@ export default function PermissionGroupsPage() {
       {!loading && groups.length > 0 && (
         <Pagination page={page} limit={limit} total={total} totalPages={totalPages} onPageChange={setPage} onLimitChange={setLimit} label={t("permissionGroups.groups")} />
       )}
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-0">
+          <PermissionGroupHistoryTab />
+        </TabsContent>
+      </Tabs>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* ── Detail Dialog (Tabs: Phân quyền + Thành viên) ──       */}
@@ -742,6 +746,7 @@ export default function PermissionGroupsPage() {
                     <div className="grid gap-2">
                       {localMembers.map(function renderMember(m) {
                         const isPendingAdd = pendingAddMembers.some(p => p.id === m.id);
+                        const isSelf = isCurrentUser(m.id);
                         return (
                           <div key={m.id} className={`group flex items-center gap-3 p-3 rounded-xl border transition-all ${
                             isPendingAdd
@@ -765,10 +770,16 @@ export default function PermissionGroupsPage() {
                               <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
                             </div>
                             {canEdit && (
-                              <AppTooltip content={t("permissionGroups.removeFromGroup")}><button
-                                className="p-1.5 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                              <AppTooltip content={isSelf ? t("permissionGroups.cannotRemoveSelfFromGroup") : t("permissionGroups.removeFromGroup")}><button
+                                type="button"
+                                aria-disabled={isSelf}
+                                className={`p-1.5 rounded-lg transition-all ${
+                                  isSelf
+                                    ? 'text-muted-foreground/30 cursor-not-allowed opacity-60'
+                                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100'
+                                }`}
                                 onClick={function remove() { handleRemoveMemberLocal(m.id, m.full_name || m.username); }}
-                                aria-label={t("permissionGroups.removeFromGroup")}
+                                aria-label={isSelf ? t("permissionGroups.cannotRemoveSelfFromGroup") : t("permissionGroups.removeFromGroup")}
                               >
                                 <X className="h-4 w-4" />
                               </button></AppTooltip>
@@ -952,21 +963,6 @@ export default function PermissionGroupsPage() {
                 className="rounded-xl resize-none"
               />
             </div>
-            {isSuperadmin && showCreate && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">{t("permissionGroups.tenant")} <span className="text-destructive">*</span></label>
-                <Select value={formTenantId} onValueChange={setFormTenantId}>
-                  <SelectTrigger className="rounded-xl h-10">
-                    <SelectValue placeholder={t("permissionGroups.selectTenant")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tenantList.map(function renderOpt(t) {
-                      return <SelectItem key={t.id} value={t.id}>{t.name} ({t.slug})</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
           <DialogFooter className="gap-2">
             <DialogClose asChild><Button variant="outline" className="rounded-xl">{t("common.cancel")}</Button></DialogClose>

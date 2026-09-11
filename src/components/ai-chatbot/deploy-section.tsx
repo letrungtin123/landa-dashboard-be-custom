@@ -21,7 +21,9 @@ import {
   type BotAssignment, type ChatTarget, type LessonAuthorSettings,
 } from "@/api/custom-chat";
 import { storageUrl } from "@/utils/storage-url";
+import { useAuthStore } from "@/utils/store";
 import { getLocalizedApiError } from "@/utils/localized-error";
+import { useTenantStore } from "@/utils/tenant-store";
 
 const TARGETS = [
   { key: "admin" as const, labelKey: "aiChatbot.targetAdmin", descriptionKey: "aiChatbot.targetAdminDescription" },
@@ -31,6 +33,8 @@ const TARGETS = [
 
 export function DeploySection() {
   const { t } = useTranslation();
+  const activeTenantId = useTenantStore(s => s.activeTenantId);
+  const actorTenantId = useAuthStore(s => s.user?.tenant_id);
   const [assignments, setAssignments] = useState<BotAssignment[]>([]);
   const [bots, setBots] = useState<Chatbot[]>([]);
   const [kbs, setKbs] = useState<Knowledgebase[]>([]);
@@ -59,6 +63,14 @@ export function DeploySection() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const notifyRuntimeAssignmentChanged = useCallback(() => {
+    const tenantId = activeTenantId ?? actorTenantId;
+    if (!tenantId || typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent<{ tenantId: string }>("landa:ai-bot-assignment-changed", {
+      detail: { tenantId },
+    }));
+  }, [activeTenantId, actorTenantId]);
+
   async function handleToggle(target: ChatTarget, botId: string, checked: boolean) {
     setTogglingTarget(target);
     try {
@@ -69,6 +81,7 @@ export function DeploySection() {
         await unassignBot(target);
         toast.success(t("aiChatbot.botUnassigned"));
       }
+      notifyRuntimeAssignmentChanged();
       loadData();
     } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setTogglingTarget(null); }
@@ -79,6 +92,7 @@ export function DeploySection() {
     try {
       await assignBot(target, botId);
       toast.success(t("aiChatbot.botAssigned"));
+      notifyRuntimeAssignmentChanged();
       loadData();
     } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSelectingTarget(null); }
@@ -163,9 +177,27 @@ export function DeploySection() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{current.bot_name}</p>
-                    <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] mt-0.5">
-                      {t("aiChatbot.active")}
-                    </Badge>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">
+                        {t("aiChatbot.active")}
+                      </Badge>
+                      {key !== "lesson_author" && (
+                        current.bot_kb_id ? (
+                          <Badge variant="outline" className="max-w-full truncate text-[10px]">
+                            {t("aiChatbot.botKbAssigned", { name: current.bot_kb_name || current.bot_kb_id })}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px]">
+                            {t("aiChatbot.botKbMissing")}
+                          </Badge>
+                        )
+                      )}
+                    </div>
+                    {key !== "lesson_author" && !current.bot_kb_id && (
+                      <p className="mt-1 text-[11px] leading-snug text-amber-700">
+                        {t("aiChatbot.botKbMissingHint")}
+                      </p>
+                    )}
                   </div>
                   {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>

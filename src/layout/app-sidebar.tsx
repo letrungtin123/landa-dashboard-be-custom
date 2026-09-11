@@ -120,6 +120,10 @@ export function AppSidebar() {
   const canSeeModule = (item: NavItem): boolean => {
     if (!user) return false;
 
+    // This manager is role-protected server-side as well. Do not let a staff
+    // permission-matrix entry make it discoverable in the navigation.
+    if (item.module === 'permission_groups' && user.role !== 'superuser' && user.role !== 'superadmin') return false;
+
     // superadmin thấy tất cả (cross-tenant)
     if (user.role === 'superadmin') return true;
 

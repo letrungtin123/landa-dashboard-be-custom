@@ -4,6 +4,8 @@
 
 import { customApiClient } from "./custom-client";
 import { config } from "@/config/env";
+import i18n from "@/i18n";
+import { useLocaleStore } from "@/utils/locale-store";
 import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
@@ -11,6 +13,8 @@ import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refres
 interface ApiResponse<T> { success: boolean; data: T; }
 
 export type ChatTarget = "admin" | "learner" | "lesson_author";
+const AI_TOKEN_LIMIT_REACHED_CODE = "AI_TOKEN_LIMIT_REACHED";
+const AI_RAG_KB_NOT_ASSIGNED_CODE = "AI_RAG_KB_NOT_ASSIGNED";
 
 // ── Types ──
 
@@ -22,6 +26,20 @@ export interface ActiveBot {
   bot_name: string;
   bot_avatar_url: string | null;
   bot_kb_id: string | null;
+  bot_kb_name: string | null;
+  ai_active_engine: "gemini_file_search" | "self_built_rag";
+}
+
+export interface BotPersona {
+  id: string;
+  bot_id: string;
+  template_id: string;
+  template_name: string;
+  template_description: string;
+  template_avatar_url: string | null;
+  template_fullbody_url: string | null;
+  custom_name: string | null;
+  custom_description: string | null;
 }
 
 export interface BotAssignment {
@@ -32,6 +50,8 @@ export interface BotAssignment {
   bot_name: string;
   bot_avatar_url: string | null;
   bot_kb_id?: string | null;
+  bot_kb_name?: string | null;
+  ai_active_engine?: "gemini_file_search" | "self_built_rag";
 }
 
 export interface KbAssignment {
@@ -91,6 +111,18 @@ export interface ChatMessage {
   content: string;
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export interface RagMessageSource {
+  document_id?: string;
+  document_name: string;
+  source_page?: number | null;
+  source_section?: string | null;
+  score?: number | null;
+  vector_score?: number | null;
+  keyword_score?: number | null;
+  method?: string | null;
+  methods?: string[];
 }
 
 export type LessonAuthorComponentType = 'html' | 'problem' | 'la_faq' | 'la_sortable' | 'la_crossword' | 'la_diagram' | string;
@@ -177,6 +209,22 @@ export async function fetchLessonAuthorSettings(): Promise<LessonAuthorSettings>
   return data.data;
 }
 
+export async function fetchLessonAuthorChatSettings(): Promise<LessonAuthorSettings> {
+  const { data } = await customApiClient.get<ApiResponse<LessonAuthorSettings>>("/api/ai-chatbot/chat/lesson-author/settings");
+  return data.data;
+}
+
+export async function fetchLessonAuthorSourceDocuments(params?: {
+  search?: string;
+  limit?: number;
+}): Promise<LessonAuthorSourceDocument[]> {
+  const { data } = await customApiClient.get<ApiResponse<LessonAuthorSourceDocument[]>>(
+    "/api/ai-chatbot/chat/lesson-author/source-documents",
+    { params },
+  );
+  return data.data;
+}
+
 export async function assignLessonAuthorKb(kb_id: string): Promise<void> {
   await customApiClient.put("/api/ai-chatbot/lesson-author/kb-assignment", { kb_id });
 }
@@ -196,6 +244,13 @@ export async function applyLessonAuthorJob(jobId: string): Promise<AppliedLesson
 
 export async function fetchActiveBot(target: ChatTarget = "admin"): Promise<ActiveBot | null> {
   const { data } = await customApiClient.get<ApiResponse<ActiveBot | null>>("/api/ai-chatbot/chat/active-bot", {
+    params: { target },
+  });
+  return data.data;
+}
+
+export async function fetchActiveBotPersonas(target: ChatTarget = "admin"): Promise<BotPersona[]> {
+  const { data } = await customApiClient.get<ApiResponse<BotPersona[]>>("/api/ai-chatbot/chat/active-bot/personas", {
     params: { target },
   });
   return data.data;
@@ -248,12 +303,27 @@ export async function fetchMessages(conversationId: string, cursor?: string): Pr
   return data.data;
 }
 
+function streamText(key: string): string {
+  return i18n.t(key, { lng: useLocaleStore.getState().locale });
+}
+
 function normalizeStreamErrorMessage(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err || '');
   if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) {
-    return 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra backend hoặc thử lại sau.';
+    return streamText('chatWidget.connectionFailed');
   }
-  return message || 'Lỗi kết nối. Vui lòng thử lại.';
+  return message || streamText('chatWidget.connectionError');
+}
+
+function normalizeStreamErrorPayload(payload: unknown, fallbackKey: string): string {
+  const data = payload as { code?: unknown; message?: unknown; error?: unknown };
+  if (data?.code === AI_TOKEN_LIMIT_REACHED_CODE) return streamText('chatWidget.aiTokenLimitReached');
+  if (data?.code === AI_RAG_KB_NOT_ASSIGNED_CODE) return streamText('chatWidget.aiRagKbNotAssigned');
+  const rawMessage = data?.message ?? data?.error;
+  if (useLocaleStore.getState().locale === 'vi' && typeof rawMessage === 'string' && rawMessage.trim()) {
+    return rawMessage;
+  }
+  return streamText(fallbackKey);
 }
 
 /**
@@ -302,6 +372,7 @@ export function sendMessageStream(
           content,
           target: options.target,
           courseId: options.courseId,
+          locale: useLocaleStore.getState().locale === 'en' ? 'en' : 'vi',
           mode: options.mode,
           outline_mentions: options.outline_mentions,
           source_documents: options.source_documents,
@@ -311,10 +382,10 @@ export function sendMessageStream(
       });
 
       if (!response.ok || !response.body) {
-        let message = 'Không thể kết nối đến server';
+        let message = streamText('chatWidget.serverConnectionFailed');
         try {
           const payload = await response.json();
-          message = payload?.message || payload?.error || message;
+          message = normalizeStreamErrorPayload(payload, 'chatWidget.serverConnectionFailed');
         } catch {
           // Keep fallback message.
         }
@@ -351,7 +422,10 @@ export function sendMessageStream(
               scheduleTenantDataQuotaRefresh(quotaTenantId);
               onDone();
             }
-            else if (event.type === 'error') { receivedError = true; onError(event.message || 'Lỗi không xác định'); }
+            else if (event.type === 'error') {
+              receivedError = true;
+              onError(normalizeStreamErrorPayload(event, 'chatWidget.unknownError'));
+            }
             else if (event.type === 'proposal') options.onProposal?.(event);
           } catch { /* skip malformed line */ }
         }

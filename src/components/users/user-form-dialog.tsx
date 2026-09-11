@@ -215,7 +215,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
 
         {/* Form */}
         <Form {...form}>
-          <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="overflow-y-auto max-h-[60vh]">
+          <form autoComplete="off" noValidate onSubmit={form.handleSubmit(onSubmit)} className="overflow-y-auto max-h-[60vh]">
             {/* Section: Account */}
             <div className="px-6 pt-5 pb-4">
               <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-[0.12em] mb-3">{t('userForm.accountInformation')}</div>
@@ -269,7 +269,15 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                         {isEditing ? t('userForm.newPassword') : t('userForm.password')}
                         {isEditing && <span className="text-muted-foreground/40 ml-1 font-normal">{t('userForm.passwordHint')}</span>}
                       </FormLabel>
-                      <FormControl><PasswordInput placeholder="••••••••" {...field} className="h-9 text-sm" /></FormControl>
+                      <FormControl>
+                        <PasswordInput
+                          {...field}
+                          name={isEditing ? 'user-form-new-password' : 'user-form-create-password'}
+                          autoComplete="new-password"
+                          placeholder="••••••••"
+                          className="h-9 text-sm"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   );

@@ -10,6 +10,39 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+export interface AiOverviewReport {
+  periodStart: string;
+  tokenTimezone: string;
+  quota: {
+    monthlyLimit: string | null;
+    inputUsed: string;
+    outputUsed: string;
+    embeddingUsed: string;
+    totalUsed: string;
+    reserved: string;
+    remaining: string | null;
+  };
+  cost: {
+    currency: 'VND';
+    estimatedVnd: string;
+    hasUnpricedUsage: boolean;
+    unpricedEventCount: string;
+  };
+  breakdown: Array<{
+    operation: 'chat' | 'lesson_author' | 'indexing';
+    totalTokens: string;
+    estimatedVnd: string;
+    eventCount: string;
+    unpricedEventCount: string;
+  }>;
+  daily: Array<{
+    day: string;
+    totalTokens: string;
+    estimatedVnd: string;
+    eventCount: string;
+  }>;
+}
+
 // ── Types ──
 
 export interface Knowledgebase {
@@ -32,6 +65,16 @@ export interface Knowledgebase {
     learned_docs: number;
     failed_docs: number;
     skipped_docs: number;
+  } | null;
+  ai_active_engine?: "gemini_file_search" | "self_built_rag";
+  ai_transition_state?: "idle" | "queued" | "running" | "failed";
+  ai_pending_engine?: "gemini_file_search" | "self_built_rag" | null;
+  ai_transition_progress?: {
+    phase: string | null;
+    total_documents: number;
+    processed_documents: number;
+    cleanup_processed_documents: number;
+    last_error: string | null;
   } | null;
 }
 
@@ -141,6 +184,11 @@ export interface FetchKbsParams {
 
 export async function fetchKnowledgebases(params?: FetchKbsParams) {
   const { data } = await customApiClient.get<ApiResponse<{ data: Knowledgebase[]; total: number }>>("/api/ai-chatbot/kb", { params });
+  return data.data;
+}
+
+export async function fetchAiOverviewReport(): Promise<AiOverviewReport> {
+  const { data } = await customApiClient.get<ApiResponse<AiOverviewReport>>('/api/ai-chatbot/reports/overview');
   return data.data;
 }
 

@@ -46,6 +46,60 @@ export interface GroupMember {
   avatar_url: string | null;
 }
 
+export type PermissionGroupHistoryAction =
+  | 'created'
+  | 'updated'
+  | 'deleted'
+  | 'matrix_updated'
+  | 'members_assigned'
+  | 'member_removed'
+  | 'configuration_updated';
+
+export interface PermissionGroupHistoryListItem {
+  id: string;
+  permission_group_id: string;
+  permission_group_name: string;
+  action: PermissionGroupHistoryAction;
+  actor_username: string;
+  actor_display_name: string | null;
+  actor_role: string | null;
+  created_at: string;
+}
+
+export interface PermissionMatrixHistorySnapshot {
+  module_code: string;
+  module_name: string | null;
+  module_icon: string | null;
+  can_view: boolean;
+  can_add: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface PermissionGroupHistoryState {
+  group: { id: string; name: string; description: string };
+  matrix: PermissionMatrixHistorySnapshot[];
+}
+
+export interface PermissionGroupHistoryParticipant {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  email: string | null;
+  role: string | null;
+  change: 'added' | 'removed' | 'reassigned';
+  previous_group_id?: string | null;
+  previous_group_name?: string | null;
+}
+
+export interface PermissionGroupHistoryDetail extends PermissionGroupHistoryListItem {
+  actor_id: string;
+  actor_email: string | null;
+  before_state: PermissionGroupHistoryState | null;
+  after_state: PermissionGroupHistoryState | null;
+  participants: PermissionGroupHistoryParticipant[];
+}
+
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -94,6 +148,22 @@ export async function updatePermMatrix(groupId: string, permissions: {
   await customApiClient.put(`/api/permission-groups/${groupId}/permissions`, { permissions });
 }
 
+/** Save the permission matrix and all pending member changes in one transaction. */
+export async function savePermGroupConfiguration(groupId: string, input: {
+  permissions: {
+    module_code: string;
+    can_view: boolean;
+    can_add: boolean;
+    can_edit: boolean;
+    can_delete: boolean;
+  }[];
+  add_user_ids: string[];
+  remove_user_ids: string[];
+}) {
+  const { data } = await customApiClient.put<ApiResponse<{ changed: boolean }>>(`/api/permission-groups/${groupId}/configuration`, input);
+  return data.data;
+}
+
 /** Thêm users vào permission group (bulk) */
 export async function addMembersToGroup(groupId: string, userIds: string[]) {
   const { data } = await customApiClient.post<ApiResponse<{ added: number; total: number }>>(`/api/permission-groups/${groupId}/members`, { user_ids: userIds });
@@ -105,3 +175,23 @@ export async function removeMemberFromGroup(groupId: string, userId: string) {
   await customApiClient.delete(`/api/permission-groups/${groupId}/members/${userId}`);
 }
 
+export async function fetchPermissionGroupHistory(params?: {
+  cursor?: string | null;
+  page_size?: number;
+  search?: string;
+  from?: string;
+  to?: string;
+}) {
+  const { data } = await customApiClient.get<ApiResponse<{
+    data: PermissionGroupHistoryListItem[];
+    total: number;
+    has_more: boolean;
+    next_cursor: string | null;
+  }>>('/api/permission-groups/history', { params });
+  return data.data;
+}
+
+export async function fetchPermissionGroupHistoryDetail(historyId: string) {
+  const { data } = await customApiClient.get<ApiResponse<PermissionGroupHistoryDetail>>(`/api/permission-groups/history/${historyId}`);
+  return data.data;
+}
