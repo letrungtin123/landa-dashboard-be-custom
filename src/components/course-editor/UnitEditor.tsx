@@ -2,7 +2,7 @@
  * UnitEditor.tsx — Hiển thị và chỉnh sửa components trong một Unit
  * Hỗ trợ: video, html, problem (5 dạng), la_crossword, la_sortable
  */
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -92,9 +92,19 @@ import { config } from '@/config/env';
 import { resolvePdfEmbedUrl } from '@/utils/pdf-url';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useTenantStore } from '@/utils/tenant-store';
+import { useAuthStore } from '@/utils/store';
 import { normalizeCourseComponentPermissionTypes } from '@/utils/course-component-permissions';
+import {
+  clearCourseComponentDraft,
+  courseComponentServerFingerprint,
+  loadCourseComponentDraft,
+  pruneExpiredCourseComponentDrafts,
+  saveCourseComponentDraft,
+  type CourseComponentDraftScope,
+} from '@/utils/course-component-draft-store';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
+import { resolveDiagramData } from './editors/diagram/diagram-data';
 import { getLocalizedApiError } from '@/utils/localized-error';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
@@ -296,6 +306,7 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
     };
   } catch {
     return {
+      __detailLoadFailed: true,
       id: blockId,
       category: block.block_type,
       block_type: block.block_type,
@@ -319,6 +330,10 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [subTypeSelector, setSubTypeSelector] = useState<ComponentType | null>(null);
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
+
+  useEffect(() => {
+    pruneExpiredCourseComponentDrafts();
+  }, []);
 
   const { data: unitChildren, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['unit-children', unitId],
@@ -538,10 +553,29 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
 }) {
   const blockId = block.id || block.block_id;
   const queryClient = useQueryClient();
+  const currentUser = useAuthStore((state) => state.user);
+  const activeTenantId = useTenantStore((state) => state.activeTenantId);
   const [isEditing, setIsEditing] = useState(false);
   const [blockData, setBlockData] = useState<any>(null);
+  const [editingBlockData, setEditingBlockData] = useState<any>(null);
   const [detailVersion, setDetailVersion] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState(true);
+  const [isDraftLoading, setIsDraftLoading] = useState(false);
+  const [recoveredDraft, setRecoveredDraft] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
+  const [draftConflict, setDraftConflict] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
+  const editorLoadSequenceRef = useRef(0);
+
+  const draftScope = useMemo<CourseComponentDraftScope | null>(() => {
+    const tenantId = activeTenantId || currentUser?.tenant_id || '';
+    if (!currentUser?.id || !tenantId || !courseId || !blockId || !block.block_type) return null;
+    return {
+      actorId: currentUser.id,
+      tenantId,
+      courseId,
+      blockId,
+      componentType: block.block_type,
+    };
+  }, [activeTenantId, block.block_type, blockId, courseId, currentUser?.id, currentUser?.tenant_id]);
 
   // ── dnd-kit sortable hook ──
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: blockId });
@@ -557,7 +591,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     setBlockData(detail);
     setDetailVersion((version) => version + 1);
     setLoadingDetail(false);
-  }, [block, blockId]);
+  }, [block]);
 
   // Fetch lại khi unit-children refetch để data AI vừa apply hiện ngay trên card/form đang mở.
   // QUAN TRỌNG: Skip refresh khi đang editing — tránh mất state chưa save (video upload, v.v.)
@@ -570,7 +604,11 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
 
   const delMut = useMutation({
     mutationFn: () => deleteXBlock(blockId),
-    onSuccess: () => { toast.success(i18n.t('courseUnit.deleted')); onDelete(); },
+    onSuccess: () => {
+      if (draftScope) clearCourseComponentDraft(draftScope);
+      toast.success(i18n.t('courseUnit.deleted'));
+      onDelete();
+    },
     onError: () => toast.error(i18n.t('courseUnit.deleteFailed')),
   });
 
@@ -578,6 +616,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(blockId),
     onSuccess: async () => {
+      if (draftScope) clearCourseComponentDraft(draftScope);
       toast.success(i18n.t('courseUnit.restored'));
       await loadDetail();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
@@ -587,16 +626,97 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   });
 
   const handleSaved = useCallback(async () => {
+    if (draftScope) clearCourseComponentDraft(draftScope);
     setIsEditing(false);
+    setEditingBlockData(null);
+    setRecoveredDraft(null);
+    setDraftConflict(null);
     await loadDetail(); // Refresh preview sau save
     onSaved();
-  }, [loadDetail, onSaved]);
+  }, [draftScope, loadDetail, onSaved]);
 
   const handleImmediateSaved = useCallback(() => {
     onSaved();
   }, [onSaved]);
 
-  const editFormKey = `${blockId}:${detailVersion}`;
+  const editFormKey = `${blockId}:${detailVersion}:${editingBlockData?.edited_on || editingBlockData?.updated_at || ''}`;
+
+  const openEditor = useCallback(async () => {
+    const sequence = editorLoadSequenceRef.current + 1;
+    editorLoadSequenceRef.current = sequence;
+    setIsEditing(true);
+    setIsDraftLoading(true);
+    setRecoveredDraft(null);
+    setDraftConflict(null);
+
+    try {
+      // Always compare against a fresh server snapshot. The card deliberately
+      // does not refetch while an editor is open, so reusing blockData here
+      // could silently accept a stale draft after another admin changed it.
+      const currentBlock = await fetchBlockDetail(block);
+      if (editorLoadSequenceRef.current !== sequence) return;
+      setEditingBlockData(currentBlock);
+      if (!draftScope) {
+        if (currentBlock.__detailLoadFailed) {
+          toast.error(i18n.t('courseUnit.loadFailed'));
+          setEditingBlockData(null);
+          setIsEditing(false);
+        }
+        return;
+      }
+
+      const draft = await loadCourseComponentDraft<ComponentEditDraftState>(draftScope);
+      if (editorLoadSequenceRef.current !== sequence) return;
+      if (currentBlock.__detailLoadFailed && !draft) {
+        toast.error(i18n.t('courseUnit.loadFailed'));
+        setEditingBlockData(null);
+        setIsEditing(false);
+        return;
+      }
+      if (!draft) return;
+
+      const payload = { state: draft.state, createdAt: draft.createdAt };
+      if (currentBlock.__detailLoadFailed) {
+        // Never offer a misleading "latest" version when the latest server
+        // snapshot could not be read. The complete local state remains usable
+        // and the user does not lose it merely because the network blipped.
+        setRecoveredDraft(payload);
+        toast.warning(i18n.t('courseComponentDraft.serverCheckUnavailable'));
+        return;
+      }
+      if (draft.baselineFingerprint === courseComponentServerFingerprint(currentBlock)) {
+        setRecoveredDraft(payload);
+        toast.info(i18n.t('courseComponentDraft.localDraftRestored'));
+      } else {
+        setDraftConflict(payload);
+      }
+    } finally {
+      if (editorLoadSequenceRef.current === sequence) setIsDraftLoading(false);
+    }
+  }, [block, draftScope]);
+
+  const handleEditingOpenChange = useCallback((open: boolean) => {
+    if (open) return;
+    editorLoadSequenceRef.current += 1;
+    setIsEditing(false);
+    setEditingBlockData(null);
+    setIsDraftLoading(false);
+    setDraftConflict(null);
+  }, []);
+
+  const useServerVersion = useCallback(() => {
+    if (draftScope) clearCourseComponentDraft(draftScope);
+    setRecoveredDraft(null);
+    setDraftConflict(null);
+  }, [draftScope]);
+
+  const discardLocalDraftAndClose = useCallback(() => {
+    if (draftScope) clearCourseComponentDraft(draftScope);
+    setRecoveredDraft(null);
+    setDraftConflict(null);
+    setEditingBlockData(null);
+    setIsEditing(false);
+  }, [draftScope]);
 
   return (
     <div
@@ -630,7 +750,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           )}
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { void openEditor(); }}>
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
           {block.has_changes && block.published && (
@@ -702,44 +822,93 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
       {/* Fullscreen Editor for Diagram */}
       {isEditing && block.block_type === 'la_diagram' && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 left-0 top-0 z-[9999] flex h-[100dvh] w-screen flex-col overflow-hidden bg-background">
-          <ComponentEditForm
-            key={editFormKey}
-            blockInfo={blockData}
-            courseId={courseId}
-            onSaved={handleSaved}
-            onImmediateSaved={handleImmediateSaved}
-            onCancel={() => setIsEditing(false)}
-          />
+          {loadingDetail || isDraftLoading ? (
+            <div className="m-auto w-full max-w-3xl space-y-4 p-6">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-[48vh] w-full" />
+            </div>
+          ) : draftConflict ? (
+            <div className="m-auto flex max-w-xl flex-col items-center gap-5 p-6 text-center">
+              <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                {i18n.t('courseComponentDraft.localDraftConflictBadge')}
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">{i18n.t('courseComponentDraft.localDraftConflictTitle')}</h3>
+                <p className="text-sm leading-6 text-muted-foreground">{i18n.t('courseComponentDraft.localDraftConflictDescription')}</p>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button variant="outline" onClick={useServerVersion}>{i18n.t('courseComponentDraft.useServerVersion')}</Button>
+                <Button onClick={() => { setRecoveredDraft(draftConflict); setDraftConflict(null); }}>{i18n.t('courseComponentDraft.useLocalDraft')}</Button>
+              </div>
+            </div>
+          ) : (
+            <ComponentEditForm
+              key={editFormKey}
+              blockInfo={editingBlockData || blockData}
+              courseId={courseId}
+              onSaved={handleSaved}
+              onImmediateSaved={handleImmediateSaved}
+              onCancel={handleEditingOpenChange.bind(null, false)}
+              draftScope={draftScope}
+              initialDraft={recoveredDraft?.state}
+              initialDraftCreatedAt={recoveredDraft?.createdAt}
+              restoredFromDraft={Boolean(recoveredDraft)}
+              onDiscardLocalDraft={discardLocalDraftAndClose}
+            />
+          )}
         </div>,
         document.body,
       )}
 
       {/* Edit Dialog for Normal Components */}
-      <Dialog open={isEditing && block.block_type !== 'la_diagram'} onOpenChange={setIsEditing}>
+      <Dialog open={isEditing && block.block_type !== 'la_diagram'} onOpenChange={handleEditingOpenChange}>
         <DialogContent className="w-[95vw] sm:max-w-7xl max-h-[92vh] flex flex-col overflow-hidden p-0">
           <DialogHeader className="px-6 py-4 border-b bg-muted/20 shrink-0">
             <DialogTitle className="text-lg font-bold">
-              {i18n.t('courseUnit.editingName', { name: blockData?.display_name || block.display_name })}
+              {i18n.t('courseUnit.editingName', { name: editingBlockData?.display_name || blockData?.display_name || block.display_name })}
               <span className="ml-2 text-xs font-normal text-muted-foreground uppercase tracking-wider">
                 [{block.block_type}]
               </span>
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-5">
-            {loadingDetail ? (
+            {loadingDetail || isDraftLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-40 w-full" />
                 <Skeleton className="h-40 w-full" />
               </div>
+            ) : draftConflict ? (
+              <div className="mx-auto flex max-w-xl flex-col items-center gap-5 py-8 text-center">
+                <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                  {i18n.t('courseComponentDraft.localDraftConflictBadge')}
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-semibold">{i18n.t('courseComponentDraft.localDraftConflictTitle')}</h3>
+                  <p className="text-sm leading-6 text-muted-foreground">{i18n.t('courseComponentDraft.localDraftConflictDescription')}</p>
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <Button variant="outline" onClick={useServerVersion}>
+                    {i18n.t('courseComponentDraft.useServerVersion')}
+                  </Button>
+                  <Button onClick={() => { setRecoveredDraft(draftConflict); setDraftConflict(null); }}>
+                    {i18n.t('courseComponentDraft.useLocalDraft')}
+                  </Button>
+                </div>
+              </div>
             ) : (
               <ComponentEditForm
                 key={editFormKey}
-                blockInfo={blockData}
+                blockInfo={editingBlockData || blockData}
                 courseId={courseId}
                 onSaved={handleSaved}
                 onImmediateSaved={handleImmediateSaved}
-                onCancel={() => setIsEditing(false)}
+                onCancel={handleEditingOpenChange.bind(null, false)}
+                draftScope={draftScope}
+                initialDraft={recoveredDraft?.state}
+                initialDraftCreatedAt={recoveredDraft?.createdAt}
+                restoredFromDraft={Boolean(recoveredDraft)}
+                onDiscardLocalDraft={discardLocalDraftAndClose}
               />
             )}
           </div>
@@ -756,10 +925,11 @@ function SortablePreviewInteractive({ parsed, questionText }: { parsed: any, que
   const [items, setItems] = useState<any[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [dragging, setDragging] = useState<number | null>(null);
+  const itemsFingerprint = useMemo(() => JSON.stringify(correctItems), [correctItems]);
 
   useEffect(() => {
     setItems([...correctItems].sort(() => Math.random() - 0.5));
-  }, [correctItems]);
+  }, [itemsFingerprint]);
 
   const moveItem = (from: number, to: number) => {
     if (submitted) return;
@@ -1728,7 +1898,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
       );
     }
     case 'la_diagram': {
-      const parsed = parseMaybeJson(blockData?.metadata?.diagram_data || blockData?.diagram_data);
+      const parsed = resolveDiagramData(blockData);
 
       if (!parsed || !parsed.diagrams || parsed.diagrams.length === 0) {
         return (
@@ -1916,7 +2086,14 @@ function ProblemPreviewDropdown({
 }
 
 function ImageChoiceQuizPreviewInteractive({ quiz }: { quiz: ImageChoiceQuizData }) {
-  const normalized = normalizeImageChoiceQuizData(quiz);
+  // Older blocks can be parsed into a fresh object on every render. Normalize
+  // only when the actual payload changes so the reset effect below cannot
+  // become a maximum-update-depth loop.
+  const quizFingerprint = useMemo(() => JSON.stringify(quiz), [quiz]);
+  const normalized = useMemo(
+    () => normalizeImageChoiceQuizData(quiz),
+    [quizFingerprint],
+  );
   const [selectedId, setSelectedId] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -2921,91 +3098,139 @@ function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; wei
 
 // ─── ComponentEditForm ────────────────────────────────────────────────────────
 
-function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onCancel }: {
+interface ComponentEditorUiDraftState {
+  videoMode?: 'youtube' | 'upload';
+  videoInputValue?: string;
+  problemYoutubeInput?: string;
+  crosswordYoutubeInput?: string;
+  sortableYoutubeInput?: string;
+}
+
+interface ComponentEditDraftState {
+  displayName: string;
+  htmlContent: string;
+  problemXml: string;
+  metadata: Record<string, any>;
+  cwWords: CrosswordWord[];
+  cwKeywordCol: number;
+  soQuestionText: string;
+  soItems: SortableItem[];
+  diagramData: DiagramXBlockData;
+  faqItems: FaqItem[];
+  pdfUrl: string;
+  mediaQuizData: MediaQuizData;
+  imageChoiceQuizData: ImageChoiceQuizData;
+  scenarioChatData: ScenarioChatData;
+  editorUi: ComponentEditorUiDraftState;
+}
+
+function createComponentEditDraftState(blockInfo: any): ComponentEditDraftState {
+  const category = blockInfo?.category || blockInfo?.block_type || '';
+  const metadata = { ...(blockInfo?.metadata || {}) };
+  if (category === 'video') {
+    let youtubeId = metadata.youtube_id_1_0 || metadata.youtube_id;
+    if (!youtubeId && typeof blockInfo?.data === 'string') {
+      youtubeId = blockInfo.data.match(/youtube_id_1_0="([^"]+)"/)?.[1] || '';
+    }
+    if (youtubeId) metadata.youtube_id_1_0 = youtubeId;
+  }
+
+  const crosswordData = parseMaybeJson(blockInfo?.metadata?.crossword_data || blockInfo?.crossword_data);
+  const keywordCoordinates = crosswordData?.keyword_coordinates || blockInfo?.metadata?.keyword_coordinates;
+  const sortableData = parseMaybeJson(blockInfo?.metadata?.sortable_data || blockInfo?.sortable_data);
+  const diagramData = resolveDiagramData(blockInfo);
+  const faqData = parseMaybeJson(blockInfo?.metadata?.faq_data || blockInfo?.faq_data);
+  const mediaQuizMode = metadata.media_quiz_mode === 'multiple_select' ? 'multiple_select' : 'single_select';
+
+  return {
+    displayName: blockInfo?.display_name || '',
+    htmlContent: typeof blockInfo?.data === 'string' ? blockInfo.data : '',
+    problemXml: typeof blockInfo?.data === 'string' ? blockInfo.data : '',
+    metadata,
+    cwWords: Array.isArray(crosswordData?.words)
+      ? crosswordData.words
+      : (Array.isArray(blockInfo?.metadata?.words) ? blockInfo.metadata.words : []),
+    cwKeywordCol: Array.isArray(keywordCoordinates) && keywordCoordinates.length > 0
+      ? (keywordCoordinates[0].col ?? 0)
+      : 0,
+    soQuestionText: blockInfo?.metadata?.question_text || blockInfo?.question_text || '',
+    soItems: Array.isArray(sortableData?.items)
+      ? sortableData.items
+      : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []),
+    diagramData: diagramData || { diagrams: [], start_diagram_id: '' },
+    faqItems: Array.isArray(faqData?.items)
+      ? faqData.items
+      : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []),
+    pdfUrl: blockInfo?.metadata?.pdf_url || blockInfo?.pdf_url || '',
+    mediaQuizData: normalizeMediaQuizData(parseMaybeJson(blockInfo?.data), mediaQuizMode),
+    imageChoiceQuizData: normalizeImageChoiceQuizData(parseMaybeJson(blockInfo?.data)),
+    scenarioChatData: normalizeScenarioChatData(parseMaybeJson(blockInfo?.data)),
+    editorUi: {},
+  };
+}
+
+function hydrateComponentEditDraftState(blockInfo: any, localDraft?: ComponentEditDraftState): ComponentEditDraftState {
+  const source = createComponentEditDraftState(blockInfo);
+  if (!localDraft) return source;
+  return {
+    ...source,
+    ...localDraft,
+    metadata: { ...source.metadata, ...(localDraft.metadata || {}) },
+    editorUi: { ...source.editorUi, ...(localDraft.editorUi || {}) },
+    cwWords: Array.isArray(localDraft.cwWords) ? localDraft.cwWords : source.cwWords,
+    soItems: Array.isArray(localDraft.soItems) ? localDraft.soItems : source.soItems,
+    faqItems: Array.isArray(localDraft.faqItems) ? localDraft.faqItems : source.faqItems,
+  };
+}
+
+function ComponentEditForm({
+  blockInfo,
+  courseId,
+  onSaved,
+  onImmediateSaved,
+  onCancel,
+  draftScope,
+  initialDraft,
+  initialDraftCreatedAt,
+  restoredFromDraft,
+  onDiscardLocalDraft,
+}: {
   blockInfo: any;
   courseId?: string;
   onSaved: () => void;
   onImmediateSaved?: () => void;
   onCancel: () => void;
+  draftScope?: CourseComponentDraftScope | null;
+  initialDraft?: ComponentEditDraftState;
+  initialDraftCreatedAt?: number;
+  restoredFromDraft?: boolean;
+  onDiscardLocalDraft?: () => void;
 }) {
   const category = blockInfo?.category || blockInfo?.block_type || '';
-
-  const [displayName, setDisplayName] = useState(blockInfo?.display_name || '');
+  const initialStateRef = useRef<ComponentEditDraftState | null>(null);
+  if (!initialStateRef.current) initialStateRef.current = hydrateComponentEditDraftState(blockInfo, initialDraft);
+  const initialState = initialStateRef.current;
   const initialHtmlContent = typeof blockInfo?.data === 'string' ? blockInfo.data : '';
-  const [htmlContent, setHtmlContent] = useState(initialHtmlContent);
-  const [problemXml, setProblemXml] = useState(typeof blockInfo?.data === 'string' ? blockInfo.data : '');
 
-  const [metadata, setMetadata] = useState<any>(() => {
-    const meta = { ...(blockInfo?.metadata || {}) };
-    if (category === 'video') {
-      let ytId = meta.youtube_id_1_0 || meta.youtube_id;
-      if (!ytId && typeof blockInfo?.data === 'string') {
-        const xmlMatch = blockInfo.data.match(/youtube_id_1_0="([^"]+)"/);
-        if (xmlMatch) ytId = xmlMatch[1];
-      }
-      if (ytId) meta.youtube_id_1_0 = ytId;
-    }
-    return meta;
-  });
-
-  const [cwWords, setCwWords] = useState<CrosswordWord[]>(() => {
-    const raw = blockInfo?.metadata?.crossword_data || blockInfo?.crossword_data;
-    const parsed = parseMaybeJson(raw);
-    // Support both: parsed.words (nested) OR metadata.words (root-level)
-    const words = Array.isArray(parsed?.words) ? parsed.words : (Array.isArray(blockInfo?.metadata?.words) ? blockInfo.metadata.words : []);
-    return words;
-  });
-
-  const [cwKeywordCol, setCwKeywordCol] = useState<number>(() => {
-    const raw = blockInfo?.metadata?.crossword_data || blockInfo?.crossword_data;
-    const parsed = parseMaybeJson(raw);
-    const kc = parsed?.keyword_coordinates || blockInfo?.metadata?.keyword_coordinates;
-    if (Array.isArray(kc) && kc.length > 0) {
-      return kc[0].col ?? 0;
-    }
-    return 0;
-  });
-
-  const [soQuestionText, setSoQuestionText] = useState(
-    blockInfo?.metadata?.question_text || blockInfo?.question_text || ''
-  );
-  const [soItems, setSoItems] = useState<SortableItem[]>(() => {
-    const raw = blockInfo?.metadata?.sortable_data || blockInfo?.sortable_data;
-    const parsed = parseMaybeJson(raw);
-    // Support both: parsed.items (nested) OR metadata.items (root-level)
-    const items = Array.isArray(parsed?.items) ? parsed.items : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []);
-    return items;
-  });
-
-  const [diagramData, setDiagramData] = useState<DiagramXBlockData>(() => {
-    const raw = blockInfo?.metadata?.diagram_data || blockInfo?.diagram_data;
-    const parsed = parseMaybeJson(raw);
-    return parsed || { diagrams: [], start_diagram_id: '' };
-  });
-  const [faqItems, setFaqItems] = useState<FaqItem[]>(() => {
-    const raw = blockInfo?.metadata?.faq_data || blockInfo?.faq_data;
-    const parsed = parseMaybeJson(raw);
-    // Support both: parsed.items (nested) OR metadata.items (root-level)
-    const items = Array.isArray(parsed?.items) ? parsed.items : (Array.isArray(blockInfo?.metadata?.items) ? blockInfo.metadata.items : []);
-    return items;
-  });
-
-  const [pdfUrl, setPdfUrl] = useState(
-    blockInfo?.metadata?.pdf_url || blockInfo?.pdf_url || ''
-  );
-  const [initialMediaQuizData] = useState<MediaQuizData>(() => {
-    const metaMode = blockInfo?.metadata?.media_quiz_mode === 'multiple_select' ? 'multiple_select' : 'single_select';
-    return normalizeMediaQuizData(parseMaybeJson(blockInfo?.data), metaMode);
-  });
-  const [mediaQuizData, setMediaQuizData] = useState<MediaQuizData>(initialMediaQuizData);
-  const [initialImageChoiceQuizData] = useState<ImageChoiceQuizData>(() => normalizeImageChoiceQuizData(parseMaybeJson(blockInfo?.data)));
-  const [imageChoiceQuizData, setImageChoiceQuizData] = useState<ImageChoiceQuizData>(initialImageChoiceQuizData);
-  const [initialScenarioChatData] = useState<ScenarioChatData>(() => normalizeScenarioChatData(parseMaybeJson(blockInfo?.data)));
-  const [scenarioChatData, setScenarioChatData] = useState<ScenarioChatData>(initialScenarioChatData);
-  const savedMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
-  const currentMediaQuizDataRef = useRef<MediaQuizData>(initialMediaQuizData);
-  const savedImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialImageChoiceQuizData);
-  const currentImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialImageChoiceQuizData);
+  const [displayName, setDisplayName] = useState(initialState.displayName);
+  const [htmlContent, setHtmlContent] = useState(initialState.htmlContent);
+  const [problemXml, setProblemXml] = useState(initialState.problemXml);
+  const [metadata, setMetadata] = useState<any>(initialState.metadata);
+  const [cwWords, setCwWords] = useState<CrosswordWord[]>(initialState.cwWords);
+  const [cwKeywordCol, setCwKeywordCol] = useState<number>(initialState.cwKeywordCol);
+  const [soQuestionText, setSoQuestionText] = useState(initialState.soQuestionText);
+  const [soItems, setSoItems] = useState<SortableItem[]>(initialState.soItems);
+  const [diagramData, setDiagramData] = useState<DiagramXBlockData>(initialState.diagramData);
+  const [faqItems, setFaqItems] = useState<FaqItem[]>(initialState.faqItems);
+  const [pdfUrl, setPdfUrl] = useState(initialState.pdfUrl);
+  const [mediaQuizData, setMediaQuizData] = useState<MediaQuizData>(initialState.mediaQuizData);
+  const [imageChoiceQuizData, setImageChoiceQuizData] = useState<ImageChoiceQuizData>(initialState.imageChoiceQuizData);
+  const [scenarioChatData, setScenarioChatData] = useState<ScenarioChatData>(initialState.scenarioChatData);
+  const [editorUi, setEditorUi] = useState<ComponentEditorUiDraftState>(initialState.editorUi);
+  const savedMediaQuizDataRef = useRef<MediaQuizData>(initialState.mediaQuizData);
+  const currentMediaQuizDataRef = useRef<MediaQuizData>(initialState.mediaQuizData);
+  const savedImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialState.imageChoiceQuizData);
+  const currentImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialState.imageChoiceQuizData);
   const uploadedImageChoiceQuizPathsRef = useRef<Set<string>>(new Set());
   const mediaQuizSaveInFlightRef = useRef(0);
   const imageChoiceQuizSaveInFlightRef = useRef(0);
@@ -3020,6 +3245,83 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
   useEffect(() => {
     metadataRef.current = metadata;
   }, [metadata]);
+
+  const initialDraftSnapshotRef = useRef<ComponentEditDraftState>(initialState);
+  const draftCreatedAtRef = useRef<number | undefined>(initialDraftCreatedAt);
+  const baselineFingerprintRef = useRef(courseComponentServerFingerprint(blockInfo));
+  const [draftBaselineRevision, setDraftBaselineRevision] = useState(0);
+  const [draftStorageStatus, setDraftStorageStatus] = useState<'available' | 'memory-only'>('available');
+  const [showDiscardLocalDraftDialog, setShowDiscardLocalDraftDialog] = useState(false);
+
+  // Some editors save uploaded assets immediately. Refresh only the draft's
+  // server baseline after that succeeds so a later reopen does not mistake the
+  // editor's own committed asset change for somebody else's concurrent edit.
+  const acknowledgeServerAutoSave = useCallback(() => {
+    const id = blockInfo?.id;
+    if (id) {
+      void getBlockInfo(id)
+        .then((latestBlock) => {
+          baselineFingerprintRef.current = courseComponentServerFingerprint(latestBlock);
+          setDraftBaselineRevision((revision) => revision + 1);
+        })
+        .catch(() => undefined);
+    }
+    onImmediateSaved?.();
+  }, [blockInfo?.id, onImmediateSaved]);
+
+  const currentDraftState = useMemo<ComponentEditDraftState>(() => ({
+    displayName,
+    htmlContent,
+    problemXml,
+    metadata,
+    cwWords,
+    cwKeywordCol,
+    soQuestionText,
+    soItems,
+    diagramData,
+    faqItems,
+    pdfUrl,
+    mediaQuizData,
+    imageChoiceQuizData,
+    scenarioChatData,
+    editorUi,
+  }), [
+    cwKeywordCol,
+    cwWords,
+    diagramData,
+    displayName,
+    editorUi,
+    faqItems,
+    htmlContent,
+    imageChoiceQuizData,
+    mediaQuizData,
+    metadata,
+    pdfUrl,
+    problemXml,
+    scenarioChatData,
+    soItems,
+    soQuestionText,
+  ]);
+
+  const hasLocalDraftChanges = useMemo(() => (
+    Boolean(restoredFromDraft)
+      || JSON.stringify(currentDraftState) !== JSON.stringify(initialDraftSnapshotRef.current)
+  ), [currentDraftState, restoredFromDraft]);
+
+  // sessionStorage is written synchronously inside saveCourseComponentDraft. This
+  // layout effect runs before paint, so a normal reload immediately after typing
+  // still has a recovery journal; IndexedDB mirrors it without blocking the UI.
+  useLayoutEffect(() => {
+    if (!draftScope || !hasLocalDraftChanges) return;
+    const status = saveCourseComponentDraft(
+      draftScope,
+      baselineFingerprintRef.current,
+      currentDraftState,
+      draftCreatedAtRef.current,
+    );
+    if (!draftCreatedAtRef.current) draftCreatedAtRef.current = Date.now();
+    setDraftStorageStatus(status);
+  }, [currentDraftState, draftBaselineRevision, draftScope, hasLocalDraftChanges]);
 
   useEffect(() => {
     if (category !== 'la_media_quiz') return;
@@ -3258,8 +3560,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     onSuccess: (_data, options) => {
       if (!options?.silent) toast.success(i18n.t('courseUnit.saved'));
       if (options?.keepOpen) {
-        onImmediateSaved?.();
+        acknowledgeServerAutoSave();
       } else {
+        if (draftScope) clearCourseComponentDraft(draftScope);
         onSaved();
       }
     },
@@ -3309,7 +3612,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     } else {
       await updateXBlock(id, { metadata: { ...nextMetadata, display_name: displayName } });
     }
-    onImmediateSaved?.();
+    acknowledgeServerAutoSave();
   };
   const autoSaveProblemMediaDraft = async (nextMedia: ProblemMedia) => {
     const normalized = normalizeProblemMedia(nextMedia);
@@ -3337,7 +3640,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     savedMediaQuizDataRef.current = payloadData;
     currentMediaQuizDataRef.current = payloadData;
     setMediaQuizData(payloadData);
-    onImmediateSaved?.();
+    acknowledgeServerAutoSave();
     if (removedPaths.length > 0) {
       await cleanupCourseMediaQuizAssets(courseId, removedPaths);
     }
@@ -3357,7 +3660,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
       if (!id) throw new Error(i18n.t('courseUnit.invalidBlockId'));
     setPdfUrl(nextPdfUrl);
     await studioSubmit(id, { display_name: displayName, pdf_url: nextPdfUrl });
-    onImmediateSaved?.();
+    acknowledgeServerAutoSave();
   };
 
   const renderEditor = () => {
@@ -3371,6 +3674,9 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onMetadataChange={setMetadata}
             courseId={courseId || ''}
             onAutoSave={autoSaveMetadataDraft}
+            draftMode={editorUi.videoMode}
+            draftInputValue={editorUi.videoInputValue}
+            onDraftUiChange={(next) => setEditorUi((previous) => ({ ...previous, ...next }))}
           />
         );
       case 'html':
@@ -3384,7 +3690,7 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             metadata={metadata}
             onMetadataChange={setMetadata}
             courseId={courseId || ''}
-            onImmediateSaved={onImmediateSaved}
+            onImmediateSaved={acknowledgeServerAutoSave}
           />
         );
       case 'problem':
@@ -3398,6 +3704,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
             onAutoSave={autoSaveProblemMediaDraft}
+            draftYoutubeInput={editorUi.problemYoutubeInput}
+            onDraftYoutubeInputChange={(value) => setEditorUi((previous) => ({ ...previous, problemYoutubeInput: value }))}
           />
         );
       case 'la_media_quiz':
@@ -3447,6 +3755,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
             onAutoSave={autoSaveProblemMediaDraft}
+            draftYoutubeInput={editorUi.crosswordYoutubeInput}
+            onDraftYoutubeInputChange={(value) => setEditorUi((previous) => ({ ...previous, crosswordYoutubeInput: value }))}
           />
         );
       case 'la_sortable':
@@ -3462,6 +3772,8 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
             onProblemMediaChange={(next) => setMetadata((prev: any) => ({ ...prev, problem_media: next }))}
             courseId={courseId || ''}
             onAutoSave={autoSaveProblemMediaDraft}
+            draftYoutubeInput={editorUi.sortableYoutubeInput}
+            onDraftYoutubeInputChange={(value) => setEditorUi((previous) => ({ ...previous, sortableYoutubeInput: value }))}
           />
         );
       case 'la_diagram':
@@ -3521,6 +3833,43 @@ function ComponentEditForm({ blockInfo, courseId, onSaved, onImmediateSaved, onC
     <div className="space-y-5">
       {renderEditor()}
       <DialogFooter className="pt-5 border-t border-border">
+        {draftScope && hasLocalDraftChanges && (
+          <div className="mr-auto flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${draftStorageStatus === 'available' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            <span>
+              {draftStorageStatus === 'available'
+                ? (restoredFromDraft ? i18n.t('courseComponentDraft.localDraftRestored') : i18n.t('courseComponentDraft.localDraftSaved'))
+                : i18n.t('courseComponentDraft.localDraftMemoryOnly')}
+            </span>
+          </div>
+        )}
+        {draftScope && hasLocalDraftChanges && onDiscardLocalDraft && (
+          <AlertDialog open={showDiscardLocalDraftDialog} onOpenChange={setShowDiscardLocalDraftDialog}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => setShowDiscardLocalDraftDialog(true)}
+            >
+              {i18n.t('courseComponentDraft.discardLocalDraft')}
+            </Button>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{i18n.t('courseComponentDraft.discardLocalDraftTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>{i18n.t('courseComponentDraft.discardLocalDraftDescription')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{i18n.t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={onDiscardLocalDraft}
+                >
+                  {i18n.t('courseComponentDraft.discardLocalDraft')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
         <Button
           onClick={() => saveMut.mutate({ keepOpen: false })}
           disabled={saveMut.isPending}

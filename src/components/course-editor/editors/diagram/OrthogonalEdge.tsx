@@ -1,5 +1,9 @@
 import React from 'react';
-import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
+import {
+  BaseEdge,
+  getSmoothStepPath,
+  type EdgeProps,
+} from '@xyflow/react';
 
 /**
  * Custom edge that renders identical to admin's DeletableEdge path calculation.
@@ -12,9 +16,21 @@ export default function OrthogonalEdge({
   const [edgePath] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
-    borderRadius: 0,
-    offset: 0,
+    borderRadius: 8,
+    offset: 18,
   });
 
-  return <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />;
+  return (
+    <BaseEdge
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={{
+        stroke: 'var(--muted-foreground)',
+        strokeWidth: 2,
+        strokeLinecap: 'round' as const,
+        strokeLinejoin: 'round' as const,
+        ...style,
+      }}
+    />
+  );
 }

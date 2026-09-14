@@ -1163,12 +1163,12 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
   const typeLabel = category === 'chapter'
-    ? i18n.t('courseOutline.chapter')
+    ? i18n.t('common.courseComponentTypes.chapter')
     : category === 'sequential'
-      ? i18n.t('courseOutline.section')
+      ? i18n.t('common.courseComponentTypes.sequential')
       : category === 'vertical'
-        ? i18n.t('courseOutline.unit')
-        : i18n.t('courseOutline.content');
+        ? i18n.t('common.courseComponentTypes.vertical')
+        : i18n.t('common.courseComponentTypes.other');
 
   const addMut = useMutation({
     mutationFn: () => createBlock(parentId, category, name || undefined),

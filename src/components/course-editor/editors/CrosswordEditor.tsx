@@ -41,6 +41,8 @@ interface CrosswordEditorProps {
   onProblemMediaChange?: (v: ProblemMedia) => void;
   courseId?: string;
   onAutoSave?: (nextMedia: ProblemMedia) => void | Promise<void>;
+  draftYoutubeInput?: string;
+  onDraftYoutubeInputChange?: (value: string) => void;
 }
 
 export default function CrosswordEditor({
@@ -50,6 +52,8 @@ export default function CrosswordEditor({
   onProblemMediaChange,
   courseId,
   onAutoSave,
+  draftYoutubeInput,
+  onDraftYoutubeInputChange,
 }: CrosswordEditorProps) {
   const { t } = useTranslation();
 
@@ -63,7 +67,7 @@ export default function CrosswordEditor({
   useEffect(() => {
     mediaRef.current = media;
   }, [media]);
-  const [youtubeInput, setYoutubeInput] = useState(() => media.youtube_url || (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
+  const [youtubeInput, setYoutubeInput] = useState(() => draftYoutubeInput ?? media.youtube_url ?? (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
   const youtubeId = extractYoutubeId(youtubeInput);
 
   const updateProblemMedia = (next: ProblemMedia) => {
@@ -81,6 +85,7 @@ export default function CrosswordEditor({
 
   const handleYoutubeChange = (value: string) => {
     setYoutubeInput(value);
+    onDraftYoutubeInputChange?.(value);
     const id = extractYoutubeId(value);
     updateProblemMedia({
       ...media,
@@ -147,6 +152,7 @@ export default function CrosswordEditor({
         const nextMedia = { ...previousMedia, video_storage_path: path, youtube_id: undefined, youtube_url: undefined };
         updateProblemMedia(nextMedia);
         setYoutubeInput('');
+        onDraftYoutubeInputChange?.('');
         try {
           await persistMediaDraft(nextMedia);
           toast.success(t('courseEditorForms.videoUploadedSaved'));

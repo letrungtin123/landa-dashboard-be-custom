@@ -4,7 +4,7 @@
 // Header has fullscreen toggle
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,6 +14,7 @@ import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
   BookOpenCheck, CheckCircle2, AtSign, FileText, Search, Network,
+  ChevronDown, ChevronRight, BookOpen, Target, Clock3, ClipboardCheck, ListTree,
   Mic, MicOff, PhoneOff, Play, Volume2, VolumeX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ import {
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type BotPersona,
+  type LessonAuthorBlueprint, type LessonAuthorBlueprintEvent, type LessonAuthorProgressEvent,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
   type OutlineMention, type LessonAuthorSourceDocument,
   type RagMessageSource,
@@ -41,6 +43,7 @@ import {
   type CourseIndexSection,
 } from '@/api/custom-course-authoring';
 import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
+import { LessonAuthorBlueprintDialog } from './lesson-author-blueprint-dialog';
 import { AppTooltip } from '@/components/ui/tooltip';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +58,45 @@ type OutlineAncestor = { id: string; block_type: string };
 type VoiceCaptureState = 'idle' | 'requesting' | 'listening';
 type VoiceModePhase = 'idle' | 'requesting' | 'listening' | 'thinking' | 'preparing' | 'speaking' | 'play_blocked';
 type SendSource = 'text' | 'voice';
+type BlueprintDraftSelection = {
+  blueprint_id: string;
+  chapter_index: number;
+  chapter_title: string;
+};
+
+const CHAT_SCROLL_STORAGE_PREFIX = 'chat-widget-scroll-v1:';
+
+function getChatScrollStorageKey(conversationId: string): string {
+  return `${CHAT_SCROLL_STORAGE_PREFIX}${conversationId}`;
+}
+
+function readStoredChatScrollTop(conversationId: string): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = Number(window.sessionStorage.getItem(getChatScrollStorageKey(conversationId)));
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredChatScrollTop(conversationId: string, scrollTop: number): void {
+  if (typeof window === 'undefined' || !Number.isFinite(scrollTop)) return;
+  try {
+    window.sessionStorage.setItem(getChatScrollStorageKey(conversationId), String(Math.max(0, Math.round(scrollTop))));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function readNonNegativeInteger(value: unknown): number | null {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim()
+      ? Number.parseInt(value, 10)
+      : Number.NaN;
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
 type BrowserSpeechRecognitionResult = { isFinal: boolean; 0?: { transcript?: string } };
 type BrowserSpeechRecognitionEvent = Event & {
   resultIndex: number;
@@ -121,11 +163,257 @@ function formatCallDuration(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function buildBlueprintChapterDraftPrompt(chapterIndex: number, chapterTitle: string, isVietnamese: boolean): string {
+  return isVietnamese
+    ? `Soạn chi tiết Chương ${chapterIndex + 1}: ${chapterTitle}`
+    : `Draft Chapter ${chapterIndex + 1}: ${chapterTitle}`;
+}
+
+function BlueprintStructurePanel({
+  blueprint,
+  canDraft,
+  disabled,
+  onDraftChapter,
+}: {
+  blueprint: LessonAuthorBlueprint;
+  canDraft: boolean;
+  disabled: boolean;
+  onDraftChapter?: (chapterIndex: number) => void;
+}) {
+  const { i18n: translationInstance } = useTranslation();
+  const isVietnamese = translationInstance.language !== 'en';
+  const [expandedChapters, setExpandedChapters] = useState<Set<number>>(() => new Set([0]));
+  const [expandedLessons, setExpandedLessons] = useState<Set<string>>(() => new Set());
+
+  const formatDuration = (minutes: number) => {
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    return isVietnamese ? `${Math.round(minutes)} phút` : `${Math.round(minutes)} min`;
+  };
+
+  const toggleChapter = (chapterIndex: number) => {
+    setExpandedChapters(current => {
+      const next = new Set(current);
+      if (next.has(chapterIndex)) next.delete(chapterIndex);
+      else next.add(chapterIndex);
+      return next;
+    });
+  };
+
+  const toggleLesson = (lessonKey: string) => {
+    setExpandedLessons(current => {
+      const next = new Set(current);
+      if (next.has(lessonKey)) next.delete(lessonKey);
+      else next.add(lessonKey);
+      return next;
+    });
+  };
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-primary/20 bg-background/70 shadow-sm">
+      <div className="flex items-center gap-2 border-b bg-primary/5 px-3 py-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <ListTree className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">
+            {isVietnamese ? 'Cấu trúc bài học đề xuất' : 'Proposed lesson structure'}
+          </p>
+          <p className="text-[10px] leading-4 text-muted-foreground">
+            {isVietnamese
+              ? 'Mở từng chương để xem bài học và các mục nội dung.'
+              : 'Open each chapter to review its lessons and learning details.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="max-h-[50dvh] space-y-2 overflow-y-auto p-2.5 pr-1.5">
+        {blueprint.chapters.map((chapter, chapterIndex) => {
+          const chapterOpen = expandedChapters.has(chapterIndex);
+          const chapterDuration = formatDuration(chapter.duration_minutes);
+          return (
+            <section key={`${chapter.title}-${chapterIndex}`} className="overflow-hidden rounded-md border border-border/75 bg-card">
+              <div className="flex items-stretch gap-2 p-2">
+                <button
+                  type="button"
+                  className="group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-primary/35"
+                  onClick={() => toggleChapter(chapterIndex)}
+                  aria-expanded={chapterOpen}
+                  aria-label={isVietnamese ? `Mở Chương ${chapterIndex + 1}` : `Open Chapter ${chapterIndex + 1}`}
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground shadow-sm">
+                    {chapterIndex + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      {isVietnamese ? `Chương ${chapterIndex + 1}` : `Chapter ${chapterIndex + 1}`}
+                    </span>
+                    <span className="block truncate text-xs font-semibold leading-5 text-foreground">{chapter.title}</span>
+                  </span>
+                  {chapterDuration && (
+                    <span className="hidden shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:flex">
+                      <Clock3 className="h-3 w-3" />
+                      {chapterDuration}
+                    </span>
+                  )}
+                  {chapterOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                </button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-auto shrink-0 gap-1.5 rounded-md px-2 text-[10px]"
+                  disabled={disabled || !canDraft || !onDraftChapter}
+                  onClick={() => onDraftChapter?.(chapterIndex)}
+                >
+                  <BookOpenCheck className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{isVietnamese ? 'Soạn chương này' : 'Draft this chapter'}</span>
+                  <span className="sm:hidden">{isVietnamese ? 'Soạn' : 'Draft'}</span>
+                </Button>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {chapterOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="overflow-hidden border-t border-border/70"
+                  >
+                    <div className="space-y-3 px-3 py-3">
+                      {chapter.objective?.trim() && (
+                        <div className="flex gap-2 border-l-2 border-primary/35 pl-2.5">
+                          <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {isVietnamese ? 'Mục tiêu chương' : 'Chapter objective'}
+                            </p>
+                            <p className="mt-0.5 text-[11px] leading-5 text-foreground/85">{chapter.objective}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="border-l border-border/80 pl-3">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {isVietnamese ? 'Bài học' : 'Lessons'}
+                        </p>
+                        <div className="space-y-1.5">
+                          {chapter.lessons.map((lesson, lessonIndex) => {
+                            const lessonKey = `${chapterIndex}:${lessonIndex}`;
+                            const lessonOpen = expandedLessons.has(lessonKey);
+                            const lessonDuration = formatDuration(lesson.duration_minutes);
+                            return (
+                              <div key={`${lesson.title}-${lessonIndex}`} className="rounded-md border border-border/70 bg-muted/20">
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/35"
+                                  onClick={() => toggleLesson(lessonKey)}
+                                  aria-expanded={lessonOpen}
+                                >
+                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-primary/35 bg-background text-[9px] font-semibold text-primary">
+                                    {lessonIndex + 1}
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      {isVietnamese ? `Bài học ${chapterIndex + 1}.${lessonIndex + 1}` : `Lesson ${chapterIndex + 1}.${lessonIndex + 1}`}
+                                    </span>
+                                    <span className="block truncate text-[11px] font-semibold leading-4 text-foreground">{lesson.title}</span>
+                                  </span>
+                                  {lessonDuration && <span className="shrink-0 text-[10px] text-muted-foreground">{lessonDuration}</span>}
+                                  {lessonOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                                </button>
+
+                                <AnimatePresence initial={false}>
+                                  {lessonOpen && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      transition={{ duration: 0.16, ease: 'easeOut' }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="space-y-2 border-t border-border/60 px-3 py-2.5 text-[11px] leading-5">
+                                        {lesson.objective?.trim() && (
+                                          <div className="flex gap-2">
+                                            <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                                            <div><span className="font-semibold">{isVietnamese ? 'Mục tiêu: ' : 'Objective: '}</span>{lesson.objective}</div>
+                                          </div>
+                                        )}
+                                        {lesson.learning_activities?.length > 0 && (
+                                          <div className="flex gap-2">
+                                            <BookOpen className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                                            <div className="min-w-0 flex-1">
+                                              <p className="font-semibold">{isVietnamese ? 'Mục nội dung' : 'Learning activities'}</p>
+                                              <ol className="mt-1 space-y-1">
+                                                {lesson.learning_activities.map((activity, activityIndex) => (
+                                                  <li key={`${activity}-${activityIndex}`} className="flex gap-2 text-foreground/85">
+                                                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary">{activityIndex + 1}</span>
+                                                    <span>{activity}</span>
+                                                  </li>
+                                                ))}
+                                              </ol>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {lesson.assessment?.trim() && (
+                                          <div className="flex gap-2">
+                                            <ClipboardCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                                            <div><span className="font-semibold">{isVietnamese ? 'Đánh giá: ' : 'Assessment: '}</span>{lesson.assessment}</div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function normalizeBotMarkdownText(content: string): string {
-  return content
+  const normalized = content
     .replace(/\\\*\\\*/g, '**')
     .replace(/\\_/g, '_')
     .trim();
+
+  // Older lesson-author messages were persisted as plain text with indentation
+  // instead of Markdown lists. Keep those messages readable after the new
+  // formatter is deployed, while leaving normal chat responses untouched.
+  if (
+    normalized.includes('Chi tiết nội dung đề xuất:')
+    && normalized.includes('Mình đã chuẩn bị bản đề xuất chi tiết.')
+    && !normalized.includes('**Chi tiết nội dung đề xuất**')
+  ) {
+    return normalized
+      .replace(/^Tóm tắt:\s*/m, '**Tóm tắt**\n- ')
+      .replace(/^Phạm vi:\s*/m, '- **Phạm vi:** ')
+      .replace(/^Chi tiết nội dung đề xuất:\s*$/m, '**Chi tiết nội dung đề xuất**')
+      .replace(/^\s*(\d+)\.\s+Chương:\s*(.+)$/gm, (_match, number, title) => {
+        const cleanTitle = title.replace(/^Chương\s+\d+\s*:\s*/i, '');
+        return `- **Chương ${number}: ${cleanTitle}**`;
+      })
+      .replace(/^(\s*)(\d+\.\d+)\.\s+Bài:\s*(.+)$/gm, (_match, indent, number, title) => `${indent.length >= 3 ? '  ' : ''}- **Bài ${number}: ${title}**`)
+      .replace(/^(\s*)(\d+\.\d+\.\d+)\.\s+Mục:\s*(.+)$/gm, (_match, _indent, number, title) => `    - **Mục ${number}: ${title}**`)
+      .replace(/^(\s*)-\s+(\d+)\.\s+(.+)$/gm, (_match, indent, number, detail) => `${' '.repeat(Math.min(indent.length, 6))}- **${number}. ${detail}**`)
+      .replace(/^(\s*)\+\s+(.+)$/gm, (_match, indent, detail) => `${' '.repeat(Math.min(indent.length, 8))}- ${detail}`)
+      .replace(/^(\s*)Học liệu dự kiến:\s*/gm, (_match, indent) => `${' '.repeat(Math.min(indent.length, 6))}- **Học liệu dự kiến:** `)
+      .replace(/^(\s*)Gồm\s+/gm, (_match, indent) => `${' '.repeat(Math.min(indent.length, 4))}- Gồm `)
+      .replace(/^(\s*)Kiểm tra bản đề xuất,/m, '> Kiểm tra bản đề xuất,');
+  }
+
+  return normalized;
 }
 
 function BotMarkdownContent({ content }: { content: string }) {
@@ -133,7 +421,7 @@ function BotMarkdownContent({ content }: { content: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        p: ({ children }) => <p className="my-0 leading-relaxed">{children}</p>,
+        p: ({ children }) => <p className="my-0 whitespace-pre-wrap leading-relaxed">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
         ul: ({ children }) => <ul className="my-1.5 list-disc space-y-1 pl-4">{children}</ul>,
         ol: ({ children }) => <ol className="my-1.5 list-decimal space-y-1 pl-4">{children}</ol>,
@@ -170,10 +458,11 @@ function normalizeMentionText(value: string): string {
 }
 
 function getMentionTypeLabel(blockType: string): string {
-  if (blockType === 'chapter') return 'Section';
-  if (blockType === 'sequential') return 'Subsection';
-  if (blockType === 'vertical') return 'Unit';
-  return 'Component';
+  if (blockType === 'course') return i18n.t('common.courseComponentTypes.course');
+  if (blockType === 'chapter') return i18n.t('common.courseComponentTypes.chapter');
+  if (blockType === 'sequential') return i18n.t('common.courseComponentTypes.sequential');
+  if (blockType === 'vertical') return i18n.t('common.courseComponentTypes.vertical');
+  return i18n.t('common.courseComponentTypes.other');
 }
 
 function isStructuralBlock(blockType: string): boolean {
@@ -321,6 +610,102 @@ function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorPro
   return null;
 }
 
+function getAppliedBlueprintChapterIndexesFromMessages(
+  messages: ChatMessage[],
+  blueprintId: string,
+): number[] {
+  const proposalContextByJobId = new Map<string, { blueprintId: string; chapterIndex: number }>();
+
+  for (const message of messages) {
+    const metadata = message.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+    const record = metadata as Record<string, unknown>;
+    if (record.kind !== 'lesson_author_proposal' || typeof record.lesson_author_job_id !== 'string') continue;
+    if (typeof record.lesson_author_blueprint_id !== 'string') continue;
+    const chapterIndex = readNonNegativeInteger(record.lesson_author_blueprint_chapter_index);
+    if (chapterIndex === null) continue;
+    proposalContextByJobId.set(record.lesson_author_job_id, {
+      blueprintId: record.lesson_author_blueprint_id,
+      chapterIndex,
+    });
+  }
+
+  const appliedIndexes = new Set<number>();
+  for (const message of messages) {
+    const metadata = message.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+    const record = metadata as Record<string, unknown>;
+    const kind = record.kind;
+
+    if (kind === 'lesson_author_proposal' && record.lesson_author_job_status === 'succeeded') {
+      if (record.lesson_author_blueprint_id === blueprintId) {
+        const chapterIndex = readNonNegativeInteger(record.lesson_author_blueprint_chapter_index);
+        if (chapterIndex !== null) appliedIndexes.add(chapterIndex);
+      }
+      continue;
+    }
+
+    if (kind !== 'lesson_author_plan_approved') continue;
+    const directBlueprintId = typeof record.lesson_author_blueprint_id === 'string'
+      ? record.lesson_author_blueprint_id
+      : null;
+    const directChapterIndex = readNonNegativeInteger(record.lesson_author_blueprint_chapter_index);
+    if (directBlueprintId === blueprintId && directChapterIndex !== null) {
+      appliedIndexes.add(directChapterIndex);
+    }
+
+    const jobId = typeof record.lesson_author_job_id === 'string' ? record.lesson_author_job_id : null;
+    const proposalContext = jobId ? proposalContextByJobId.get(jobId) : undefined;
+    if (proposalContext?.blueprintId === blueprintId) {
+      appliedIndexes.add(proposalContext.chapterIndex);
+    }
+  }
+
+  return Array.from(appliedIndexes).sort((left, right) => left - right);
+}
+
+function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprintEvent | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const metadata = messages[index].metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+
+    const record = metadata as Record<string, unknown>;
+    if (record.kind !== 'lesson_author_blueprint') continue;
+
+    const blueprintId = typeof record.lesson_author_blueprint_id === 'string'
+      ? record.lesson_author_blueprint_id
+      : '';
+    const blueprint = record.lesson_author_blueprint;
+    const qualityReport = record.lesson_author_blueprint_quality_report;
+    if (!blueprintId || !blueprint || typeof blueprint !== 'object' || Array.isArray(blueprint)) continue;
+    if (!qualityReport || typeof qualityReport !== 'object' || Array.isArray(qualityReport)) continue;
+    const status = record.lesson_author_blueprint_status;
+    const errorReason = record.lesson_author_blueprint_error_reason;
+    const metadataAppliedChapterIndexes = Array.isArray(record.lesson_author_blueprint_applied_chapter_indexes)
+      ? record.lesson_author_blueprint_applied_chapter_indexes.filter((value): value is number => (
+        Number.isInteger(value) && value >= 0
+      ))
+      : [];
+    const appliedChapterIndexes = Array.from(new Set([
+      ...metadataAppliedChapterIndexes,
+      ...getAppliedBlueprintChapterIndexesFromMessages(messages, blueprintId),
+    ])).sort((left, right) => left - right);
+
+    return {
+      type: 'blueprint',
+      blueprint_id: blueprintId,
+      blueprint: blueprint as LessonAuthorBlueprintEvent['blueprint'],
+      quality_report: qualityReport as LessonAuthorBlueprintEvent['quality_report'],
+      status: status === 'proposed' || status === 'superseded' || status === 'archived' || status === 'failed'
+        ? status
+        : 'proposed',
+      applied_chapter_indexes: appliedChapterIndexes,
+      error_reason: typeof errorReason === 'string' ? errorReason : null,
+    };
+  }
+  return null;
+}
+
 // ── Main Component ──
 export default function ChatWidget() {
   const { t } = useTranslation();
@@ -336,10 +721,14 @@ export default function ChatWidget() {
   const [currentConv, setCurrentConv] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [proposalEvent, setProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
+  const [blueprintEvent, setBlueprintEvent] = useState<LessonAuthorBlueprintEvent | null>(null);
+  const [blueprintDraftSelection, setBlueprintDraftSelection] = useState<BlueprintDraftSelection | null>(null);
+  const [lessonAuthorProgress, setLessonAuthorProgress] = useState<LessonAuthorProgressEvent | null>(null);
   const [applyingProposal, setApplyingProposal] = useState(false);
   const [mindmapOpen, setMindmapOpen] = useState(false);
   const [mindmapOutline, setMindmapOutline] = useState<CourseIndexResponse | null>(null);
   const [mindmapProposalEvent, setMindmapProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
+  const [blueprintDialogOpen, setBlueprintDialogOpen] = useState(false);
   const [mindmapLoading, setMindmapLoading] = useState(false);
   const [mindmapError, setMindmapError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -387,6 +776,7 @@ export default function ChatWidget() {
   const runtimeAvailabilityRequestRef = useRef(0);
   const openRef = useRef(false);
   const streamAccRef = useRef('');  // accumulate stream text without React state race
+  const currentConvIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -398,6 +788,10 @@ export default function ChatWidget() {
       window.setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior }), 0);
     });
   }, []);
+
+  useEffect(() => {
+    currentConvIdRef.current = currentConv?.id ?? null;
+  }, [currentConv?.id]);
 
   const clearVoiceListenTimer = useCallback(() => {
     if (voiceListenTimerRef.current) {
@@ -703,6 +1097,7 @@ export default function ChatWidget() {
     setMindmapProposalEvent(null);
     setMindmapLoading(false);
     setMindmapError(null);
+    setBlueprintDialogOpen(false);
   }, []);
 
   const resetChatState = useCallback(() => {
@@ -720,6 +1115,9 @@ export default function ChatWidget() {
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
+    setBlueprintEvent(null);
+    setBlueprintDraftSelection(null);
+    setLessonAuthorProgress(null);
     resetMindmapState();
   }, [cancelBotSpeech, resetMindmapState, stopVoiceCapture]);
 
@@ -745,7 +1143,7 @@ export default function ChatWidget() {
     } catch {
       setOutlineMentionOptions([]);
     }
-  }, [courseId, queryClient]);
+  }, [courseId, queryClient, i18n.language]);
 
   const loadActiveBot = useCallback(async (nextSurface: ChatSurface = surface) => {
     setState('loading');
@@ -822,7 +1220,7 @@ export default function ChatWidget() {
       setSelectedMentions([]);
       setSelectedSourceDocuments([]);
     }
-  }, [courseId, isLessonAuthor, loadOutlineMentions, open]);
+  }, [courseId, isLessonAuthor, loadOutlineMentions, open, i18n.language]);
 
   const loadSourceDocuments = useCallback(async (search?: string) => {
     if (!isLessonAuthor || !lessonSettings?.active_kb?.kb_id) {
@@ -918,10 +1316,14 @@ export default function ChatWidget() {
       });
       setConversations(prev => [conv, ...prev]);
       setCurrentConv(conv);
+      currentConvIdRef.current = conv.id;
       setMessages([]);
       setSelectedMentions([]);
       setSelectedSourceDocuments([]);
       setProposalEvent(null);
+      setBlueprintEvent(null);
+      setBlueprintDraftSelection(null);
+      setLessonAuthorProgress(null);
       resetMindmapState();
       setState('chat');
     } catch (err: unknown) {
@@ -933,19 +1335,22 @@ export default function ChatWidget() {
   const handleOpenConversation = async (conv: ChatConversation) => {
     resetMindmapState();
     setCurrentConv(conv);
+    currentConvIdRef.current = conv.id;
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setLoadingMessages(true);
     setState('chat');
     try {
-      const result = await fetchMessages(conv.id);
+      const result = await fetchMessages(conv.id, undefined, isLessonAuthor ? 'lesson_author' : 'admin');
       setMessages(result.messages);
       setProposalEvent(getLatestPendingProposalEvent(result.messages));
+      setBlueprintEvent(getLatestBlueprintEvent(result.messages));
+      setBlueprintDraftSelection(null);
+      setLessonAuthorProgress(null);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
     } catch { toast.error(i18n.t('chatWidget.loadMessagesFailed')); }
     setLoadingMessages(false);
-    scrollChatToBottom('auto');
   };
 
   // ── Load more messages ──
@@ -953,9 +1358,11 @@ export default function ChatWidget() {
     if (!currentConv || !hasMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const result = await fetchMessages(currentConv.id, nextCursor);
+      const result = await fetchMessages(currentConv.id, nextCursor, isLessonAuthor ? 'lesson_author' : 'admin');
       const pendingProposal = getLatestPendingProposalEvent(result.messages);
       if (!proposalEvent && pendingProposal) setProposalEvent(pendingProposal);
+      const latestBlueprint = getLatestBlueprintEvent(result.messages);
+      if (!blueprintEvent && latestBlueprint) setBlueprintEvent(latestBlueprint);
       setMessages(prev => [...result.messages, ...prev]);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
@@ -987,7 +1394,7 @@ export default function ChatWidget() {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
-      await deleteConversation(confirmDeleteId);
+      await deleteConversation(confirmDeleteId, isLessonAuthor ? 'lesson_author' : 'admin');
       const nextConversations = conversations.filter(c => c.id !== confirmDeleteId);
       setConversations(nextConversations);
       if (currentConv?.id === confirmDeleteId) setCurrentConv(null);
@@ -1017,8 +1424,10 @@ export default function ChatWidget() {
   };
 
   // ── Send message ──
-  const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text') => {
-    if (!currentConv || !rawContent.trim() || streaming) return;
+  const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text', draftSelectionOverride?: BlueprintDraftSelection | null): boolean => {
+    if (!currentConv || !rawContent.trim() || streaming) return false;
+    const conversationId = currentConv.id;
+    const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
     const isVoiceTurn = source === 'voice' || voiceModeActive;
     if (isVoiceTurn) {
@@ -1051,22 +1460,30 @@ export default function ChatWidget() {
         source_info,
       }))
       : [];
+    const outgoingBlueprintDraft = isLessonAuthor
+      ? (draftSelectionOverride ?? blueprintDraftSelection)
+      : null;
 
     stopVoiceCapture(true);
     cancelBotSpeech();
     setInputValue('');
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
+    setBlueprintDraftSelection(null);
 
     const userMsg: ChatMessage = {
       id: 'temp-' + Date.now(),
-      conversation_id: currentConv.id,
+      conversation_id: conversationId,
       role: 'user',
       content,
       metadata: {
         ...(isVoiceTurn ? { input_mode: 'voice' } : {}),
         ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
         ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
+        ...(outgoingBlueprintDraft ? {
+          lesson_author_blueprint_id: outgoingBlueprintDraft.blueprint_id,
+          lesson_author_blueprint_chapter_index: outgoingBlueprintDraft.chapter_index,
+        } : {}),
       },
       created_at: new Date().toISOString(),
     };
@@ -1074,63 +1491,105 @@ export default function ChatWidget() {
     setStreaming(true);
     setStreamText('');
     setProposalEvent(null);
+    setBlueprintEvent(null);
+    setLessonAuthorProgress(null);
     resetMindmapState();
     streamAccRef.current = '';
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
 
+    const finishStream = async (fallbackText: string, toastMessage?: string) => {
+      const isCurrentConversation = () => currentConvIdRef.current === conversationId;
+      try {
+        const result = await fetchMessages(conversationId, undefined, target);
+        if (!isCurrentConversation()) return;
+
+        const normalizedFallback = fallbackText.trim() || toastMessage?.trim() || '';
+        const hasFallbackInServer = normalizedFallback
+          ? result.messages.some(message => message.role === 'assistant' && message.content.trim() === normalizedFallback)
+          : true;
+        const nextMessages = normalizedFallback && !hasFallbackInServer
+          ? [
+              ...result.messages,
+              {
+                id: 'resp-' + Date.now(),
+                conversation_id: conversationId,
+                role: 'assistant' as const,
+                content: normalizedFallback,
+                metadata: {},
+                created_at: new Date().toISOString(),
+              },
+            ]
+          : result.messages;
+        setMessages(nextMessages);
+        setProposalEvent(getLatestPendingProposalEvent(nextMessages));
+        setBlueprintEvent(getLatestBlueprintEvent(nextMessages));
+        setHasMore(result.has_more);
+        setNextCursor(result.next_cursor);
+        scrollChatToBottom('smooth');
+      } catch {
+        if (isCurrentConversation()) {
+          const visibleFallback = fallbackText.trim() || toastMessage?.trim() || '';
+          if (visibleFallback) {
+            setMessages(msgs => {
+              const alreadyRendered = msgs.some(message => message.role === 'assistant' && message.content.trim() === visibleFallback);
+              if (alreadyRendered) return msgs;
+              return [
+                ...msgs,
+                {
+                  id: 'resp-' + Date.now(),
+                  conversation_id: conversationId,
+                  role: 'assistant' as const,
+                  content: visibleFallback,
+                  metadata: {},
+                  created_at: new Date().toISOString(),
+                },
+              ];
+            });
+          } else if (!toastMessage) {
+            toast.error(i18n.t('chatWidget.loadMessagesFailed'));
+          }
+        }
+      } finally {
+        if (isCurrentConversation()) {
+          setStreamText('');
+          setStreaming(false);
+          setLessonAuthorProgress(null);
+          streamAccRef.current = '';
+        }
+        if (toastMessage && isCurrentConversation()) toast.error(toastMessage);
+      }
+    };
+
     abortRef.current = sendMessageStream(
-      currentConv.id,
+      conversationId,
       content,
       (text) => {
         streamAccRef.current += text;
         setStreamText(streamAccRef.current);
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 10);
       },
-      () => {
-        const full = streamAccRef.current;
-        if (full) {
-          const assistantMsg: ChatMessage = {
-            id: 'resp-' + Date.now(),
-            conversation_id: currentConv.id,
-            role: 'assistant',
-            content: full,
-            metadata: {},
-            created_at: new Date().toISOString(),
-          };
-          setMessages(msgs => [...msgs, assistantMsg]);
-        }
-        setStreamText('');
-        streamAccRef.current = '';
-        setStreaming(false);
-      },
+      () => { void finishStream(streamAccRef.current); },
       (message) => {
         const partial = streamAccRef.current.trim();
         cancelBotSpeech();
-        const assistantMsg: ChatMessage = {
-          id: 'err-' + Date.now(),
-          conversation_id: currentConv.id,
-          role: 'assistant',
-          content: partial ? `${partial}\n\n${message}` : message,
-          metadata: { kind: isLessonAuthor ? 'lesson_author_stream_error' : 'chat_stream_error' },
-          created_at: new Date().toISOString(),
-        };
-        setMessages(msgs => [...msgs, assistantMsg]);
-        toast.error(message);
-        setStreaming(false);
-        setStreamText('');
-        streamAccRef.current = '';
+        void finishStream(partial ? `${partial}\n\n${message}` : message, message);
       },
       {
-        target: isLessonAuthor ? 'lesson_author' : 'admin',
+        target,
         courseId: isLessonAuthor ? courseId : undefined,
-        mode: isLessonAuthor ? 'auto' : 'chat',
+        mode: isLessonAuthor ? (outgoingBlueprintDraft ? 'draft_lesson' : 'auto') : 'chat',
         outline_mentions: outgoingMentions,
         source_documents: outgoingSourceDocuments,
+        blueprint_id: outgoingBlueprintDraft?.blueprint_id,
+        blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
         input_mode: isVoiceTurn ? 'voice' : 'text',
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
+        onBlueprint: isLessonAuthor ? setBlueprintEvent : undefined,
+        onProgress: isLessonAuthor ? setLessonAuthorProgress : undefined,
       },
     );
-  }, [cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, resetMindmapState, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
+    return true;
+  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
@@ -1326,12 +1785,16 @@ export default function ChatWidget() {
     setStreaming(false);
     setStreamText('');
     setCurrentConv(null);
+    currentConvIdRef.current = null;
     setMessages([]);
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setHasMore(false);
     setNextCursor(null);
     setProposalEvent(null);
+    setBlueprintEvent(null);
+    setBlueprintDraftSelection(null);
+    setLessonAuthorProgress(null);
     resetMindmapState();
     setState('conversations');
     fetchConversations({
@@ -1378,12 +1841,77 @@ export default function ChatWidget() {
     }
   };
 
+  const handleOpenBlueprint = useCallback(() => {
+    if (!blueprintEvent) return;
+    setBlueprintDialogOpen(true);
+  }, [blueprintEvent]);
+
+  const handleDraftBlueprintChapter = useCallback((chapterIndex: number) => {
+    if (!blueprintEvent || streaming) return;
+    if ((blueprintEvent.status ?? 'proposed') !== 'proposed') {
+      toast.error(
+        blueprintEvent.error_reason
+        || (i18n.language !== 'en'
+          ? 'Bản thiết kế này không còn hợp lệ vì tài liệu nguồn đã thay đổi. Vui lòng tạo lại.'
+          : 'This course blueprint is no longer valid because source material changed. Create a new one to continue.'),
+      );
+      return;
+    }
+    if ((blueprintEvent.applied_chapter_indexes ?? []).includes(chapterIndex)) {
+      toast.error(i18n.t('chatWidget.blueprintChapterAlreadyApplied'));
+      return;
+    }
+    const chapter = blueprintEvent.blueprint.chapters[chapterIndex];
+    if (!chapter) return;
+    const isVietnamese = i18n.language !== 'en';
+    const nextDraftPrompt = buildBlueprintChapterDraftPrompt(chapterIndex, chapter.title, isVietnamese);
+    const currentSelectionPrompt = blueprintDraftSelection
+      ? buildBlueprintChapterDraftPrompt(
+        blueprintDraftSelection.chapter_index,
+        blueprintDraftSelection.chapter_title,
+        isVietnamese,
+      )
+      : '';
+    if (inputValue.trim() && inputValue.trim() !== currentSelectionPrompt) {
+      toast.error(
+        isVietnamese
+          ? 'Bạn đang có nội dung chưa gửi. Hãy gửi hoặc xoá nội dung đó trước khi chọn chương khác.'
+          : 'You have an unsent message. Send or clear it before choosing another chapter.',
+      );
+      return;
+    }
+    const draftSelection: BlueprintDraftSelection = {
+      blueprint_id: blueprintEvent.blueprint_id,
+      chapter_index: chapterIndex,
+      chapter_title: chapter.title,
+    };
+    if (sendUserMessage(nextDraftPrompt, 'text', draftSelection)) {
+      setBlueprintDialogOpen(false);
+    }
+  }, [blueprintDraftSelection, blueprintEvent, inputValue, sendUserMessage, streaming]);
+
   const handleApplyProposal = async () => {
     if (!proposalEvent || !courseId || applyingProposal) return;
     setApplyingProposal(true);
     try {
       const result = await applyLessonAuthorJob(proposalEvent.job_id);
       toast.success(i18n.t('chatWidget.proposalApplied', { created: result.created_count, updated: result.updated_count }));
+      if (
+        result.blueprint_id
+        && result.blueprint_chapter_index !== null
+        && result.blueprint_chapter_index !== undefined
+      ) {
+        setBlueprintEvent(current => {
+          if (!current || current.blueprint_id !== result.blueprint_id) return current;
+          return {
+            ...current,
+            applied_chapter_indexes: Array.from(new Set([
+              ...(current.applied_chapter_indexes ?? []),
+              result.blueprint_chapter_index as number,
+            ])).sort((left, right) => left - right),
+          };
+        });
+      }
       setProposalEvent(null);
       resetMindmapState();
       const queryKey = ['course-outline-index', courseId] as const;
@@ -1399,10 +1927,16 @@ export default function ChatWidget() {
         },
       }));
       if (currentConv) {
-        const refreshed = await fetchMessages(currentConv.id);
-        setMessages(refreshed.messages);
-        setHasMore(refreshed.has_more);
-        setNextCursor(refreshed.next_cursor);
+        try {
+          const refreshed = await fetchMessages(currentConv.id, undefined, isLessonAuthor ? 'lesson_author' : 'admin');
+          setMessages(refreshed.messages);
+          setProposalEvent(getLatestPendingProposalEvent(refreshed.messages));
+          setBlueprintEvent(getLatestBlueprintEvent(refreshed.messages));
+          setHasMore(refreshed.has_more);
+          setNextCursor(refreshed.next_cursor);
+        } catch {
+          toast.error(i18n.t('chatWidget.loadMessagesFailed'));
+        }
       }
     } catch (err: unknown) {
       toast.error(getLocalizedApiError(err, i18n.t('chatWidget.proposalApplyFailed')));
@@ -1427,8 +1961,8 @@ export default function ChatWidget() {
   if (!canUseChatWidget) return null;
 
   const widgetClass = fullscreen
-    ? 'fixed inset-4 z-[9998] rounded-2xl'
-    : 'fixed bottom-6 right-6 z-[9998] w-[420px] h-[600px] rounded-2xl';
+    ? 'fixed inset-2 z-[9998] rounded-2xl sm:inset-4'
+    : 'fixed inset-x-2 bottom-2 z-[9998] h-[calc(100dvh-16px)] max-h-[720px] w-auto rounded-2xl sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-[min(720px,calc(100dvh-48px))] sm:w-[420px]';
 
   const activeAvatarUrl = isLessonAuthor
     ? (lessonSettings?.active_persona?.persona_avatar_url || activeBot?.bot_avatar_url)
@@ -1581,11 +2115,17 @@ export default function ChatWidget() {
                   onSelectedSourceDocumentsChange={setSelectedSourceDocuments}
                   onSourceDocumentClick={canManageAiChatbot ? handleSourceDocumentClick : undefined}
                   scrollRef={scrollRef}
+                  conversationId={currentConv?.id ?? null}
                   inputRef={inputRef}
                   proposalEvent={proposalEvent}
+                  blueprintEvent={blueprintEvent}
+                  blueprintDraftSelection={blueprintDraftSelection}
+                  lessonAuthorProgress={lessonAuthorProgress}
                   applyingProposal={applyingProposal}
                   onApplyProposal={handleApplyProposal}
                   onOpenMindmap={handleOpenMindmap}
+                  onOpenBlueprint={handleOpenBlueprint}
+                  onDraftBlueprintChapter={handleDraftBlueprintChapter}
                 />
               )}
             </div>
@@ -1601,6 +2141,13 @@ export default function ChatWidget() {
         proposalEvent={mindmapProposalEvent}
         loading={mindmapLoading}
         error={mindmapError}
+      />
+      <LessonAuthorBlueprintDialog
+        open={blueprintDialogOpen}
+        onOpenChange={setBlueprintDialogOpen}
+        blueprintEvent={blueprintEvent}
+        disabled={streaming}
+        onDraftChapter={handleDraftBlueprintChapter}
       />
 
       <AnimatePresence>
@@ -1786,7 +2333,7 @@ function PersonaPicker({ personas, onSelect, onBack }: {
                   )}
                 </div>
                 <div className="p-3 space-y-1">
-                  <div className="flex items-center gap-2">
+        <div className="flex items-end gap-2">
                     {avatar ? (
                       <img src={storageUrl(avatar)} alt="" className="h-6 w-6 rounded-full object-cover" />
                     ) : (
@@ -1819,7 +2366,8 @@ function ConversationList({ conversations, loading, onOpen, onDelete, onNew }: {
   onDelete: (id: string) => void;
   onNew: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n: translationInstance } = useTranslation();
+  const isVietnamese = translationInstance.language !== 'en';
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-4 pt-3 pb-2 flex items-center justify-between">
@@ -2105,7 +2653,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, inputRef, proposalEvent, applyingProposal, onApplyProposal, onOpenMindmap }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenMindmap, onOpenBlueprint, onDraftBlueprintChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -2145,20 +2693,128 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onSelectedSourceDocumentsChange?: (documents: LessonAuthorSourceDocument[]) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  conversationId?: string | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   proposalEvent?: LessonAuthorProposalEvent | null;
+  blueprintEvent?: LessonAuthorBlueprintEvent | null;
+  blueprintDraftSelection?: BlueprintDraftSelection | null;
+  lessonAuthorProgress?: LessonAuthorProgressEvent | null;
   applyingProposal?: boolean;
   onApplyProposal?: () => void;
   onOpenMindmap?: () => void;
+  onOpenBlueprint?: () => void;
+  onDraftBlueprintChapter?: (chapterIndex: number) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n: translationInstance } = useTranslation();
+  const isVietnamese = translationInstance.language !== 'en';
+  const scrollSaveFrameRef = useRef<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [sourceSearch, setSourceSearch] = useState('');
-  const selectedMentionList = selectedMentions ?? [];
-  const selectedSourceDocumentList = selectedSourceDocuments ?? [];
+  const [simulatedProgressStepIndex, setSimulatedProgressStepIndex] = useState(0);
+  const selectedMentionList = useMemo(() => selectedMentions ?? [], [selectedMentions]);
+  const selectedSourceDocumentList = useMemo(() => selectedSourceDocuments ?? [], [selectedSourceDocuments]);
+  const blueprintCanDraft = Boolean(blueprintEvent && (blueprintEvent.status ?? 'proposed') === 'proposed');
+  const appliedBlueprintChapterIndexes = useMemo(() => new Set(
+    (blueprintEvent?.applied_chapter_indexes ?? []).filter(index => (
+      Number.isInteger(index) && index >= 0 && index < (blueprintEvent?.blueprint.chapters.length ?? 0)
+    )),
+  ), [blueprintEvent]);
+  const nextBlueprintChapterIndex = blueprintEvent
+    ? blueprintEvent.blueprint.chapters.findIndex((_, index) => !appliedBlueprintChapterIndexes.has(index))
+    : -1;
+  const hasPendingBlueprintChapter = nextBlueprintChapterIndex >= 0;
+  const progressLabel = lessonAuthorProgress
+    ? ({
+      retrieving: isVietnamese ? 'Đang đọc tài liệu liên quan' : 'Reading relevant source material',
+      designing: isVietnamese ? 'Đang thiết kế cấu trúc khóa học' : 'Designing the course structure',
+      skeleton: isVietnamese ? 'Đang tạo khung chương' : 'Creating the chapter skeleton',
+      generating: isVietnamese ? 'Đang soạn nội dung học' : 'Drafting learning content',
+      content: isVietnamese ? 'Đang hoàn thiện nội dung học' : 'Finishing learning content',
+      validating: isVietnamese ? 'Đang kiểm tra chất lượng' : 'Checking design quality',
+    }[lessonAuthorProgress.stage] ?? lessonAuthorProgress.detail ?? (isVietnamese ? 'Đang xử lý' : 'Processing'))
+    : null;
+  const progressSteps = [
+    {
+      key: 'retrieving',
+      label: isVietnamese ? 'Tài liệu' : 'Sources',
+      status: isVietnamese ? 'Đang đọc tài liệu liên quan' : 'Reading relevant source material',
+      color: 'bg-sky-500',
+      textColor: 'text-sky-600 dark:text-sky-300',
+      icon: Search,
+    },
+    {
+      key: 'designing',
+      label: isVietnamese ? 'Thiết kế' : 'Design',
+      status: isVietnamese ? 'Đang thiết kế cấu trúc khóa học' : 'Designing the course structure',
+      color: 'bg-violet-500',
+      textColor: 'text-violet-600 dark:text-violet-300',
+      icon: FileText,
+    },
+    {
+      key: 'generating',
+      label: isVietnamese ? 'Soạn bài' : 'Draft',
+      status: isVietnamese ? 'Đang soạn nội dung học' : 'Drafting learning content',
+      color: 'bg-amber-500',
+      textColor: 'text-amber-600 dark:text-amber-300',
+      icon: BookOpenCheck,
+    },
+    {
+      key: 'validating',
+      label: isVietnamese ? 'Kiểm tra' : 'Review',
+      status: isVietnamese ? 'Đang kiểm tra chất lượng' : 'Checking design quality',
+      color: 'bg-emerald-500',
+      textColor: 'text-emerald-600 dark:text-emerald-300',
+      icon: CheckCircle2,
+    },
+  ];
+  const actualProgressStepIndex = lessonAuthorProgress
+    ? Math.max(0, progressSteps.findIndex(step => (
+      lessonAuthorProgress.stage === step.key
+      || (step.key === 'generating' && lessonAuthorProgress.stage === 'skeleton')
+      || (step.key === 'generating' && lessonAuthorProgress.stage === 'content')
+    )))
+    : 0;
+  const progressStage = lessonAuthorProgress?.stage ?? null;
+
+  useEffect(() => {
+    if (!streaming || !progressStage) {
+      setSimulatedProgressStepIndex(0);
+      return;
+    }
+
+    setSimulatedProgressStepIndex(current => Math.max(current, actualProgressStepIndex));
+    const timer = window.setInterval(() => {
+      setSimulatedProgressStepIndex(current => Math.min(current + 1, progressSteps.length - 1));
+    }, 2400);
+
+    return () => window.clearInterval(timer);
+  }, [actualProgressStepIndex, progressStage, streaming]);
+
+  const progressStepIndex = Math.max(actualProgressStepIndex, simulatedProgressStepIndex);
+  const progressIsSimulated = progressStepIndex > actualProgressStepIndex;
+  const activeProgressStep = progressSteps[progressStepIndex] ?? progressSteps[0];
+  const ActiveProgressIcon = activeProgressStep.icon;
+  const displayProgressLabel = progressIsSimulated
+    ? activeProgressStep.status
+    : progressLabel;
+  const blueprintUnavailableMessage = !blueprintCanDraft
+    ? blueprintEvent?.error_reason
+      || (isVietnamese
+        ? 'Tài liệu nguồn đã thay đổi. Bản thiết kế này chỉ còn để tham khảo; hãy tạo lại trước khi soạn nội dung.'
+        : 'Source material changed. This blueprint is now reference-only; create a new one before drafting content.')
+      : null;
+  const blueprintStatusLabel = !blueprintCanDraft
+    ? (isVietnamese ? 'Cần tạo lại' : 'Create again')
+    : proposalEvent
+      ? t('chatWidget.awaitingApproval')
+      : streaming
+        ? (progressLabel ?? t('chatWidget.responding'))
+        : hasPendingBlueprintChapter
+          ? (isVietnamese ? 'Sẵn sàng soạn' : 'Ready to draft')
+          : (isVietnamese ? 'Đã áp dụng toàn bộ' : 'All applied');
   const isVoiceListening = voiceCaptureState === 'listening';
   const isVoiceRequesting = voiceCaptureState === 'requesting';
   const isBotVoiceActive = voiceModeActive && (streaming || botSpeechLoading || botSpeaking || botSpeechNeedsTap);
@@ -2181,7 +2837,8 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
       ? t('chatWidget.requestingMicrophone')
       : isBotVoiceActive
         ? t('chatWidget.botSpeaking')
-        : t('chatWidget.speakWithMicrophone');
+      : t('chatWidget.speakWithMicrophone');
+
   const mentionMatches = useMemo(() => {
     if (!isLessonAuthor || mentionQuery === null) return [];
     const query = normalizeMentionText(mentionQuery);
@@ -2195,6 +2852,55 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
       .slice(0, 8);
   }, [isLessonAuthor, mentionQuery, outlineMentionOptions, selectedMentionList]);
 
+  const handleChatScroll = useCallback(() => {
+    if (!conversationId) return;
+    const el = scrollRef.current;
+    if (!el || typeof window === 'undefined') return;
+    if (scrollSaveFrameRef.current !== null) return;
+
+    const scrollTop = el.scrollTop;
+    scrollSaveFrameRef.current = window.requestAnimationFrame(() => {
+      scrollSaveFrameRef.current = null;
+      writeStoredChatScrollTop(conversationId, scrollTop);
+    });
+  }, [conversationId, scrollRef]);
+
+  useEffect(() => () => {
+    if (scrollSaveFrameRef.current !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(scrollSaveFrameRef.current);
+      scrollSaveFrameRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading || !conversationId || typeof window === 'undefined') return;
+
+    let followUpFrame: number | null = null;
+    const frame = window.requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+
+      const storedTop = readStoredChatScrollTop(conversationId);
+      const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = storedTop === null ? maxScrollTop : Math.min(storedTop, maxScrollTop);
+
+      // A second frame accounts for markdown/layout measurement completing after the first paint.
+      followUpFrame = window.requestAnimationFrame(() => {
+        const current = scrollRef.current;
+        if (!current) return;
+        const currentMaxScrollTop = Math.max(0, current.scrollHeight - current.clientHeight);
+        current.scrollTop = storedTop === null
+          ? currentMaxScrollTop
+          : Math.min(storedTop, currentMaxScrollTop);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (followUpFrame !== null) window.cancelAnimationFrame(followUpFrame);
+    };
+  }, [conversationId, loading, scrollRef]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -2203,6 +2909,41 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   }, [messages.length, proposalEvent?.job_id, streamText, scrollRef]);
 
   useEffect(() => { if (!loading) inputRef.current?.focus(); }, [loading, inputRef]);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const minHeight = 32;
+    const maxHeight = 128;
+    let lastWidth = input.getBoundingClientRect().width;
+
+    const resizeInput = () => {
+      // Reset before measuring so the textarea can both grow and shrink reliably.
+      input.style.height = '0px';
+      input.style.overflowY = 'hidden';
+      const contentHeight = input.scrollHeight;
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, contentHeight));
+      input.style.height = `${nextHeight}px`;
+      input.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
+    };
+
+    resizeInput();
+
+    // Re-measure when the responsive widget width changes and text wraps differently.
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(entries => {
+        const width = entries[0]?.contentRect.width ?? lastWidth;
+        if (Math.abs(width - lastWidth) < 0.5) return;
+        lastWidth = width;
+        resizeInput();
+      });
+    resizeObserver?.observe(input);
+
+    return () => resizeObserver?.disconnect();
+  }, [inputRef, inputValue]);
+
   useEffect(() => { setActiveMentionIndex(0); }, [mentionQuery]);
   useEffect(() => {
     if (!sourcePickerOpen || !isLessonAuthor) return;
@@ -2333,7 +3074,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
         onStopBotSpeech={onStopBotSpeech}
         onClose={onCloseVoiceMode}
       />
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -2377,17 +3118,196 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
             )}
             {streaming && !streamText && (
               <div className="flex justify-start">
-                <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-muted/50">
-                  <div className="flex gap-1">
-                    <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="w-full max-w-[92%] min-w-0 rounded-xl border border-primary/20 bg-card/95 px-3.5 py-3 shadow-md shadow-primary/5"
+                  aria-live="polite"
+                >
+                  {lessonAuthorProgress ? (
+                    <div className="flex min-w-0 gap-3">
+                      <div className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/25 bg-current/10 ${activeProgressStep.textColor}`}>
+                        <span className="absolute inset-1 rounded-md border border-current/20 animate-pulse" />
+                        <ActiveProgressIcon className="relative h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-[11px] font-semibold text-foreground">
+                            {isVietnamese ? 'Đang chuẩn bị nội dung' : 'Preparing your content'}
+                          </p>
+                          <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${activeProgressStep.textColor}`}>
+                            {progressStepIndex + 1}/{progressSteps.length}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{displayProgressLabel}</p>
+                        <div className="mt-2 flex items-center gap-1.5" aria-label={isVietnamese ? 'Tiến trình xử lý' : 'Processing progress'}>
+                          {progressSteps.map((step, index) => (
+                            <div key={step.key} className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <span
+                                className={`h-1.5 w-full rounded-full transition-all duration-500 ${index <= progressStepIndex ? step.color : 'bg-muted'} ${index === progressStepIndex ? 'animate-pulse shadow-sm' : ''}`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-1.5 grid grid-cols-4 gap-1" aria-hidden="true">
+                          {progressSteps.map((step, index) => (
+                            <span
+                              key={step.key}
+                              className={`min-w-0 truncate text-[9px] font-medium transition-colors ${index <= progressStepIndex ? step.textColor : 'text-muted-foreground/55'}`}
+                            >
+                              <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle ${index <= progressStepIndex ? step.color : 'bg-muted-foreground/30'}`} />
+                              {step.label}
+                            </span>
+                          ))}
+                        </div>
+                        {progressIsSimulated && (
+                          <p className="mt-1 truncate text-[9px] text-muted-foreground/70">
+                            {isVietnamese ? 'Đang xử lý các bước tiếp theo' : 'Processing the next steps'}
+                          </p>
+                        )}
+                        {lessonAuthorProgress.detail && lessonAuthorProgress.detail !== progressLabel && (
+                          <p className="mt-2 line-clamp-2 break-words text-[10px] leading-4 text-muted-foreground">
+                            {lessonAuthorProgress.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+                        <span className="absolute inset-1 rounded-md border border-primary/20 animate-pulse" />
+                        <Loader2 className="relative h-4 w-4 animate-spin" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold text-foreground">{t('chatWidget.responding')}</p>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <motion.div
+                            className="h-full w-2/5 rounded-full bg-primary/70"
+                            animate={{ x: ['-100%', '260%'] }}
+                            transition={{ duration: 1.25, repeat: Infinity, ease: 'easeInOut' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
               </div>
             )}
+            {blueprintEvent && !proposalEvent && (
+              <section className="overflow-hidden rounded-lg border border-primary/30 bg-card shadow-lg shadow-primary/5">
+                <div className="border-b border-primary/15 bg-primary/5 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-background text-primary shadow-sm">
+                        <BookOpenCheck className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{isVietnamese ? 'Bản thiết kế khóa học' : 'Course blueprint'}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {isVietnamese ? 'Duyệt cấu trúc trước khi soạn nội dung chi tiết' : 'Review the structure before drafting detailed content'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Badge
+                        variant="secondary"
+                        className={blueprintCanDraft
+                          ? 'rounded-md border border-border/70 bg-background text-[10px]'
+                          : 'rounded-md border border-destructive/35 bg-destructive/5 text-[10px] text-destructive'}
+                      >
+                        {blueprintStatusLabel}
+                      </Badge>
+                      <Badge variant="outline" className="rounded-md bg-background text-[10px]">
+                        {blueprintEvent.quality_report.score}/100
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-3 p-3">
+                  <div>
+                    <p className="break-words text-sm font-semibold leading-5">{blueprintEvent.blueprint.title}</p>
+                    <p className="mt-1 line-clamp-4 text-xs leading-5 text-muted-foreground">{blueprintEvent.blueprint.summary}</p>
+                  </div>
+                  {blueprintUnavailableMessage && (
+                    <p className="border-l-2 border-destructive/60 bg-destructive/5 px-2.5 py-2 text-[11px] leading-5 text-destructive">
+                      {blueprintUnavailableMessage}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {blueprintEvent.blueprint.learning_outcomes.slice(0, 3).map((outcome, index) => (
+                      <span key={`${outcome}-${index}`} className="max-w-full whitespace-normal break-words rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[10px] leading-4 text-muted-foreground">
+                        {outcome}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="border-l-2 border-primary/40 pl-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {isVietnamese ? 'Các chương đề xuất' : 'Proposed chapters'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {blueprintEvent.blueprint.chapters.slice(0, 3).map((chapter, index) => (
+                        <span
+                          key={`${chapter.title}-${index}`}
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/70 bg-muted/35 px-2 py-1 text-[10px] text-muted-foreground"
+                        >
+                          <span className="shrink-0 font-semibold text-primary">{index + 1}</span>
+                          <span className="max-w-[150px] truncate">{chapter.title}</span>
+                        </span>
+                      ))}
+                      {blueprintEvent.blueprint.chapters.length > 3 && (
+                        <span className="inline-flex items-center rounded-md border border-border/70 bg-muted/35 px-2 py-1 text-[10px] text-muted-foreground">
+                          +{blueprintEvent.blueprint.chapters.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t border-border/65 pt-2.5">
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {isVietnamese
+                        ? `Đã áp dụng ${appliedBlueprintChapterIndexes.size} / ${blueprintEvent.blueprint.chapters.length} chương`
+                        : `${appliedBlueprintChapterIndexes.size} of ${blueprintEvent.blueprint.chapters.length} chapters applied`}
+                    </span>
+                    {appliedBlueprintChapterIndexes.size > 0 && (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-w-0 gap-2 whitespace-normal text-left leading-4"
+                      onClick={onOpenBlueprint}
+                      disabled={!onOpenBlueprint || blueprintEvent.blueprint.chapters.length === 0}
+                    >
+                      <ListTree className="h-4 w-4" />
+                      {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="min-w-0 gap-2 whitespace-normal text-left leading-4"
+                      onClick={() => {
+                        if (hasPendingBlueprintChapter) onDraftBlueprintChapter?.(nextBlueprintChapterIndex);
+                      }}
+                      disabled={streaming || !onDraftBlueprintChapter || !blueprintCanDraft || !hasPendingBlueprintChapter}
+                    >
+                      {hasPendingBlueprintChapter ? <BookOpenCheck className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                      {!blueprintCanDraft
+                        ? (isVietnamese ? 'Cần tạo lại' : 'Create again')
+                        : !hasPendingBlueprintChapter
+                          ? (isVietnamese ? 'Đã áp dụng toàn bộ' : 'All chapters applied')
+                          : (isVietnamese
+                            ? `Soạn Chương ${nextBlueprintChapterIndex + 1}`
+                            : `Draft Chapter ${nextBlueprintChapterIndex + 1}`)}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            )}
             {proposalEvent && (
-              <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 shadow-sm">
+              <div className="rounded-lg border border-primary/25 bg-primary/5 p-3 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -2402,24 +3322,35 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     {t('chatWidget.awaitingApproval')}
                   </Badge>
                 </div>
-                <p className="mt-3 rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground line-clamp-4">
+                <p className="mt-3 max-h-48 overflow-y-auto rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground whitespace-pre-wrap custom-scrollbar">
                   {proposalEvent.proposal.summary}
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3 grid grid-cols-3 gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="gap-2"
+                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
                     onClick={onOpenMindmap}
                     disabled={!onOpenMindmap}
                   >
                     <Network className="h-4 w-4" />
-                    Mindmap
+                    {isVietnamese ? 'Xem sơ đồ kế hoạch' : 'View plan diagram'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal border-violet-500/35 text-center text-[11px] leading-4 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
+                    onClick={onOpenBlueprint}
+                    disabled={!onOpenBlueprint || !blueprintEvent?.blueprint.chapters.length}
+                  >
+                    <ListTree className="h-4 w-4" />
+                    {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
                   </Button>
                   <Button
                     size="sm"
-                    className="gap-2"
+                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
                     onClick={onApplyProposal}
                     disabled={applyingProposal || !onApplyProposal}
                   >
@@ -2433,7 +3364,17 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
         )}
       </div>
 
-      <div className="border-t px-3 py-2.5 bg-background/50">
+      <div className="border-t bg-background/50 px-3 py-2.5">
+        {blueprintDraftSelection && (
+          <div className="mb-2 flex min-w-0 items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-2 text-[11px] text-muted-foreground">
+            <BookOpenCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="min-w-0 truncate">
+              {isVietnamese
+                ? `Đang soạn theo cấu trúc bài học: ${blueprintDraftSelection.chapter_title}`
+                : `Drafting from lesson structure: ${blueprintDraftSelection.chapter_title}`}
+            </span>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {isLessonAuthor && (
             <div className="relative shrink-0">
@@ -2491,7 +3432,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-10 w-10 rounded-xl"
+                className="h-11 w-11 rounded-xl"
                 disabled={streaming}
                 onClick={() => setSourcePickerOpen(open => !open)}
                 aria-label={t('chatWidget.selectKnowledgeFile')}
@@ -2530,7 +3471,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 )}
               </div>
             )}
-            <div className="flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 px-2.5 py-1.5 transition-all focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/20">
+            <div className="flex min-h-11 w-full min-w-0 flex-wrap items-end gap-1.5 rounded-xl border bg-muted/30 px-2.5 py-1 transition-all focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-primary/20">
               {isLessonAuthor && selectedMentionList.map(mention => (
                 <MentionBadge
                   key={mention.block_id}
@@ -2549,33 +3490,39 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   compact
                 />
               ))}
-              <textarea
-                ref={inputRef}
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyDown={handleTextareaKeyDown}
-                placeholder={selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0 ? t('chatWidget.requestPlaceholder') : isLessonAuthor ? t('chatWidget.mentionPickerPlaceholder') : t('chatWidget.messagePlaceholder')}
-                disabled={streaming}
-                rows={1}
-                className="chat-widget-input-textarea min-h-8 min-w-[140px] flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 placeholder:text-muted-foreground/50 outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50 max-h-24"
-                style={{ minHeight: '32px' }}
-              />
-              <AppTooltip content={voiceButtonTitle}><Button
-                type="button"
-                variant={isVoiceListening ? 'default' : 'ghost'}
-                size="icon"
-                className={`h-8 w-8 shrink-0 self-center rounded-lg ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : isBotVoiceActive ? 'text-primary' : 'text-muted-foreground'}`}
-                disabled={streaming || isVoiceRequesting}
-                onClick={onVoiceToggle}
-                aria-label={voiceButtonTitle}
-              >
-                {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : isBotVoiceActive ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
-              </Button></AppTooltip>
+              <div className="flex min-h-8 min-w-0 flex-1 basis-full items-end gap-1">
+                <textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleTextareaKeyDown}
+                  placeholder={isLessonAuthor
+                    ? undefined
+                    : selectedMentionList.length > 0 || selectedSourceDocumentList.length > 0
+                      ? t('chatWidget.requestPlaceholder')
+                      : t('chatWidget.messagePlaceholder')}
+                  disabled={streaming}
+                  rows={1}
+                  className="chat-widget-input-textarea block h-8 min-h-8 w-full min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 placeholder:text-muted-foreground/50 outline-none focus:outline-none focus-visible:outline-none disabled:opacity-50 max-h-32"
+                  style={{ height: '32px', minHeight: '32px', maxHeight: '128px', boxSizing: 'border-box', overflowY: 'hidden' }}
+                />
+                <AppTooltip content={voiceButtonTitle}><Button
+                  type="button"
+                  variant={isVoiceListening ? 'default' : 'ghost'}
+                  size="icon"
+                  className={`h-8 w-8 shrink-0 self-end rounded-lg ${isVoiceListening ? 'bg-red-500 text-white hover:bg-red-600' : isBotVoiceActive ? 'text-primary' : 'text-muted-foreground'}`}
+                  disabled={streaming || isVoiceRequesting}
+                  onClick={onVoiceToggle}
+                  aria-label={voiceButtonTitle}
+                >
+                  {isVoiceRequesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isVoiceListening ? <MicOff className="h-3.5 w-3.5" /> : isBotVoiceActive ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : <Mic className="h-3.5 w-3.5" />}
+                </Button></AppTooltip>
+              </div>
             </div>
           </div>
           <Button
             size="icon"
-            className="h-11 w-11 shrink-0 self-center rounded-xl"
+            className="h-11 w-11 shrink-0 self-end rounded-xl"
             disabled={!inputValue.trim() || streaming}
             onClick={onSend}
           >
@@ -2597,7 +3544,7 @@ function MentionBadge({ mention, onClick, onRemove, compact = false, inverted = 
   const { t } = useTranslation();
   const label = getMentionTypeLabel(mention.block_type);
   return (
-    <AppTooltip content={mention.path || mention.display_name}><Badge
+    <AppTooltip content={mention.path || mention.display_name} className="z-[10050] max-w-[min(320px,calc(100vw-24px))] break-words"><Badge
       variant="secondary"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}

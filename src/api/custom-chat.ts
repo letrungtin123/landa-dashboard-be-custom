@@ -123,6 +123,8 @@ export interface RagMessageSource {
   keyword_score?: number | null;
   method?: string | null;
   methods?: string[];
+  source_ref?: string | null;
+  heading_path?: string | null;
 }
 
 export type LessonAuthorComponentType = 'html' | 'problem' | 'la_faq' | 'la_sortable' | 'la_crossword' | 'la_diagram' | string;
@@ -138,16 +140,19 @@ export interface LessonAuthorUnitProposal {
   title: string;
   html?: string;
   components?: LessonAuthorComponentProposal[];
+  source_refs?: string[];
 }
 
 export interface LessonAuthorLessonProposal {
   title: string;
   units: LessonAuthorUnitProposal[];
+  source_refs?: string[];
 }
 
 export interface LessonAuthorChapterProposal {
   title: string;
   lessons: LessonAuthorLessonProposal[];
+  source_refs?: string[];
 }
 
 export interface LessonAuthorProposal {
@@ -159,6 +164,66 @@ export interface LessonAuthorProposalEvent {
   type: "proposal";
   job_id: string;
   proposal: LessonAuthorProposal;
+}
+
+export interface LessonAuthorBlueprintLesson {
+  title: string;
+  objective: string;
+  duration_minutes: number;
+  learning_activities: string[];
+  assessment: string;
+  source_refs?: string[];
+}
+
+export interface LessonAuthorBlueprintChapter {
+  title: string;
+  objective: string;
+  duration_minutes: number;
+  lessons: LessonAuthorBlueprintLesson[];
+  source_refs?: string[];
+}
+
+export interface LessonAuthorBlueprintQualityReport {
+  score: number;
+  status: "ready_for_review" | "needs_review";
+  checks: Array<{ key: string; passed: boolean }>;
+  review_notes: string[];
+  source_evidence?: {
+    structure_source: string | null;
+    structure_confidence: number | null;
+    structure_node_count: number;
+    known_source_ref_count: number;
+    covered_source_ref_count: number;
+    source_coverage_ratio: number | null;
+    warnings: string[];
+  };
+}
+
+export interface LessonAuthorBlueprint {
+  title: string;
+  summary: string;
+  target_audience: string;
+  prerequisites: string[];
+  learning_outcomes: string[];
+  assessment_strategy: string;
+  assumptions: string[];
+  chapters: LessonAuthorBlueprintChapter[];
+}
+
+export interface LessonAuthorBlueprintEvent {
+  type: "blueprint";
+  blueprint_id: string;
+  blueprint: LessonAuthorBlueprint;
+  quality_report: LessonAuthorBlueprintQualityReport;
+  applied_chapter_indexes?: number[];
+  status?: "proposed" | "superseded" | "archived" | "failed";
+  error_reason?: string | null;
+}
+
+export interface LessonAuthorProgressEvent {
+  type: "progress";
+  stage: string;
+  detail?: string;
 }
 
 export interface OutlineMention {
@@ -187,6 +252,8 @@ export interface AppliedLessonAuthorJob {
   updated_block_ids: string[];
   created_count: number;
   updated_count: number;
+  blueprint_id?: string | null;
+  blueprint_chapter_index?: number | null;
 }
 
 // ── Bot Assignments ──
@@ -282,8 +349,10 @@ export async function createConversation(
   return data.data;
 }
 
-export async function deleteConversation(id: string): Promise<void> {
-  await customApiClient.delete(`/api/ai-chatbot/chat/conversations/${id}`);
+export async function deleteConversation(id: string, target: ChatTarget = 'admin'): Promise<void> {
+  await customApiClient.delete(`/api/ai-chatbot/chat/conversations/${id}`, {
+    params: { target },
+  });
 }
 
 // ── Messages (cursor-based pagination) ──
@@ -294,8 +363,12 @@ export interface PaginatedMessages {
   next_cursor: string | null;
 }
 
-export async function fetchMessages(conversationId: string, cursor?: string): Promise<PaginatedMessages> {
-  const params = cursor ? { cursor } : {};
+export async function fetchMessages(
+  conversationId: string,
+  cursor?: string,
+  target: ChatTarget = 'admin',
+): Promise<PaginatedMessages> {
+  const params = { target, ...(cursor ? { cursor } : {}) };
   const { data } = await customApiClient.get<ApiResponse<PaginatedMessages>>(
     `/api/ai-chatbot/chat/conversations/${conversationId}/messages`,
     { params },
@@ -337,11 +410,15 @@ export function sendMessageStream(
   onDone: () => void,
   onError: (message: string) => void,
   options: ChatConversationOptions & {
-    mode?: "chat" | "draft_lesson" | "auto";
+    mode?: "chat" | "course_blueprint" | "draft_lesson" | "auto";
     outline_mentions?: OutlineMention[];
     source_documents?: LessonAuthorSourceDocument[];
+    blueprint_id?: string;
+    blueprint_chapter_index?: number;
     input_mode?: "text" | "voice";
     onProposal?: (event: LessonAuthorProposalEvent) => void;
+    onBlueprint?: (event: LessonAuthorBlueprintEvent) => void;
+    onProgress?: (event: LessonAuthorProgressEvent) => void;
   } = {},
 ): AbortController {
   const controller = new AbortController();
@@ -361,7 +438,28 @@ export function sendMessageStream(
     }
   }
 
-  const url = `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${conversationId}/messages`;
+  const streamUrl = new URL(
+    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${conversationId}/messages`,
+    typeof window !== 'undefined' ? window.location.origin : undefined,
+  );
+  streamUrl.searchParams.set('target', options.target ?? 'admin');
+  if (options.courseId) streamUrl.searchParams.set('courseId', options.courseId);
+  const url = streamUrl.toString();
+  let receivedDone = false;
+  let receivedError = false;
+
+  const emitDone = () => {
+    if (receivedDone || receivedError) return;
+    receivedDone = true;
+    scheduleTenantDataQuotaRefresh(quotaTenantId);
+    onDone();
+  };
+
+  const emitError = (message: string) => {
+    if (receivedDone || receivedError) return;
+    receivedError = true;
+    onError(message);
+  };
 
   (async () => {
     try {
@@ -376,6 +474,8 @@ export function sendMessageStream(
           mode: options.mode,
           outline_mentions: options.outline_mentions,
           source_documents: options.source_documents,
+          blueprint_id: options.blueprint_id,
+          blueprint_chapter_index: options.blueprint_chapter_index,
           input_mode: options.input_mode,
         }),
         signal: controller.signal,
@@ -389,7 +489,7 @@ export function sendMessageStream(
         } catch {
           // Keep fallback message.
         }
-        onError(message);
+        emitError(message);
         return;
       }
 
@@ -401,8 +501,22 @@ export function sendMessageStream(
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let receivedDone = false;
-      let receivedError = false;
+
+      const processLine = (line: string) => {
+        const normalizedLine = line.trimEnd();
+        if (!normalizedLine.startsWith('data: ')) return;
+        try {
+          const event = JSON.parse(normalizedLine.slice(6));
+          if (event.type === 'chunk' && typeof event.text === 'string') onChunk(event.text);
+          else if (event.type === 'done') emitDone();
+          else if (event.type === 'error') {
+            emitError(normalizeStreamErrorPayload(event, 'chatWidget.unknownError'));
+          }
+          else if (event.type === 'proposal') options.onProposal?.(event);
+          else if (event.type === 'blueprint') options.onBlueprint?.(event);
+          else if (event.type === 'progress') options.onProgress?.(event);
+        } catch { /* skip malformed line */ }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -412,33 +526,20 @@ export function sendMessageStream(
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === 'chunk') onChunk(event.text);
-            else if (event.type === 'done') {
-              receivedDone = true;
-              scheduleTenantDataQuotaRefresh(quotaTenantId);
-              onDone();
-            }
-            else if (event.type === 'error') {
-              receivedError = true;
-              onError(normalizeStreamErrorPayload(event, 'chatWidget.unknownError'));
-            }
-            else if (event.type === 'proposal') options.onProposal?.(event);
-          } catch { /* skip malformed line */ }
-        }
+        for (const line of lines) processLine(line);
       }
 
-      // Safety: if stream ended without done/error event, still notify
-      if (!receivedDone && !receivedError) {
-        scheduleTenantDataQuotaRefresh(quotaTenantId);
-        onDone();
+      // A final SSE event can remain in the decoder/buffer when the stream closes.
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        for (const line of buffer.split('\n')) processLine(line);
       }
+
+      // Safety: if stream ended without done/error event, still notify once.
+      emitDone();
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        onError(normalizeStreamErrorMessage(err));
+        emitError(normalizeStreamErrorMessage(err));
       }
     }
   })();

@@ -131,6 +131,7 @@ export default function CourseEditorPage() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const focusClearTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -161,6 +162,13 @@ export default function CourseEditorPage() {
       document.body.style.userSelect = 'auto';
     };
   }, [isResizing]);
+
+  useEffect(() => () => {
+    if (focusClearTimerRef.current !== null) {
+      window.clearTimeout(focusClearTimerRef.current);
+      focusClearTimerRef.current = null;
+    }
+  }, []);
 
   const queryClient = useQueryClient();
 
@@ -237,6 +245,13 @@ export default function CourseEditorPage() {
         setFocusedBlockId(target.id);
         setFocusedComponentId(null);
       }
+
+      if (focusClearTimerRef.current !== null) window.clearTimeout(focusClearTimerRef.current);
+      focusClearTimerRef.current = window.setTimeout(() => {
+        setFocusedBlockId(null);
+        setFocusedComponentId(null);
+        focusClearTimerRef.current = null;
+      }, 3000);
 
       toast.success(t('courseEditor.openedSelection', { name: target.display_name || t('courseEditor.selectedItem') }));
     };

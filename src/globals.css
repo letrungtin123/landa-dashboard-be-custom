@@ -239,6 +239,16 @@
 
 /* ── Utilities ── */
 @layer utilities {
+  .diagram-preview-flow .react-flow__edges,
+  .diagram-editor-flow .react-flow__edges {
+    overflow: visible;
+  }
+
+  .diagram-preview-flow .react-flow__edge-path,
+  .diagram-editor-flow .react-flow__edge-path {
+    vector-effect: non-scaling-stroke;
+  }
+
   .sidebar-liquid-panel {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.58)),

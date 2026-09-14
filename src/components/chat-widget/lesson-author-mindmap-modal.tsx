@@ -43,6 +43,8 @@ import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
 import type { CourseIndexResponse, CourseIndexSection } from '@/api/custom-course-authoring';
 import type {
+  LessonAuthorBlueprint,
+  LessonAuthorBlueprintEvent,
   LessonAuthorComponentProposal,
   LessonAuthorProposal,
   LessonAuthorProposalEvent,
@@ -85,6 +87,7 @@ interface LessonAuthorMindmapModalProps {
   onOpenChange: (open: boolean) => void;
   outline: CourseIndexResponse | null;
   proposalEvent: LessonAuthorProposalEvent | null;
+  blueprintEvent?: LessonAuthorBlueprintEvent | null;
   loading?: boolean;
   error?: string | null;
 }
@@ -134,42 +137,96 @@ function getOutlineChildren(node: CourseIndexSection): CourseIndexSection[] {
   return node.children || node.child_info?.children || [];
 }
 
-function getBlockLabel(blockType: string): string {
-  if (blockType === 'course') return i18n.t('mindmap.course');
-  if (blockType === 'chapter') return i18n.t('mindmap.section');
-  if (blockType === 'sequential') return i18n.t('mindmap.subsection');
-  if (blockType === 'vertical') return i18n.t('mindmap.unit');
-  return getComponentTypeLabel(blockType);
+type Translate = (key: string) => string;
+
+const moduleTranslate: Translate = key => i18n.t(key);
+const structureLabelFallbacks = {
+  vi: {
+    course: 'Khóa học',
+    chapter: 'Chương',
+    sequential: 'Mục',
+    vertical: 'Bài học',
+  },
+  en: {
+    course: 'Course',
+    chapter: 'Chapter',
+    sequential: 'Section',
+    vertical: 'Lesson',
+  },
+} as const;
+
+function normalizeMindmapBlockType(blockType: string): string {
+  const translationKeyMatch = blockType.match(/^common\.courseComponentTypes\.(course|chapter|sequential|vertical)$/);
+  return translationKeyMatch?.[1] || blockType;
 }
 
-function getComponentTypeLabel(type: string): string {
-  if (type === 'html') return i18n.t('mindmap.theoryContent');
-  if (type === 'problem') return i18n.t('mindmap.checkQuestion');
-  if (type === 'la_image_choice_quiz') return i18n.t('mindmap.imageChoiceQuestion');
-  if (type === 'la_faq') return i18n.t('mindmap.faq');
-  if (type === 'la_sortable') return i18n.t('mindmap.sortable');
-  if (type === 'la_crossword') return i18n.t('mindmap.crossword');
-  if (type === 'la_diagram') return i18n.t('mindmap.diagram');
-  return i18n.t('mindmap.interactiveContent');
+function getBlockLabel(
+  blockType: string,
+  translate: Translate = moduleTranslate,
+  locale = i18n.language,
+): string {
+  const normalizedBlockType = normalizeMindmapBlockType(blockType);
+  const fallbackLocale = locale === 'en' ? 'en' : 'vi';
+  if (normalizedBlockType in structureLabelFallbacks.vi) {
+    const key = `common.courseComponentTypes.${normalizedBlockType}`;
+    const translated = translate(key);
+    return translated === key
+      ? structureLabelFallbacks[fallbackLocale][normalizedBlockType as keyof typeof structureLabelFallbacks.vi]
+      : translated;
+  }
+  return getComponentTypeLabel(normalizedBlockType, translate);
+}
+
+function getFallbackStructureTitle(blockType: string, index: number): string {
+  return `${getBlockLabel(blockType)} ${index + 1}`;
+}
+
+function getComponentTypeLabel(type: string, translate: Translate = moduleTranslate): string {
+  if (type === 'html') return translate('mindmap.theoryContent');
+  if (type === 'problem') return translate('mindmap.checkQuestion');
+  if (type === 'la_image_choice_quiz') return translate('mindmap.imageChoiceQuestion');
+  if (type === 'la_faq') return translate('mindmap.faq');
+  if (type === 'la_sortable') return translate('mindmap.sortable');
+  if (type === 'la_crossword') return translate('mindmap.crossword');
+  if (type === 'la_diagram') return translate('mindmap.diagram');
+  return translate('mindmap.interactiveContent');
+}
+
+function resolveMindmapNodeLabel(
+  label: string,
+  blockType: string,
+  translate: Translate,
+  locale: string,
+): string {
+  const normalizedBlockType = normalizeMindmapBlockType(blockType);
+  const isStructureNode = ['course', 'chapter', 'sequential', 'vertical'].includes(normalizedBlockType);
+  const isTranslationKey = /^(common|mindmap)\./.test(label.trim());
+
+  if (isStructureNode || !label.trim() || isTranslationKey) {
+    return getBlockLabel(normalizedBlockType, translate, locale);
+  }
+
+  return label;
 }
 
 function getComponentIcon(type: string) {
-  if (type === 'course') return Network;
-  if (type === 'html') return FileText;
-  if (type === 'problem') return HelpCircle;
-  if (type === 'la_image_choice_quiz') return ImageIcon;
-  if (type === 'la_faq') return BookOpenCheck;
-  if (type === 'la_sortable') return Shuffle;
-  if (type === 'la_crossword') return Layers3;
-  if (type === 'la_diagram') return Network;
-  if (type === 'chapter') return GitBranch;
-  if (type === 'sequential') return MapIcon;
-  if (type === 'vertical') return CircleDot;
+  const normalizedType = normalizeMindmapBlockType(type);
+  if (normalizedType === 'course') return Network;
+  if (normalizedType === 'html') return FileText;
+  if (normalizedType === 'problem') return HelpCircle;
+  if (normalizedType === 'la_image_choice_quiz') return ImageIcon;
+  if (normalizedType === 'la_faq') return BookOpenCheck;
+  if (normalizedType === 'la_sortable') return Shuffle;
+  if (normalizedType === 'la_crossword') return Layers3;
+  if (normalizedType === 'la_diagram') return Network;
+  if (normalizedType === 'chapter') return GitBranch;
+  if (normalizedType === 'sequential') return MapIcon;
+  if (normalizedType === 'vertical') return CircleDot;
   return FileText;
 }
 
 function outlineToMindmapNode(node: CourseIndexSection): MindmapNode {
-  const blockType = node.block_type || node.category || 'unknown';
+  const blockType = normalizeMindmapBlockType(node.block_type || node.category || 'unknown');
   return {
     id: node.id,
     title: node.display_name || i18n.t('mindmap.unnamed'),
@@ -223,6 +280,23 @@ function getUnitComponents(unit: LessonAuthorUnitProposal): LessonAuthorComponen
   return [];
 }
 
+function blueprintToMindmapProposal(blueprint: LessonAuthorBlueprint | null | undefined): LessonAuthorProposal | null {
+  if (!blueprint || !Array.isArray(blueprint.chapters) || blueprint.chapters.length === 0) return null;
+  return {
+    summary: blueprint.summary,
+    chapters: blueprint.chapters.map((chapter, chapterIndex) => ({
+      title: chapter.title || getFallbackStructureTitle('chapter', chapterIndex),
+      lessons: (chapter.lessons ?? []).map((lesson, lessonIndex) => ({
+        title: lesson.title || getFallbackStructureTitle('sequential', lessonIndex),
+        units: [{
+          title: (lesson.learning_activities ?? [])[0] || lesson.objective || i18n.t('mindmap.theoryContent'),
+          components: [],
+        }],
+      })),
+    })),
+  };
+}
+
 function mergeComponent(parent: MindmapNode, component: LessonAuthorComponentProposal, index: number) {
   const componentType = component.type || 'html';
   const title = component.title || getComponentTypeLabel(componentType);
@@ -245,7 +319,7 @@ function mergeProposal(root: MindmapNode, proposal: LessonAuthorProposal | null 
   if (chapters.length === 0) return next;
 
   chapters.forEach((chapter, chapterIndex) => {
-    const chapterTitle = chapter.title || `Section ${chapterIndex + 1}`;
+    const chapterTitle = chapter.title || getFallbackStructureTitle('chapter', chapterIndex);
     const chapterNode = findChildByTitle(next, chapterTitle, 'chapter')
       ?? makePlannedNode(`planned-chapter-${chapterIndex}`, chapterTitle, 'chapter');
     if (!next.children.includes(chapterNode)) next.children.push(chapterNode);
@@ -253,7 +327,7 @@ function mergeProposal(root: MindmapNode, proposal: LessonAuthorProposal | null 
 
     const lessons = Array.isArray(chapter.lessons) ? chapter.lessons : [];
     lessons.forEach((lesson, lessonIndex) => {
-      const lessonTitle = lesson.title || `Subsection ${lessonIndex + 1}`;
+      const lessonTitle = lesson.title || getFallbackStructureTitle('sequential', lessonIndex);
       const lessonNode = findChildByTitle(chapterNode, lessonTitle, 'sequential')
         ?? makePlannedNode(`planned-lesson-${chapterIndex}-${lessonIndex}`, lessonTitle, 'sequential');
       if (!chapterNode.children.includes(lessonNode)) chapterNode.children.push(lessonNode);
@@ -261,7 +335,7 @@ function mergeProposal(root: MindmapNode, proposal: LessonAuthorProposal | null 
 
       const units = Array.isArray(lesson.units) ? lesson.units : [];
       units.forEach((unit, unitIndex) => {
-        const unitTitle = unit.title || `Unit ${unitIndex + 1}`;
+        const unitTitle = unit.title || getFallbackStructureTitle('vertical', unitIndex);
         const unitNode = findChildByTitle(lessonNode, unitTitle, 'vertical')
           ?? makePlannedNode(`planned-unit-${chapterIndex}-${lessonIndex}-${unitIndex}`, unitTitle, 'vertical');
         if (!lessonNode.children.includes(unitNode)) lessonNode.children.push(unitNode);
@@ -296,9 +370,16 @@ function isComponentNode(node: MindmapNode): boolean {
   return !['course', 'chapter', 'sequential', 'vertical'].includes(node.blockType);
 }
 
-function createEmptyRoot(proposalEvent: LessonAuthorProposalEvent | null): MindmapNode {
+function createEmptyRoot(
+  proposalEvent: LessonAuthorProposalEvent | null,
+  blueprintEvent: LessonAuthorBlueprintEvent | null | undefined,
+): MindmapNode {
   return {
-    id: proposalEvent?.job_id ? `proposal-${proposalEvent.job_id}` : 'lesson-author-proposal',
+    id: blueprintEvent?.blueprint_id
+      ? `blueprint-${blueprintEvent.blueprint_id}`
+      : proposalEvent?.job_id
+        ? `proposal-${proposalEvent.job_id}`
+        : 'lesson-author-proposal',
     title: i18n.t('mindmap.courseOutline'),
     label: i18n.t('mindmap.course'),
     blockType: 'course',
@@ -421,6 +502,7 @@ export function LessonAuthorMindmapModal({
   onOpenChange,
   outline,
   proposalEvent,
+  blueprintEvent = null,
   loading = false,
   error = null,
 }: LessonAuthorMindmapModalProps) {
@@ -430,6 +512,7 @@ export function LessonAuthorMindmapModal({
         <LessonAuthorMindmapContent
           outline={outline}
           proposalEvent={proposalEvent}
+          blueprintEvent={blueprintEvent}
           loading={loading}
           error={error}
         />
@@ -441,18 +524,25 @@ export function LessonAuthorMindmapModal({
 function LessonAuthorMindmapContent({
   outline,
   proposalEvent,
+  blueprintEvent = null,
   loading = false,
   error = null,
 }: Omit<LessonAuthorMindmapModalProps, 'open' | 'onOpenChange'>) {
   const { t, i18n: translationInstance } = useTranslation();
   const locale = translationInstance.language;
+  const isVietnamese = locale !== 'en';
+  const isBlueprint = Boolean(blueprintEvent);
+  const activeProposal = useMemo(
+    () => blueprintToMindmapProposal(blueprintEvent?.blueprint) ?? proposalEvent?.proposal ?? null,
+    [blueprintEvent, proposalEvent],
+  );
   const root = useMemo(() => {
     void locale;
     const baseRoot = outline?.course_structure
       ? outlineToMindmapNode(outline.course_structure)
-      : createEmptyRoot(proposalEvent);
-    return mergeProposal(baseRoot, proposalEvent?.proposal);
-  }, [locale, outline, proposalEvent]);
+      : createEmptyRoot(proposalEvent, blueprintEvent);
+    return mergeProposal(baseRoot, activeProposal);
+  }, [activeProposal, blueprintEvent, locale, outline, proposalEvent]);
 
   const stats = useMemo(() => countStats(root), [root]);
   const totalNodes = useMemo(() => getDescendantCount(root) + 1, [root]);
@@ -464,7 +554,6 @@ function LessonAuthorMindmapContent({
   const [edges, setEdges, onEdgesChange] = useEdgesState(flow.edges);
   const dragGuardRef = useRef({ dragging: false, lastDragEndedAt: 0 });
   const expansionTimerRef = useRef<number | null>(null);
-  const jobSuffix = proposalEvent?.job_id ? proposalEvent.job_id.slice(0, 8) : null;
 
   useEffect(() => {
     setExpandedNodeIds(initialExpandedNodeIds(root));
@@ -516,34 +605,60 @@ function LessonAuthorMindmapContent({
   return (
     <DialogContent
       overlayClassName="z-[10040]"
-      className="z-[10050] flex h-[88vh] w-[calc(100vw-24px)] max-w-[1280px] grid-rows-none flex-col gap-0 overflow-hidden border-border/70 p-0 shadow-2xl sm:rounded-2xl"
+      className="z-[10050] flex h-[calc(100dvh-16px)] max-h-[880px] w-[calc(100vw-16px)] max-w-[1360px] grid-rows-none flex-col gap-0 overflow-hidden rounded-lg border-border/80 bg-background p-0 shadow-2xl"
     >
-      <DialogHeader className="border-b bg-background/95 px-5 py-4 pr-12 backdrop-blur">
+      <DialogHeader className="border-b bg-card px-4 py-3.5 pr-12 sm:px-5 sm:py-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-sm">
               <Network className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-base font-semibold">{t('mindmap.lessonPlanMindmap')}</DialogTitle>
+              <DialogTitle className="text-base font-semibold">
+                {isBlueprint
+                  ? (isVietnamese ? 'Mind map Bản thiết kế khóa học' : 'Course blueprint mind map')
+                  : t('mindmap.lessonPlanMindmap')}
+              </DialogTitle>
               <DialogDescription className="mt-1 line-clamp-2">
-                {t('mindmap.description')}
+                {isBlueprint
+                  ? (isVietnamese
+                    ? 'Khung chương trình để rà soát trước khi soạn nội dung chi tiết.'
+                    : 'A curriculum framework to review before drafting detailed content.')
+                  : t('mindmap.description')}
               </DialogDescription>
             </div>
           </div>
       </DialogHeader>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 bg-muted/20 lg:grid-cols-[292px_minmax(0,1fr)]">
-          <aside className="border-b bg-background/90 p-4 backdrop-blur lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 flex-1 grid-cols-1 bg-muted/15 lg:grid-cols-[304px_minmax(0,1fr)]">
+          <aside className="border-b bg-card p-3.5 lg:border-b-0 lg:border-r lg:p-4">
             <div className="space-y-4">
-              <div className="app-liquid-card rounded-xl border bg-card p-3 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">{t('mindmap.planSummary')}</p>
-                  {jobSuffix && <Badge variant="secondary" className="font-mono text-[10px]">#{jobSuffix}</Badge>}
+              <div className="rounded-lg border border-border/80 bg-background p-3 shadow-sm">
+                <div>
+                  <p className="text-sm font-semibold">{isBlueprint ? (isVietnamese ? 'Tóm tắt Blueprint' : 'Blueprint summary') : t('mindmap.planSummary')}</p>
                 </div>
                 <p className="mt-2 line-clamp-4 text-xs leading-5 text-muted-foreground">
-                  {proposalEvent?.proposal.summary || t('mindmap.noProposal')}
+                  {blueprintEvent?.blueprint.summary || proposalEvent?.proposal.summary || t('mindmap.noProposal')}
                 </p>
               </div>
+
+              {blueprintEvent && (
+                <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">{isVietnamese ? 'Chất lượng thiết kế' : 'Design quality'}</p>
+                    <Badge variant="outline" className="rounded-md bg-background text-[10px]">
+                      {blueprintEvent.quality_report.score}/100
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] leading-5 text-muted-foreground">
+                    {blueprintEvent.quality_report.status === 'ready_for_review'
+                      ? (isVietnamese ? 'Sẵn sàng để rà soát và chọn chương cần soạn chi tiết.' : 'Ready for review and chapter-level drafting.')
+                      : (isVietnamese ? 'Cần xác nhận một số điểm trước khi chuyển sang soạn chi tiết.' : 'Some items need confirmation before detailed drafting.')}
+                  </p>
+                  {blueprintEvent.quality_report.review_notes.slice(0, 3).map((note, index) => (
+                    <p key={`${note}-${index}`} className="border-l-2 border-primary/35 pl-2 text-[11px] leading-4 text-muted-foreground">{note}</p>
+                  ))}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <StatTile label={t('mindmap.totalNodes')} value={totalNodes} />
@@ -574,7 +689,7 @@ function LessonAuthorMindmapContent({
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-[520px] w-full">
+              <div className="h-full min-h-[440px] w-full">
                 <ReactFlowProvider>
                   <ReactFlow
                     nodes={nodes}
@@ -594,15 +709,13 @@ function LessonAuthorMindmapContent({
                     elementsSelectable
                     proOptions={{ hideAttribution: true }}
                     className="bg-background"
-                    style={{
-                      backgroundImage: 'radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.08), transparent 28%), linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.35))',
-                    }}
+                    style={{ backgroundColor: 'hsl(var(--background))' }}
                   >
-                    <Controls showInteractive={false} className="!border !border-border !bg-background !shadow-lg" />
+                    <Controls showInteractive={false} className="!border !border-border !bg-card !shadow-lg" />
                     <MiniMap
                       pannable
                       zoomable
-                      className="!border !border-border !bg-background/95 !shadow-lg"
+                      className="!border !border-border !bg-card !shadow-lg"
                       nodeStrokeWidth={3}
                       nodeColor={(node) => edgeColor[(node.data?.status as MindmapStatus) ?? 'existing']}
                     />
@@ -648,14 +761,16 @@ function LegendItem({ status }: { status: MindmapStatus }) {
 
 function MindmapFlowNode({ data, selected }: NodeProps) {
   const nodeData = data as unknown as MindmapFlowNodeData;
+  const { t, i18n: translationInstance } = useTranslation();
   const Icon = getComponentIcon(nodeData.blockType);
+  const displayLabel = resolveMindmapNodeLabel(nodeData.label, nodeData.blockType, t, translationInstance.language);
   const isChanged = nodeData.status !== 'existing';
   return (
     <div
-      className={`group relative w-[250px] overflow-hidden rounded-2xl border shadow-lg transition-all duration-200 ${
+      className={`group relative w-[242px] overflow-hidden rounded-lg border shadow-md transition-shadow duration-200 ${
         nodeShellClassName[nodeData.status]
       } ${
-        selected ? 'ring-2 ring-primary/35 shadow-xl' : 'hover:-translate-y-0.5 hover:shadow-xl'
+        selected ? 'ring-2 ring-primary/35 shadow-xl' : 'hover:shadow-lg'
       } ${
         nodeData.collapsible ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
       } ${
@@ -678,13 +793,13 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
       <div className={`h-1.5 w-full ${nodeAccentClassName[nodeData.status]}`} />
       <div className="p-3">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-background/80 text-current ring-1 ring-current/10">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-background/80 text-current ring-1 ring-current/10">
             {isChanged ? <RefreshCw className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <Badge variant="outline" className="h-5 rounded-md bg-background/70 px-1.5 text-[10px]">
-                {nodeData.label}
+                {displayLabel}
               </Badge>
               <Badge variant="secondary" className="h-5 rounded-md bg-background/70 px-1.5 text-[10px]">
                 {getStatusLabel(nodeData.status)}
@@ -702,7 +817,7 @@ function MindmapFlowNode({ data, selected }: NodeProps) {
             )}
           </div>
           {nodeData.collapsible && (
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background/80 text-muted-foreground ring-1 ring-current/10 transition-colors group-hover:text-foreground">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background/80 text-muted-foreground ring-1 ring-current/10 transition-colors group-hover:text-foreground">
               {nodeData.expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </div>
           )}

@@ -384,6 +384,8 @@ interface ProblemEditorProps {
   courseId?: string;
   selectedBoilerplate?: string;
   onAutoSave?: (nextMedia: ProblemMedia) => void | Promise<void>;
+  draftYoutubeInput?: string;
+  onDraftYoutubeInputChange?: (value: string) => void;
 }
 
 export default function ProblemEditor({
@@ -396,6 +398,8 @@ export default function ProblemEditor({
   courseId,
   selectedBoilerplate,
   onAutoSave,
+  draftYoutubeInput,
+  onDraftYoutubeInputChange,
 }: ProblemEditorProps) {
   void selectedBoilerplate;
   const { t } = useTranslation();
@@ -425,7 +429,7 @@ export default function ProblemEditor({
   useEffect(() => {
     mediaRef.current = media;
   }, [media]);
-  const [youtubeInput, setYoutubeInput] = useState(() => media.youtube_url || (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
+  const [youtubeInput, setYoutubeInput] = useState(() => draftYoutubeInput ?? media.youtube_url ?? (media.youtube_id ? toYoutubeUrl(media.youtube_id) : ''));
   const youtubeId = extractYoutubeId(youtubeInput);
 
   const updateProblemMedia = (next: ProblemMedia) => {
@@ -443,6 +447,7 @@ export default function ProblemEditor({
 
   const handleYoutubeChange = (value: string) => {
     setYoutubeInput(value);
+    onDraftYoutubeInputChange?.(value);
     const id = extractYoutubeId(value);
     updateProblemMedia({
       ...media,
@@ -524,6 +529,7 @@ export default function ProblemEditor({
         };
         updateProblemMedia(nextMedia);
         setYoutubeInput('');
+        onDraftYoutubeInputChange?.('');
         try {
           await persistMediaDraft(nextMedia);
           toast.success(t('courseEditorForms.videoUploadedSaved'));

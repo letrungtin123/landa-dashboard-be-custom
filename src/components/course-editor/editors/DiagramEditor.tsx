@@ -21,6 +21,7 @@ import {
   EdgeLabelRenderer,
   ConnectionMode,
   ConnectionLineType,
+  MarkerType,
   type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -39,6 +40,7 @@ import { useSmartGuides } from './diagram/useSmartGuides';
 import SmartGuideLines from './diagram/SmartGuideLines';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
+import { normalizeDiagramData, normalizeDiagramEdges } from './diagram/diagram-data';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -54,8 +56,8 @@ function DeletableEdge({
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
-    borderRadius: 0,
-    offset: 0,
+    borderRadius: 8,
+    offset: 18,
   });
 
   const onDelete = (data as any)?.onDelete;
@@ -64,7 +66,17 @@ function DeletableEdge({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          stroke: 'var(--muted-foreground)',
+          strokeWidth: 2,
+          strokeLinecap: 'round' as const,
+          strokeLinejoin: 'round' as const,
+          ...style,
+        }}
+      />
       {isSelected && onDelete && (
         <EdgeLabelRenderer>
           <div
@@ -140,12 +152,19 @@ export default function DiagramEditor({
 }: DiagramEditorProps) {
   const { t } = useTranslation();
   const { theme } = useTheme();
-  
-  const { undo, redo, takeSnapshot, canUndo, canRedo } = useDiagramHistory(diagramData, onDiagramDataChange);
+
+  const normalizedDiagramData = useMemo(
+    () => normalizeDiagramData(diagramData) ?? { diagrams: [], start_diagram_id: '' },
+    [diagramData],
+  );
+  const { undo, redo, takeSnapshot, canUndo, canRedo } = useDiagramHistory(normalizedDiagramData, onDiagramDataChange);
   const { guideLines, applySmartSnap, clearGuides } = useSmartGuides();
   
-  const diagrams = diagramData?.diagrams?.length > 0 ? diagramData.diagrams : [defaultDiagram];
-  const startDiagramId = diagramData?.start_diagram_id || diagrams[0].id;
+  const diagrams = useMemo(
+    () => normalizedDiagramData.diagrams?.length > 0 ? normalizedDiagramData.diagrams as Diagram[] : [defaultDiagram],
+    [normalizedDiagramData.diagrams],
+  );
+  const startDiagramId = normalizedDiagramData.start_diagram_id || diagrams[0].id;
 
   const [activeDiagramId, setActiveDiagramId] = useState<string>(startDiagramId);
   const activeDiagramIndex = diagrams.findIndex(d => d.id === activeDiagramId) >= 0 ? diagrams.findIndex(d => d.id === activeDiagramId) : 0;
@@ -301,16 +320,26 @@ export default function DiagramEditor({
 
   // Gắn type='deletable' + trạng thái isSelected vào mỗi edge qua data
   const styledEdges = useMemo(() => {
-    return activeDiagram.edges.map(e => {
+    const edges = normalizeDiagramEdges(activeDiagram.edges, activeDiagram.nodes) as Edge[];
+    return edges.map(e => {
       const isSelected = e.id === selectedEdgeId;
       return {
         ...e,
-        type: 'deletable',
+        type: 'deletable' as const,
         selected: isSelected,
         style: {
           ...e.style,
-          stroke: isSelected ? 'var(--destructive)' : undefined,
+          stroke: isSelected ? 'var(--destructive)' : 'var(--muted-foreground)',
           strokeWidth: isSelected ? 3 : 2,
+          strokeLinecap: 'round' as const,
+          strokeLinejoin: 'round' as const,
+        },
+        markerEnd: {
+          ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
+          type: MarkerType.ArrowClosed,
+          color: isSelected ? 'var(--destructive)' : 'var(--primary)',
+          width: 18,
+          height: 18,
         },
         animated: isSelected,
         data: { ...((e as any).data || {}), onDelete: deleteEdgeById, onSplit: splitEdgeById, isSelected },
@@ -549,7 +578,7 @@ export default function DiagramEditor({
               onChange={e => updateActiveDiagramName(e.target.value)}
             />
           </div>
-          <div className="flex-1">
+          <div className="diagram-editor-flow flex-1">
             <ReactFlow
               colorMode={theme === 'dark' ? 'dark' : 'light'}
               nodes={activeDiagram.nodes}

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import React, { useEffect } from 'react';
+import { Handle, Position, type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
 import {
   Tooltip,
   TooltipContent,
@@ -19,10 +19,18 @@ export type DiagramNodeData = {
   hidePorts?: boolean;
 };
 
-export default function CustomShapeNode({ data, selected }: NodeProps) {
+export default function CustomShapeNode({ id, data, selected }: NodeProps) {
   const { t } = useTranslation();
+  const updateNodeInternals = useUpdateNodeInternals();
   const nodeData = data as unknown as DiagramNodeData;
   const { label, shape, bgColor, textColor, tooltip, target_diagram_id } = nodeData;
+
+  // Labels and shapes can change the node dimensions. Re-measuring here keeps
+  // the source/target handle coordinates aligned with the rendered node.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => updateNodeInternals(id));
+    return () => cancelAnimationFrame(frame);
+  }, [id, label, shape, updateNodeInternals]);
 
   let borderRadius = '0px';
   if (shape === 'rounded') borderRadius = '8px';
@@ -39,6 +47,13 @@ export default function CustomShapeNode({ data, selected }: NodeProps) {
     >
       {/* Top Handle */}
       <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className="!w-2 !h-2 !opacity-100 !bg-transparent !border-none !rounded-none z-10"
+        style={{ top: 0, transform: 'translate(-50%, -50%)' }}
+      />
+      <Handle
         type="source"
         position={Position.Top}
         id="top"
@@ -49,6 +64,13 @@ export default function CustomShapeNode({ data, selected }: NodeProps) {
       </Handle>
 
       {/* Left Handle */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!w-2 !h-2 !opacity-100 !bg-transparent !border-none !rounded-none z-10"
+        style={{ left: 0, transform: 'translate(-50%, -50%)' }}
+      />
       <Handle
         type="source"
         position={Position.Left}
@@ -66,6 +88,13 @@ export default function CustomShapeNode({ data, selected }: NodeProps) {
 
       {/* Bottom Handle */}
       <Handle
+        type="target"
+        position={Position.Bottom}
+        id="bottom"
+        className="!w-2 !h-2 !opacity-100 !bg-transparent !border-none !rounded-none z-10"
+        style={{ bottom: 0, transform: 'translate(-50%, 50%)' }}
+      />
+      <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
@@ -76,6 +105,13 @@ export default function CustomShapeNode({ data, selected }: NodeProps) {
       </Handle>
 
       {/* Right Handle */}
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="right"
+        className="!w-2 !h-2 !opacity-100 !bg-transparent !border-none !rounded-none z-10"
+        style={{ right: 0, transform: 'translate(50%, -50%)' }}
+      />
       <Handle
         type="source"
         position={Position.Right}

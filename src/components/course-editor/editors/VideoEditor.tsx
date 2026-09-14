@@ -21,6 +21,9 @@ interface VideoEditorProps {
   onMetadataChange: (m: any) => void;
   courseId: string;
   onAutoSave?: (nextMetadata: any) => void | Promise<void>;
+  draftMode?: VideoMode;
+  draftInputValue?: string;
+  onDraftUiChange?: (next: { videoMode?: VideoMode; videoInputValue?: string }) => void;
 }
 
 function extractYoutubeId(input: string): string {
@@ -38,17 +41,26 @@ function extractYoutubeId(input: string): string {
   return input.trim();
 }
 
-export default function VideoEditor({ displayName, onDisplayNameChange, metadata, onMetadataChange, courseId, onAutoSave }: VideoEditorProps) {
+export default function VideoEditor({
+  displayName,
+  onDisplayNameChange,
+  metadata,
+  onMetadataChange,
+  courseId,
+  onAutoSave,
+  draftMode,
+  draftInputValue,
+  onDraftUiChange,
+}: VideoEditorProps) {
   const { t } = useTranslation();
   // Detect initial mode from existing metadata
   const existingStoragePath = metadata?.video_storage_path || '';
 
-  const [mode, setMode] = useState<VideoMode>(() =>
-    existingStoragePath ? 'upload' : 'youtube'
-  );
+  const [mode, setMode] = useState<VideoMode>(() => draftMode || (existingStoragePath ? 'upload' : 'youtube'));
 
   // YouTube state
   const [inputValue, setInputValue] = useState(() => {
+    if (typeof draftInputValue === 'string') return draftInputValue;
     const id = metadata?.youtube_id_1_0;
     if (!id) return '';
     if (id.length === 11 && !id.includes('/')) {
@@ -80,6 +92,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
 
   const handleYoutubeChange = (val: string) => {
     setInputValue(val);
+    onDraftUiChange?.({ videoMode: mode, videoInputValue: val });
     const id = extractYoutubeId(val);
     onMetadataChange({
       ...metadata,
@@ -90,6 +103,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
 
   const handleModeSwitch = (newMode: VideoMode) => {
     setMode(newMode);
+    onDraftUiChange?.({ videoMode: newMode, videoInputValue: newMode === 'upload' ? '' : inputValue });
     if (newMode === 'youtube') {
       // Switching to YouTube → clear upload data
       onMetadataChange({
@@ -103,6 +117,7 @@ export default function VideoEditor({ displayName, onDisplayNameChange, metadata
         youtube_id_1_0: '',
       });
       setInputValue('');
+      onDraftUiChange?.({ videoMode: newMode, videoInputValue: '' });
     }
   };
 

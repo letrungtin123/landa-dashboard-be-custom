@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { ReactFlow, MiniMap, Controls, Background, Node, useNodesState, useEdgesState, ConnectionMode } from '@xyflow/react';
+import React, { useMemo, useState } from 'react';
+import {
+  ReactFlow,
+  MiniMap,
+  Controls,
+  Background,
+  MarkerType,
+  Node,
+  useNodesState,
+  useEdgesState,
+  ConnectionMode,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -8,6 +18,7 @@ import JunctionNode from './JunctionNode';
 import OrthogonalEdge from './OrthogonalEdge';
 import { useTheme } from 'next-themes';
 import { useTranslation } from 'react-i18next';
+import { normalizeDiagramData, normalizeDiagramEdges } from './diagram-data';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -19,6 +30,44 @@ const edgeTypes = {
 };
 
 const EMPTY_DIAGRAM: Diagram = { id: '', name: '', nodes: [], edges: [] };
+
+function normalizePreviewEdges(edges: any[], nodes: Node[]) {
+  const nodesById = new Map(nodes.map(node => [node.id, node]));
+  const seen = new Set<string>();
+
+  return normalizeDiagramEdges(edges, nodes)
+    .filter(edge => {
+      const source = String(edge?.source ?? '');
+      const target = String(edge?.target ?? '');
+      if (!source || !target || source === target || !nodesById.has(source) || !nodesById.has(target)) return false;
+      const key = `${source}->${target}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((edge, index) => {
+      return {
+        ...edge,
+        id: edge.id || `diagram-edge-${index + 1}`,
+        animated: false,
+        type: 'orthogonal' as const,
+        markerEnd: {
+          ...(typeof edge.markerEnd === 'object' ? edge.markerEnd : {}),
+          type: MarkerType.ArrowClosed,
+          color: 'var(--primary)',
+          width: 18,
+          height: 18,
+        },
+        style: {
+          stroke: 'var(--muted-foreground)',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          ...(edge.style ?? {}),
+        },
+      };
+    });
+}
 
 export interface Diagram {
   id: string;
@@ -38,8 +87,17 @@ interface DiagramPreviewInteractiveProps {
 export default function DiagramPreviewInteractive({ data }: DiagramPreviewInteractiveProps) {
   const { t } = useTranslation();
   const { theme } = useTheme();
-  const diagrams = data?.diagrams || [];
-  const startDiagramId = data?.start_diagram_id || (diagrams.length > 0 ? diagrams[0].id : null);
+  // `ComponentPreview` may resolve the same database payload into a new
+  // object on every parent render. Keep the React Flow inputs referentially
+  // stable; otherwise the sync effect below writes state on every render and
+  // React eventually throws error #185 (maximum update depth exceeded).
+  const dataFingerprint = useMemo(() => JSON.stringify(data), [data]);
+  const normalizedData = useMemo(
+    () => normalizeDiagramData(data),
+    [dataFingerprint],
+  );
+  const diagrams = normalizedData?.diagrams || [];
+  const startDiagramId = normalizedData?.start_diagram_id || (diagrams.length > 0 ? diagrams[0].id : null);
 
   const [history, setHistory] = useState<string[]>(startDiagramId ? [startDiagramId] : []);
   
@@ -60,38 +118,33 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
     }
   };
 
-  const initialNodes = previewDiagram.nodes.map((n) => ({
+  const initialNodes = useMemo(() => previewDiagram.nodes.map((n) => ({
     ...n,
     draggable: false,
     selectable: false,
     connectable: false,
     data: { ...n.data, hidePorts: true },
-  }));
+  })), [previewDiagram]);
 
-  const initialEdges = previewDiagram.edges.map((e) => ({
-    ...e,
-    animated: false,
-    type: 'orthogonal' as const,
-  }));
+  const initialEdges = useMemo(
+    () => normalizePreviewEdges(previewDiagram.edges, initialNodes),
+    [initialNodes, previewDiagram.edges],
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // Reset navigation when the component is reused for a different diagram
+  // block while the unit editor remains mounted.
+  React.useEffect(() => {
+    setHistory(startDiagramId ? [startDiagramId] : []);
+  }, [dataFingerprint, startDiagramId]);
+
   // Sync state if activeDiagram's nodes/edges change
   React.useEffect(() => {
-    setNodes(previewDiagram.nodes.map((n) => ({
-      ...n,
-      draggable: false,
-      selectable: false,
-      connectable: false,
-      data: { ...n.data, hidePorts: true },
-    })));
-    setEdges(previewDiagram.edges.map((e) => ({
-      ...e,
-      animated: false,
-      type: 'orthogonal' as const,
-    })));
-  }, [previewDiagram, setNodes, setEdges]);
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialEdges, initialNodes, setNodes, setEdges]);
 
   if (!activeDiagram) {
     return (
@@ -113,7 +166,7 @@ export default function DiagramPreviewInteractive({ data }: DiagramPreviewIntera
           <h3 className="font-semibold text-primary">{activeDiagram.name}</h3>
         </div>
       </div>
-      <div className="w-full relative" style={{ height: '400px' }}>
+      <div className="diagram-preview-flow w-full relative" style={{ height: '400px' }}>
         <ReactFlow
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           colorMode={theme === 'dark' ? 'dark' : 'light'}

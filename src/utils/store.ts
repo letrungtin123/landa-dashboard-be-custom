@@ -218,6 +218,7 @@ export const useAuthStore = create<AuthState>()(
         clearRefreshTimer();
         set({ isLoggingOut: true });
 
+        const draftActorId = get().user?.id;
         const { refreshToken } = get();
         if (refreshToken) {
           try { await customLogoutApi(refreshToken); } catch { /* ignore */ }
@@ -241,6 +242,13 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { useTenantStore } = await import('@/utils/tenant-store');
           useTenantStore.getState().reset();
+        } catch { /* ignore */ }
+
+        // Course-component drafts are local recovery data. Remove them on
+        // logout so a shared device never exposes one author's unfinished work.
+        try {
+          const { clearCourseComponentDraftsForActor } = await import('@/utils/course-component-draft-store');
+          clearCourseComponentDraftsForActor(draftActorId);
         } catch { /* ignore */ }
       },
 
