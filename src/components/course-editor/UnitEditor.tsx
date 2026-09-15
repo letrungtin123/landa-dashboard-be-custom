@@ -1811,7 +1811,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             {finalHtml.trim() && (
               <div
                 dangerouslySetInnerHTML={{ __html: finalHtml }}
-                className="prose dark:prose-invert max-w-none text-sm max-h-[300px] overflow-y-auto relative custom-scrollbar
+                className="lesson-html-content prose dark:prose-invert max-w-none text-sm max-h-[300px] overflow-y-auto relative custom-scrollbar
                   [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
                   [&_img]:max-h-48 [&_img]:object-contain [&_img]:rounded-lg [&_img]:shadow-sm [&_img]:border [&_img]:border-border [&_img]:my-2
                   [&_p]:leading-relaxed [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm"

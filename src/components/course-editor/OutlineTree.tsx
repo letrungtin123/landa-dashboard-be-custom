@@ -1160,15 +1160,24 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
   onStructureChange: () => void;
   small?: boolean;
 }) {
+  const { t, i18n: translationInstance } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
-  const typeLabel = category === 'chapter'
-    ? i18n.t('common.courseComponentTypes.chapter')
+  const typeLabelKey = category === 'chapter'
+    ? 'common.courseComponentTypes.chapter'
     : category === 'sequential'
-      ? i18n.t('common.courseComponentTypes.sequential')
+      ? 'common.courseComponentTypes.sequential'
       : category === 'vertical'
-        ? i18n.t('common.courseComponentTypes.vertical')
-        : i18n.t('common.courseComponentTypes.other');
+        ? 'common.courseComponentTypes.vertical'
+        : 'common.courseComponentTypes.other';
+  const fallbackTypeLabel = category === 'chapter'
+    ? (translationInstance.language === 'en' ? 'Chapter' : 'Chương')
+    : category === 'sequential'
+      ? (translationInstance.language === 'en' ? 'Section' : 'Mục')
+      : category === 'vertical'
+        ? (translationInstance.language === 'en' ? 'Lesson' : 'Bài học')
+        : (translationInstance.language === 'en' ? 'Course content' : 'Nội dung khóa học');
+  const typeLabel = t(typeLabelKey, { defaultValue: fallbackTypeLabel });
 
   const addMut = useMutation({
     mutationFn: () => createBlock(parentId, category, name || undefined),
@@ -1190,7 +1199,7 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
         <input
           autoFocus
           className="flex h-7 flex-1 rounded border border-input bg-background px-2 text-xs shadow-sm"
-          placeholder={i18n.t('courseOutline.namePlaceholder', { type: typeLabel })}
+          placeholder={t('courseOutline.namePlaceholder', { type: typeLabel })}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -1199,10 +1208,10 @@ function AddNodeButton({ parentId, category, label, onStructureChange, small = f
           }}
         />
         <Button size="sm" className="h-7 text-xs" onClick={() => addMut.mutate()} disabled={addMut.isPending}>
-          {i18n.t('common.save')}
+          {t('common.save')}
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsAdding(false)}>
-          {i18n.t('common.cancel')}
+          {t('common.cancel')}
         </Button>
       </div>
     );

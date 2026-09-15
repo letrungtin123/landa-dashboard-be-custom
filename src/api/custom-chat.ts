@@ -155,9 +155,41 @@ export interface LessonAuthorChapterProposal {
   source_refs?: string[];
 }
 
+export type LessonAuthorIntentOperation =
+  | "answer"
+  | "course_blueprint"
+  | "create"
+  | "rename"
+  | "update_content"
+  | "delete"
+  | "move"
+  | "clarify";
+
+export type LessonAuthorTargetType = "course" | "chapter" | "lesson" | "unit" | "component";
+
+export interface LessonAuthorOperationPlan {
+  version: 1;
+  operation: LessonAuthorIntentOperation;
+  target_type: LessonAuthorTargetType;
+  target_block_id: string;
+  target_path: string;
+  target_display_name: string;
+  target_updated_at: string;
+  requested_title?: string | null;
+  destination_block_id?: string | null;
+  fields: Array<"title" | "content" | "components" | "sort_order">;
+  confidence: number;
+  requires_confirmation: boolean;
+  target_source: "mention" | "explicit_reference" | "conversation_context" | "none";
+  signals: string[];
+  ambiguity_reasons: string[];
+  target_snapshot?: string | null;
+}
+
 export interface LessonAuthorProposal {
   summary: string;
   chapters: LessonAuthorChapterProposal[];
+  operation_plan?: LessonAuthorOperationPlan;
 }
 
 export interface LessonAuthorProposalEvent {

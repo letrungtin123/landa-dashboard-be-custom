@@ -35,7 +35,6 @@ import {
   type LessonAuthorBlueprint, type LessonAuthorBlueprintEvent, type LessonAuthorProgressEvent,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
   type OutlineMention, type LessonAuthorSourceDocument,
-  type RagMessageSource,
 } from '@/api/custom-chat';
 import {
   getCourseOutlineIndex,
@@ -65,6 +64,16 @@ type BlueprintDraftSelection = {
 };
 
 const CHAT_SCROLL_STORAGE_PREFIX = 'chat-widget-scroll-v1:';
+const LESSON_AUTHOR_PROGRESS_STORAGE_PREFIX = 'lesson-author-progress-v1:';
+const LESSON_AUTHOR_PROGRESS_STEP_COUNT = 4;
+const LESSON_AUTHOR_PROGRESS_TTL_MS = 30 * 60 * 1000;
+const MIN_STREAMING_UI_MS = 1_500;
+
+type StoredLessonAuthorProgress = {
+  event: LessonAuthorProgressEvent;
+  simulatedStepIndex: number;
+  updatedAt: number;
+};
 
 function getChatScrollStorageKey(conversationId: string): string {
   return `${CHAT_SCROLL_STORAGE_PREFIX}${conversationId}`;
@@ -84,6 +93,80 @@ function writeStoredChatScrollTop(conversationId: string, scrollTop: number): vo
   if (typeof window === 'undefined' || !Number.isFinite(scrollTop)) return;
   try {
     window.sessionStorage.setItem(getChatScrollStorageKey(conversationId), String(Math.max(0, Math.round(scrollTop))));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function getLessonAuthorProgressStorageKey(conversationId: string): string {
+  return `${LESSON_AUTHOR_PROGRESS_STORAGE_PREFIX}${conversationId}`;
+}
+
+function readStoredLessonAuthorProgress(conversationId: string): StoredLessonAuthorProgress | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(getLessonAuthorProgressStorageKey(conversationId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredLessonAuthorProgress> & { event?: Partial<LessonAuthorProgressEvent> };
+    const event = parsed.event;
+    const simulatedStepIndex = typeof parsed.simulatedStepIndex === 'number'
+      ? parsed.simulatedStepIndex
+      : Number.NaN;
+    const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Number.NaN;
+    if (
+      !event
+      || event.type !== 'progress'
+      || typeof event.stage !== 'string'
+      || !event.stage.trim()
+      || !Number.isInteger(simulatedStepIndex)
+      || simulatedStepIndex < 0
+      || simulatedStepIndex >= LESSON_AUTHOR_PROGRESS_STEP_COUNT
+      || !Number.isFinite(updatedAt)
+      || Date.now() - updatedAt > LESSON_AUTHOR_PROGRESS_TTL_MS
+    ) {
+      window.sessionStorage.removeItem(getLessonAuthorProgressStorageKey(conversationId));
+      return null;
+    }
+    return {
+      event: {
+        type: 'progress',
+        stage: event.stage,
+        ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
+      },
+      simulatedStepIndex,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLessonAuthorProgress(
+  conversationId: string,
+  event: LessonAuthorProgressEvent,
+  simulatedStepIndex: number,
+): void {
+  if (typeof window === 'undefined' || !event.stage.trim()) return;
+  try {
+    const existing = readStoredLessonAuthorProgress(conversationId);
+    const safeStepIndex = Math.max(
+      0,
+      Math.min(LESSON_AUTHOR_PROGRESS_STEP_COUNT - 1, Math.round(simulatedStepIndex)),
+    );
+    window.sessionStorage.setItem(getLessonAuthorProgressStorageKey(conversationId), JSON.stringify({
+      event,
+      simulatedStepIndex: Math.max(existing?.simulatedStepIndex ?? 0, safeStepIndex),
+      updatedAt: Date.now(),
+    } satisfies StoredLessonAuthorProgress));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function clearStoredLessonAuthorProgress(conversationId: string | null | undefined): void {
+  if (typeof window === 'undefined' || !conversationId) return;
+  try {
+    window.sessionStorage.removeItem(getLessonAuthorProgressStorageKey(conversationId));
   } catch {
     // Session storage can be unavailable in privacy-restricted browser contexts.
   }
@@ -457,12 +540,46 @@ function normalizeMentionText(value: string): string {
     .trim();
 }
 
+type StructuralMentionType = 'course' | 'chapter' | 'sequential' | 'vertical';
+
+const STRUCTURAL_MENTION_LABELS: Record<'vi' | 'en', Record<StructuralMentionType, string>> = {
+  vi: {
+    course: 'Khóa học',
+    chapter: 'Chương',
+    sequential: 'Mục',
+    vertical: 'Bài học',
+  },
+  en: {
+    course: 'Course',
+    chapter: 'Chapter',
+    sequential: 'Section',
+    vertical: 'Lesson',
+  },
+};
+
+function normalizeMentionBlockType(blockType: string): string {
+  const normalized = blockType.trim().toLowerCase();
+  const translationKeyMatch = normalized.match(/^common\.coursecomponenttypes\.(course|chapter|sequential|vertical)$/);
+  return translationKeyMatch?.[1] || normalized;
+}
+
 function getMentionTypeLabel(blockType: string): string {
-  if (blockType === 'course') return i18n.t('common.courseComponentTypes.course');
-  if (blockType === 'chapter') return i18n.t('common.courseComponentTypes.chapter');
-  if (blockType === 'sequential') return i18n.t('common.courseComponentTypes.sequential');
-  if (blockType === 'vertical') return i18n.t('common.courseComponentTypes.vertical');
-  return i18n.t('common.courseComponentTypes.other');
+  const normalizedBlockType = normalizeMentionBlockType(blockType);
+  const isStructuralType = ['course', 'chapter', 'sequential', 'vertical'].includes(normalizedBlockType);
+  if (isStructuralType) {
+    const key = `common.courseComponentTypes.${normalizedBlockType}`;
+    const translated = i18n.t(key);
+    if (translated !== key) return translated;
+
+    const locale = i18n.language?.toLowerCase().startsWith('en') ? 'en' : 'vi';
+    return STRUCTURAL_MENTION_LABELS[locale][normalizedBlockType as StructuralMentionType];
+  }
+
+  const otherKey = 'common.courseComponentTypes.other';
+  const translatedOther = i18n.t(otherKey);
+  return translatedOther === otherKey
+    ? (i18n.language?.toLowerCase().startsWith('en') ? 'Course content' : 'Nội dung khóa học')
+    : translatedOther;
 }
 
 function isStructuralBlock(blockType: string): boolean {
@@ -544,48 +661,6 @@ function getMessageSourceDocuments(metadata: unknown): LessonAuthorSourceDocumen
         : null,
     }))
     .filter(item => item.document_id);
-}
-
-function getMessageRagSources(metadata: unknown): RagMessageSource[] {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
-  const sources = (metadata as { rag_sources?: unknown }).rag_sources;
-  if (!Array.isArray(sources)) return [];
-
-  const seen = new Set<string>();
-  return sources
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
-    .map((item): RagMessageSource => ({
-      document_id: typeof item.document_id === 'string' ? item.document_id : undefined,
-      document_name: typeof item.document_name === 'string' && item.document_name.trim()
-        ? item.document_name
-        : 'Knowledge Base',
-      source_page: typeof item.source_page === 'number' ? item.source_page : null,
-      source_section: typeof item.source_section === 'string' ? item.source_section : null,
-      score: typeof item.score === 'number' ? item.score : null,
-      vector_score: typeof item.vector_score === 'number' ? item.vector_score : null,
-      keyword_score: typeof item.keyword_score === 'number' ? item.keyword_score : null,
-      method: typeof item.method === 'string' ? item.method : null,
-      methods: Array.isArray(item.methods) ? item.methods.filter((method): method is string => typeof method === 'string') : [],
-    }))
-    .filter((item) => {
-      const key = [item.document_id, item.document_name, item.source_page ?? '', item.source_section ?? ''].join(':');
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 5);
-}
-
-function formatRagSourceLocation(source: RagMessageSource): string | null {
-  if (source.source_section) return source.source_section;
-  if (typeof source.source_page === 'number' && source.source_page > 0) return i18n.t('chatWidget.ragSourcePage', { page: source.source_page });
-  return null;
-}
-
-function formatRagSourceScore(source: RagMessageSource): string | null {
-  if (typeof source.score !== 'number' || !Number.isFinite(source.score)) return null;
-  const percent = Math.max(0, Math.min(100, Math.round(source.score * 100)));
-  return i18n.t('chatWidget.ragSourceScore', { score: percent });
 }
 
 function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorProposalEvent | null {
@@ -773,12 +848,35 @@ export default function ChatWidget() {
   const botAudioGainRef = useRef<GainNode | null>(null);
   const botAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const botSpeechRequestIdRef = useRef(0);
+  const minimumStreamDelayRef = useRef<{ timer: number; resolve: () => void } | null>(null);
   const runtimeAvailabilityRequestRef = useRef(0);
+  const messageLoadRequestRef = useRef(0);
+  const loadMoreRequestRef = useRef(0);
   const openRef = useRef(false);
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const currentConvIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const clearMinimumStreamDelay = useCallback(() => {
+    const pending = minimumStreamDelayRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    minimumStreamDelayRef.current = null;
+    pending.resolve();
+  }, []);
+
+  const waitForMinimumStreamDuration = useCallback((startedAt: number) => {
+    const remaining = Math.max(0, MIN_STREAMING_UI_MS - (performance.now() - startedAt));
+    if (remaining === 0) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const timer = window.setTimeout(() => {
+        minimumStreamDelayRef.current = null;
+        resolve();
+      }, remaining);
+      minimumStreamDelayRef.current = { timer, resolve };
+    });
+  }, []);
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     requestAnimationFrame(() => {
@@ -977,6 +1075,7 @@ export default function ChatWidget() {
   }, [clearVoiceListenTimer]);
 
   useEffect(() => () => {
+    clearMinimumStreamDelay();
     clearVoiceAutoListenTimer();
     stopVoiceCapture(true);
     cancelBotSpeech();
@@ -988,10 +1087,11 @@ export default function ChatWidget() {
     const context = botAudioContextRef.current;
     if (context && context.state !== 'closed') void context.close().catch(() => {});
     botAudioContextRef.current = null;
-  }, [cancelBotSpeech, clearVoiceAutoListenTimer, stopBotAudioSource, stopVoiceCapture]);
+  }, [cancelBotSpeech, clearMinimumStreamDelay, clearVoiceAutoListenTimer, stopBotAudioSource, stopVoiceCapture]);
 
   useEffect(() => {
     if (!open) {
+      clearMinimumStreamDelay();
       setFullscreen(false);
       clearVoiceAutoListenTimer();
       voiceCallActiveRef.current = false;
@@ -1003,7 +1103,7 @@ export default function ChatWidget() {
       stopVoiceCapture(true);
       cancelBotSpeech();
     }
-  }, [cancelBotSpeech, clearVoiceAutoListenTimer, open, stopVoiceCapture]);
+  }, [cancelBotSpeech, clearMinimumStreamDelay, clearVoiceAutoListenTimer, open, stopVoiceCapture]);
 
   // ── FAB drag ref ──
   const fabRef = useRef<HTMLDivElement>(null);
@@ -1101,6 +1201,10 @@ export default function ChatWidget() {
   }, []);
 
   const resetChatState = useCallback(() => {
+    clearMinimumStreamDelay();
+    messageLoadRequestRef.current += 1;
+    loadMoreRequestRef.current += 1;
+    clearStoredLessonAuthorProgress(currentConvIdRef.current);
     stopVoiceCapture(true);
     cancelBotSpeech();
     abortRef.current?.abort();
@@ -1119,7 +1223,7 @@ export default function ChatWidget() {
     setBlueprintDraftSelection(null);
     setLessonAuthorProgress(null);
     resetMindmapState();
-  }, [cancelBotSpeech, resetMindmapState, stopVoiceCapture]);
+  }, [cancelBotSpeech, clearMinimumStreamDelay, resetMindmapState, stopVoiceCapture]);
 
   const loadOutlineMentions = useCallback(async (force = false) => {
     if (!courseId) {
@@ -1304,6 +1408,8 @@ export default function ChatWidget() {
 
   // ── Create conversation ──
   const handleCreateConversation = async (personaId?: string) => {
+    messageLoadRequestRef.current += 1;
+    loadMoreRequestRef.current += 1;
     try {
       const activePersonaId = isLessonAuthor ? lessonSettings?.active_persona?.persona_id : personaId;
       if (!activePersonaId) {
@@ -1324,6 +1430,7 @@ export default function ChatWidget() {
       setBlueprintEvent(null);
       setBlueprintDraftSelection(null);
       setLessonAuthorProgress(null);
+      clearStoredLessonAuthorProgress(conv.id);
       resetMindmapState();
       setState('chat');
     } catch (err: unknown) {
@@ -1333,32 +1440,58 @@ export default function ChatWidget() {
 
   // ── Open existing conversation ──
   const handleOpenConversation = async (conv: ChatConversation) => {
+    const requestId = ++messageLoadRequestRef.current;
+    loadMoreRequestRef.current += 1;
+    const conversationId = conv.id;
+    const target = isLessonAuthor ? 'lesson_author' : 'admin';
+    const isCurrentRequest = () => (
+      requestId === messageLoadRequestRef.current
+      && currentConvIdRef.current === conversationId
+    );
     resetMindmapState();
     setCurrentConv(conv);
-    currentConvIdRef.current = conv.id;
+    currentConvIdRef.current = conversationId;
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setLoadingMessages(true);
     setState('chat');
     try {
-      const result = await fetchMessages(conv.id, undefined, isLessonAuthor ? 'lesson_author' : 'admin');
+      const result = await fetchMessages(conversationId, undefined, target);
+      if (!isCurrentRequest()) return;
       setMessages(result.messages);
       setProposalEvent(getLatestPendingProposalEvent(result.messages));
       setBlueprintEvent(getLatestBlueprintEvent(result.messages));
       setBlueprintDraftSelection(null);
-      setLessonAuthorProgress(null);
+      const latestMessage = result.messages[result.messages.length - 1];
+      const canRestoreProgress = isLessonAuthor
+        && streaming
+        && currentConv?.id === conversationId
+        && latestMessage?.role === 'user';
+      const storedProgress = canRestoreProgress ? readStoredLessonAuthorProgress(conv.id) : null;
+      setLessonAuthorProgress(storedProgress?.event ?? null);
+      if (!storedProgress) clearStoredLessonAuthorProgress(conv.id);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
-    } catch { toast.error(i18n.t('chatWidget.loadMessagesFailed')); }
-    setLoadingMessages(false);
+    } catch {
+      if (isCurrentRequest()) toast.error(i18n.t('chatWidget.loadMessagesFailed'));
+    } finally {
+      if (isCurrentRequest()) setLoadingMessages(false);
+    }
   };
 
   // ── Load more messages ──
   const handleLoadMore = async () => {
     if (!currentConv || !hasMore || !nextCursor || loadingMore) return;
+    const conversationId = currentConv.id;
+    const requestId = ++loadMoreRequestRef.current;
+    const isCurrentRequest = () => (
+      requestId === loadMoreRequestRef.current
+      && currentConvIdRef.current === conversationId
+    );
     setLoadingMore(true);
     try {
-      const result = await fetchMessages(currentConv.id, nextCursor, isLessonAuthor ? 'lesson_author' : 'admin');
+      const result = await fetchMessages(conversationId, nextCursor, isLessonAuthor ? 'lesson_author' : 'admin');
+      if (!isCurrentRequest()) return;
       const pendingProposal = getLatestPendingProposalEvent(result.messages);
       if (!proposalEvent && pendingProposal) setProposalEvent(pendingProposal);
       const latestBlueprint = getLatestBlueprintEvent(result.messages);
@@ -1366,8 +1499,11 @@ export default function ChatWidget() {
       setMessages(prev => [...result.messages, ...prev]);
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
-    } catch { toast.error(i18n.t('chatWidget.loadMoreMessagesFailed')); }
-    setLoadingMore(false);
+    } catch {
+      if (isCurrentRequest()) toast.error(i18n.t('chatWidget.loadMoreMessagesFailed'));
+    } finally {
+      if (isCurrentRequest()) setLoadingMore(false);
+    }
   };
 
   // ── Delete conversation ──
@@ -1424,11 +1560,18 @@ export default function ChatWidget() {
   };
 
   // ── Send message ──
+  const handleLessonAuthorProgress = useCallback((conversationId: string, event: LessonAuthorProgressEvent) => {
+    if (currentConvIdRef.current === conversationId) setLessonAuthorProgress(event);
+    const storedProgress = readStoredLessonAuthorProgress(conversationId);
+    writeStoredLessonAuthorProgress(conversationId, event, storedProgress?.simulatedStepIndex ?? 0);
+  }, []);
+
   const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text', draftSelectionOverride?: BlueprintDraftSelection | null): boolean => {
     if (!currentConv || !rawContent.trim() || streaming) return false;
     const conversationId = currentConv.id;
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
+    const streamStartedAt = performance.now();
     const isVoiceTurn = source === 'voice' || voiceModeActive;
     if (isVoiceTurn) {
       clearVoiceAutoListenTimer();
@@ -1470,6 +1613,7 @@ export default function ChatWidget() {
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setBlueprintDraftSelection(null);
+    clearStoredLessonAuthorProgress(conversationId);
 
     const userMsg: ChatMessage = {
       id: 'temp-' + Date.now(),
@@ -1491,7 +1635,10 @@ export default function ChatWidget() {
     setStreaming(true);
     setStreamText('');
     setProposalEvent(null);
-    setBlueprintEvent(null);
+    // Keep the approved blueprint visible while drafting a chapter from it.
+    // The proposal card still hides the full blueprint card, but its
+    // "View lesson structure" action needs this context to remain available.
+    if (!outgoingBlueprintDraft) setBlueprintEvent(null);
     setLessonAuthorProgress(null);
     resetMindmapState();
     streamAccRef.current = '';
@@ -1500,6 +1647,12 @@ export default function ChatWidget() {
     const finishStream = async (fallbackText: string, toastMessage?: string) => {
       const isCurrentConversation = () => currentConvIdRef.current === conversationId;
       try {
+        // Keep the busy state visible briefly when the backend returns an
+        // immediate done event. This prevents a one-frame loading flash.
+        if (!toastMessage) {
+          await waitForMinimumStreamDuration(streamStartedAt);
+          if (!isCurrentConversation()) return;
+        }
         const result = await fetchMessages(conversationId, undefined, target);
         if (!isCurrentConversation()) return;
 
@@ -1522,7 +1675,10 @@ export default function ChatWidget() {
           : result.messages;
         setMessages(nextMessages);
         setProposalEvent(getLatestPendingProposalEvent(nextMessages));
-        setBlueprintEvent(getLatestBlueprintEvent(nextMessages));
+        const latestBlueprint = getLatestBlueprintEvent(nextMessages);
+        setBlueprintEvent(current => (
+          latestBlueprint || outgoingBlueprintDraft ? latestBlueprint ?? current : null
+        ));
         setHasMore(result.has_more);
         setNextCursor(result.next_cursor);
         scrollChatToBottom('smooth');
@@ -1530,7 +1686,7 @@ export default function ChatWidget() {
         if (isCurrentConversation()) {
           const visibleFallback = fallbackText.trim() || toastMessage?.trim() || '';
           if (visibleFallback) {
-            setMessages(msgs => {
+          setMessages(msgs => {
               const alreadyRendered = msgs.some(message => message.role === 'assistant' && message.content.trim() === visibleFallback);
               if (alreadyRendered) return msgs;
               return [
@@ -1556,6 +1712,7 @@ export default function ChatWidget() {
           setLessonAuthorProgress(null);
           streamAccRef.current = '';
         }
+        clearStoredLessonAuthorProgress(conversationId);
         if (toastMessage && isCurrentConversation()) toast.error(toastMessage);
       }
     };
@@ -1585,11 +1742,13 @@ export default function ChatWidget() {
         input_mode: isVoiceTurn ? 'voice' : 'text',
         onProposal: isLessonAuthor ? setProposalEvent : undefined,
         onBlueprint: isLessonAuthor ? setBlueprintEvent : undefined,
-        onProgress: isLessonAuthor ? setLessonAuthorProgress : undefined,
+        onProgress: isLessonAuthor
+          ? (event) => handleLessonAuthorProgress(conversationId, event)
+          : undefined,
       },
     );
     return true;
-  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive]);
+  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, handleLessonAuthorProgress, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
@@ -1779,6 +1938,7 @@ export default function ChatWidget() {
   };
 
   const handleBack = () => {
+    clearMinimumStreamDelay();
     stopVoiceCapture(true);
     cancelBotSpeech();
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
@@ -1892,10 +2052,15 @@ export default function ChatWidget() {
 
   const handleApplyProposal = async () => {
     if (!proposalEvent || !courseId || applyingProposal) return;
+    const appliedOperation = proposalEvent.proposal.operation_plan?.operation;
     setApplyingProposal(true);
     try {
       const result = await applyLessonAuthorJob(proposalEvent.job_id);
-      toast.success(i18n.t('chatWidget.proposalApplied', { created: result.created_count, updated: result.updated_count }));
+      toast.success(appliedOperation === 'delete'
+        ? (i18n.language === 'en' ? 'Deletion has been queued.' : 'Đã đưa node vào hàng đợi xóa.')
+        : appliedOperation === 'rename'
+          ? (i18n.language === 'en' ? 'Title updated.' : 'Đã cập nhật tiêu đề.')
+          : i18n.t('chatWidget.proposalApplied', { created: result.created_count, updated: result.updated_count }));
       if (
         result.blueprint_id
         && result.blueprint_chapter_index !== null
@@ -1931,7 +2096,8 @@ export default function ChatWidget() {
           const refreshed = await fetchMessages(currentConv.id, undefined, isLessonAuthor ? 'lesson_author' : 'admin');
           setMessages(refreshed.messages);
           setProposalEvent(getLatestPendingProposalEvent(refreshed.messages));
-          setBlueprintEvent(getLatestBlueprintEvent(refreshed.messages));
+          const latestBlueprint = getLatestBlueprintEvent(refreshed.messages);
+          setBlueprintEvent(current => latestBlueprint ?? current);
           setHasMore(refreshed.has_more);
           setNextCursor(refreshed.next_cursor);
         } catch {
@@ -2716,6 +2882,17 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const [simulatedProgressStepIndex, setSimulatedProgressStepIndex] = useState(0);
   const selectedMentionList = useMemo(() => selectedMentions ?? [], [selectedMentions]);
   const selectedSourceDocumentList = useMemo(() => selectedSourceDocuments ?? [], [selectedSourceDocuments]);
+  const lessonAuthorOperationPlan = proposalEvent?.proposal.operation_plan;
+  const isStructuralActionProposal = lessonAuthorOperationPlan?.operation === 'rename'
+    || lessonAuthorOperationPlan?.operation === 'delete'
+    || lessonAuthorOperationPlan?.operation === 'move';
+  const actionTargetLabel = lessonAuthorOperationPlan?.target_type === 'chapter'
+    ? (isVietnamese ? 'Chương' : 'Chapter')
+    : lessonAuthorOperationPlan?.target_type === 'lesson'
+      ? (isVietnamese ? 'Mục' : 'Section')
+      : lessonAuthorOperationPlan?.target_type === 'unit'
+        ? (isVietnamese ? 'Bài học' : 'Lesson')
+        : (isVietnamese ? 'Component' : 'Component');
   const blueprintCanDraft = Boolean(blueprintEvent && (blueprintEvent.status ?? 'proposed') === 'proposed');
   const appliedBlueprintChapterIndexes = useMemo(() => new Set(
     (blueprintEvent?.applied_chapter_indexes ?? []).filter(index => (
@@ -2780,8 +2957,18 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const progressStage = lessonAuthorProgress?.stage ?? null;
 
   useEffect(() => {
+    const storedProgress = conversationId ? readStoredLessonAuthorProgress(conversationId) : null;
+    setSimulatedProgressStepIndex(storedProgress?.simulatedStepIndex ?? 0);
+  }, [conversationId]);
+
+  useEffect(() => {
     if (!streaming || !progressStage) {
-      setSimulatedProgressStepIndex(0);
+      if (!streaming) {
+        setSimulatedProgressStepIndex(0);
+      } else {
+        const storedProgress = conversationId ? readStoredLessonAuthorProgress(conversationId) : null;
+        setSimulatedProgressStepIndex(storedProgress?.simulatedStepIndex ?? 0);
+      }
       return;
     }
 
@@ -2791,7 +2978,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     }, 2400);
 
     return () => window.clearInterval(timer);
-  }, [actualProgressStepIndex, progressStage, streaming]);
+  }, [actualProgressStepIndex, conversationId, progressStage, streaming]);
+
+  useEffect(() => {
+    if (!conversationId || !streaming || !lessonAuthorProgress) return;
+    writeStoredLessonAuthorProgress(conversationId, lessonAuthorProgress, simulatedProgressStepIndex);
+  }, [conversationId, lessonAuthorProgress, simulatedProgressStepIndex, streaming]);
 
   const progressStepIndex = Math.max(actualProgressStepIndex, simulatedProgressStepIndex);
   const progressIsSimulated = progressStepIndex > actualProgressStepIndex;
@@ -3194,7 +3386,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 </motion.div>
               </div>
             )}
-            {blueprintEvent && !proposalEvent && (
+            {blueprintEvent && !proposalEvent && !streaming && (
               <section className="overflow-hidden rounded-lg border border-primary/30 bg-card shadow-lg shadow-primary/5">
                 <div className="border-b border-primary/15 bg-primary/5 px-3 py-2.5">
                   <div className="flex items-start justify-between gap-3">
@@ -3311,11 +3503,21 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <CheckCircle2 className="h-4 w-4" />
+                      {isStructuralActionProposal
+                        ? <Target className="h-4 w-4" />
+                        : <CheckCircle2 className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold">{t('chatWidget.lessonPlanReady')}</p>
-                      <p className="text-[11px] text-muted-foreground">{t('chatWidget.openMindmapHint')}</p>
+                      <p className="text-sm font-semibold">
+                        {isStructuralActionProposal
+                          ? (isVietnamese ? 'Đề xuất thay đổi outline sẵn sàng' : 'Outline change ready')
+                          : t('chatWidget.lessonPlanReady')}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {isStructuralActionProposal
+                          ? (isVietnamese ? 'Kiểm tra đúng node trước khi xác nhận' : 'Verify the target before confirming')
+                          : t('chatWidget.openMindmapHint')}
+                      </p>
                     </div>
                   </div>
                   <Badge variant="secondary" className="shrink-0 rounded-md text-[10px]">
@@ -3325,37 +3527,75 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 <p className="mt-3 max-h-48 overflow-y-auto rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground whitespace-pre-wrap custom-scrollbar">
                   {proposalEvent.proposal.summary}
                 </p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
-                    onClick={onOpenMindmap}
-                    disabled={!onOpenMindmap}
+                {isStructuralActionProposal && lessonAuthorOperationPlan && (
+                  <div
+                    className={lessonAuthorOperationPlan.operation === 'delete'
+                      ? 'mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5'
+                      : 'mt-3 rounded-lg border border-primary/20 bg-background/45 px-3 py-2.5'}
                   >
-                    <Network className="h-4 w-4" />
-                    {isVietnamese ? 'Xem sơ đồ kế hoạch' : 'View plan diagram'}
-                  </Button>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {isVietnamese ? 'Node được chọn' : 'Selected node'}
+                    </p>
+                    <p className="mt-1 break-words text-xs font-semibold text-foreground">
+                      {actionTargetLabel}: {lessonAuthorOperationPlan.target_display_name}
+                    </p>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-muted-foreground">
+                      {lessonAuthorOperationPlan.target_path}
+                    </p>
+                    {lessonAuthorOperationPlan.operation === 'rename' && (
+                      <p className="mt-1 break-words text-[11px] leading-4 text-primary">
+                        {isVietnamese ? 'Tên mới' : 'New title'}: {lessonAuthorOperationPlan.requested_title}
+                      </p>
+                    )}
+                    {lessonAuthorOperationPlan.operation === 'delete' && (
+                      <p className="mt-2 text-[11px] font-medium leading-4 text-destructive">
+                        {isVietnamese
+                          ? 'Thao tác này sẽ đưa node và toàn bộ nội dung bên trong vào hàng đợi xóa.'
+                          : 'This will queue the node and all nested content for deletion.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className={isStructuralActionProposal ? 'mt-3 grid grid-cols-1 gap-2' : 'mt-3 grid grid-cols-3 gap-2'}>
+                  {!isStructuralActionProposal && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
+                        onClick={onOpenMindmap}
+                        disabled={!onOpenMindmap}
+                      >
+                        <Network className="h-4 w-4" />
+                        {isVietnamese ? 'Xem sơ đồ kế hoạch' : 'View plan diagram'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-w-0 min-h-10 gap-1.5 whitespace-normal border-violet-500/35 text-center text-[11px] leading-4 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
+                        onClick={onOpenBlueprint}
+                        disabled={!onOpenBlueprint || !blueprintEvent?.blueprint.chapters.length}
+                      >
+                        <ListTree className="h-4 w-4" />
+                        {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
+                      </Button>
+                    </>
+                  )}
                   <Button
-                    type="button"
-                    variant="outline"
                     size="sm"
-                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal border-violet-500/35 text-center text-[11px] leading-4 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
-                    onClick={onOpenBlueprint}
-                    disabled={!onOpenBlueprint || !blueprintEvent?.blueprint.chapters.length}
-                  >
-                    <ListTree className="h-4 w-4" />
-                    {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
-                  </Button>
-                  <Button
-                    size="sm"
+                    variant={lessonAuthorOperationPlan?.operation === 'delete' ? 'destructive' : 'default'}
                     className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
                     onClick={onApplyProposal}
                     disabled={applyingProposal || !onApplyProposal}
                   >
                     {applyingProposal ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    {t('chatWidget.apply')}
+                    {lessonAuthorOperationPlan?.operation === 'delete'
+                      ? (isVietnamese ? 'Xác nhận xóa' : 'Confirm deletion')
+                      : lessonAuthorOperationPlan?.operation === 'rename'
+                        ? (isVietnamese ? 'Xác nhận đổi tên' : 'Confirm rename')
+                        : t('chatWidget.apply')}
                   </Button>
                 </div>
               </div>
@@ -3463,7 +3703,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-semibold">{mention.display_name}</span>
                         <span className="block truncate text-[10px] text-muted-foreground">
-                          {mention.label} · {mention.path}
+                          {getMentionTypeLabel(mention.block_type)} · {mention.path}
                         </span>
                       </span>
                     </button>
@@ -3639,44 +3879,6 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
   );
 }
 
-function RagSourceList({ sources }: { sources: RagMessageSource[] }) {
-  const { t } = useTranslation();
-  if (sources.length === 0) return null;
-
-  return (
-    <div className="mt-2.5 rounded-lg border border-border/70 bg-background/70 p-2 shadow-sm">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-        <Network className="h-3.5 w-3.5 text-primary" />
-        <span>{t('chatWidget.ragSources')}</span>
-      </div>
-      <div className="space-y-1.5">
-        {sources.map((source, index) => {
-          const location = formatRagSourceLocation(source);
-          const score = formatRagSourceScore(source);
-          return (
-            <div
-              key={`${source.document_id ?? source.document_name}-${source.source_page ?? index}-${source.source_section ?? ''}`}
-              className="flex min-w-0 items-start gap-2 rounded-md border border-border/60 bg-muted/25 px-2 py-1.5"
-            >
-              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[11px] font-medium text-foreground">{source.document_name}</div>
-                {(location || score) && (
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                    {location && <span>{location}</span>}
-                    {location && score && <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />}
-                    {score && <span>{score}</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
@@ -3685,7 +3887,6 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
   const sourceDocuments = getMessageSourceDocuments(message.metadata);
-  const ragSources = isUser ? [] : getMessageRagSources(message.metadata);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -3720,7 +3921,6 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
           </div>
         )}
         {message.content && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
-        {!isUser && <RagSourceList sources={ragSources} />}
       </div>
     </motion.div>
   );

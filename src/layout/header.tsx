@@ -68,6 +68,9 @@ export function Header() {
     ? t('header.storageUnlimited')
     : formatQuotaGigabytes(dataQuota?.limitBytes, locale);
   const compactStorageLimit = dataQuota?.limitBytes === null ? '∞' : storageLimit;
+  // Mobile shows the unit once to keep the verified used/limit value legible
+  // without letting the header overflow on narrow handsets.
+  const compactStorageUsage = storageUsage.replace(/\s*GB$/i, '');
   const storagePercent = (() => {
     if (!hasVerifiedStorageUsage || !dataQuota?.limitBytes) return null;
     try {
@@ -203,7 +206,7 @@ export function Header() {
 
         {quotaTenantId && (
           <div
-            className="flex h-8 w-[126px] shrink-0 items-center rounded-lg border border-slate-200/80 bg-slate-50/75 px-2 sm:h-10 sm:w-[250px] sm:rounded-xl sm:px-3 dark:border-white/[0.08] dark:bg-white/[0.035]"
+            className="flex h-8 w-[118px] shrink-0 items-center rounded-lg border border-slate-200/80 bg-slate-50/75 px-2 sm:h-10 sm:w-[250px] sm:rounded-xl sm:px-3 dark:border-white/[0.08] dark:bg-white/[0.035]"
             aria-live="polite"
             aria-label={t('header.storageUsage')}
           >
@@ -223,8 +226,8 @@ export function Header() {
               <div className="flex min-w-0 w-full items-center gap-1.5 sm:gap-2">
                 <HardDrive className="h-3.5 w-3.5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center justify-between gap-1 sm:gap-2 leading-none">
-                    <span className="hidden min-w-0 items-center gap-1.5 text-[10px] font-semibold text-muted-foreground sm:flex">
+                  <div className="flex min-w-0 items-center justify-between gap-1 sm:gap-2 leading-[1.2]">
+                    <span className="hidden min-w-0 items-center gap-1.5 pb-px text-[10px] font-semibold text-muted-foreground sm:flex">
                       <span className="truncate">{t('header.storage')}</span>
                       {!hasVerifiedStorageUsage && (
                         <span
@@ -237,9 +240,12 @@ export function Header() {
                       )}
                     </span>
                     <span className="shrink-0 whitespace-nowrap font-mono text-[10px] font-semibold tabular-nums text-foreground sm:text-[11px]">
-                      {storageUsage}{' '}
-                      <span className="font-normal text-muted-foreground">
-                        / <span className="sm:hidden">{compactStorageLimit}</span><span className="hidden sm:inline">{storageLimit}</span>
+                      <span className="sm:hidden">
+                        {compactStorageUsage}<span className="font-normal text-muted-foreground">/{compactStorageLimit}</span>
+                      </span>
+                      <span className="hidden sm:inline">
+                        {storageUsage}{' '}
+                        <span className="font-normal text-muted-foreground">/ {storageLimit}</span>
                       </span>
                     </span>
                   </div>
@@ -261,13 +267,13 @@ export function Header() {
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="hidden h-8 w-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
         >
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
 
-        <ThemeColorToggle />
+        <span className="hidden sm:inline-flex"><ThemeColorToggle /></span>
 
         <LanguageSwitcher />
 

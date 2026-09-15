@@ -6,6 +6,15 @@ import { customApiClient } from "./custom-client";
 
 interface ApiResponse<T> { success: boolean; data: T; message?: string; }
 
+/** Matches the server-side contract for an Audit Log page. */
+export const AUDIT_LOG_PAGE_SIZES = [5, 10, 15, 20] as const;
+export const DEFAULT_AUDIT_LOG_PAGE_SIZE = 10;
+export type AuditLogPageSize = (typeof AUDIT_LOG_PAGE_SIZES)[number];
+
+export function isAuditLogPageSize(value: number): value is AuditLogPageSize {
+  return (AUDIT_LOG_PAGE_SIZES as readonly number[]).includes(value);
+}
+
 export interface AuditLog {
   id: string;
   actor_username: string | null;
@@ -39,7 +48,7 @@ export interface AuditChange {
 }
 
 export interface AuditLogsParams {
-  page_size?: number;
+  page_size?: AuditLogPageSize;
   search?: string;
   action?: string;
   date_from?: string;

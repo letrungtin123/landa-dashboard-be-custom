@@ -9,7 +9,16 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { getAuditLogDetail, getAuditLogs, type AuditLog, type AuditLogDetail } from '@/api/custom-audit-logs';
+import {
+  AUDIT_LOG_PAGE_SIZES,
+  DEFAULT_AUDIT_LOG_PAGE_SIZE,
+  getAuditLogDetail,
+  getAuditLogs,
+  isAuditLogPageSize,
+  type AuditLog,
+  type AuditLogDetail,
+  type AuditLogPageSize,
+} from '@/api/custom-audit-logs';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -301,7 +310,7 @@ export default function AuditLogsPage() {
   const debouncedSearch = useDebounce(search);
   const [actionFilter, setActionFilter] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState<AuditLogPageSize>(DEFAULT_AUDIT_LOG_PAGE_SIZE);
   const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
   const [auditScope, setAuditScope] = useState<'tenant' | 'platform'>('tenant');
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
@@ -481,7 +490,7 @@ export default function AuditLogsPage() {
             {!activities.length && !isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">{t('auditLogs.emptyTitle')}</div> : Object.entries(groupedByDate).map(([date, logs]) => <section key={date} className="mb-6 last:mb-0"><div className="mb-3 flex items-center gap-3"><span className="rounded-md bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{date}</span><div className="h-px flex-1 bg-border/70" /></div><div className="relative ml-2 border-l border-border/70 pl-5">{logs.map((log) => { const visual = actionVisual(log.action); const contextPreview = auditContextPreview(log, t); const changePreview = auditChangePreview(log, t); return <button key={log.id} type="button" onClick={() => setSelectedLog(log)} className="relative mb-4 block w-full text-left last:mb-0"><span className={`absolute -left-[25px] top-1.5 h-3 w-3 rounded-full border-[3px] border-card ${visual.dot}`} /><p className="text-sm font-medium text-foreground">{eventSummary(log, t)}</p>{(contextPreview || changePreview) && <p className="mt-1 truncate text-xs text-muted-foreground">{[contextPreview, changePreview].filter(Boolean).join(' · ')}</p>}<p className="mt-1 text-xs text-muted-foreground">{formatLocaleDate(log.created_at, locale, { hour: 'numeric', minute: '2-digit' })}</p></button>; })}</div></section>)}
           </div>
         )}
-        {activities.length > 0 && <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm text-muted-foreground"><span>{t('auditLogs.rowsPerPage')}</span><Select value={String(limit)} onValueChange={(value) => setLimit(Number(value))}><SelectTrigger className="h-8 w-16 bg-card"><SelectValue /></SelectTrigger><SelectContent>{[10, 20, 50].map((value) => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select><span className="hidden sm:inline">{t('auditLogs.page', { count: cursorIndex + 1 })}</span></div><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={cursorIndex === 0} onClick={() => setCursorIndex((index) => Math.max(0, index - 1))} className="h-8 gap-1.5"><ChevronLeft className="h-3.5 w-3.5" />{t('auditLogs.previous')}</Button><Button variant="outline" size="sm" disabled={!apiData?.has_more} onClick={handleNext} className="h-8 gap-1.5">{t('auditLogs.next')}<ChevronRight className="h-3.5 w-3.5" /></Button></div></div>}
+        {activities.length > 0 && <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm text-muted-foreground"><span>{t('auditLogs.rowsPerPage')}</span><Select value={String(limit)} onValueChange={(value) => { const nextLimit = Number(value); if (isAuditLogPageSize(nextLimit)) setLimit(nextLimit); }}><SelectTrigger className="h-8 w-16 bg-card"><SelectValue /></SelectTrigger><SelectContent>{AUDIT_LOG_PAGE_SIZES.map((value) => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select><span className="hidden sm:inline">{t('auditLogs.page', { count: cursorIndex + 1 })}</span></div><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={cursorIndex === 0} onClick={() => setCursorIndex((index) => Math.max(0, index - 1))} className="h-8 gap-1.5"><ChevronLeft className="h-3.5 w-3.5" />{t('auditLogs.previous')}</Button><Button variant="outline" size="sm" disabled={!apiData?.has_more} onClick={handleNext} className="h-8 gap-1.5">{t('auditLogs.next')}<ChevronRight className="h-3.5 w-3.5" /></Button></div></div>}
       </div>
       <AuditDetailSheet log={selectedLog} detail={selectedDetail} isLoadingDetail={isLoadingDetail} onOpenChange={(open) => { if (!open) setSelectedLog(null); }} />
     </div>

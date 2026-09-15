@@ -1304,6 +1304,32 @@
   background: color-mix(in srgb, var(--primary) 74%, var(--foreground) 10%);
   background-clip: content-box;
 }
+
+/* Lesson HTML can contain inline colors from generated/source content. Keep
+   table headers readable in both themes without changing other HTML blocks. */
+.lesson-html-content :where(table) {
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.lesson-html-content :where(thead, thead tr) {
+  background-color: var(--muted) !important;
+}
+
+.lesson-html-content :where(th, thead td) {
+  color: var(--foreground) !important;
+  background-color: var(--muted) !important;
+  border-color: var(--border) !important;
+}
+
+.lesson-html-content :where(th, thead td) * {
+  color: var(--foreground) !important;
+}
+
+.lesson-html-content :where(td) {
+  border-color: var(--border);
+}
+
 /* ── NProgress Loading Bar — Gradient ── */
 #nprogress {
   pointer-events: none;

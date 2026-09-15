@@ -121,11 +121,18 @@ function ChapterLessonCard({
   const lesson = chapter.lessons[lessonIndex];
 
   return (
-    <article className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-3 pb-4 last:pb-0">
-      {!isLast && <span className="absolute left-[13px] top-7 h-[calc(100%-18px)] w-px bg-border" />}
-      <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/35 bg-background text-xs font-bold text-primary shadow-sm">
-        {lessonIndex + 1}
-      </span>
+    <article className="grid grid-cols-[32px_minmax(0,1fr)] gap-3 pb-4 last:pb-0">
+      <div className="relative">
+        {!isLast && (
+          <span
+            className="absolute -bottom-4 left-1/2 top-8 w-px -translate-x-1/2 bg-border"
+            aria-hidden="true"
+          />
+        )}
+        <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/35 bg-background text-xs font-bold text-primary shadow-sm">
+          {lessonIndex + 1}
+        </span>
+      </div>
       <div className="min-w-0 rounded-lg border border-border/80 bg-card px-3.5 py-3.5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
