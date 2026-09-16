@@ -144,6 +144,32 @@ interface RichTextEditorProps {
   enableImageKeyboardDelete?: boolean;
 }
 
+/**
+ * Select an image node from the DOM element that was clicked. `posAtDOM` can
+ * resolve to either edge of an inline atom depending on the browser and the
+ * exact pointer position, so validate the neighbouring document positions
+ * instead of assuming one fixed offset.
+ */
+function selectImageNodeFromDom(view: any, image: Element): boolean {
+  const domPos = view.posAtDOM(image, 0);
+  const imagePos = [domPos, domPos - 1, domPos + 1].find((candidate) => (
+    candidate >= 0 && view.state.doc.nodeAt(candidate)?.type.name === 'image'
+  ));
+
+  if (imagePos === undefined) return false;
+
+  const selection = view.state.selection;
+  if (!(selection instanceof NodeSelection) || selection.from !== imagePos) {
+    view.dispatch(
+      view.state.tr
+        .setSelection(NodeSelection.create(view.state.doc, imagePos))
+        .scrollIntoView(),
+    );
+  }
+
+  return true;
+}
+
 const MenuBar = ({ editor }: { editor: any }) => {
   const { t } = useTranslation();
   if (!editor) {
@@ -269,14 +295,30 @@ export default function RichTextEditor({
         class: `prose prose-sm sm:prose-base dark:prose-invert max-w-none ${minHeight || 'min-h-[300px]'} w-full bg-background p-4 outline-none focus-visible:outline-none tiptap-editor`,
       },
       transformPastedHTML: sanitizePastedHtml,
+      handleDOMEvents: {
+        // Some browsers do not consistently surface an inline image click to
+        // `handleClickOn`. Selecting it at mousedown makes Delete/Backspace
+        // deterministic while retaining the regular editor behaviour for
+        // every other node.
+        mousedown: (view, event) => {
+          if (!enableImageKeyboardDelete || !(event.target instanceof Element)) return false;
+
+          const image = event.target.closest('img');
+          if (!image || !view.dom.contains(image) || !selectImageNodeFromDom(view, image)) {
+            return false;
+          }
+
+          event.preventDefault();
+          return true;
+        },
+      },
       handleClickOn: (view, _pos, node, nodePos) => {
         if (!enableImageKeyboardDelete || node.type.name !== 'image') return false;
 
-        view.dispatch(
-          view.state.tr
-            .setSelection(NodeSelection.create(view.state.doc, nodePos))
-            .scrollIntoView(),
-        );
+        const image = view.domAtPos(nodePos).node;
+        if (image instanceof Element && selectImageNodeFromDom(view, image)) return true;
+
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos)).scrollIntoView());
         return true;
       },
       handleKeyDown: (view, event) => {
