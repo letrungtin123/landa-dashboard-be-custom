@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -138,6 +139,9 @@ interface RichTextEditorProps {
   hideToolbar?: boolean;
   onUnsupportedImagePaste?: () => void;
   onImageFilePaste?: (file: File) => void | Promise<void>;
+  /** Enable explicit image selection + Delete/Backspace handling for editors
+   * whose images are part of the saved document body. */
+  enableImageKeyboardDelete?: boolean;
 }
 
 const MenuBar = ({ editor }: { editor: any }) => {
@@ -242,6 +246,7 @@ export default function RichTextEditor({
   hideToolbar,
   onUnsupportedImagePaste,
   onImageFilePaste,
+  enableImageKeyboardDelete = false,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -264,6 +269,30 @@ export default function RichTextEditor({
         class: `prose prose-sm sm:prose-base dark:prose-invert max-w-none ${minHeight || 'min-h-[300px]'} w-full bg-background p-4 outline-none focus-visible:outline-none tiptap-editor`,
       },
       transformPastedHTML: sanitizePastedHtml,
+      handleClickOn: (view, _pos, node, nodePos) => {
+        if (!enableImageKeyboardDelete || node.type.name !== 'image') return false;
+
+        view.dispatch(
+          view.state.tr
+            .setSelection(NodeSelection.create(view.state.doc, nodePos))
+            .scrollIntoView(),
+        );
+        return true;
+      },
+      handleKeyDown: (view, event) => {
+        if (!enableImageKeyboardDelete || (event.key !== 'Backspace' && event.key !== 'Delete')) {
+          return false;
+        }
+
+        const selection = view.state.selection;
+        if (!(selection instanceof NodeSelection) || selection.node.type.name !== 'image') {
+          return false;
+        }
+
+        event.preventDefault();
+        view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+        return true;
+      },
       handlePaste: (_view, event) => {
         const items = Array.from(event.clipboardData?.items || []);
         const imageFiles = items
@@ -314,6 +343,11 @@ export default function RichTextEditor({
             max-width: 100%;
             height: auto;
             border-radius: 0.375rem;
+          }
+          .tiptap-editor img.ProseMirror-selectednode {
+            outline: 2px solid hsl(var(--primary));
+            outline-offset: 3px;
+            box-shadow: 0 0 0 5px hsl(var(--primary) / 0.14);
           }
         `}</style>
         <EditorContent editor={editor} />

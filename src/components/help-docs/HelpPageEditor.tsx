@@ -440,6 +440,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
             onChange={handleContentChange}
             onEditorReady={(editor: any) => { editorRef.current = editor; }}
             onImageFilePaste={handleImageUpload}
+            enableImageKeyboardDelete
             minHeight="min-h-[500px]"
           />
         </div>
