@@ -5,6 +5,7 @@ const TENANT_DATA_LIMIT_REACHED_CODE = "TENANT_DATA_LIMIT_REACHED";
 const TENANT_DATA_QUOTA_RECONCILING_CODE = "TENANT_DATA_QUOTA_RECONCILING";
 const LESSON_AUTHOR_OUTLINE_BUSY_CODE = "LESSON_AUTHOR_OUTLINE_BUSY";
 const LESSON_AUTHOR_APPLY_IN_PROGRESS_CODE = "LESSON_AUTHOR_APPLY_IN_PROGRESS";
+const COURSE_ASSET_STORAGE_SIZE_LIMIT_CODE = "COURSE_ASSET_STORAGE_SIZE_LIMIT";
 
 /**
  * API error text is treated as external data. It can be displayed in the
@@ -29,6 +30,9 @@ export function getLocalizedApiError(error: unknown, fallback: string): string {
     return locale === "en"
       ? "This proposal is already being applied. Please wait a moment."
       : "Đề xuất đang được áp dụng. Vui lòng chờ trong giây lát.";
+  }
+  if (response?.data?.code === COURSE_ASSET_STORAGE_SIZE_LIMIT_CODE) {
+    return i18n.t("courseEditorForms.assetStorageLimitReached", { lng: locale });
   }
   const rawMessage = response?.data?.message ?? response?.data?.error;
 

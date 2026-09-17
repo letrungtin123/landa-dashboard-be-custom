@@ -38,7 +38,7 @@ export default function CustomShapeNode({ id, data, selected }: NodeProps) {
 
   const content = (
     <div
-      className={`group relative flex items-center justify-center border-2 px-4 py-2 min-w-[100px] min-h-[40px] shadow-sm transition-all ${selected ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'}`}
+      className={`group relative flex w-[220px] max-w-[220px] min-h-[56px] items-center justify-center border-2 px-4 py-2 shadow-sm transition-all ${selected ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'}`}
       style={{
         backgroundColor: bgColor || '#ffffff',
         color: textColor || '#000000',
@@ -81,7 +81,7 @@ export default function CustomShapeNode({ id, data, selected }: NodeProps) {
         {!nodeData.hidePorts && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-primary/40 opacity-0 group-hover:opacity-100 hover:!bg-primary hover:!scale-150 transition-all shadow-sm cursor-crosshair" />}
       </Handle>
 
-      <div className="text-sm font-semibold text-center whitespace-pre-wrap flex items-center gap-1 z-20 relative pointer-events-none">
+      <div className="relative z-20 flex w-full items-center justify-center gap-1 break-words text-center text-sm font-semibold leading-5 whitespace-pre-wrap pointer-events-none">
         {label || t('courseEditorForms.emptyShape')}
         {target_diagram_id && <Link className="w-3 h-3 opacity-50" />}
       </div>

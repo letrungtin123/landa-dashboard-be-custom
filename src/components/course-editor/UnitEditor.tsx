@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Trash2, GripVertical, Plus, Video, Type, HelpCircle,
-  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft, Loader2, Eye, Image as ImageIcon
+  Save, Edit2, ChevronDown, Puzzle, List, Check, X, Network, MessageSquareText, Undo2, Lightbulb, ArrowLeft, Loader2, Eye, Image as ImageIcon, Copy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
@@ -72,6 +72,7 @@ import DiagramPreviewInteractive from './editors/diagram/DiagramPreviewInteracti
 import DiagramEditor, { DiagramXBlockData } from './editors/DiagramEditor';
 import ImageCarousel from './ImageCarousel';
 import UploadedVideoPreview from './UploadedVideoPreview';
+import CourseOutlineTransferDialog from './CourseOutlineTransferDialog';
 import { getHtmlMediaImages, htmlMediaCarouselImages } from './htmlMedia';
 import {
   hasProblemMedia,
@@ -613,6 +614,8 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   });
 
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const canTransfer = Boolean(courseId && (currentUser?.role === 'superuser' || currentUser?.role === 'superadmin'));
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(blockId),
     onSuccess: async () => {
@@ -753,6 +756,9 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { void openEditor(); }}>
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
+          {canTransfer && <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={i18n.t('courseOutline.transfer.action')} onClick={() => setShowTransferDialog(true)}>
+            <Copy className="h-3.5 w-3.5" />
+          </Button>}
           {block.has_changes && block.published && (
             <AppTooltip content={i18n.t('courseUnit.restorePublished')}><Button
               variant="ghost"
@@ -914,6 +920,15 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           </div>
         </DialogContent>
       </Dialog>
+      {courseId && <CourseOutlineTransferDialog
+        open={showTransferDialog}
+        onOpenChange={setShowTransferDialog}
+        sourceCourseId={courseId}
+        sourceBlockId={blockId}
+        sourceBlockName={blockData?.display_name || block.display_name}
+        sourceBlockType={block.block_type}
+        onCompleted={onSaved}
+      />}
     </div>
   );
 }

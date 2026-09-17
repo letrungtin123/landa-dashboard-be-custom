@@ -4,6 +4,11 @@ export const COURSE_ASSET_MAX_UPLOAD_MB = 300;
 export const COURSE_ASSET_MAX_UPLOAD_BYTES = COURSE_ASSET_MAX_UPLOAD_MB * MB;
 export const COURSE_ASSET_MAX_UPLOAD_LABEL = `${COURSE_ASSET_MAX_UPLOAD_MB}MB`;
 
+// A course video can legitimately take longer than the default 30-second API
+// timeout on slower connections. Five minutes matches the Backend's bounded
+// HTTP request-body budget; routine API calls keep their short global timeout.
+export const COURSE_ASSET_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
 export function formatCourseAssetSizeMb(bytes: number): string {
   return (bytes / MB).toFixed(1);
 }

@@ -17,7 +17,6 @@ import {
   EdgeChange,
   ControlButton,
   BaseEdge,
-  getSmoothStepPath,
   EdgeLabelRenderer,
   ConnectionMode,
   ConnectionLineType,
@@ -41,6 +40,14 @@ import SmartGuideLines from './diagram/SmartGuideLines';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import { normalizeDiagramData, normalizeDiagramEdges } from './diagram/diagram-data';
+import { getDiagramEdgeRoute } from './diagram/edge-routing';
+import {
+  edgeAppearanceToStyle,
+  getEdgeAppearance,
+  withEdgeAppearance,
+  type DiagramEdgeAppearance,
+} from './diagram/edge-appearance';
+import EdgePropertiesPanel from './diagram/EdgePropertiesPanel';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -50,33 +57,52 @@ const nodeTypes = {
 // Custom edge: hiện nút X ngay giữa đường nối trên canvas
 function DeletableEdge({
   id, sourceX, sourceY, targetX, targetY,
-  sourcePosition, targetPosition, style, markerEnd, data,
+  sourcePosition, targetPosition, style, markerEnd, label, data, interactionWidth,
 }: EdgeProps) {
   const { t } = useTranslation();
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const routing = (data as { routing?: unknown } | undefined)?.routing === 'feedback'
+    ? 'feedback'
+    : 'orthogonal';
+  const [edgePath, labelX, labelY] = getDiagramEdgeRoute({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
-    borderRadius: 8,
-    offset: 18,
+    routing,
+    feedbackSide: 'right',
   });
 
   const onDelete = (data as any)?.onDelete;
   const onSplit = (data as any)?.onSplit;
+  const onSelect = (data as any)?.onSelect;
   const isSelected = (data as any)?.isSelected;
+  const appearance = getEdgeAppearance({ data, style, markerEnd }, routing);
 
   return (
     <>
       <BaseEdge
         path={edgePath}
-        markerEnd={markerEnd}
+        markerEnd={appearance.arrow === 'end' ? (markerEnd ?? MarkerType.ArrowClosed) : undefined}
+        interactionWidth={Math.min(interactionWidth ?? 20, 12)}
         style={{
-          stroke: 'var(--muted-foreground)',
-          strokeWidth: 2,
-          strokeLinecap: 'round' as const,
-          strokeLinejoin: 'round' as const,
-          ...style,
+          ...edgeAppearanceToStyle(appearance, style),
+          stroke: appearance.color,
+          strokeWidth: isSelected ? 2.5 : (routing === 'feedback' ? 2 : (style?.strokeWidth ?? 1.75)),
+          opacity: 0.9,
         }}
       />
+      {routing === 'feedback' && label && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-auto cursor-pointer rounded-md border border-primary/30 bg-background/95 px-2 py-1 text-[10px] font-medium text-primary shadow-sm transition-colors hover:border-primary hover:bg-primary/10"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            }}
+            onClick={(event) => { event.stopPropagation(); onSelect?.(id); }}
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {isSelected && onDelete && (
         <EdgeLabelRenderer>
           <div
@@ -218,7 +244,10 @@ export default function DiagramEditor({
 
   const onConnect = useCallback(
     (params: Connection | Edge) => {
-      const newEdges = addEdge(params, activeDiagram.edges);
+      const newEdges = addEdge(params, activeDiagram.edges).map((edge) => {
+        const alreadyExists = activeDiagram.edges.some(existing => existing.id === edge.id);
+        return alreadyExists ? edge : withEdgeAppearance(edge as Record<string, any>, {}) as Edge;
+      });
       const newDiagrams = [...diagrams];
       newDiagrams[activeDiagramIndex] = { ...activeDiagram, edges: newEdges };
       const newData = { ...diagramData, diagrams: newDiagrams };
@@ -254,12 +283,16 @@ export default function DiagramEditor({
     setSelectedEdgeId(null);
   };
 
+  const selectEdgeById = useCallback((edgeId: string) => {
+    setSelectedEdgeId(edgeId);
+    setSelectedNode(null);
+  }, []);
+
   const handleEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: Edge) => {
-      setSelectedEdgeId(edge.id);
-      setSelectedNode(null);
+      selectEdgeById(edge.id);
     },
-    []
+    [selectEdgeById]
   );
 
   const deleteEdgeById = useCallback((edgeId: string) => {
@@ -271,6 +304,20 @@ export default function DiagramEditor({
     takeSnapshot(newData);
     setSelectedEdgeId(null);
   }, [activeDiagram, activeDiagramIndex, diagrams, diagramData, onDiagramDataChange, takeSnapshot]);
+
+  const updateSelectedEdgeAppearance = useCallback((patch: Partial<DiagramEdgeAppearance>) => {
+    if (!selectedEdgeId) return;
+    const selectedEdge = activeDiagram.edges.find(edge => edge.id === selectedEdgeId);
+    if (!selectedEdge) return;
+    const routing = (selectedEdge.data as { routing?: unknown } | undefined)?.routing;
+    const newEdge = withEdgeAppearance(selectedEdge as Record<string, any>, patch, routing);
+    const newEdges = activeDiagram.edges.map(edge => edge.id === selectedEdgeId ? newEdge as Edge : edge);
+    const newDiagrams = [...diagrams];
+    newDiagrams[activeDiagramIndex] = { ...activeDiagram, edges: newEdges };
+    const newData = { ...diagramData, diagrams: newDiagrams };
+    onDiagramDataChange(newData);
+    takeSnapshot(newData);
+  }, [selectedEdgeId, activeDiagram, diagrams, activeDiagramIndex, diagramData, onDiagramDataChange, takeSnapshot]);
 
   const splitEdgeById = useCallback((edgeId: string, labelX: number, labelY: number) => {
     const edgeToSplit = activeDiagram.edges.find(e => e.id === edgeId);
@@ -323,29 +370,44 @@ export default function DiagramEditor({
     const edges = normalizeDiagramEdges(activeDiagram.edges, activeDiagram.nodes) as Edge[];
     return edges.map(e => {
       const isSelected = e.id === selectedEdgeId;
+      const isFeedback = (e.data as { routing?: unknown } | undefined)?.routing === 'feedback';
+      const appearance = getEdgeAppearance(e, isFeedback ? 'feedback' : 'orthogonal');
       return {
         ...e,
         type: 'deletable' as const,
         selected: isSelected,
         style: {
-          ...e.style,
-          stroke: isSelected ? 'var(--destructive)' : 'var(--muted-foreground)',
-          strokeWidth: isSelected ? 3 : 2,
-          strokeLinecap: 'round' as const,
-          strokeLinejoin: 'round' as const,
+          ...edgeAppearanceToStyle(appearance, e.style),
+          stroke: appearance.color,
+          strokeWidth: isSelected ? 2.5 : (isFeedback ? 2 : 1.75),
         },
-        markerEnd: {
-          ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
-          type: MarkerType.ArrowClosed,
-          color: isSelected ? 'var(--destructive)' : 'var(--primary)',
-          width: 18,
-          height: 18,
+        markerEnd: appearance.arrow === 'end'
+          ? {
+            type: MarkerType.ArrowClosed,
+            color: appearance.color,
+            width: 12,
+            height: 12,
+          }
+          : undefined,
+        animated: false,
+        data: {
+          ...((e as any).data || {}),
+          appearance,
+          onDelete: deleteEdgeById,
+          onSplit: splitEdgeById,
+          onSelect: selectEdgeById,
+          isSelected,
         },
-        animated: isSelected,
-        data: { ...((e as any).data || {}), onDelete: deleteEdgeById, onSplit: splitEdgeById, isSelected },
       };
-    });
-  }, [activeDiagram.edges, selectedEdgeId, deleteEdgeById, splitEdgeById]);
+    }) as Edge[];
+  }, [activeDiagram.edges, selectedEdgeId, deleteEdgeById, splitEdgeById, selectEdgeById]);
+
+  const selectedEdge = selectedEdgeId
+    ? activeDiagram.edges.find(edge => edge.id === selectedEdgeId) ?? null
+    : null;
+  const selectedEdgeAppearance = selectedEdge
+    ? getEdgeAppearance(selectedEdge, (selectedEdge.data as { routing?: unknown } | undefined)?.routing)
+    : null;
 
   const updateSelectedNode = (data: Partial<DiagramNodeData>) => {
     if (!selectedNode) return;
@@ -588,6 +650,7 @@ export default function DiagramEditor({
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onNodeClick={handleNodeClick}
+              nodeClickDistance={4}
               onEdgeClick={handleEdgeClick}
               onSelectionChange={onSelectionChange}
               selectionOnDrag
@@ -619,7 +682,14 @@ export default function DiagramEditor({
         </div>
 
         {/* Properties Panel */}
-        {selectedNode && (
+        {selectedEdge && selectedEdgeAppearance && (
+          <EdgePropertiesPanel
+            appearance={selectedEdgeAppearance}
+            onChange={updateSelectedEdgeAppearance}
+            onDelete={() => deleteEdgeById(selectedEdge.id)}
+          />
+        )}
+        {selectedNode && !selectedEdge && (
           <div className="w-72 border-l border-border bg-background flex flex-col h-full z-10 relative">
             <div className="h-14 px-4 border-b border-border bg-background flex items-center gap-2 shrink-0 text-primary">
               <Settings className="w-4 h-4" />

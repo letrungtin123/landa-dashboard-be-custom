@@ -8,6 +8,7 @@
 import { customApiClient } from './custom-client';
 import {
   COURSE_ASSET_MAX_UPLOAD_BYTES,
+  COURSE_ASSET_UPLOAD_TIMEOUT_MS,
   createCourseAssetUploadSizeError,
 } from '../utils/course-asset-upload';
 import type { CourseComponentPermissionType } from '@/utils/course-component-permissions';
@@ -131,6 +132,50 @@ export interface CourseComponentPermissions {
   allowed_component_types: CourseComponentPermissionType[];
 }
 
+export type CourseOutlineTransferOperation = 'duplicate' | 'move';
+
+export interface CourseOutlineTransferTarget {
+  id: string;
+  display_name: string;
+}
+
+export interface CourseOutlineTransferDestinationParent {
+  id: string;
+  display_name: string;
+  block_type: string;
+}
+
+export interface CourseOutlineTransferDestinationOptions {
+  source_block_type: string;
+  next_level: 'chapter' | 'sequential' | 'vertical' | 'complete';
+  options: CourseOutlineTransferDestinationParent[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface CourseOutlineTransferJob {
+  id: string;
+  operation: CourseOutlineTransferOperation;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  source_course_id: string;
+  source_block_id: string;
+  destination_course_id: string;
+  destination_parent_id: string;
+  source_block_name: string;
+  source_block_type: string;
+  attempts: number;
+  max_attempts: number;
+  block_count: number;
+  asset_count: number;
+  total_asset_bytes: string;
+  copied_asset_bytes: string;
+  last_error: string | null;
+  created_at: string;
+  started_at: string | null;
+  next_attempt_at: string;
+  completed_at: string | null;
+}
+
 export interface CreateXBlockPayload {
   type?: string;
   category?: string;
@@ -155,6 +200,79 @@ export async function getCourseOutlineIndex(courseId: string): Promise<CourseInd
 }
 
 export const getCourseOutline = getCourseOutlineIndex;
+
+export async function getCourseOutlineTransferTargets(
+  sourceCourseId: string,
+  search = '',
+  cursor?: string | null,
+): Promise<{ courses: CourseOutlineTransferTarget[]; has_more: boolean; next_cursor: string | null }> {
+  const { data } = await customApiClient.get<ApiResponse<{ courses: CourseOutlineTransferTarget[]; has_more: boolean; next_cursor: string | null }>>(
+    `${BASE}/transfer-targets`,
+    { params: { source_course_id: sourceCourseId, search, cursor: cursor || undefined } },
+  );
+  return data.data;
+}
+
+export async function getCourseOutlineTransferDestinationOptions(input: {
+  sourceBlockId: string;
+  destinationCourseId: string;
+  parentIds: string[];
+  search?: string;
+  cursor?: string | null;
+}): Promise<CourseOutlineTransferDestinationOptions> {
+  const { data } = await customApiClient.get<ApiResponse<CourseOutlineTransferDestinationOptions>>(
+    `${BASE}/transfer-destination-options`,
+    {
+      params: {
+        source_block_id: input.sourceBlockId,
+        destination_course_id: input.destinationCourseId,
+        parent_ids: input.parentIds.join(',') || undefined,
+        search: input.search || undefined,
+        page_size: 25,
+        cursor: input.cursor || undefined,
+      },
+    },
+  );
+  return data.data;
+}
+
+export async function getCourseOutlineTransferDestinationParents(
+  destinationCourseId: string,
+  sourceBlockType: string,
+  search = '',
+): Promise<CourseOutlineTransferDestinationParent[]> {
+  const { data } = await customApiClient.get<ApiResponse<CourseOutlineTransferDestinationParent[]>>(
+    `${BASE}/transfer-destination-parents`,
+    { params: { destination_course_id: destinationCourseId, source_block_type: sourceBlockType, search, page_size: 30 } },
+  );
+  return data.data;
+}
+
+export async function createCourseOutlineTransfer(input: {
+  sourceBlockId: string;
+  destinationCourseId: string;
+  destinationParentId: string;
+  destinationPathIds: string[];
+  operation: CourseOutlineTransferOperation;
+  idempotencyKey: string;
+}): Promise<CourseOutlineTransferJob> {
+  const { data } = await customApiClient.post<ApiResponse<CourseOutlineTransferJob>>(`${BASE}/transfers`, {
+    source_block_id: input.sourceBlockId,
+    destination_course_id: input.destinationCourseId,
+    destination_parent_id: input.destinationParentId,
+    destination_path_ids: input.destinationPathIds,
+    operation: input.operation,
+    idempotency_key: input.idempotencyKey,
+  });
+  return data.data;
+}
+
+export async function getCourseOutlineTransferJob(jobId: string): Promise<CourseOutlineTransferJob> {
+  const { data } = await customApiClient.get<ApiResponse<CourseOutlineTransferJob>>(
+    `${BASE}/transfers/${encodeURIComponent(jobId)}`,
+  );
+  return data.data;
+}
 
 // ── Block CRUD ──
 
@@ -298,7 +416,11 @@ export async function getCourseAssets(
   return data.data;
 }
 
-export async function uploadCourseAsset(courseId: string, file: File): Promise<any> {
+export async function uploadCourseAsset(
+  courseId: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<any> {
   if (file.size > COURSE_ASSET_MAX_UPLOAD_BYTES) {
     throw createCourseAssetUploadSizeError(file);
   }
@@ -308,7 +430,17 @@ export async function uploadCourseAsset(courseId: string, file: File): Promise<a
   const { data } = await customApiClient.post(
     `${BASE}/assets/${encodeURIComponent(courseId)}`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: COURSE_ASSET_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: (event) => {
+        if (!event.total || event.total <= 0) return;
+        // The browser has sent the body at 100%, but the server still has to
+        // persist it to Storage. Keep the UI below completion until the API
+        // confirms the full transaction.
+        onProgress?.(Math.min(95, Math.round((event.loaded / event.total) * 100)));
+      },
+    },
   );
   return (data as any).data || data;
 }

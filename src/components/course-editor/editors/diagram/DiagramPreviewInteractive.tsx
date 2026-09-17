@@ -4,7 +4,6 @@ import {
   MiniMap,
   Controls,
   Background,
-  MarkerType,
   Node,
   useNodesState,
   useEdgesState,
@@ -19,6 +18,11 @@ import OrthogonalEdge from './OrthogonalEdge';
 import { useTheme } from 'next-themes';
 import { useTranslation } from 'react-i18next';
 import { normalizeDiagramData, normalizeDiagramEdges } from './diagram-data';
+import {
+  edgeAppearanceToMarkerEnd,
+  edgeAppearanceToStyle,
+  getEdgeAppearance,
+} from './edge-appearance';
 
 const nodeTypes = {
   customShape: CustomShapeNode,
@@ -46,25 +50,19 @@ function normalizePreviewEdges(edges: any[], nodes: Node[]) {
       return true;
     })
     .map((edge, index) => {
+      const routing = edge.data?.routing === 'feedback' ? 'feedback' : 'orthogonal';
+      const appearance = getEdgeAppearance(edge, routing);
       return {
         ...edge,
         id: edge.id || `diagram-edge-${index + 1}`,
         animated: false,
         type: 'orthogonal' as const,
-        markerEnd: {
-          ...(typeof edge.markerEnd === 'object' ? edge.markerEnd : {}),
-          type: MarkerType.ArrowClosed,
-          color: 'var(--primary)',
-          width: 18,
-          height: 18,
-        },
-        style: {
-          stroke: 'var(--muted-foreground)',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
+        markerEnd: edgeAppearanceToMarkerEnd(appearance),
+        style: edgeAppearanceToStyle(appearance, {
           ...(edge.style ?? {}),
-        },
+          strokeWidth: routing === 'feedback' ? 2 : 1.75,
+          opacity: 0.9,
+        }),
       };
     });
 }

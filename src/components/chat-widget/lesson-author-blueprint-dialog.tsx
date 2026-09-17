@@ -37,6 +37,7 @@ interface LessonAuthorBlueprintDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   blueprintEvent: LessonAuthorBlueprintEvent | null;
+  pendingChapterIndexes?: ReadonlySet<number>;
   disabled?: boolean;
   onDraftChapter?: (chapterIndex: number) => void;
 }
@@ -192,6 +193,7 @@ export function LessonAuthorBlueprintDialog({
   open,
   onOpenChange,
   blueprintEvent,
+  pendingChapterIndexes,
   disabled = false,
   onDraftChapter,
 }: LessonAuthorBlueprintDialogProps) {
@@ -204,6 +206,7 @@ export function LessonAuthorBlueprintDialog({
     [blueprintEvent, chapterCount],
   );
   const appliedSignature = Array.from(appliedChapterIndexes).join(',');
+  const pendingSignature = Array.from(pendingChapterIndexes ?? []).join(',');
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [selectedBlueprintId, setSelectedBlueprintId] = useState<string | null>(null);
   const totalLessons = useMemo(
@@ -218,13 +221,15 @@ export function LessonAuthorBlueprintDialog({
   useEffect(() => {
     if (!chapters || chapterCount === 0 || !blueprintEvent) return;
     if (selectedBlueprintId !== blueprintEvent.blueprint_id) {
-      const firstPending = chapters.findIndex((_, index) => !appliedChapterIndexes.has(index));
+      const firstDraftable = chapters.findIndex((_, index) => (
+        !appliedChapterIndexes.has(index) && !pendingChapterIndexes?.has(index)
+      ));
       setSelectedBlueprintId(blueprintEvent.blueprint_id);
-      setSelectedChapterIndex(firstPending >= 0 ? firstPending : 0);
+      setSelectedChapterIndex(firstDraftable >= 0 ? firstDraftable : 0);
       return;
     }
     if (selectedChapterIndex >= chapterCount) setSelectedChapterIndex(0);
-  }, [appliedChapterIndexes, appliedSignature, blueprintEvent, chapterCount, chapters, selectedBlueprintId, selectedChapterIndex]);
+  }, [appliedChapterIndexes, appliedSignature, blueprintEvent, chapterCount, chapters, pendingChapterIndexes, pendingSignature, selectedBlueprintId, selectedChapterIndex]);
 
   if (!blueprintEvent || !chapters || chapters.length === 0) return null;
 
@@ -234,8 +239,15 @@ export function LessonAuthorBlueprintDialog({
   const selectedChapter = chapters[safeSelectedChapterIndex];
   const blueprintCanDraft = (blueprintEvent.status ?? 'proposed') === 'proposed';
   const selectedChapterApplied = appliedChapterIndexes.has(safeSelectedChapterIndex);
-  const canDraftSelectedChapter = blueprintCanDraft && !disabled && !selectedChapterApplied && Boolean(onDraftChapter);
-  const hasPendingChapter = chapters.some((_, index) => !appliedChapterIndexes.has(index));
+  const selectedChapterDraftPending = !selectedChapterApplied && Boolean(pendingChapterIndexes?.has(safeSelectedChapterIndex));
+  const canDraftSelectedChapter = blueprintCanDraft
+    && !disabled
+    && !selectedChapterApplied
+    && !selectedChapterDraftPending
+    && Boolean(onDraftChapter);
+  const hasPendingChapter = chapters.some((_, index) => (
+    !appliedChapterIndexes.has(index) && !pendingChapterIndexes?.has(index)
+  ));
   const qualityChecks = blueprintEvent.quality_report.checks ?? [];
   const passedQualityChecks = qualityChecks.filter(check => check.passed).length;
   const qualityReady = blueprintEvent.quality_report.status === 'ready_for_review';
@@ -350,7 +362,11 @@ export function LessonAuthorBlueprintDialog({
                             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                               {t('chatWidget.blueprintChapterNumber', { chapter: index + 1 })}
                             </span>
-                            {applied && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />}
+                            {applied
+                              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                              : pendingChapterIndexes?.has(index)
+                                ? <Clock3 className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                                : null}
                           </span>
                           <span className="mt-1 block text-xs font-semibold leading-5 text-foreground" title={chapter.title}>
                             {chapter.title}
@@ -451,6 +467,12 @@ export function LessonAuthorBlueprintDialog({
                           {t('chatWidget.blueprintChapterApplied')}
                         </Badge>
                       )}
+                      {selectedChapterDraftPending && (
+                        <Badge variant="outline" className="gap-1 rounded-md border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300">
+                          <Clock3 className="h-3 w-3" />
+                          {t('chatWidget.blueprintChapterDraftPending')}
+                        </Badge>
+                      )}
                     </div>
                     <div className="mt-2 flex items-start justify-between gap-3">
                       <h2 className="text-lg font-semibold leading-7 text-foreground">{selectedChapter.title}</h2>
@@ -526,21 +548,33 @@ export function LessonAuthorBlueprintDialog({
           <p className="text-xs text-muted-foreground">
             {t('chatWidget.blueprintAppliedProgress', { applied: appliedChapterIndexes.size, total: chapters.length })}
           </p>
-          <Button
-            type="button"
-            size="sm"
-            className="w-full gap-2 sm:w-auto"
-            onClick={handleDraft}
-            disabled={!canDraftSelectedChapter}
-          >
-            {disabled
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('chatWidget.blueprintDrafting')}</>
-              : selectedChapterApplied
+          {selectedChapterApplied || selectedChapterDraftPending || !hasPendingChapter ? (
+            <span className={`inline-flex items-center justify-center gap-2 text-xs font-medium sm:min-w-[190px] ${
+              selectedChapterApplied
+                ? 'text-emerald-700 dark:text-emerald-300'
+                : selectedChapterDraftPending
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-muted-foreground'
+            }`}>
+              {selectedChapterApplied
                 ? <><CheckCircle2 className="h-4 w-4" /> {t('chatWidget.blueprintChapterApplied')}</>
-                : !hasPendingChapter
-                  ? <><CheckCircle2 className="h-4 w-4" /> {t('chatWidget.blueprintAllChaptersApplied')}</>
-                  : <><ChevronRight className="h-4 w-4" /> {t('chatWidget.blueprintStartDraft', { chapter: safeSelectedChapterIndex + 1 })}</>}
-          </Button>
+                : selectedChapterDraftPending
+                  ? <><Clock3 className="h-4 w-4" /> {t('chatWidget.blueprintChapterDraftPending')}</>
+                  : <><CheckCircle2 className="h-4 w-4" /> {t('chatWidget.blueprintAllChaptersApplied')}</>}
+            </span>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="w-full gap-2 sm:w-auto"
+              onClick={handleDraft}
+              disabled={!canDraftSelectedChapter}
+            >
+              {disabled
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> {t('chatWidget.blueprintDrafting')}</>
+                : <><ChevronRight className="h-4 w-4" /> {t('chatWidget.blueprintStartDraft', { chapter: safeSelectedChapterIndex + 1 })}</>}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

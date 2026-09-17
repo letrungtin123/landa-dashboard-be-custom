@@ -64,10 +64,27 @@ type BlueprintDraftSelection = {
 };
 
 const CHAT_SCROLL_STORAGE_PREFIX = 'chat-widget-scroll-v1:';
+const CHAT_PENDING_TURN_STORAGE_PREFIX = 'chat-widget-pending-turn-v1:';
 const LESSON_AUTHOR_PROGRESS_STORAGE_PREFIX = 'lesson-author-progress-v1:';
 const LESSON_AUTHOR_PROGRESS_STEP_COUNT = 4;
 const LESSON_AUTHOR_PROGRESS_TTL_MS = 30 * 60 * 1000;
+const CHAT_PENDING_TURN_TTL_MS = 30 * 60 * 1000;
+const CHAT_PENDING_RECOVERY_MAX_MS = 5 * 60 * 1000;
+const CHAT_PENDING_RECOVERY_POLL_MS = 1_500;
 const MIN_STREAMING_UI_MS = 1_500;
+
+type StoredChatPendingTurn = {
+  target: ChatSurface;
+  startedAt: number;
+};
+
+type PendingChatRecovery = {
+  id: number;
+  conversationId: string;
+  startedAt: number;
+  timer: number | null;
+  cancelled: boolean;
+};
 
 type StoredLessonAuthorProgress = {
   event: LessonAuthorProgressEvent;
@@ -93,6 +110,54 @@ function writeStoredChatScrollTop(conversationId: string, scrollTop: number): vo
   if (typeof window === 'undefined' || !Number.isFinite(scrollTop)) return;
   try {
     window.sessionStorage.setItem(getChatScrollStorageKey(conversationId), String(Math.max(0, Math.round(scrollTop))));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function getChatPendingTurnStorageKey(conversationId: string): string {
+  return `${CHAT_PENDING_TURN_STORAGE_PREFIX}${conversationId}`;
+}
+
+function readStoredChatPendingTurn(conversationId: string): StoredChatPendingTurn | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(getChatPendingTurnStorageKey(conversationId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredChatPendingTurn>;
+    const target = parsed.target === 'admin' || parsed.target === 'lesson_author' ? parsed.target : null;
+    const startedAt = typeof parsed.startedAt === 'number' ? parsed.startedAt : Number.NaN;
+    if (
+      !target
+      || !Number.isFinite(startedAt)
+      || startedAt <= 0
+      || Date.now() - startedAt > CHAT_PENDING_TURN_TTL_MS
+    ) {
+      window.sessionStorage.removeItem(getChatPendingTurnStorageKey(conversationId));
+      return null;
+    }
+    return { target, startedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredChatPendingTurn(conversationId: string, target: ChatSurface): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(getChatPendingTurnStorageKey(conversationId), JSON.stringify({
+      target,
+      startedAt: Date.now(),
+    } satisfies StoredChatPendingTurn));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function clearStoredChatPendingTurn(conversationId: string | null | undefined): void {
+  if (typeof window === 'undefined' || !conversationId) return;
+  try {
+    window.sessionStorage.removeItem(getChatPendingTurnStorageKey(conversationId));
   } catch {
     // Session storage can be unavailable in privacy-restricted browser contexts.
   }
@@ -739,6 +804,26 @@ function getAppliedBlueprintChapterIndexesFromMessages(
   return Array.from(appliedIndexes).sort((left, right) => left - right);
 }
 
+function getPendingBlueprintChapterIndexesFromMessages(
+  messages: ChatMessage[],
+  blueprintId: string,
+): number[] {
+  const appliedIndexes = new Set(getAppliedBlueprintChapterIndexesFromMessages(messages, blueprintId));
+  const pendingIndexes = new Set<number>();
+
+  for (const message of messages) {
+    const metadata = message.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
+    const record = metadata as Record<string, unknown>;
+    if (record.kind !== 'lesson_author_proposal' || record.lesson_author_job_status !== 'proposed') continue;
+    if (record.lesson_author_blueprint_id !== blueprintId) continue;
+    const chapterIndex = readNonNegativeInteger(record.lesson_author_blueprint_chapter_index);
+    if (chapterIndex !== null && !appliedIndexes.has(chapterIndex)) pendingIndexes.add(chapterIndex);
+  }
+
+  return Array.from(pendingIndexes).sort((left, right) => left - right);
+}
+
 function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprintEvent | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const metadata = messages[index].metadata;
@@ -852,6 +937,9 @@ export default function ChatWidget() {
   const runtimeAvailabilityRequestRef = useRef(0);
   const messageLoadRequestRef = useRef(0);
   const loadMoreRequestRef = useRef(0);
+  const activeStreamConversationIdsRef = useRef<Set<string>>(new Set());
+  const pendingRecoveryRef = useRef<PendingChatRecovery | null>(null);
+  const pendingRecoverySequenceRef = useRef(0);
   const openRef = useRef(false);
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const currentConvIdRef = useRef<string | null>(null);
@@ -886,6 +974,106 @@ export default function ChatWidget() {
       window.setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior }), 0);
     });
   }, []);
+
+  const cancelPendingRecovery = useCallback(() => {
+    const recovery = pendingRecoveryRef.current;
+    if (!recovery) return;
+    recovery.cancelled = true;
+    if (recovery.timer !== null) window.clearTimeout(recovery.timer);
+    pendingRecoveryRef.current = null;
+  }, []);
+
+  const recoverPendingTurn = useCallback((
+    conversationId: string,
+    target: ChatSurface,
+    startedAt: number,
+  ) => {
+    cancelPendingRecovery();
+    const recovery: PendingChatRecovery = {
+      id: ++pendingRecoverySequenceRef.current,
+      conversationId,
+      startedAt,
+      timer: null,
+      cancelled: false,
+    };
+    pendingRecoveryRef.current = recovery;
+    activeStreamConversationIdsRef.current.add(conversationId);
+    setStreaming(true);
+
+    const isActiveRecovery = () => (
+      pendingRecoveryRef.current?.id === recovery.id
+      && !recovery.cancelled
+      && currentConvIdRef.current === conversationId
+    );
+    const isRecoveryExpired = () => Date.now() - startedAt > CHAT_PENDING_RECOVERY_MAX_MS;
+
+    const finishRecovery = (timedOut: boolean) => {
+      if (recovery.timer !== null) window.clearTimeout(recovery.timer);
+      if (pendingRecoveryRef.current?.id === recovery.id) pendingRecoveryRef.current = null;
+      activeStreamConversationIdsRef.current.delete(conversationId);
+      if (currentConvIdRef.current !== conversationId) return;
+      setStreaming(false);
+      setStreamText('');
+      setLessonAuthorProgress(null);
+      if (timedOut) {
+        clearStoredChatPendingTurn(conversationId);
+        clearStoredLessonAuthorProgress(conversationId);
+        toast.error(i18n.t('chatWidget.responseRecoveryTimeout'));
+      }
+    };
+
+    const poll = async (): Promise<void> => {
+      if (!isActiveRecovery()) {
+        finishRecovery(false);
+        return;
+      }
+      if (isRecoveryExpired()) {
+        finishRecovery(true);
+        return;
+      }
+      try {
+        const result = await fetchMessages(conversationId, undefined, target);
+        if (!isActiveRecovery()) {
+          finishRecovery(false);
+          return;
+        }
+        setMessages(result.messages);
+        setProposalEvent(getLatestPendingProposalEvent(result.messages));
+        setBlueprintEvent(getLatestBlueprintEvent(result.messages));
+        setHasMore(result.has_more);
+        setNextCursor(result.next_cursor);
+
+        // The backend persists the assistant message even when the original
+        // SSE connection was lost. Never re-POST the user turn on recovery.
+        const latestMessage = result.messages[result.messages.length - 1];
+        if (latestMessage?.role === 'assistant') {
+          finishRecovery(false);
+          clearStoredChatPendingTurn(conversationId);
+          clearStoredLessonAuthorProgress(conversationId);
+          scrollChatToBottom('smooth');
+          return;
+        }
+      } catch {
+        // A transient reload/network failure is retried until the bounded
+        // recovery window expires; no duplicate AI request is created.
+      }
+
+      if (isRecoveryExpired()) {
+        finishRecovery(true);
+        return;
+      }
+      if (!isActiveRecovery()) {
+        finishRecovery(false);
+        return;
+      }
+      recovery.timer = window.setTimeout(() => {
+        recovery.timer = null;
+        void poll();
+      }, CHAT_PENDING_RECOVERY_POLL_MS);
+    };
+
+    void poll();
+  }, [cancelPendingRecovery, scrollChatToBottom]);
 
   useEffect(() => {
     currentConvIdRef.current = currentConv?.id ?? null;
@@ -1075,6 +1263,7 @@ export default function ChatWidget() {
   }, [clearVoiceListenTimer]);
 
   useEffect(() => () => {
+    cancelPendingRecovery();
     clearMinimumStreamDelay();
     clearVoiceAutoListenTimer();
     stopVoiceCapture(true);
@@ -1087,7 +1276,7 @@ export default function ChatWidget() {
     const context = botAudioContextRef.current;
     if (context && context.state !== 'closed') void context.close().catch(() => {});
     botAudioContextRef.current = null;
-  }, [cancelBotSpeech, clearMinimumStreamDelay, clearVoiceAutoListenTimer, stopBotAudioSource, stopVoiceCapture]);
+  }, [cancelBotSpeech, cancelPendingRecovery, clearMinimumStreamDelay, clearVoiceAutoListenTimer, stopBotAudioSource, stopVoiceCapture]);
 
   useEffect(() => {
     if (!open) {
@@ -1200,15 +1389,27 @@ export default function ChatWidget() {
     setBlueprintDialogOpen(false);
   }, []);
 
-  const resetChatState = useCallback(() => {
+  const resetChatState = useCallback(({ preservePendingTurns = false }: { preservePendingTurns?: boolean } = {}) => {
     clearMinimumStreamDelay();
+    cancelPendingRecovery();
     messageLoadRequestRef.current += 1;
     loadMoreRequestRef.current += 1;
-    clearStoredLessonAuthorProgress(currentConvIdRef.current);
+    if (!preservePendingTurns) {
+      const activeConversationIds = new Set(activeStreamConversationIdsRef.current);
+      if (currentConvIdRef.current) activeConversationIds.add(currentConvIdRef.current);
+      activeConversationIds.forEach(conversationId => {
+        clearStoredChatPendingTurn(conversationId);
+        clearStoredLessonAuthorProgress(conversationId);
+      });
+      activeStreamConversationIdsRef.current.clear();
+    }
     stopVoiceCapture(true);
     cancelBotSpeech();
-    abortRef.current?.abort();
-    abortRef.current = null;
+    if (!preservePendingTurns) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    }
+    currentConvIdRef.current = null;
     setCurrentConv(null);
     setMessages([]);
     setInputValue('');
@@ -1223,7 +1424,7 @@ export default function ChatWidget() {
     setBlueprintDraftSelection(null);
     setLessonAuthorProgress(null);
     resetMindmapState();
-  }, [cancelBotSpeech, clearMinimumStreamDelay, resetMindmapState, stopVoiceCapture]);
+  }, [cancelBotSpeech, cancelPendingRecovery, clearMinimumStreamDelay, resetMindmapState, stopVoiceCapture]);
 
   const loadOutlineMentions = useCallback(async (force = false) => {
     if (!courseId) {
@@ -1349,7 +1550,7 @@ export default function ChatWidget() {
   useEffect(() => {
     if (!isCourseOutline && isLessonAuthor) {
       setSurface('admin');
-      resetChatState();
+      resetChatState({ preservePendingTurns: true });
       if (open) loadActiveBot('admin');
     }
   }, [isCourseOutline, isLessonAuthor, loadActiveBot, open, resetChatState]);
@@ -1423,6 +1624,9 @@ export default function ChatWidget() {
       setConversations(prev => [conv, ...prev]);
       setCurrentConv(conv);
       currentConvIdRef.current = conv.id;
+      setStreaming(false);
+      setStreamText('');
+      streamAccRef.current = '';
       setMessages([]);
       setSelectedMentions([]);
       setSelectedSourceDocuments([]);
@@ -1430,6 +1634,7 @@ export default function ChatWidget() {
       setBlueprintEvent(null);
       setBlueprintDraftSelection(null);
       setLessonAuthorProgress(null);
+      clearStoredChatPendingTurn(conv.id);
       clearStoredLessonAuthorProgress(conv.id);
       resetMindmapState();
       setState('chat');
@@ -1440,6 +1645,7 @@ export default function ChatWidget() {
 
   // ── Open existing conversation ──
   const handleOpenConversation = async (conv: ChatConversation) => {
+    cancelPendingRecovery();
     const requestId = ++messageLoadRequestRef.current;
     loadMoreRequestRef.current += 1;
     const conversationId = conv.id;
@@ -1451,6 +1657,10 @@ export default function ChatWidget() {
     resetMindmapState();
     setCurrentConv(conv);
     currentConvIdRef.current = conversationId;
+    setStreaming(false);
+    setStreamText('');
+    setLessonAuthorProgress(null);
+    streamAccRef.current = '';
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setLoadingMessages(true);
@@ -1463,13 +1673,20 @@ export default function ChatWidget() {
       setBlueprintEvent(getLatestBlueprintEvent(result.messages));
       setBlueprintDraftSelection(null);
       const latestMessage = result.messages[result.messages.length - 1];
-      const canRestoreProgress = isLessonAuthor
-        && streaming
-        && currentConv?.id === conversationId
-        && latestMessage?.role === 'user';
-      const storedProgress = canRestoreProgress ? readStoredLessonAuthorProgress(conv.id) : null;
+      const pendingTurn = readStoredChatPendingTurn(conversationId);
+      const canRestorePending = latestMessage?.role === 'user' && pendingTurn?.target === target;
+      const storedProgress = canRestorePending && isLessonAuthor
+        ? readStoredLessonAuthorProgress(conversationId)
+        : null;
+      setStreaming(canRestorePending);
+      setStreamText('');
       setLessonAuthorProgress(storedProgress?.event ?? null);
-      if (!storedProgress) clearStoredLessonAuthorProgress(conv.id);
+      if (!canRestorePending) {
+        clearStoredChatPendingTurn(conversationId);
+        clearStoredLessonAuthorProgress(conversationId);
+      } else {
+        recoverPendingTurn(conversationId, target, pendingTurn.startedAt);
+      }
       setHasMore(result.has_more);
       setNextCursor(result.next_cursor);
     } catch {
@@ -1531,6 +1748,8 @@ export default function ChatWidget() {
     setDeleting(true);
     try {
       await deleteConversation(confirmDeleteId, isLessonAuthor ? 'lesson_author' : 'admin');
+      clearStoredChatPendingTurn(confirmDeleteId);
+      clearStoredLessonAuthorProgress(confirmDeleteId);
       const nextConversations = conversations.filter(c => c.id !== confirmDeleteId);
       setConversations(nextConversations);
       if (currentConv?.id === confirmDeleteId) setCurrentConv(null);
@@ -1572,6 +1791,7 @@ export default function ChatWidget() {
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
     const streamStartedAt = performance.now();
+    const streamAccumulator = { value: '' };
     const isVoiceTurn = source === 'voice' || voiceModeActive;
     if (isVoiceTurn) {
       clearVoiceAutoListenTimer();
@@ -1613,6 +1833,7 @@ export default function ChatWidget() {
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setBlueprintDraftSelection(null);
+    writeStoredChatPendingTurn(conversationId, target);
     clearStoredLessonAuthorProgress(conversationId);
 
     const userMsg: ChatMessage = {
@@ -1632,6 +1853,7 @@ export default function ChatWidget() {
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMsg]);
+    activeStreamConversationIdsRef.current.add(conversationId);
     setStreaming(true);
     setStreamText('');
     setProposalEvent(null);
@@ -1651,7 +1873,6 @@ export default function ChatWidget() {
         // immediate done event. This prevents a one-frame loading flash.
         if (!toastMessage) {
           await waitForMinimumStreamDuration(streamStartedAt);
-          if (!isCurrentConversation()) return;
         }
         const result = await fetchMessages(conversationId, undefined, target);
         if (!isCurrentConversation()) return;
@@ -1706,14 +1927,20 @@ export default function ChatWidget() {
           }
         }
       } finally {
-        if (isCurrentConversation()) {
+        const stillViewingConversation = isCurrentConversation();
+        if (stillViewingConversation) {
           setStreamText('');
           setStreaming(false);
           setLessonAuthorProgress(null);
           streamAccRef.current = '';
+          clearStoredChatPendingTurn(conversationId);
+          clearStoredLessonAuthorProgress(conversationId);
         }
-        clearStoredLessonAuthorProgress(conversationId);
-        if (toastMessage && isCurrentConversation()) toast.error(toastMessage);
+        activeStreamConversationIdsRef.current.delete(conversationId);
+        // Keep the pending marker when the user left this conversation. The
+        // next open will reconcile the persisted assistant message instead
+        // of losing the turn after a route change or widget navigation.
+        if (toastMessage && stillViewingConversation) toast.error(toastMessage);
       }
     };
 
@@ -1721,13 +1948,19 @@ export default function ChatWidget() {
       conversationId,
       content,
       (text) => {
-        streamAccRef.current += text;
-        setStreamText(streamAccRef.current);
-        setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 10);
+        streamAccumulator.value += text;
+        if (currentConvIdRef.current !== conversationId) return;
+        streamAccRef.current = streamAccumulator.value;
+        setStreamText(streamAccumulator.value);
+        setTimeout(() => {
+          if (currentConvIdRef.current === conversationId) {
+            scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+          }
+        }, 10);
       },
-      () => { void finishStream(streamAccRef.current); },
+      () => { void finishStream(streamAccumulator.value); },
       (message) => {
-        const partial = streamAccRef.current.trim();
+        const partial = streamAccumulator.value.trim();
         cancelBotSpeech();
         void finishStream(partial ? `${partial}\n\n${message}` : message, message);
       },
@@ -1740,8 +1973,16 @@ export default function ChatWidget() {
         blueprint_id: outgoingBlueprintDraft?.blueprint_id,
         blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
         input_mode: isVoiceTurn ? 'voice' : 'text',
-        onProposal: isLessonAuthor ? setProposalEvent : undefined,
-        onBlueprint: isLessonAuthor ? setBlueprintEvent : undefined,
+        onProposal: isLessonAuthor
+          ? (event) => {
+            if (currentConvIdRef.current === conversationId) setProposalEvent(event);
+          }
+          : undefined,
+        onBlueprint: isLessonAuthor
+          ? (event) => {
+            if (currentConvIdRef.current === conversationId) setBlueprintEvent(event);
+          }
+          : undefined,
         onProgress: isLessonAuthor
           ? (event) => handleLessonAuthorProgress(conversationId, event)
           : undefined,
@@ -1938,10 +2179,12 @@ export default function ChatWidget() {
   };
 
   const handleBack = () => {
-    clearMinimumStreamDelay();
+    cancelPendingRecovery();
     stopVoiceCapture(true);
     cancelBotSpeech();
-    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    // Leaving the conversation list is navigation, not cancellation. Keep
+    // the request alive so it can finish in the background and be restored
+    // when this conversation is opened again.
     setStreaming(false);
     setStreamText('');
     setCurrentConv(null);
@@ -1967,7 +2210,7 @@ export default function ChatWidget() {
     if (!isCourseOutline || !courseId) return;
     const nextSurface: ChatSurface = isLessonAuthor ? 'admin' : 'lesson_author';
     setSurface(nextSurface);
-    resetChatState();
+    resetChatState({ preservePendingTurns: true });
     if (open) await loadActiveBot(nextSurface);
   };
 
@@ -2006,6 +2249,11 @@ export default function ChatWidget() {
     setBlueprintDialogOpen(true);
   }, [blueprintEvent]);
 
+  const pendingBlueprintChapterIndexes = useMemo(() => {
+    if (!blueprintEvent) return new Set<number>();
+    return new Set(getPendingBlueprintChapterIndexesFromMessages(messages, blueprintEvent.blueprint_id));
+  }, [blueprintEvent, messages]);
+
   const handleDraftBlueprintChapter = useCallback((chapterIndex: number) => {
     if (!blueprintEvent || streaming) return;
     if ((blueprintEvent.status ?? 'proposed') !== 'proposed') {
@@ -2019,6 +2267,10 @@ export default function ChatWidget() {
     }
     if ((blueprintEvent.applied_chapter_indexes ?? []).includes(chapterIndex)) {
       toast.error(i18n.t('chatWidget.blueprintChapterAlreadyApplied'));
+      return;
+    }
+    if (pendingBlueprintChapterIndexes.has(chapterIndex)) {
+      toast.error(i18n.t('chatWidget.blueprintChapterDraftPending'));
       return;
     }
     const chapter = blueprintEvent.blueprint.chapters[chapterIndex];
@@ -2048,7 +2300,7 @@ export default function ChatWidget() {
     if (sendUserMessage(nextDraftPrompt, 'text', draftSelection)) {
       setBlueprintDialogOpen(false);
     }
-  }, [blueprintDraftSelection, blueprintEvent, inputValue, sendUserMessage, streaming]);
+  }, [blueprintDraftSelection, blueprintEvent, inputValue, pendingBlueprintChapterIndexes, sendUserMessage, streaming]);
 
   const handleApplyProposal = async () => {
     if (!proposalEvent || !courseId || applyingProposal) return;
@@ -2312,6 +2564,7 @@ export default function ChatWidget() {
         open={blueprintDialogOpen}
         onOpenChange={setBlueprintDialogOpen}
         blueprintEvent={blueprintEvent}
+        pendingChapterIndexes={pendingBlueprintChapterIndexes}
         disabled={streaming}
         onDraftChapter={handleDraftBlueprintChapter}
       />
@@ -2880,6 +3133,8 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [sourceSearch, setSourceSearch] = useState('');
   const [simulatedProgressStepIndex, setSimulatedProgressStepIndex] = useState(0);
+  const progressHydrationTargetRef = useRef<number | null>(null);
+  const progressHydrationPendingRef = useRef(false);
   const selectedMentionList = useMemo(() => selectedMentions ?? [], [selectedMentions]);
   const selectedSourceDocumentList = useMemo(() => selectedSourceDocuments ?? [], [selectedSourceDocuments]);
   const lessonAuthorOperationPlan = proposalEvent?.proposal.operation_plan;
@@ -2956,8 +3211,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     : 0;
   const progressStage = lessonAuthorProgress?.stage ?? null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const storedProgress = conversationId ? readStoredLessonAuthorProgress(conversationId) : null;
+    progressHydrationTargetRef.current = storedProgress?.simulatedStepIndex ?? null;
+    progressHydrationPendingRef.current = Boolean(storedProgress);
     setSimulatedProgressStepIndex(storedProgress?.simulatedStepIndex ?? 0);
   }, [conversationId]);
 
@@ -2982,6 +3239,11 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
 
   useEffect(() => {
     if (!conversationId || !streaming || !lessonAuthorProgress) return;
+    const hydrationTarget = progressHydrationTargetRef.current;
+    if (progressHydrationPendingRef.current) {
+      if (hydrationTarget !== null && simulatedProgressStepIndex < hydrationTarget) return;
+      progressHydrationPendingRef.current = false;
+    }
     writeStoredLessonAuthorProgress(conversationId, lessonAuthorProgress, simulatedProgressStepIndex);
   }, [conversationId, lessonAuthorProgress, simulatedProgressStepIndex, streaming]);
 

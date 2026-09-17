@@ -143,13 +143,8 @@ export default function VideoEditor({
     setUploading(true);
     setUploadProgress(0);
 
-    // Simulate progress (real progress requires XMLHttpRequest)
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => Math.min(prev + Math.random() * 15, 90));
-    }, 300);
-
     try {
-      const result = await uploadCourseAsset(courseId, file);
+      const result = await uploadCourseAsset(courseId, file, setUploadProgress);
       const path = result?.storage_path || result?.url || '';
 
       if (path) {
@@ -175,12 +170,14 @@ export default function VideoEditor({
       }
       setUploadProgress(100);
     } catch (err: any) {
+      const message = err?.code === 'ECONNABORTED'
+        ? t('courseEditorForms.videoUploadTimedOut')
+        : getLocalizedApiError(err, t('courseUnit.unknownError'));
       toast.error(t('courseEditorForms.videoUploadFailed', {
-        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+        message,
       }));
       setUploadProgress(0);
     } finally {
-      clearInterval(progressInterval);
       setUploading(false);
     }
   };
@@ -390,7 +387,11 @@ export default function VideoEditor({
                 {uploading ? (
                   <>
                     <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                    <span className="text-sm font-medium text-foreground">{t('courseEditorForms.uploading')}</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {uploadProgress >= 95
+                        ? t('courseEditorForms.savingUploadedVideo')
+                        : t('courseEditorForms.uploading')}
+                    </span>
                     <div className="w-48 h-2 rounded-full bg-muted overflow-hidden">
                       <div
                         className="h-full rounded-full bg-primary transition-all duration-300 ease-out"

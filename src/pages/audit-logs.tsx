@@ -115,7 +115,7 @@ function eventSummary(log: AuditLog, t: Translate): string {
       if (log.event_code.startsWith('auth.')) return `${actor} ${translated}`;
       const subject = log.entity_name || log.entity_id || '';
       const courseName = typeof log.event_metadata?.course_name === 'string' ? log.event_metadata.course_name : '';
-      const courseContext = log.event_code.startsWith('course.component.') && courseName
+      const courseContext = (log.event_code.startsWith('course.component.') || log.event_code.startsWith('course.outline.')) && courseName
         ? ` · ${t('auditLogs.inCourse', { name: courseName })}`
         : '';
       return `${actor} ${translated}${subject ? ` ${subject}` : ''}${courseContext}`;
@@ -136,7 +136,7 @@ function auditContextPreview(log: AuditLog, t: Translate): string | null {
   const showAffectedCount = affectedCount !== null && log.event_code !== 'permission_group.matrix.updated';
   const items: string[] = [];
 
-  if (courseName && !log.event_code?.startsWith('course.component.')) items.push(`${t('auditLogs.course')}: ${courseName}`);
+  if (courseName && !log.event_code?.startsWith('course.component.') && !log.event_code?.startsWith('course.outline.')) items.push(`${t('auditLogs.course')}: ${courseName}`);
   if (parentName) items.push(`${t('auditLogs.parent')}: ${parentName}`);
   if (relatedName) items.push(`${relatedType ? translateEntityType(relatedType, t) : t('auditLogs.relatedEntity')}: ${relatedName}`);
   if (showAffectedCount) items.push(t('auditLogs.affectedCountValue', { count: affectedCount }));

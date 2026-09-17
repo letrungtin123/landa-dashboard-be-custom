@@ -28,6 +28,7 @@ import {
   ChevronRight, ChevronDown, Plus, Trash2, Globe, EyeOff,
   MoreVertical, Folder, Layout, FileText, Pencil, Check, X, GripVertical, BookOpen, Undo2, ClipboardList,
   CalendarClock, Trophy, Lock, Paperclip,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -65,6 +66,8 @@ import { AppTooltip } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import i18n from '@/i18n';
+import { useAuthStore } from '@/utils/store';
+import CourseOutlineTransferDialog from './CourseOutlineTransferDialog';
 
 interface OutlineTreeProps {
   courseId: string;
@@ -269,6 +272,7 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBloc
               <SubsectionNode
                 key={sub.id}
                 node={sub}
+                courseId={courseId}
                 onSelectUnit={onSelectUnit}
                 selectedUnitId={selectedUnitId}
                 focusedBlockId={focusedBlockId}
@@ -294,8 +298,9 @@ function SectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBloc
 // Subsection Node
 // ─────────────────────────────────────────────
 
-function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange, onReorder }: {
+function SubsectionNode({ node, courseId, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange, onReorder }: {
   node: CourseIndexSection;
+  courseId: string;
   onSelectUnit: (id: string) => void;
   selectedUnitId: string | null;
   focusedBlockId?: string | null;
@@ -311,6 +316,7 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, on
     <div>
       <NodeRow
         node={node}
+        courseId={courseId}
         depth={1}
         icon={<Layout className="h-4 w-4 text-sky-500" />}
         expanded={expanded}
@@ -331,6 +337,7 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, on
               <UnitNode
                 key={unit.id}
                 node={unit}
+                courseId={courseId}
                 isSelected={selectedUnitId === unit.id || focusedBlockId === unit.id}
                 isFocused={focusedBlockId === unit.id}
                 onSelect={() => onSelectUnit(unit.id)}
@@ -355,8 +362,9 @@ function SubsectionNode({ node, onSelectUnit, selectedUnitId, focusedBlockId, on
 // Unit Node (leaf)
 // ─────────────────────────────────────────────
 
-function UnitNode({ node, isSelected, isFocused, onSelect, onStructureChange }: {
+function UnitNode({ node, courseId, isSelected, isFocused, onSelect, onStructureChange }: {
   node: CourseIndexSection;
+  courseId: string;
   isSelected: boolean;
   isFocused?: boolean;
   onSelect: () => void;
@@ -365,6 +373,7 @@ function UnitNode({ node, isSelected, isFocused, onSelect, onStructureChange }: 
   return (
     <NodeRow
       node={node}
+      courseId={courseId}
       depth={2}
       icon={<FileText className="h-4 w-4 text-blue-500" />}
       expanded={false}
@@ -524,7 +533,10 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
   const queryClient = useQueryClient();
+  const currentUser = useAuthStore((state) => state.user);
+  const canTransfer = Boolean(courseId && (currentUser?.role === 'superuser' || currentUser?.role === 'superadmin'));
 
   const delMut = useMutation({
     mutationFn: () => deleteBlock(node.id),
@@ -587,6 +599,11 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
           <DropdownMenuItem onClick={onRename}>
             <Pencil className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.rename')}
           </DropdownMenuItem>
+          {canTransfer && (
+            <DropdownMenuItem onClick={() => setShowTransferDialog(true)}>
+              <Copy className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.transfer.action')}
+            </DropdownMenuItem>
+          )}
           {depth === 0 && (
             <DropdownMenuItem onClick={() => setShowSectionModal(true)}>
               <Sparkles className="h-3.5 w-3.5 mr-2" /> {i18n.t('courseOutline.completionMessage')}
@@ -655,6 +672,17 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
           sectionName={node.display_name}
           open={showSectionModal}
           onClose={() => setShowSectionModal(false)}
+        />
+      )}
+      {showTransferDialog && courseId && (
+        <CourseOutlineTransferDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          sourceCourseId={courseId}
+          sourceBlockId={node.id}
+          sourceBlockName={node.display_name || i18n.t('courseOutline.unnamed')}
+          sourceBlockType={node.block_type}
+          onCompleted={onStructureChange}
         />
       )}
     </>

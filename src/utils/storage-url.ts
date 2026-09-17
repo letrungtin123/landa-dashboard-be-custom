@@ -1,6 +1,7 @@
 import { config } from '@/config/env';
 
 const STORAGE_PROXY_PREFIX = '/api/storage/';
+const SUPABASE_PUBLIC_MARKER = '/object/public/landa-storage/';
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -25,6 +26,15 @@ export function extractStoragePathFromProxyUrl(src: string | null | undefined): 
 
   try {
     const url = new URL(value);
+
+    // Legacy records may still contain a full Supabase public-object URL.
+    // Never hand a server-local Supabase URL (for example 127.0.0.1) to the browser;
+    // normalize every LANDA bucket URL through the authenticated backend proxy.
+    const storageMarkerIndex = url.pathname.indexOf(SUPABASE_PUBLIC_MARKER);
+    if (storageMarkerIndex !== -1) {
+      return decodeURIComponent(url.pathname.slice(storageMarkerIndex + SUPABASE_PUBLIC_MARKER.length));
+    }
+
     const apiUrl = new URL(config.customApiUrl);
     const sameApiHost = url.origin === apiUrl.origin;
     const samePageHost = typeof window !== 'undefined' && url.origin === window.location.origin;
