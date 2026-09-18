@@ -32,6 +32,7 @@ import type {
   LessonAuthorBlueprintChapter,
   LessonAuthorBlueprintEvent,
 } from '@/api/custom-chat';
+import { resolveLessonAuthorContentLocale, type LessonAuthorContentLocale } from './lesson-author-locale';
 
 interface LessonAuthorBlueprintDialogProps {
   open: boolean;
@@ -111,14 +112,17 @@ function ChapterLessonCard({
   chapterIndex,
   lessonIndex,
   isLast,
+  locale,
 }: {
   chapter: LessonAuthorBlueprintChapter;
   chapterIndex: number;
   lessonIndex: number;
   isLast: boolean;
+  locale: LessonAuthorContentLocale;
 }) {
-  const { t, i18n } = useTranslation();
-  const isVietnamese = i18n.language !== 'en';
+  const { i18n } = useTranslation();
+  const t = useMemo(() => i18n.getFixedT(locale), [i18n, locale]);
+  const isVietnamese = locale === 'vi';
   const lesson = chapter.lessons[lessonIndex];
 
   return (
@@ -197,8 +201,10 @@ export function LessonAuthorBlueprintDialog({
   disabled = false,
   onDraftChapter,
 }: LessonAuthorBlueprintDialogProps) {
-  const { t, i18n } = useTranslation();
-  const isVietnamese = i18n.language !== 'en';
+  const { i18n } = useTranslation();
+  const locale = resolveLessonAuthorContentLocale(blueprintEvent?.locale, i18n.language);
+  const t = useMemo(() => i18n.getFixedT(locale), [i18n, locale]);
+  const isVietnamese = locale === 'vi';
   const chapters = blueprintEvent?.blueprint.chapters;
   const chapterCount = chapters?.length ?? 0;
   const appliedChapterIndexes = useMemo(
@@ -533,6 +539,7 @@ export function LessonAuthorBlueprintDialog({
                           chapterIndex={safeSelectedChapterIndex}
                           lessonIndex={lessonIndex}
                           isLast={lessonIndex === selectedChapter.lessons.length - 1}
+                          locale={locale}
                         />
                       ))}
                     </div>

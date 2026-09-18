@@ -247,6 +247,7 @@ export interface LessonAuthorBlueprintEvent {
   blueprint_id: string;
   blueprint: LessonAuthorBlueprint;
   quality_report: LessonAuthorBlueprintQualityReport;
+  locale?: "vi" | "en";
   applied_chapter_indexes?: number[];
   status?: "proposed" | "superseded" | "archived" | "failed";
   error_reason?: string | null;

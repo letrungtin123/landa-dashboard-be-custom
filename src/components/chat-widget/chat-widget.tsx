@@ -43,6 +43,10 @@ import {
 } from '@/api/custom-course-authoring';
 import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
 import { LessonAuthorBlueprintDialog } from './lesson-author-blueprint-dialog';
+import {
+  getLessonAuthorContentLocale,
+  resolveLessonAuthorContentLocale,
+} from './lesson-author-locale';
 import { AppTooltip } from '@/components/ui/tooltip';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
@@ -841,6 +845,7 @@ function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprint
     if (!qualityReport || typeof qualityReport !== 'object' || Array.isArray(qualityReport)) continue;
     const status = record.lesson_author_blueprint_status;
     const errorReason = record.lesson_author_blueprint_error_reason;
+    const locale = getLessonAuthorContentLocale(record.locale);
     const metadataAppliedChapterIndexes = Array.isArray(record.lesson_author_blueprint_applied_chapter_indexes)
       ? record.lesson_author_blueprint_applied_chapter_indexes.filter((value): value is number => (
         Number.isInteger(value) && value >= 0
@@ -856,6 +861,7 @@ function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprint
       blueprint_id: blueprintId,
       blueprint: blueprint as LessonAuthorBlueprintEvent['blueprint'],
       quality_report: qualityReport as LessonAuthorBlueprintEvent['quality_report'],
+      ...(locale ? { locale } : {}),
       status: status === 'proposed' || status === 'superseded' || status === 'archived' || status === 'failed'
         ? status
         : 'proposed',
@@ -2256,26 +2262,28 @@ export default function ChatWidget() {
 
   const handleDraftBlueprintChapter = useCallback((chapterIndex: number) => {
     if (!blueprintEvent || streaming) return;
+    const blueprintLocale = resolveLessonAuthorContentLocale(blueprintEvent.locale, i18n.language);
+    const isVietnamese = blueprintLocale === 'vi';
+    const blueprintT = i18n.getFixedT(blueprintLocale);
     if ((blueprintEvent.status ?? 'proposed') !== 'proposed') {
       toast.error(
         blueprintEvent.error_reason
-        || (i18n.language !== 'en'
+        || (isVietnamese
           ? 'Bản thiết kế này không còn hợp lệ vì tài liệu nguồn đã thay đổi. Vui lòng tạo lại.'
           : 'This course blueprint is no longer valid because source material changed. Create a new one to continue.'),
       );
       return;
     }
     if ((blueprintEvent.applied_chapter_indexes ?? []).includes(chapterIndex)) {
-      toast.error(i18n.t('chatWidget.blueprintChapterAlreadyApplied'));
+      toast.error(blueprintT('chatWidget.blueprintChapterAlreadyApplied'));
       return;
     }
     if (pendingBlueprintChapterIndexes.has(chapterIndex)) {
-      toast.error(i18n.t('chatWidget.blueprintChapterDraftPending'));
+      toast.error(blueprintT('chatWidget.blueprintChapterDraftPending'));
       return;
     }
     const chapter = blueprintEvent.blueprint.chapters[chapterIndex];
     if (!chapter) return;
-    const isVietnamese = i18n.language !== 'en';
     const nextDraftPrompt = buildBlueprintChapterDraftPrompt(chapterIndex, chapter.title, isVietnamese);
     const currentSelectionPrompt = blueprintDraftSelection
       ? buildBlueprintChapterDraftPrompt(
@@ -3126,6 +3134,8 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
 }) {
   const { t, i18n: translationInstance } = useTranslation();
   const isVietnamese = translationInstance.language !== 'en';
+  const blueprintLocale = resolveLessonAuthorContentLocale(blueprintEvent?.locale, translationInstance.language);
+  const isBlueprintVietnamese = blueprintLocale === 'vi';
   const scrollSaveFrameRef = useRef<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
@@ -3256,19 +3266,19 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     : progressLabel;
   const blueprintUnavailableMessage = !blueprintCanDraft
     ? blueprintEvent?.error_reason
-      || (isVietnamese
+      || (isBlueprintVietnamese
         ? 'Tài liệu nguồn đã thay đổi. Bản thiết kế này chỉ còn để tham khảo; hãy tạo lại trước khi soạn nội dung.'
         : 'Source material changed. This blueprint is now reference-only; create a new one before drafting content.')
       : null;
   const blueprintStatusLabel = !blueprintCanDraft
-    ? (isVietnamese ? 'Cần tạo lại' : 'Create again')
+    ? (isBlueprintVietnamese ? 'Cần tạo lại' : 'Create again')
     : proposalEvent
       ? t('chatWidget.awaitingApproval')
       : streaming
         ? (progressLabel ?? t('chatWidget.responding'))
         : hasPendingBlueprintChapter
-          ? (isVietnamese ? 'Sẵn sàng soạn' : 'Ready to draft')
-          : (isVietnamese ? 'Đã áp dụng toàn bộ' : 'All applied');
+          ? (isBlueprintVietnamese ? 'Sẵn sàng soạn' : 'Ready to draft')
+          : (isBlueprintVietnamese ? 'Đã áp dụng toàn bộ' : 'All applied');
   const isVoiceListening = voiceCaptureState === 'listening';
   const isVoiceRequesting = voiceCaptureState === 'requesting';
   const isBotVoiceActive = voiceModeActive && (streaming || botSpeechLoading || botSpeaking || botSpeechNeedsTap);
@@ -3657,9 +3667,9 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                         <BookOpenCheck className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">{isVietnamese ? 'Bản thiết kế khóa học' : 'Course blueprint'}</p>
+                        <p className="truncate text-sm font-semibold">{isBlueprintVietnamese ? 'Bản thiết kế khóa học' : 'Course blueprint'}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {isVietnamese ? 'Duyệt cấu trúc trước khi soạn nội dung chi tiết' : 'Review the structure before drafting detailed content'}
+                          {isBlueprintVietnamese ? 'Duyệt cấu trúc trước khi soạn nội dung chi tiết' : 'Review the structure before drafting detailed content'}
                         </p>
                       </div>
                     </div>
@@ -3697,7 +3707,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   </div>
                   <div className="border-l-2 border-primary/40 pl-2.5">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isVietnamese ? 'Các chương đề xuất' : 'Proposed chapters'}
+                      {isBlueprintVietnamese ? 'Các chương đề xuất' : 'Proposed chapters'}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {blueprintEvent.blueprint.chapters.slice(0, 3).map((chapter, index) => (
@@ -3718,7 +3728,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t border-border/65 pt-2.5">
                     <span className="text-[10px] font-medium text-muted-foreground">
-                      {isVietnamese
+                      {isBlueprintVietnamese
                         ? `Đã áp dụng ${appliedBlueprintChapterIndexes.size} / ${blueprintEvent.blueprint.chapters.length} chương`
                         : `${appliedBlueprintChapterIndexes.size} of ${blueprintEvent.blueprint.chapters.length} chapters applied`}
                     </span>
@@ -3736,7 +3746,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       disabled={!onOpenBlueprint || blueprintEvent.blueprint.chapters.length === 0}
                     >
                       <ListTree className="h-4 w-4" />
-                      {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
+                      {isBlueprintVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
                     </Button>
                     <Button
                       type="button"
@@ -3749,10 +3759,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     >
                       {hasPendingBlueprintChapter ? <BookOpenCheck className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                       {!blueprintCanDraft
-                        ? (isVietnamese ? 'Cần tạo lại' : 'Create again')
+                        ? (isBlueprintVietnamese ? 'Cần tạo lại' : 'Create again')
                         : !hasPendingBlueprintChapter
-                          ? (isVietnamese ? 'Đã áp dụng toàn bộ' : 'All chapters applied')
-                          : (isVietnamese
+                          ? (isBlueprintVietnamese ? 'Đã áp dụng toàn bộ' : 'All chapters applied')
+                          : (isBlueprintVietnamese
                             ? `Soạn Chương ${nextBlueprintChapterIndex + 1}`
                             : `Draft Chapter ${nextBlueprintChapterIndex + 1}`)}
                     </Button>
