@@ -91,6 +91,8 @@ export const en: TranslationSchema<typeof vi> = {
     or: "Or",
     adminForbidden: "Learner accounts can access the learner portal only.",
     loginFailed: "Sign-in failed. Please try again.",
+    loginRateLimited: "You have tried to sign in too many times. Please wait {{seconds}} seconds before trying again.",
+    loginRateLimitedButton: "Please wait {{seconds}} seconds",
     ssoLoginFailed: "SSO sign-in failed.",
     loginSuccess: "Signed in successfully",
     ssoLoginSuccess: "SSO signed in successfully",

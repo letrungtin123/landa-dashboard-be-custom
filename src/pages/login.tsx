@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -25,6 +26,14 @@ interface LoginFormValues {
   password: string;
 }
 
+function getRetryAfterSeconds(error: unknown): number | null {
+  if (!axios.isAxiosError(error) || error.response?.status !== 429) return null;
+
+  const raw = error.response.headers?.['retry-after'];
+  const seconds = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(Math.ceil(seconds), 15 * 60) : null;
+}
+
 export default function LoginPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -34,6 +43,7 @@ export default function LoginPage() {
   const setSession = useAuthStore((s) => s.setSession);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [loginCooldownSeconds, setLoginCooldownSeconds] = useState(0);
   const [loadingProvider, setLoadingProvider] = useState<SsoProvider | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const { branding, isLoading: brandingLoading } = useBrandingPublic();
@@ -41,10 +51,20 @@ export default function LoginPage() {
   const { data: ssoConfig } = useQuery({
     queryKey: ['public-sso', currentDomain],
     queryFn: () => fetchPublicSsoConfigByDomain(currentDomain),
-    staleTime: 60_000,
-    retry: 1,
+    staleTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const ssoProviders = ssoConfig?.providers ?? [];
+
+  useEffect(() => {
+    if (loginCooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setLoginCooldownSeconds((remaining) => Math.max(0, remaining - 1));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [loginCooldownSeconds]);
 
   const getSsoIcon = (providerId: string, className = "h-4 w-4 shrink-0") => {
     switch (providerId) {
@@ -96,6 +116,7 @@ export default function LoginPage() {
 
   // ── Password login ──
   async function onSubmit(values: LoginFormValues) {
+    if (loginCooldownSeconds > 0) return;
     setIsLoading(true);
     setAuthError(null);
     try {
@@ -104,8 +125,12 @@ export default function LoginPage() {
       toast.success(t('auth.loginSuccess'));
       navigate('/');
     } catch (err) {
+      const retryAfterSeconds = getRetryAfterSeconds(err);
+      if (retryAfterSeconds) setLoginCooldownSeconds(retryAfterSeconds);
       const rawMessage = err instanceof Error ? err.message : '';
-      const message = locale === 'vi' && rawMessage ? rawMessage : t('auth.loginFailed');
+      const message = retryAfterSeconds
+        ? t('auth.loginRateLimited', { seconds: retryAfterSeconds })
+        : locale === 'vi' && rawMessage ? rawMessage : t('auth.loginFailed');
       setAuthError(message);
       toast.error(message);
     } finally {
@@ -230,10 +255,14 @@ export default function LoginPage() {
                   variant="ghost"
                   className="w-full h-11 font-semibold text-md text-white cursor-pointer relative overflow-hidden shadow-lg hover:opacity-90 transition-all duration-300 hover:bg-transparent"
                   style={{ background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))' }}
-                  disabled={isLoading}
+                  disabled={isLoading || loginCooldownSeconds > 0}
                 >
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {isLoading ? t('auth.signingIn') : t('auth.signIn')}
+                  {isLoading
+                    ? t('auth.signingIn')
+                    : loginCooldownSeconds > 0
+                      ? t('auth.loginRateLimitedButton', { seconds: loginCooldownSeconds })
+                      : t('auth.signIn')}
                 </Button>
               </motion.div>
             </form>

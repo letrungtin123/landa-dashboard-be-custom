@@ -88,6 +88,8 @@ export const vi = {
     or: "Hoặc",
     adminForbidden: "Tài khoản learner chỉ được truy cập trang học viên.",
     loginFailed: "Đăng nhập thất bại. Vui lòng thử lại.",
+    loginRateLimited: "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi {{seconds}} giây rồi thử lại.",
+    loginRateLimitedButton: "Vui lòng đợi {{seconds}} giây",
     ssoLoginFailed: "Đăng nhập SSO thất bại.",
     loginSuccess: "Đăng nhập thành công",
     ssoLoginSuccess: "Đăng nhập SSO thành công",
