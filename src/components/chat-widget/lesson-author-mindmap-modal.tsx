@@ -92,6 +92,10 @@ interface LessonAuthorMindmapModalProps {
   error?: string | null;
 }
 
+export interface LessonAuthorMindmapPanelProps extends Omit<LessonAuthorMindmapModalProps, 'open' | 'onOpenChange'> {
+  embedded?: boolean;
+}
+
 function getStatusLabel(status: MindmapStatus): string {
   return i18n.t(`mindmap.${status === 'existing' ? 'existing' : status === 'planned-create' ? 'plannedCreate' : 'plannedUpdate'}`);
 }
@@ -280,20 +284,48 @@ function getUnitComponents(unit: LessonAuthorUnitProposal): LessonAuthorComponen
   return [];
 }
 
-function blueprintToMindmapProposal(blueprint: LessonAuthorBlueprint | null | undefined): LessonAuthorProposal | null {
+function blueprintToMindmapProposal(
+  blueprint: LessonAuthorBlueprint | null | undefined,
+  appliedChapterIndexes: ReadonlySet<number> = new Set(),
+): LessonAuthorProposal | null {
   if (!blueprint || !Array.isArray(blueprint.chapters) || blueprint.chapters.length === 0) return null;
   return {
     summary: blueprint.summary,
-    chapters: blueprint.chapters.map((chapter, chapterIndex) => ({
-      title: chapter.title || getFallbackStructureTitle('chapter', chapterIndex),
-      lessons: (chapter.lessons ?? []).map((lesson, lessonIndex) => ({
+    // A succeeded job has already materialized this chapter in the course
+    // outline. Re-applying the Blueprint as a proposal would incorrectly turn
+    // those existing nodes into "planned update" nodes in the mind map.
+    chapters: blueprint.chapters.flatMap((chapter, chapterIndex) => {
+      if (appliedChapterIndexes.has(chapterIndex)) return [];
+      return [{
+        title: chapter.title || getFallbackStructureTitle('chapter', chapterIndex),
+        lessons: (chapter.lessons ?? []).map((lesson, lessonIndex) => ({
         title: lesson.title || getFallbackStructureTitle('sequential', lessonIndex),
-        units: [{
-          title: (lesson.learning_activities ?? [])[0] || lesson.objective || i18n.t('mindmap.theoryContent'),
-          components: [],
-        }],
-      })),
-    })),
+        // Older persisted Blueprints only have approved learning activities.
+        // Render those activities as legacy units, but never invent component
+        // nodes that were not reviewed in the original Blueprint.
+        units: ((lesson.units?.length ?? 0) > 0
+          ? lesson.units
+          : (lesson.learning_activities ?? []).map((title) => ({
+            title,
+            source_refs: [],
+            component_plan: [],
+          }))
+        ).map((unit, unitIndex) => ({
+          title: unit.title || getFallbackStructureTitle('vertical', unitIndex),
+          source_refs: unit.source_refs,
+          components: (unit.component_plan ?? []).map((plan, componentIndex) => ({
+            type: plan.type,
+            title: plan.title || `${getComponentTypeLabel(plan.type)} ${componentIndex + 1}`,
+            metadata: {
+              component_selection_rationale: plan.rationale,
+              source_refs: unit.source_refs,
+              blueprint_planned: true,
+            },
+          })),
+        })),
+        })),
+      }];
+    }),
   };
 }
 
@@ -351,6 +383,32 @@ function mergeProposal(root: MindmapNode, proposal: LessonAuthorProposal | null 
   return next;
 }
 
+function markExistingSubtree(node: MindmapNode) {
+  node.status = 'existing';
+  node.children.forEach(markExistingSubtree);
+}
+
+function normalizeAppliedBlueprintChapters(
+  root: MindmapNode,
+  blueprint: LessonAuthorBlueprint | null | undefined,
+  appliedChapterIndexes: ReadonlySet<number>,
+): MindmapNode {
+  if (!blueprint || appliedChapterIndexes.size === 0) return root;
+
+  const next = cloneNode(root);
+  for (const chapterIndex of appliedChapterIndexes) {
+    const chapter = blueprint.chapters[chapterIndex];
+    if (!chapter) continue;
+    const chapterNode = findChildByTitle(
+      next,
+      chapter.title || getFallbackStructureTitle('chapter', chapterIndex),
+      'chapter',
+    );
+    if (chapterNode) markExistingSubtree(chapterNode);
+  }
+  return next;
+}
+
 function countStats(node: MindmapNode): MindmapStats {
   return node.children.reduce<MindmapStats>((acc, child) => {
     const childStats = countStats(child);
@@ -380,7 +438,7 @@ function createEmptyRoot(
       : proposalEvent?.job_id
         ? `proposal-${proposalEvent.job_id}`
         : 'lesson-author-proposal',
-    title: i18n.t('mindmap.courseOutline'),
+    title: blueprintEvent?.blueprint.title || i18n.t('mindmap.courseOutline'),
     label: i18n.t('mindmap.course'),
     blockType: 'course',
     status: 'existing',
@@ -483,7 +541,9 @@ function buildDescendantMap(root: MindmapNode): Map<string, string[]> {
 }
 
 function initialExpandedNodeIds(root: MindmapNode): Set<string> {
-  return new Set([root.id]);
+  // Show course chapters immediately, then let the author reveal the dense
+  // unit/component branches deliberately instead of opening a huge graph.
+  return root.children.length > 0 ? new Set([root.id]) : new Set();
 }
 
 function withoutNodeAndDescendants(
@@ -509,7 +569,7 @@ export function LessonAuthorMindmapModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open && (
-        <LessonAuthorMindmapContent
+        <LessonAuthorMindmapPanel
           outline={outline}
           proposalEvent={proposalEvent}
           blueprintEvent={blueprintEvent}
@@ -521,28 +581,61 @@ export function LessonAuthorMindmapModal({
   );
 }
 
-function LessonAuthorMindmapContent({
+export function LessonAuthorMindmapPanel({
   outline,
   proposalEvent,
   blueprintEvent = null,
   loading = false,
   error = null,
-}: Omit<LessonAuthorMindmapModalProps, 'open' | 'onOpenChange'>) {
+  embedded = false,
+}: LessonAuthorMindmapPanelProps) {
   const { t, i18n: translationInstance } = useTranslation();
   const locale = translationInstance.language;
   const isVietnamese = locale !== 'en';
   const isBlueprint = Boolean(blueprintEvent);
-  const activeProposal = useMemo(
-    () => blueprintToMindmapProposal(blueprintEvent?.blueprint) ?? proposalEvent?.proposal ?? null,
-    [blueprintEvent, proposalEvent],
+  const appliedBlueprintChapterIndexes = useMemo(() => new Set(
+    (blueprintEvent?.applied_chapter_indexes ?? []).filter(index => (
+      Number.isInteger(index)
+      && index >= 0
+      && index < (blueprintEvent?.blueprint.chapters.length ?? 0)
+    )),
+  ), [blueprintEvent]);
+  const blueprintProposal = useMemo(
+    () => blueprintToMindmapProposal(
+      blueprintEvent?.blueprint,
+      // Without an actual outline there is no persisted node to render as
+      // existing, so retain the Blueprint as a reference-only fallback.
+      outline?.course_structure ? appliedBlueprintChapterIndexes : new Set(),
+    ),
+    [appliedBlueprintChapterIndexes, blueprintEvent, outline],
   );
+  const activeProposalEvent = useMemo(() => {
+    if (!proposalEvent) return null;
+    if (
+      proposalEvent.blueprint_id
+      && proposalEvent.blueprint_id === blueprintEvent?.blueprint_id
+      && proposalEvent.blueprint_chapter_index !== undefined
+      && appliedBlueprintChapterIndexes.has(proposalEvent.blueprint_chapter_index)
+    ) {
+      return null;
+    }
+    return proposalEvent;
+  }, [appliedBlueprintChapterIndexes, blueprintEvent?.blueprint_id, proposalEvent]);
   const root = useMemo(() => {
     void locale;
     const baseRoot = outline?.course_structure
       ? outlineToMindmapNode(outline.course_structure)
-      : createEmptyRoot(proposalEvent, blueprintEvent);
-    return mergeProposal(baseRoot, activeProposal);
-  }, [activeProposal, blueprintEvent, locale, outline, proposalEvent]);
+      : createEmptyRoot(activeProposalEvent, blueprintEvent);
+    const withBlueprint = mergeProposal(baseRoot, blueprintProposal);
+    const withPendingProposal = mergeProposal(withBlueprint, activeProposalEvent?.proposal);
+    // Once a chapter is applied, the persisted course outline is authoritative.
+    // This also neutralizes an old proposal that arrives after the apply response.
+    return normalizeAppliedBlueprintChapters(
+      withPendingProposal,
+      blueprintEvent?.blueprint,
+      appliedBlueprintChapterIndexes,
+    );
+  }, [activeProposalEvent, appliedBlueprintChapterIndexes, blueprintEvent, blueprintProposal, locale, outline]);
 
   const stats = useMemo(() => countStats(root), [root]);
   const totalNodes = useMemo(() => getDescendantCount(root) + 1, [root]);
@@ -602,34 +695,37 @@ function LessonAuthorMindmapContent({
     }, 120);
   }, [descendantsById, expandedNodeIds]);
 
-  return (
-    <DialogContent
-      overlayClassName="z-[10040]"
-      className="z-[10050] flex h-[calc(100dvh-16px)] max-h-[880px] w-[calc(100vw-16px)] max-w-[1360px] grid-rows-none flex-col gap-0 overflow-hidden rounded-lg border-border/80 bg-background p-0 shadow-2xl"
+  const modalHeader = (
+    <DialogHeader className="border-b bg-card px-4 py-3.5 pr-12 sm:px-5 sm:py-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-sm">
+          <Network className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <DialogTitle className="text-base font-semibold">
+            {isBlueprint
+              ? (isVietnamese ? 'Mind map Bản thiết kế khóa học' : 'Course blueprint mind map')
+              : (isVietnamese ? 'Thay đổi outline đề xuất' : 'Proposed outline changes')}
+          </DialogTitle>
+          <DialogDescription className="mt-1 line-clamp-2">
+            {isBlueprint
+              ? (isVietnamese
+                ? 'Khung chương trình để rà soát trước khi soạn nội dung chi tiết.'
+                : 'A curriculum framework to review before drafting detailed content.')
+              : (isVietnamese
+                ? 'So sánh outline hiện tại với các nội dung sẽ được tạo hoặc cập nhật sau khi duyệt.'
+                : 'Compare the current outline with content that will be created or updated after approval.')}
+          </DialogDescription>
+        </div>
+      </div>
+    </DialogHeader>
+  );
+  const body = (
+    <div className={embedded
+      ? 'relative min-h-0 flex-1 bg-background'
+      : 'grid min-h-0 flex-1 grid-cols-1 bg-muted/15 lg:grid-cols-[304px_minmax(0,1fr)]'}
     >
-      <DialogHeader className="border-b bg-card px-4 py-3.5 pr-12 sm:px-5 sm:py-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-sm">
-              <Network className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <DialogTitle className="text-base font-semibold">
-                {isBlueprint
-                  ? (isVietnamese ? 'Mind map Bản thiết kế khóa học' : 'Course blueprint mind map')
-                  : t('mindmap.lessonPlanMindmap')}
-              </DialogTitle>
-              <DialogDescription className="mt-1 line-clamp-2">
-                {isBlueprint
-                  ? (isVietnamese
-                    ? 'Khung chương trình để rà soát trước khi soạn nội dung chi tiết.'
-                    : 'A curriculum framework to review before drafting detailed content.')
-                  : t('mindmap.description')}
-              </DialogDescription>
-            </div>
-          </div>
-      </DialogHeader>
-
-        <div className="grid min-h-0 flex-1 grid-cols-1 bg-muted/15 lg:grid-cols-[304px_minmax(0,1fr)]">
+      {!embedded && (
           <aside className="border-b bg-card p-3.5 lg:border-b-0 lg:border-r lg:p-4">
             <div className="space-y-4">
               <div className="rounded-lg border border-border/80 bg-background p-3 shadow-sm">
@@ -676,8 +772,9 @@ function LessonAuthorMindmapContent({
               </div>
             </div>
           </aside>
+      )}
 
-          <main className="relative min-h-0 overflow-hidden bg-background">
+          <main className={`relative min-h-0 overflow-hidden bg-background ${embedded ? 'h-full' : ''}`}>
             {loading ? (
               <LoadingMindmap />
             ) : error ? (
@@ -689,7 +786,7 @@ function LessonAuthorMindmapContent({
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-[440px] w-full">
+              <div className={`h-full w-full ${embedded ? 'min-h-0' : 'min-h-[440px]'}`}>
                 <ReactFlowProvider>
                   <ReactFlow
                     nodes={nodes}
@@ -711,21 +808,37 @@ function LessonAuthorMindmapContent({
                     className="bg-background"
                     style={{ backgroundColor: 'hsl(var(--background))' }}
                   >
-                    <Controls showInteractive={false} className="!border !border-border !bg-card !shadow-lg" />
-                    <MiniMap
-                      pannable
-                      zoomable
-                      className="!border !border-border !bg-card !shadow-lg"
-                      nodeStrokeWidth={3}
-                      nodeColor={(node) => edgeColor[(node.data?.status as MindmapStatus) ?? 'existing']}
+                    <Controls
+                      showInteractive={false}
+                      className="!bottom-3 !left-3 !overflow-hidden !rounded-lg !border !border-border !bg-card !shadow-lg [&>button]:!flex [&>button]:!h-9 [&>button]:!w-9 [&>button]:!items-center [&>button]:!justify-center [&>button]:!border-b [&>button]:!border-border/70 [&>button]:!bg-card [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button:last-child]:!border-b-0 [&>button>svg]:!fill-none [&>button>svg]:!text-foreground"
                     />
+                    {!embedded && (
+                      <MiniMap
+                        pannable
+                        zoomable
+                        className="!border !border-border !bg-card !shadow-lg"
+                        nodeStrokeWidth={3}
+                        nodeColor={(node) => edgeColor[(node.data?.status as MindmapStatus) ?? 'existing']}
+                      />
+                    )}
                     <Background gap={18} size={1} color="hsl(var(--muted-foreground) / 0.18)" />
                   </ReactFlow>
                 </ReactFlowProvider>
               </div>
             )}
           </main>
-        </div>
+    </div>
+  );
+
+  if (embedded) return <div className="flex h-full min-h-0 flex-col overflow-hidden">{body}</div>;
+
+  return (
+    <DialogContent
+      overlayClassName="z-[10040]"
+      className="z-[10050] flex h-[calc(100dvh-16px)] max-h-[880px] w-[calc(100vw-16px)] max-w-[1360px] flex-col gap-0 overflow-hidden rounded-lg border-border/80 bg-background p-0 shadow-2xl"
+    >
+      {modalHeader}
+      {body}
     </DialogContent>
   );
 }

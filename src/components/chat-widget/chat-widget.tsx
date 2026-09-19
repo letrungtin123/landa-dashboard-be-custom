@@ -13,9 +13,9 @@ import remarkGfm from 'remark-gfm';
 import {
   MessageCircle, X, Plus, ArrowLeft, Send, Trash2,
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
-  BookOpenCheck, CheckCircle2, AtSign, FileText, Search, Network,
+  BookOpenCheck, CheckCircle2, AtSign, FileText, Search,
   ChevronDown, ChevronRight, BookOpen, Target, Clock3, ClipboardCheck, ListTree,
-  Mic, MicOff, PhoneOff, Play, Volume2, VolumeX,
+  Mic, MicOff, PhoneOff, Play, Volume2, VolumeX, Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -30,18 +30,19 @@ import {
   deleteConversation, fetchMessages, sendMessageStream,
   fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
+  uploadLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type BotPersona,
   type LessonAuthorBlueprint, type LessonAuthorBlueprintEvent, type LessonAuthorProgressEvent,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
   type OutlineMention, type LessonAuthorSourceDocument,
+  type LessonAuthorTranscriptionStatus,
 } from '@/api/custom-chat';
 import {
   getCourseOutlineIndex,
   type CourseIndexResponse,
   type CourseIndexSection,
 } from '@/api/custom-course-authoring';
-import { LessonAuthorMindmapModal } from './lesson-author-mindmap-modal';
 import { LessonAuthorBlueprintDialog } from './lesson-author-blueprint-dialog';
 import {
   getLessonAuthorContentLocale,
@@ -88,6 +89,18 @@ type PendingChatRecovery = {
   startedAt: number;
   timer: number | null;
   cancelled: boolean;
+};
+
+type LessonAuthorVideoUploadNotice = {
+  conversationId: string | null;
+  fileName: string;
+  progress: number;
+};
+
+type LessonAuthorVideoUploadError = {
+  conversationId: string | null;
+  fileName: string;
+  message: string;
 };
 
 type StoredLessonAuthorProgress = {
@@ -337,11 +350,6 @@ function BlueprintStructurePanel({
   const [expandedChapters, setExpandedChapters] = useState<Set<number>>(() => new Set([0]));
   const [expandedLessons, setExpandedLessons] = useState<Set<string>>(() => new Set());
 
-  const formatDuration = (minutes: number) => {
-    if (!Number.isFinite(minutes) || minutes <= 0) return null;
-    return isVietnamese ? `${Math.round(minutes)} phút` : `${Math.round(minutes)} min`;
-  };
-
   const toggleChapter = (chapterIndex: number) => {
     setExpandedChapters(current => {
       const next = new Set(current);
@@ -381,7 +389,6 @@ function BlueprintStructurePanel({
       <div className="max-h-[50dvh] space-y-2 overflow-y-auto p-2.5 pr-1.5">
         {blueprint.chapters.map((chapter, chapterIndex) => {
           const chapterOpen = expandedChapters.has(chapterIndex);
-          const chapterDuration = formatDuration(chapter.duration_minutes);
           return (
             <section key={`${chapter.title}-${chapterIndex}`} className="overflow-hidden rounded-md border border-border/75 bg-card">
               <div className="flex items-stretch gap-2 p-2">
@@ -401,12 +408,6 @@ function BlueprintStructurePanel({
                     </span>
                     <span className="block truncate text-xs font-semibold leading-5 text-foreground">{chapter.title}</span>
                   </span>
-                  {chapterDuration && (
-                    <span className="hidden shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:flex">
-                      <Clock3 className="h-3 w-3" />
-                      {chapterDuration}
-                    </span>
-                  )}
                   {chapterOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 </button>
                 <Button
@@ -453,7 +454,6 @@ function BlueprintStructurePanel({
                           {chapter.lessons.map((lesson, lessonIndex) => {
                             const lessonKey = `${chapterIndex}:${lessonIndex}`;
                             const lessonOpen = expandedLessons.has(lessonKey);
-                            const lessonDuration = formatDuration(lesson.duration_minutes);
                             return (
                               <div key={`${lesson.title}-${lessonIndex}`} className="rounded-md border border-border/70 bg-muted/20">
                                 <button
@@ -471,7 +471,6 @@ function BlueprintStructurePanel({
                                     </span>
                                     <span className="block truncate text-[11px] font-semibold leading-4 text-foreground">{lesson.title}</span>
                                   </span>
-                                  {lessonDuration && <span className="shrink-0 text-[10px] text-muted-foreground">{lessonDuration}</span>}
                                   {lessonOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                                 </button>
 
@@ -744,11 +743,17 @@ function getLatestPendingProposalEvent(messages: ChatMessage[]): LessonAuthorPro
     const jobId = typeof record.lesson_author_job_id === 'string' ? record.lesson_author_job_id : '';
     const proposal = record.lesson_author_proposal;
     if (!jobId || !proposal || typeof proposal !== 'object' || Array.isArray(proposal)) continue;
+    const blueprintId = typeof record.lesson_author_blueprint_id === 'string'
+      ? record.lesson_author_blueprint_id
+      : undefined;
+    const blueprintChapterIndex = readNonNegativeInteger(record.lesson_author_blueprint_chapter_index);
 
     return {
       type: 'proposal',
       job_id: jobId,
       proposal: proposal as LessonAuthorProposalEvent['proposal'],
+      ...(blueprintId ? { blueprint_id: blueprintId } : {}),
+      ...(blueprintChapterIndex !== null ? { blueprint_chapter_index: blueprintChapterIndex } : {}),
     };
   }
   return null;
@@ -828,7 +833,10 @@ function getPendingBlueprintChapterIndexesFromMessages(
   return Array.from(pendingIndexes).sort((left, right) => left - right);
 }
 
-function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprintEvent | null {
+function getLatestBlueprintEvent(
+  messages: ChatMessage[],
+  expectedBlueprintId?: string,
+): LessonAuthorBlueprintEvent | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const metadata = messages[index].metadata;
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue;
@@ -841,7 +849,13 @@ function getLatestBlueprintEvent(messages: ChatMessage[]): LessonAuthorBlueprint
       : '';
     const blueprint = record.lesson_author_blueprint;
     const qualityReport = record.lesson_author_blueprint_quality_report;
-    if (!blueprintId || !blueprint || typeof blueprint !== 'object' || Array.isArray(blueprint)) continue;
+    if (
+      !blueprintId
+      || (expectedBlueprintId && blueprintId !== expectedBlueprintId)
+      || !blueprint
+      || typeof blueprint !== 'object'
+      || Array.isArray(blueprint)
+    ) continue;
     if (!qualityReport || typeof qualityReport !== 'object' || Array.isArray(qualityReport)) continue;
     const status = record.lesson_author_blueprint_status;
     const errorReason = record.lesson_author_blueprint_error_reason;
@@ -891,9 +905,7 @@ export default function ChatWidget() {
   const [blueprintDraftSelection, setBlueprintDraftSelection] = useState<BlueprintDraftSelection | null>(null);
   const [lessonAuthorProgress, setLessonAuthorProgress] = useState<LessonAuthorProgressEvent | null>(null);
   const [applyingProposal, setApplyingProposal] = useState(false);
-  const [mindmapOpen, setMindmapOpen] = useState(false);
   const [mindmapOutline, setMindmapOutline] = useState<CourseIndexResponse | null>(null);
-  const [mindmapProposalEvent, setMindmapProposalEvent] = useState<LessonAuthorProposalEvent | null>(null);
   const [blueprintDialogOpen, setBlueprintDialogOpen] = useState(false);
   const [mindmapLoading, setMindmapLoading] = useState(false);
   const [mindmapError, setMindmapError] = useState<string | null>(null);
@@ -903,6 +915,10 @@ export default function ChatWidget() {
   const [sourceDocumentOptions, setSourceDocumentOptions] = useState<LessonAuthorSourceDocument[]>([]);
   const [selectedSourceDocuments, setSelectedSourceDocuments] = useState<LessonAuthorSourceDocument[]>([]);
   const [loadingSourceDocuments, setLoadingSourceDocuments] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
+  const [videoUploadNotice, setVideoUploadNotice] = useState<LessonAuthorVideoUploadNotice | null>(null);
+  const [videoUploadError, setVideoUploadError] = useState<LessonAuthorVideoUploadError | null>(null);
+  const [committingTranscriptJobId, setCommittingTranscriptJobId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -952,6 +968,17 @@ export default function ChatWidget() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const refreshLessonAuthorMessages = useCallback(async (conversationId: string) => {
+    const result = await fetchMessages(conversationId, undefined, 'lesson_author');
+    if (currentConvIdRef.current !== conversationId) return;
+    setMessages(result.messages);
+    setProposalEvent(getLatestPendingProposalEvent(result.messages));
+    setBlueprintEvent(getLatestBlueprintEvent(result.messages));
+    setHasMore(result.has_more);
+    setNextCursor(result.next_cursor);
+    return result;
+  }, []);
+
   const clearMinimumStreamDelay = useCallback(() => {
     const pending = minimumStreamDelayRef.current;
     if (!pending) return;
@@ -980,6 +1007,21 @@ export default function ChatWidget() {
       window.setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior }), 0);
     });
   }, []);
+
+  const handleCommitLessonAuthorTranscript = useCallback(async (jobId: string) => {
+    const conversationId = currentConv?.id;
+    if (!conversationId || committingTranscriptJobId) return;
+    setCommittingTranscriptJobId(jobId);
+    try {
+      await commitLessonAuthorVideoTranscript(conversationId, jobId, i18n.language === 'en' ? 'en' : 'vi');
+      await refreshLessonAuthorMessages(conversationId);
+      toast.success(i18n.language === 'en' ? 'Transcript added to Knowledge Base' : 'Đã thêm bản chép lời vào Kho tri thức');
+    } catch (error) {
+      toast.error(getLocalizedApiError(error, i18n.language === 'en' ? 'Could not add the transcript to the Knowledge Base.' : 'Không thể thêm bản chép lời vào Kho tri thức.'));
+    } finally {
+      setCommittingTranscriptJobId(null);
+    }
+  }, [committingTranscriptJobId, currentConv?.id, i18n.language, refreshLessonAuthorMessages, t]);
 
   const cancelPendingRecovery = useCallback(() => {
     const recovery = pendingRecoveryRef.current;
@@ -1318,6 +1360,28 @@ export default function ChatWidget() {
   const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
 
+  useEffect(() => {
+    const conversationId = currentConv?.id;
+    const hasPendingTranscript = messages.some(message => {
+      const status = message.metadata?.lesson_author_transcription_status;
+      return message.metadata?.kind === 'lesson_author_video_transcript'
+        && (status === 'queued' || status === 'running');
+    });
+    if (!open || state !== 'chat' || !isLessonAuthor || !conversationId || !hasPendingTranscript) return;
+
+    let cancelled = false;
+    const refresh = () => {
+      void refreshLessonAuthorMessages(conversationId).catch(() => undefined);
+    };
+    const timer = window.setInterval(() => {
+      if (!cancelled) refresh();
+    }, 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentConv?.id, isLessonAuthor, messages, open, refreshLessonAuthorMessages, state]);
+
   const setRuntimeAvailability = useCallback((next: ChatRuntimeAvailability) => {
     setRuntimeAvailabilityState(next);
   }, []);
@@ -1387,9 +1451,7 @@ export default function ChatWidget() {
 
   // ── Load full data when widget opens ──
   const resetMindmapState = useCallback(() => {
-    setMindmapOpen(false);
     setMindmapOutline(null);
-    setMindmapProposalEvent(null);
     setMindmapLoading(false);
     setMindmapError(null);
     setBlueprintDialogOpen(false);
@@ -1614,14 +1676,14 @@ export default function ChatWidget() {
   }, []);
 
   // ── Create conversation ──
-  const handleCreateConversation = async (personaId?: string) => {
+  const handleCreateConversation = async (personaId?: string): Promise<ChatConversation | null> => {
     messageLoadRequestRef.current += 1;
     loadMoreRequestRef.current += 1;
     try {
       const activePersonaId = isLessonAuthor ? lessonSettings?.active_persona?.persona_id : personaId;
       if (!activePersonaId) {
         toast.error(i18n.t('chatWidget.lessonExpertPersonaMissing'));
-        return;
+        return null;
       }
       const conv = await createConversation(activePersonaId, {
         target: isLessonAuthor ? 'lesson_author' : 'admin',
@@ -1644,10 +1706,107 @@ export default function ChatWidget() {
       clearStoredLessonAuthorProgress(conv.id);
       resetMindmapState();
       setState('chat');
+      return conv;
     } catch (err: unknown) {
       toast.error(getLocalizedApiError(err, i18n.t('chatWidget.loadPersonasFailed')));
+      return null;
     }
   };
+
+  const handleLessonAuthorVideoUpload = useCallback(async (file: File) => {
+    const isEnglish = i18n.language === 'en';
+    let conversationId = currentConv?.id ?? null;
+    const reportUploadError = (message: string) => {
+      setVideoUploadNotice(null);
+      setVideoUploadProgress(null);
+      setVideoUploadError({ conversationId, fileName: file.name, message });
+      toast.error(message);
+    };
+
+    if (streaming) {
+      reportUploadError(isEnglish
+        ? 'Wait for the current response before uploading a video.'
+        : 'Hãy chờ phản hồi hiện tại hoàn tất trước khi tải video.');
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.mp4')) {
+      reportUploadError(isEnglish ? 'Choose an MP4 video file.' : 'Chỉ chọn file video MP4.');
+      return;
+    }
+
+    // A transcript must be owned by a lesson-author conversation. Create one
+    // transparently so first-time users can upload without sending a chat turn.
+    setVideoUploadProgress(0);
+    setVideoUploadNotice({ conversationId, fileName: file.name, progress: 0 });
+    setVideoUploadError(null);
+    if (!conversationId) {
+      const createdConversation = await handleCreateConversation();
+      if (!createdConversation) {
+        reportUploadError(isEnglish
+          ? 'Could not prepare a lesson-author conversation for this video.'
+          : 'Không thể chuẩn bị cuộc trò chuyện chuyên gia bài học cho video này.');
+        return;
+      }
+      conversationId = createdConversation.id;
+      setVideoUploadNotice({ conversationId, fileName: file.name, progress: 0 });
+    }
+
+    let accepted = false;
+    try {
+      const { job } = await uploadLessonAuthorVideoTranscript(
+        conversationId,
+        file,
+        isEnglish ? 'en' : 'vi',
+        crypto.randomUUID(),
+        progress => {
+          setVideoUploadProgress(progress);
+          setVideoUploadNotice(current => current?.conversationId === conversationId ? { ...current, progress } : current);
+        },
+      );
+      const locale = isEnglish ? 'en' : 'vi';
+      const provisionalMessage: ChatMessage = {
+        id: `lesson-author-transcription-${job.id}`,
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: locale === 'en'
+          ? `Video uploaded. Preparing a transcript for ${job.original_file_name}.`
+          : `Đã nhận video. Đang tạo bản chép lời cho ${job.original_file_name}.`,
+        metadata: {
+          kind: 'lesson_author_video_transcript',
+          locale,
+          lesson_author_transcription_job_id: job.id,
+          lesson_author_transcription_status: job.status,
+          lesson_author_video_file_name: job.original_file_name,
+          lesson_author_transcript_file_name: job.transcript_file_name,
+        },
+        created_at: new Date().toISOString(),
+      };
+      let messageLoaded = false;
+      try {
+        const refreshed = await refreshLessonAuthorMessages(conversationId);
+        messageLoaded = Boolean(refreshed?.messages.some(message => (
+          message.metadata?.kind === 'lesson_author_video_transcript'
+          && message.metadata?.lesson_author_transcription_job_id === job.id
+        )));
+      } catch {
+        // The upload has succeeded; keep a local card until the persisted message is fetched.
+      }
+      if (!messageLoaded && currentConvIdRef.current === conversationId) {
+        setMessages(current => current.some(message => (
+          message.metadata?.kind === 'lesson_author_video_transcript'
+          && message.metadata?.lesson_author_transcription_job_id === job.id
+        )) ? current : [...current, provisionalMessage]);
+      }
+      accepted = true;
+      toast.success(locale === 'en' ? 'Video uploaded. Creating transcript.' : 'Đã tải video lên. Đang tạo bản chép lời.');
+      scrollChatToBottom('smooth');
+    } catch (error) {
+      reportUploadError(getLocalizedApiError(error, isEnglish ? 'Could not upload the video.' : 'Không thể tải video lên.'));
+    } finally {
+      setVideoUploadProgress(null);
+      if (accepted) setVideoUploadNotice(null);
+    }
+  }, [currentConv?.id, handleCreateConversation, i18n.language, refreshLessonAuthorMessages, scrollChatToBottom, streaming]);
 
   // ── Open existing conversation ──
   const handleOpenConversation = async (conv: ChatConversation) => {
@@ -1981,7 +2140,15 @@ export default function ChatWidget() {
         input_mode: isVoiceTurn ? 'voice' : 'text',
         onProposal: isLessonAuthor
           ? (event) => {
-            if (currentConvIdRef.current === conversationId) setProposalEvent(event);
+            if (currentConvIdRef.current === conversationId) {
+              setProposalEvent({
+                ...event,
+                ...(outgoingBlueprintDraft ? {
+                  blueprint_id: outgoingBlueprintDraft.blueprint_id,
+                  blueprint_chapter_index: outgoingBlueprintDraft.chapter_index,
+                } : {}),
+              });
+            }
           }
           : undefined,
         onBlueprint: isLessonAuthor
@@ -2220,21 +2387,13 @@ export default function ChatWidget() {
     if (open) await loadActiveBot(nextSurface);
   };
 
-  const handleOpenMindmap = async () => {
-    if (!proposalEvent) {
-      toast.error(i18n.t('chatWidget.noLessonPlan'));
-      return;
-    }
+  const loadMindmapOutline = useCallback(async (): Promise<boolean> => {
     if (!courseId) {
       toast.error(i18n.t('chatWidget.currentCourseMissing'));
-      return;
+      return false;
     }
-
-    setMindmapProposalEvent(proposalEvent);
-    setMindmapOpen(true);
     setMindmapLoading(true);
     setMindmapError(null);
-
     try {
       const queryKey = ['course-outline-index', courseId] as const;
       const outline = await queryClient.fetchQuery({
@@ -2243,17 +2402,52 @@ export default function ChatWidget() {
         staleTime: 0,
       });
       setMindmapOutline(outline);
+      return true;
     } catch {
       setMindmapError(i18n.t('chatWidget.mindmapLoadFailed'));
+      return false;
     } finally {
       setMindmapLoading(false);
     }
-  };
+  }, [courseId, i18n, queryClient]);
 
-  const handleOpenBlueprint = useCallback(() => {
-    if (!blueprintEvent) return;
+  const findBlueprintEventInHistory = useCallback(async (
+    conversationId: string,
+    requestedBlueprintId?: string,
+  ): Promise<LessonAuthorBlueprintEvent | null> => {
+    let cursor: string | undefined;
+    for (let page = 0; page < 8; page += 1) {
+      const refreshed = await fetchMessages(conversationId, cursor, 'lesson_author').catch(() => undefined);
+      if (!refreshed) return null;
+      const event = getLatestBlueprintEvent(refreshed.messages, requestedBlueprintId);
+      if (event) return event;
+      if (!refreshed.has_more || !refreshed.next_cursor) break;
+      cursor = refreshed.next_cursor;
+    }
+    return null;
+  }, []);
+
+  const handleOpenBlueprint = useCallback(async (requestedBlueprintId?: string) => {
+    let event = blueprintEvent && (
+      !requestedBlueprintId || blueprintEvent.blueprint_id === requestedBlueprintId
+    )
+      ? blueprintEvent
+      : null;
+    if (!event && currentConv) {
+      // A chapter proposal can be newer than the Blueprint event. Resolve the
+      // referenced Blueprint from paginated history instead of hiding the UI.
+      event = await findBlueprintEventInHistory(currentConv.id, requestedBlueprintId);
+      if (event) setBlueprintEvent(event);
+    }
+    if (!event) {
+      toast.error(i18n.language === 'en'
+        ? 'The course blueprint is unavailable. Refresh the conversation and try again.'
+        : 'Bản thiết kế khóa học chưa tải được. Hãy làm mới cuộc trò chuyện và thử lại.');
+      return;
+    }
     setBlueprintDialogOpen(true);
-  }, [blueprintEvent]);
+    await loadMindmapOutline();
+  }, [blueprintEvent, currentConv, findBlueprintEventInHistory, loadMindmapOutline]);
 
   const pendingBlueprintChapterIndexes = useMemo(() => {
     if (!blueprintEvent) return new Set<number>();
@@ -2276,6 +2470,26 @@ export default function ChatWidget() {
     }
     if ((blueprintEvent.applied_chapter_indexes ?? []).includes(chapterIndex)) {
       toast.error(blueprintT('chatWidget.blueprintChapterAlreadyApplied'));
+      return;
+    }
+    const appliedChapterIndexes = new Set((blueprintEvent.applied_chapter_indexes ?? []).filter(index => Number.isInteger(index) && index >= 0));
+    const nextDraftableChapterIndex = blueprintEvent.blueprint.chapters.findIndex((_, index) => !appliedChapterIndexes.has(index));
+    if (nextDraftableChapterIndex < 0) {
+      toast.error(isVietnamese
+        ? 'Tất cả chương trong Bản thiết kế khóa học này đã được áp dụng.'
+        : 'Every chapter in this course blueprint has already been applied.');
+      return;
+    }
+    if (pendingBlueprintChapterIndexes.has(nextDraftableChapterIndex)) {
+      toast.error(isVietnamese
+        ? `Hãy duyệt và áp dụng đề xuất đang chờ của Chương ${nextDraftableChapterIndex + 1} trước khi soạn chương khác.`
+        : `Review and apply the pending proposal for Chapter ${nextDraftableChapterIndex + 1} before drafting another chapter.`);
+      return;
+    }
+    if (chapterIndex !== nextDraftableChapterIndex) {
+      toast.error(isVietnamese
+        ? `Hãy soạn và áp dụng Chương ${nextDraftableChapterIndex + 1} trước khi soạn Chương ${chapterIndex + 1}.`
+        : `Draft and apply Chapter ${nextDraftableChapterIndex + 1} before drafting Chapter ${chapterIndex + 1}.`);
       return;
     }
     if (pendingBlueprintChapterIndexes.has(chapterIndex)) {
@@ -2356,8 +2570,26 @@ export default function ChatWidget() {
           const refreshed = await fetchMessages(currentConv.id, undefined, isLessonAuthor ? 'lesson_author' : 'admin');
           setMessages(refreshed.messages);
           setProposalEvent(getLatestPendingProposalEvent(refreshed.messages));
-          const latestBlueprint = getLatestBlueprintEvent(refreshed.messages);
-          setBlueprintEvent(current => latestBlueprint ?? current);
+          const expectedBlueprintId = result.blueprint_id ?? undefined;
+          let latestBlueprint = getLatestBlueprintEvent(refreshed.messages, expectedBlueprintId);
+          if (!latestBlueprint && expectedBlueprintId) {
+            latestBlueprint = await findBlueprintEventInHistory(currentConv.id, expectedBlueprintId);
+          }
+          setBlueprintEvent(current => {
+            const resolvedBlueprint = latestBlueprint ?? current;
+            if (!resolvedBlueprint) return current;
+            if (expectedBlueprintId && resolvedBlueprint.blueprint_id !== expectedBlueprintId) return current;
+            if (result.blueprint_chapter_index === null || result.blueprint_chapter_index === undefined) {
+              return resolvedBlueprint;
+            }
+            return {
+              ...resolvedBlueprint,
+              applied_chapter_indexes: Array.from(new Set([
+                ...(resolvedBlueprint.applied_chapter_indexes ?? []),
+                result.blueprint_chapter_index,
+              ])).sort((left, right) => left - right),
+            };
+          });
           setHasMore(refreshed.has_more);
           setNextCursor(refreshed.next_cursor);
         } catch {
@@ -2540,6 +2772,12 @@ export default function ChatWidget() {
                   onLoadSourceDocuments={loadSourceDocuments}
                   onSelectedSourceDocumentsChange={setSelectedSourceDocuments}
                   onSourceDocumentClick={canManageAiChatbot ? handleSourceDocumentClick : undefined}
+                  videoUploadProgress={videoUploadProgress}
+                  videoUploadNotice={videoUploadNotice}
+                  videoUploadError={videoUploadError}
+                  onVideoUpload={handleLessonAuthorVideoUpload}
+                  committingTranscriptJobId={committingTranscriptJobId}
+                  onCommitTranscript={handleCommitLessonAuthorTranscript}
                   scrollRef={scrollRef}
                   conversationId={currentConv?.id ?? null}
                   inputRef={inputRef}
@@ -2549,7 +2787,6 @@ export default function ChatWidget() {
                   lessonAuthorProgress={lessonAuthorProgress}
                   applyingProposal={applyingProposal}
                   onApplyProposal={handleApplyProposal}
-                  onOpenMindmap={handleOpenMindmap}
                   onOpenBlueprint={handleOpenBlueprint}
                   onDraftBlueprintChapter={handleDraftBlueprintChapter}
                 />
@@ -2559,19 +2796,14 @@ export default function ChatWidget() {
         )}
       </AnimatePresence>
 
-      {/* ═══════ Delete Confirmation Modal ═══════ */}
-      <LessonAuthorMindmapModal
-        open={mindmapOpen}
-        onOpenChange={setMindmapOpen}
-        outline={mindmapOutline}
-        proposalEvent={mindmapProposalEvent}
-        loading={mindmapLoading}
-        error={mindmapError}
-      />
       <LessonAuthorBlueprintDialog
         open={blueprintDialogOpen}
         onOpenChange={setBlueprintDialogOpen}
         blueprintEvent={blueprintEvent}
+        outline={mindmapOutline}
+        mindmapLoading={mindmapLoading}
+        mindmapError={mindmapError}
+        proposalEvent={proposalEvent}
         pendingChapterIndexes={pendingBlueprintChapterIndexes}
         disabled={streaming}
         onDraftChapter={handleDraftBlueprintChapter}
@@ -3080,7 +3312,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenMindmap, onOpenBlueprint, onDraftBlueprintChapter }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -3119,6 +3351,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onLoadSourceDocuments?: (search?: string) => void;
   onSelectedSourceDocumentsChange?: (documents: LessonAuthorSourceDocument[]) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
+  videoUploadProgress?: number | null;
+  videoUploadNotice?: LessonAuthorVideoUploadNotice | null;
+  videoUploadError?: LessonAuthorVideoUploadError | null;
+  onVideoUpload?: (file: File) => void;
+  committingTranscriptJobId?: string | null;
+  onCommitTranscript?: (jobId: string) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   conversationId?: string | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -3128,12 +3366,19 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   lessonAuthorProgress?: LessonAuthorProgressEvent | null;
   applyingProposal?: boolean;
   onApplyProposal?: () => void;
-  onOpenMindmap?: () => void;
-  onOpenBlueprint?: () => void;
+  onOpenBlueprint?: (blueprintId?: string) => void;
   onDraftBlueprintChapter?: (chapterIndex: number) => void;
 }) {
   const { t, i18n: translationInstance } = useTranslation();
   const isVietnamese = translationInstance.language !== 'en';
+  // Upload state belongs to a conversation. Do not reset it asynchronously on
+  // conversation changes; simply keep it out of every other conversation.
+  const activeVideoUploadNotice = videoUploadNotice?.conversationId === (conversationId ?? null)
+    ? videoUploadNotice
+    : null;
+  const activeVideoUploadError = videoUploadError?.conversationId === (conversationId ?? null)
+    ? videoUploadError
+    : null;
   const blueprintLocale = resolveLessonAuthorContentLocale(blueprintEvent?.locale, translationInstance.language);
   const isBlueprintVietnamese = blueprintLocale === 'vi';
   const scrollSaveFrameRef = useRef<number | null>(null);
@@ -3142,11 +3387,65 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [sourceSearch, setSourceSearch] = useState('');
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const handledVideoSelectionRef = useRef<{ key: string; expiresAt: number } | null>(null);
   const [simulatedProgressStepIndex, setSimulatedProgressStepIndex] = useState(0);
   const progressHydrationTargetRef = useRef<number | null>(null);
   const progressHydrationPendingRef = useRef(false);
   const selectedMentionList = useMemo(() => selectedMentions ?? [], [selectedMentions]);
   const selectedSourceDocumentList = useMemo(() => selectedSourceDocuments ?? [], [selectedSourceDocuments]);
+
+  const dispatchVideoFile = useCallback((file: File) => {
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    const now = Date.now();
+    if (handledVideoSelectionRef.current?.key === key && handledVideoSelectionRef.current.expiresAt > now) {
+      return;
+    }
+    handledVideoSelectionRef.current = { key, expiresAt: now + 1_000 };
+    void onVideoUpload?.(file);
+  }, [onVideoUpload]);
+
+  const handleVideoFileSelection = useCallback((input: HTMLInputElement) => {
+    const file = input.files?.item(0);
+    input.value = '';
+    if (file) dispatchVideoFile(file);
+  }, [dispatchVideoFile]);
+
+  const openVideoFilePicker = useCallback(async () => {
+    const nativePicker = (window as Window & {
+      showOpenFilePicker?: (options: {
+        multiple: false;
+        excludeAcceptAllOption: boolean;
+        types: Array<{ description: string; accept: Record<string, string[]> }>;
+      }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+    }).showOpenFilePicker;
+    if (nativePicker) {
+      try {
+        const [handle] = await nativePicker({
+          multiple: false,
+          excludeAcceptAllOption: true,
+          types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }],
+        });
+        const file = await handle?.getFile();
+        if (file) dispatchVideoFile(file);
+        return;
+      } catch (error) {
+        // Cancel is an expected user action. Security/availability failures use
+        // the input fallback below so uploads keep working outside Chromium.
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
+    }
+    const input = videoInputRef.current;
+    if (!input) return;
+    // Chromium may restore focus after its native picker without dispatching a
+    // React change event in embedded/overlay contexts. Read the input once more
+    // when focus returns; the selection guard prevents a duplicate upload.
+    window.addEventListener('focus', () => {
+      window.setTimeout(() => handleVideoFileSelection(input), 0);
+    }, { once: true });
+    input.click();
+  }, [dispatchVideoFile, handleVideoFileSelection]);
+
   const lessonAuthorOperationPlan = proposalEvent?.proposal.operation_plan;
   const isStructuralActionProposal = lessonAuthorOperationPlan?.operation === 'rename'
     || lessonAuthorOperationPlan?.operation === 'delete'
@@ -3159,6 +3458,14 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
         ? (isVietnamese ? 'Bài học' : 'Lesson')
         : (isVietnamese ? 'Component' : 'Component');
   const blueprintCanDraft = Boolean(blueprintEvent && (blueprintEvent.status ?? 'proposed') === 'proposed');
+  const canOpenBlueprint = Boolean(
+    onOpenBlueprint
+    && (
+      (blueprintEvent?.blueprint.chapters.length ?? 0) > 0
+      || blueprintDraftSelection
+      || proposalEvent?.blueprint_id
+    ),
+  );
   const appliedBlueprintChapterIndexes = useMemo(() => new Set(
     (blueprintEvent?.applied_chapter_indexes ?? []).filter(index => (
       Number.isInteger(index) && index >= 0 && index < (blueprintEvent?.blueprint.chapters.length ?? 0)
@@ -3479,11 +3786,11 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
       setSourcePickerOpen(false);
       return;
     }
-    if (selectedSourceDocumentList.length >= 5) {
-      toast.error(t('chatWidget.maxSourceFiles'));
+    if (selectedSourceDocumentList.length > 0) {
+      setSourcePickerOpen(false);
       return;
     }
-    onSelectedSourceDocumentsChange?.([...selectedSourceDocumentList, doc]);
+    onSelectedSourceDocumentsChange?.([doc]);
     setSourcePickerOpen(false);
     setSourceSearch('');
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -3557,7 +3864,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 </Button>
               </div>
             )}
-            {messages.length === 0 && !streaming && (
+            {messages.length === 0 && !streaming && !activeVideoUploadNotice && !activeVideoUploadError && (
               <div className="flex flex-col items-center justify-center h-full text-center gap-2">
                 <Sparkles className="h-8 w-8 text-primary/30" />
                 <p className="text-xs text-muted-foreground">{t('chatWidget.startConversation')}</p>
@@ -3569,8 +3876,46 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 message={msg}
                 onMentionClick={onMentionClick}
                 onSourceDocumentClick={onSourceDocumentClick}
+                committingTranscriptJobId={committingTranscriptJobId}
+                onCommitTranscript={onCommitTranscript}
               />
             ))}
+            {activeVideoUploadNotice && (
+              <div className="flex justify-end" role="status" aria-live="polite">
+                <div className="w-[85%] rounded-2xl rounded-br-md bg-primary px-3.5 py-3 text-primary-foreground shadow-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/15">
+                      <Video className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate font-medium">{activeVideoUploadNotice.fileName}</span>
+                        <span className="shrink-0 tabular-nums text-primary-foreground/80">{activeVideoUploadNotice.progress}%</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] leading-4 text-primary-foreground/80">
+                        {activeVideoUploadNotice.progress >= 100
+                          ? (isVietnamese ? 'Đã nhận video, đang tạo yêu cầu transcript' : 'Video received, creating transcript request')
+                          : (isVietnamese ? 'Đang tải video lên' : 'Uploading video')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/20">
+                    <div className="h-full rounded-full bg-white transition-[width] duration-200" style={{ width: `${activeVideoUploadNotice.progress}%` }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeVideoUploadError && (
+              <div className="flex justify-start" role="alert">
+                <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span className="truncate font-medium">{activeVideoUploadError.fileName}</span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-foreground">{activeVideoUploadError.message}</p>
+                </div>
+              </div>
+            )}
             {streaming && streamText && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm break-words">
@@ -3659,7 +4004,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
               </div>
             )}
             {blueprintEvent && !proposalEvent && !streaming && (
-              <section className="overflow-hidden rounded-lg border border-primary/30 bg-card shadow-lg shadow-primary/5">
+              <section className="mx-auto w-full max-w-3xl overflow-hidden rounded-lg border border-primary/30 bg-card shadow-lg shadow-primary/5">
                 <div className="border-b border-primary/15 bg-primary/5 px-3 py-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -3689,43 +4034,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                   </div>
                 </div>
                 <div className="space-y-3 p-3">
-                  <div>
-                    <p className="break-words text-sm font-semibold leading-5">{blueprintEvent.blueprint.title}</p>
-                    <p className="mt-1 line-clamp-4 text-xs leading-5 text-muted-foreground">{blueprintEvent.blueprint.summary}</p>
-                  </div>
+                  <p className="break-words text-sm font-semibold leading-5">{blueprintEvent.blueprint.title}</p>
                   {blueprintUnavailableMessage && (
                     <p className="border-l-2 border-destructive/60 bg-destructive/5 px-2.5 py-2 text-[11px] leading-5 text-destructive">
                       {blueprintUnavailableMessage}
                     </p>
                   )}
-                  <div className="flex flex-wrap gap-1.5">
-                    {blueprintEvent.blueprint.learning_outcomes.slice(0, 3).map((outcome, index) => (
-                      <span key={`${outcome}-${index}`} className="max-w-full whitespace-normal break-words rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[10px] leading-4 text-muted-foreground">
-                        {outcome}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="border-l-2 border-primary/40 pl-2.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isBlueprintVietnamese ? 'Các chương đề xuất' : 'Proposed chapters'}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {blueprintEvent.blueprint.chapters.slice(0, 3).map((chapter, index) => (
-                        <span
-                          key={`${chapter.title}-${index}`}
-                          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/70 bg-muted/35 px-2 py-1 text-[10px] text-muted-foreground"
-                        >
-                          <span className="shrink-0 font-semibold text-primary">{index + 1}</span>
-                          <span className="max-w-[150px] truncate">{chapter.title}</span>
-                        </span>
-                      ))}
-                      {blueprintEvent.blueprint.chapters.length > 3 && (
-                        <span className="inline-flex items-center rounded-md border border-border/70 bg-muted/35 px-2 py-1 text-[10px] text-muted-foreground">
-                          +{blueprintEvent.blueprint.chapters.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  </div>
                   <div className="flex items-center justify-between gap-3 border-t border-border/65 pt-2.5">
                     <span className="text-[10px] font-medium text-muted-foreground">
                       {isBlueprintVietnamese
@@ -3736,35 +4050,16 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="flex justify-center border-t border-border/65 pt-2.5">
                     <Button
                       type="button"
-                      variant="outline"
                       size="sm"
-                      className="min-w-0 gap-2 whitespace-normal text-left leading-4"
-                      onClick={onOpenBlueprint}
+                      className="h-8 max-w-full gap-1.5 px-3 text-xs"
+                      onClick={() => onOpenBlueprint?.()}
                       disabled={!onOpenBlueprint || blueprintEvent.blueprint.chapters.length === 0}
                     >
-                      <ListTree className="h-4 w-4" />
-                      {isBlueprintVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="min-w-0 gap-2 whitespace-normal text-left leading-4"
-                      onClick={() => {
-                        if (hasPendingBlueprintChapter) onDraftBlueprintChapter?.(nextBlueprintChapterIndex);
-                      }}
-                      disabled={streaming || !onDraftBlueprintChapter || !blueprintCanDraft || !hasPendingBlueprintChapter}
-                    >
-                      {hasPendingBlueprintChapter ? <BookOpenCheck className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                      {!blueprintCanDraft
-                        ? (isBlueprintVietnamese ? 'Cần tạo lại' : 'Create again')
-                        : !hasPendingBlueprintChapter
-                          ? (isBlueprintVietnamese ? 'Đã áp dụng toàn bộ' : 'All chapters applied')
-                          : (isBlueprintVietnamese
-                            ? `Soạn Chương ${nextBlueprintChapterIndex + 1}`
-                            : `Draft Chapter ${nextBlueprintChapterIndex + 1}`)}
+                      <ListTree className="h-3.5 w-3.5" />
+                      {isBlueprintVietnamese ? 'Mở thiết kế' : 'Open blueprint'}
                     </Button>
                   </div>
                 </div>
@@ -3783,12 +4078,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <p className="text-sm font-semibold">
                         {isStructuralActionProposal
                           ? (isVietnamese ? 'Đề xuất thay đổi outline sẵn sàng' : 'Outline change ready')
-                          : t('chatWidget.lessonPlanReady')}
+                          : (isVietnamese ? 'Nội dung chương đã sẵn sàng' : 'Chapter content is ready')}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
                         {isStructuralActionProposal
                           ? (isVietnamese ? 'Kiểm tra đúng node trước khi xác nhận' : 'Verify the target before confirming')
-                          : t('chatWidget.openMindmapHint')}
+                          : (isVietnamese ? 'Áp dụng để cập nhật nội dung đã soạn.' : 'Apply to update the drafted content.')}
                       </p>
                     </div>
                   </div>
@@ -3796,9 +4091,11 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     {t('chatWidget.awaitingApproval')}
                   </Badge>
                 </div>
-                <p className="mt-3 max-h-48 overflow-y-auto rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground whitespace-pre-wrap custom-scrollbar">
-                  {proposalEvent.proposal.summary}
-                </p>
+                {isStructuralActionProposal && (
+                  <p className="mt-3 max-h-48 overflow-y-auto rounded-lg border bg-background/70 px-3 py-2 text-xs leading-5 text-muted-foreground whitespace-pre-wrap custom-scrollbar">
+                    {proposalEvent.proposal.summary}
+                  </p>
+                )}
                 {isStructuralActionProposal && lessonAuthorOperationPlan && (
                   <div
                     className={lessonAuthorOperationPlan.operation === 'delete'
@@ -3828,37 +4125,29 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     )}
                   </div>
                 )}
-                <div className={isStructuralActionProposal ? 'mt-3 grid grid-cols-1 gap-2' : 'mt-3 grid grid-cols-3 gap-2'}>
-                  {!isStructuralActionProposal && (
-                    <>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
-                        onClick={onOpenMindmap}
-                        disabled={!onOpenMindmap}
-                      >
-                        <Network className="h-4 w-4" />
-                        {isVietnamese ? 'Xem sơ đồ kế hoạch' : 'View plan diagram'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="min-w-0 min-h-10 gap-1.5 whitespace-normal border-violet-500/35 text-center text-[11px] leading-4 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
-                        onClick={onOpenBlueprint}
-                        disabled={!onOpenBlueprint || !blueprintEvent?.blueprint.chapters.length}
-                      >
-                        <ListTree className="h-4 w-4" />
-                        {isVietnamese ? 'Xem cấu trúc bài học' : 'View lesson structure'}
-                      </Button>
-                    </>
+                <div className={isStructuralActionProposal
+                  ? 'mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2'
+                  : 'mt-3 flex flex-wrap justify-center gap-2'}>
+                  {canOpenBlueprint && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className={isStructuralActionProposal
+                        ? 'min-h-10 min-w-0 gap-1.5 text-[11px]'
+                        : 'min-h-10 min-w-32 gap-1.5 text-[11px]'}
+                      onClick={() => onOpenBlueprint?.(proposalEvent.blueprint_id)}
+                    >
+                      <ListTree className="h-4 w-4" />
+                      {isBlueprintVietnamese ? 'Mở bản thiết kế' : 'Open blueprint'}
+                    </Button>
                   )}
                   <Button
                     size="sm"
                     variant={lessonAuthorOperationPlan?.operation === 'delete' ? 'destructive' : 'default'}
-                    className="min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4"
+                    className={isStructuralActionProposal
+                      ? 'min-w-0 min-h-10 gap-1.5 whitespace-normal text-center text-[11px] leading-4'
+                      : 'min-h-10 min-w-32 gap-1.5 text-[11px]'}
                     onClick={onApplyProposal}
                     disabled={applyingProposal || !onApplyProposal}
                   >
@@ -3887,11 +4176,68 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
             </span>
           </div>
         )}
+        {activeVideoUploadNotice && (
+          <div className="mb-2 flex min-w-0 items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-2" role="status" aria-live="polite">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Video className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2 text-[11px] leading-4">
+                <span className="truncate font-medium text-foreground">{activeVideoUploadNotice.fileName}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{activeVideoUploadNotice.progress}%</span>
+              </div>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-primary/15">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${Math.min(100, Math.max(0, activeVideoUploadNotice.progress))}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] leading-3.5 text-muted-foreground">
+                {activeVideoUploadNotice.progress >= 100
+                  ? (isVietnamese ? 'Đã nhận video, đang tạo yêu cầu transcript' : 'Video received, creating transcript request')
+                  : (isVietnamese ? 'Đang tải video lên và chuẩn bị bản chép lời' : 'Uploading video and preparing transcript')}
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {isLessonAuthor && (
-            <div className="relative shrink-0">
+            <div className="relative flex shrink-0 gap-2">
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/mp4,.mp4"
+                className="sr-only"
+                onChange={event => handleVideoFileSelection(event.currentTarget)}
+              />
               {sourcePickerOpen && (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-80 overflow-hidden rounded-xl border bg-popover shadow-xl">
+                <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(20rem,calc(100vw-3rem))] overflow-hidden rounded-xl border bg-popover shadow-xl">
+                  <div className="border-b p-2">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2.5 text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={streaming || videoUploadProgress !== null}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSourcePickerOpen(false);
+                        void openVideoFilePicker();
+                      }}
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        {videoUploadProgress !== null
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Video className="h-4 w-4" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold text-foreground">
+                          {isVietnamese ? 'Tải video MP4' : 'Upload MP4 video'}
+                        </span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {isVietnamese ? 'Tạo bản chép lời để thêm vào Kho tri thức' : 'Create a transcript to add to the Knowledge Base'}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
                   <div className="border-b p-2">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -3945,7 +4291,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 variant="outline"
                 size="icon"
                 className="h-11 w-11 rounded-xl"
-                disabled={streaming}
+                disabled={streaming || selectedSourceDocumentList.length > 0}
                 onClick={() => setSourcePickerOpen(open => !open)}
                 aria-label={t('chatWidget.selectKnowledgeFile')}
               >
@@ -4151,14 +4497,164 @@ function SourceDocumentBadge({ doc, onClick, onRemove, compact = false, inverted
   );
 }
 
-function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
+type LessonAuthorTranscriptAttachment = {
+  jobId: string;
+  transcriptFileName: string;
+  status: LessonAuthorTranscriptionStatus;
+  errorReason: string | null;
+};
+
+function getLessonAuthorTranscriptAttachment(metadata: Record<string, unknown>): LessonAuthorTranscriptAttachment | null {
+  if (metadata.kind !== 'lesson_author_video_transcript') return null;
+  const jobId = typeof metadata.lesson_author_transcription_job_id === 'string'
+    ? metadata.lesson_author_transcription_job_id
+    : null;
+  const transcriptFileName = typeof metadata.lesson_author_transcript_file_name === 'string'
+    ? metadata.lesson_author_transcript_file_name
+    : null;
+  const status = metadata.lesson_author_transcription_status;
+  if (!jobId || !transcriptFileName || !['queued', 'running', 'succeeded', 'failed', 'expired', 'committed'].includes(String(status))) {
+    return null;
+  }
+  return {
+    jobId,
+    transcriptFileName,
+    status: status as LessonAuthorTranscriptionStatus,
+    errorReason: typeof metadata.lesson_author_transcription_error === 'string'
+      ? metadata.lesson_author_transcription_error
+      : null,
+  };
+}
+
+function LessonAuthorTranscriptCard({ attachment, committing, onCommit }: {
+  attachment: LessonAuthorTranscriptAttachment;
+  committing: boolean;
+  onCommit?: () => void;
+}) {
+  const { i18n: translationInstance } = useTranslation();
+  const isVietnamese = translationInstance.language !== 'en';
+  const isReady = attachment.status === 'succeeded';
+  const isPending = attachment.status === 'queued' || attachment.status === 'running';
+  const presentation = {
+    queued: {
+      title: isVietnamese ? 'Đang chuẩn bị bản chép lời' : 'Preparing transcript',
+      description: isVietnamese ? 'Đã nhận video, đang đưa vào hàng đợi xử lý.' : 'Video received and queued for processing.',
+      badge: isVietnamese ? 'ĐANG CHỜ' : 'QUEUED',
+      tone: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+    },
+    running: {
+      title: isVietnamese ? 'Đang tạo bản chép lời' : 'Creating transcript',
+      description: isVietnamese ? 'Đang tách âm thanh và phân tích nội dung video.' : 'Extracting audio and analysing the video content.',
+      badge: isVietnamese ? 'ĐANG XỬ LÝ' : 'PROCESSING',
+      tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    },
+    succeeded: {
+      title: isVietnamese ? 'Bản chép lời đã sẵn sàng' : 'Transcript is ready',
+      description: isVietnamese ? 'Kiểm tra nội dung rồi thêm vào Kho tri thức.' : 'Review the content, then add it to the Knowledge Base.',
+      badge: isVietnamese ? 'SẴN SÀNG' : 'READY',
+      tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    },
+    failed: {
+      title: isVietnamese ? 'Không thể tạo bản chép lời' : 'Transcript could not be created',
+      description: isVietnamese ? 'Video không thể được xử lý thành bản chép lời.' : 'The video could not be processed into a transcript.',
+      badge: isVietnamese ? 'THẤT BẠI' : 'FAILED',
+      tone: 'border-destructive/30 bg-destructive/10 text-destructive',
+    },
+    expired: {
+      title: isVietnamese ? 'Bản chép lời không còn khả dụng' : 'Transcript is no longer available',
+      description: isVietnamese ? 'Hãy tải lại video để tạo một bản chép lời mới.' : 'Upload the video again to create a new transcript.',
+      badge: isVietnamese ? 'ĐÃ HẾT HẠN' : 'EXPIRED',
+      tone: 'border-muted-foreground/25 bg-muted text-muted-foreground',
+    },
+    committed: {
+      title: isVietnamese ? 'Đã thêm vào Kho tri thức' : 'Added to Knowledge Base',
+      description: isVietnamese ? 'Bản chép lời đã sẵn sàng để chuyên gia bài học sử dụng.' : 'The lesson-author expert can now use this transcript.',
+      badge: isVietnamese ? 'HOÀN TẤT' : 'COMPLETED',
+      tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    },
+  }[attachment.status];
+
+  const StatusIcon = isPending
+    ? Loader2
+    : attachment.status === 'succeeded' || attachment.status === 'committed'
+      ? CheckCircle2
+      : attachment.status === 'failed'
+        ? AlertTriangle
+        : Clock3;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm" aria-live={isPending ? 'polite' : undefined}>
+      <div className="p-3">
+        <div className="flex items-start gap-2.5">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${presentation.tone}`}>
+            <StatusIcon className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold leading-5 text-foreground">{presentation.title}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{presentation.description}</p>
+              </div>
+              <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-semibold leading-3 ${presentation.tone}`}>
+                {presentation.badge}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-muted/35 px-2.5 py-2">
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">{attachment.transcriptFileName}</span>
+          <span className="shrink-0 text-[10px] font-medium text-muted-foreground">TXT</span>
+        </div>
+      </div>
+      {attachment.errorReason && (
+        <p className="border-t border-destructive/15 bg-destructive/5 px-3 py-2 text-[11px] leading-4 text-destructive">{attachment.errorReason}</p>
+      )}
+      {isPending && (
+        <div className="h-1 overflow-hidden bg-muted">
+          <motion.div
+            className="h-full w-2/5 bg-emerald-500"
+            animate={{ x: ['-110%', '260%'] }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </div>
+      )}
+      {(isReady || attachment.status === 'committed') && (
+        <div className="border-t border-border/70 px-3 py-2.5">
+        {isReady ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 w-full gap-1.5 text-[11px]"
+            disabled={committing || !onCommit}
+            onClick={onCommit}
+          >
+            {committing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
+            {isVietnamese ? 'Thêm vào Kho tri thức' : 'Add to Knowledge Base'}
+          </Button>
+        ) : attachment.status === 'committed' ? (
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {isVietnamese ? 'Đã thêm bản chép lời vào Kho tri thức' : 'Transcript added to Knowledge Base'}
+          </div>
+        ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
+  committingTranscriptJobId?: string | null;
+  onCommitTranscript?: (jobId: string) => void;
 }) {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
   const sourceDocuments = getMessageSourceDocuments(message.metadata);
+  const transcriptAttachment = !isUser ? getLessonAuthorTranscriptAttachment(message.metadata) : null;
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -4166,11 +4662,13 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm break-words ${
-          isUser
-            ? 'bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap'
-            : 'bg-muted/50 rounded-bl-md'
-        }`}
+        className={transcriptAttachment
+          ? 'w-[85%]'
+          : `max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm break-words ${
+            isUser
+              ? 'bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap'
+              : 'bg-muted/50 rounded-bl-md'
+          }`}
       >
         {(mentions.length > 0 || sourceDocuments.length > 0) && (
           <div className="mb-1.5 flex flex-wrap gap-1">
@@ -4192,7 +4690,14 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick }: {
             ))}
           </div>
         )}
-        {message.content && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
+        {message.content && !transcriptAttachment && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
+        {transcriptAttachment && (
+          <LessonAuthorTranscriptCard
+            attachment={transcriptAttachment}
+            committing={committingTranscriptJobId === transcriptAttachment.jobId}
+            onCommit={onCommitTranscript ? () => onCommitTranscript(transcriptAttachment.jobId) : undefined}
+          />
+        )}
       </div>
     </motion.div>
   );

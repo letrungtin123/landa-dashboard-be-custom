@@ -196,21 +196,44 @@ export interface LessonAuthorProposalEvent {
   type: "proposal";
   job_id: string;
   proposal: LessonAuthorProposal;
+  /** Present for chapter drafts created from a course blueprint. */
+  blueprint_id?: string;
+  blueprint_chapter_index?: number;
 }
 
 export interface LessonAuthorBlueprintLesson {
   title: string;
   objective: string;
-  duration_minutes: number;
   learning_activities: string[];
   assessment: string;
+  units: LessonAuthorBlueprintUnit[];
   source_refs?: string[];
+}
+
+export interface LessonAuthorBlueprintComponentPlan {
+  type: LessonAuthorComponentType;
+  title: string;
+  rationale: string;
+}
+
+export interface LessonAuthorBlueprintMediaPlan {
+  type: 'video' | 'static_infographic';
+  title: string;
+  content_outline: string;
+  rationale: string;
+}
+
+export interface LessonAuthorBlueprintUnit {
+  title: string;
+  component_plan: LessonAuthorBlueprintComponentPlan[];
+  source_refs?: string[];
+  source_fact_ids?: string[];
+  media_plan?: LessonAuthorBlueprintMediaPlan;
 }
 
 export interface LessonAuthorBlueprintChapter {
   title: string;
   objective: string;
-  duration_minutes: number;
   lessons: LessonAuthorBlueprintLesson[];
   source_refs?: string[];
 }
@@ -289,6 +312,28 @@ export interface AppliedLessonAuthorJob {
   blueprint_chapter_index?: number | null;
 }
 
+export type LessonAuthorTranscriptionStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | 'committed';
+
+// Video upload includes client-to-backend transfer plus a server-side stream to
+// private storage. It must not inherit the short timeout used by normal JSON APIs.
+const LESSON_AUTHOR_VIDEO_UPLOAD_TIMEOUT_MS = 15 * 60_000;
+
+export interface LessonAuthorTranscriptionJob {
+  id: string;
+  conversation_id: string | null;
+  original_file_name: string;
+  transcript_file_name: string;
+  status: LessonAuthorTranscriptionStatus;
+  transcript_language: string | null;
+  transcript_char_count: number | null;
+  kb_document_id: string | null;
+  can_add_to_kb: boolean;
+  can_retry: boolean;
+  error_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Bot Assignments ──
 
 export async function fetchAssignments(): Promise<BotAssignment[]> {
@@ -346,6 +391,44 @@ export async function fetchActiveBot(target: ChatTarget = "admin"): Promise<Acti
   const { data } = await customApiClient.get<ApiResponse<ActiveBot | null>>("/api/ai-chatbot/chat/active-bot", {
     params: { target },
   });
+  return data.data;
+}
+
+export async function uploadLessonAuthorVideoTranscript(
+  conversationId: string,
+  file: File,
+  locale: 'vi' | 'en',
+  idempotencyKey: string,
+  onProgress?: (percent: number) => void,
+): Promise<{ job: LessonAuthorTranscriptionJob; already_exists: boolean }> {
+  const body = new FormData();
+  body.append('video', file);
+  body.append('locale', locale);
+  body.append('idempotency_key', idempotencyKey);
+  const { data } = await customApiClient.post<ApiResponse<{ job: LessonAuthorTranscriptionJob; already_exists: boolean }>>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${conversationId}/transcriptions`,
+    body,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: LESSON_AUTHOR_VIDEO_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: event => {
+        if (!event.total) return;
+        onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      },
+    },
+  );
+  return data.data;
+}
+
+export async function commitLessonAuthorVideoTranscript(
+  conversationId: string,
+  jobId: string,
+  locale: 'vi' | 'en',
+): Promise<{ job: LessonAuthorTranscriptionJob; created: boolean }> {
+  const { data } = await customApiClient.post<ApiResponse<{ job: LessonAuthorTranscriptionJob; created: boolean }>>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${conversationId}/transcriptions/${jobId}/commit`,
+    { locale },
+  );
   return data.data;
 }
 
