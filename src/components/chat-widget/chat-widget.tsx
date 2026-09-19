@@ -3558,6 +3558,23 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     ? blueprintEvent.blueprint.chapters.findIndex((_, index) => !appliedBlueprintChapterIndexes.has(index))
     : -1;
   const hasPendingBlueprintChapter = nextBlueprintChapterIndex >= 0;
+  const hasAppliedBlueprintChapter = appliedBlueprintChapterIndexes.size > 0;
+  const shouldReviewBlueprintStructure = hasAppliedBlueprintChapter || Boolean(proposalEvent?.blueprint_id);
+  const hasBlueprintContentArchitecture = Boolean(blueprintEvent?.blueprint.chapters.every(chapter => (
+    chapter.lessons.every(lesson => (
+      (lesson.units?.length ?? 0) > 0
+      && (lesson.units ?? []).every(unit => (
+        (unit.component_plan?.length ?? 0) > 0
+        && (unit.component_plan ?? []).some(plan => plan.type === 'html')
+      ))
+    ))
+  )));
+  const canDraftNextBlueprintChapter = Boolean(
+    onDraftBlueprintChapter
+    && blueprintCanDraft
+    && nextBlueprintChapterIndex >= 0
+    && hasBlueprintContentArchitecture
+  );
   const progressLabel = lessonAuthorProgress
     ? ({
       retrieving: isVietnamese ? 'Đang đọc tài liệu liên quan' : 'Reading relevant source material',
@@ -4138,17 +4155,34 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
                     )}
                   </div>
-                  <div className="flex justify-center border-t border-border/65 pt-2.5">
+                  <div className="grid gap-2 border-t border-border/65 pt-2.5 sm:grid-cols-2">
                     <Button
                       type="button"
                       size="sm"
-                      className="h-8 max-w-full gap-1.5 px-3 text-xs"
+                      variant="outline"
+                      className="h-8 min-w-0 gap-1.5 px-3 text-xs"
                       onClick={() => onOpenBlueprint?.()}
                       disabled={!onOpenBlueprint || blueprintEvent.blueprint.chapters.length === 0}
                     >
                       <ListTree className="h-3.5 w-3.5" />
-                      {isBlueprintVietnamese ? 'Mở thiết kế' : 'Open blueprint'}
+                      {shouldReviewBlueprintStructure
+                        ? (isBlueprintVietnamese ? 'Xem lại cấu trúc khóa học' : 'Review course structure')
+                        : (isBlueprintVietnamese ? 'Xem cấu trúc khóa học' : 'View course structure')}
                     </Button>
+                    {hasPendingBlueprintChapter && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 min-w-0 gap-1.5 px-3 text-xs"
+                        onClick={() => onDraftBlueprintChapter?.(nextBlueprintChapterIndex)}
+                        disabled={!canDraftNextBlueprintChapter}
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                        {hasAppliedBlueprintChapter
+                          ? (isBlueprintVietnamese ? 'Soạn chương tiếp theo' : 'Draft next chapter')
+                          : (isBlueprintVietnamese ? 'Soạn chương đầu' : 'Draft first chapter')}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </section>
@@ -4227,7 +4261,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                       onClick={() => onOpenBlueprint?.(proposalEvent.blueprint_id)}
                     >
                       <ListTree className="h-4 w-4" />
-                      {isBlueprintVietnamese ? 'Mở bản thiết kế' : 'Open blueprint'}
+                      {isBlueprintVietnamese ? 'Xem lại cấu trúc khóa học' : 'Review course structure'}
                     </Button>
                   )}
                   <Button

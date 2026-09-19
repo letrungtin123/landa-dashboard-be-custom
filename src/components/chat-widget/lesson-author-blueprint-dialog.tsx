@@ -54,7 +54,7 @@ interface LessonAuthorBlueprintDialogProps {
   onDraftChapter?: (chapterIndex: number) => void;
 }
 
-type BlueprintTab = 'overview' | 'chapters' | 'quality' | 'media' | 'mindmap';
+type BlueprintTab = 'overview' | 'chapters' | 'media' | 'mindmap';
 
 interface BlueprintMediaPlacement {
   chapterIndex: number;
@@ -108,7 +108,6 @@ function getQualityCheckLabel(key: string, isVietnamese: boolean): string {
   const labels: Record<string, [string, string]> = {
     learning_outcomes: ['Kết quả đầu ra', 'Learning outcomes'],
     constructive_alignment: ['Liên kết mục tiêu, hoạt động và đánh giá', 'Objective, activity, and assessment alignment'],
-    assessment_strategy: ['Chiến lược đánh giá', 'Assessment strategy'],
     source_grounding: ['Bám sát tài liệu nguồn', 'Source grounding'],
     source_structure: ['Cấu trúc tài liệu nguồn', 'Source structure'],
     source_coverage: ['Độ bao phủ tài liệu', 'Source coverage'],
@@ -295,7 +294,6 @@ export function LessonAuthorBlueprintDialog({
     ? {
       overview: 'Tổng quan',
       chapters: 'Cấu trúc chương',
-      quality: 'Kết quả đầu ra & chất lượng',
       media: 'Video & infographic',
       mindmap: 'Mind map toàn khóa',
       sourceReferences: 'Đối chiếu nguồn',
@@ -306,7 +304,6 @@ export function LessonAuthorBlueprintDialog({
     : {
       overview: 'Overview',
       chapters: 'Chapter structure',
-      quality: 'Outcomes & quality',
       media: 'Video & infographics',
       mindmap: 'Course mind map',
       sourceReferences: 'Source references',
@@ -381,7 +378,9 @@ export function LessonAuthorBlueprintDialog({
     && !selectedChapterDraftLocked
     && hasContentArchitecture
     && Boolean(onDraftChapter);
-  const qualityChecks = blueprintEvent.quality_report.checks ?? [];
+  const qualityChecks = (blueprintEvent.quality_report.checks ?? []).filter(
+    check => check.key !== 'assessment_strategy',
+  );
   const passedQualityChecks = qualityChecks.filter(check => check.passed).length;
   const qualityReady = blueprintEvent.quality_report.status === 'ready_for_review';
   const architectureReason = hasContentArchitecture
@@ -446,7 +445,7 @@ export function LessonAuthorBlueprintDialog({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="shrink-0 overflow-x-auto border-b bg-muted/10 px-3 py-2 sm:px-5">
-            <TabsList className="grid h-auto w-full min-w-[760px] grid-cols-5 gap-1 rounded-lg border border-border/70 bg-muted/35 p-1 dark:bg-muted/20">
+            <TabsList className="grid h-auto w-full min-w-[620px] grid-cols-4 gap-1 rounded-lg border border-border/70 bg-muted/35 p-1 dark:bg-muted/20 sm:min-w-0">
               <TabsTrigger value="overview" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <UsersRound className="h-3.5 w-3.5" />
                 {copy.overview}
@@ -454,10 +453,6 @@ export function LessonAuthorBlueprintDialog({
               <TabsTrigger value="chapters" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <Layers3 className="h-3.5 w-3.5" />
                 {copy.chapters}
-              </TabsTrigger>
-              <TabsTrigger value="quality" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
-                <ListChecks className="h-3.5 w-3.5" />
-                {copy.quality}
               </TabsTrigger>
               <TabsTrigger value="media" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <Clapperboard className="h-3.5 w-3.5" />
@@ -487,27 +482,44 @@ export function LessonAuthorBlueprintDialog({
                   </div>
                 </section>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <BlueprintInfoSection icon={UsersRound} label={t('chatWidget.blueprintTargetAudience')}>
-                    {blueprintEvent.blueprint.target_audience?.trim() || t('chatWidget.blueprintNotSpecified')}
-                  </BlueprintInfoSection>
-                  <BlueprintInfoSection icon={BookOpen} label={t('chatWidget.blueprintPrerequisites')}>
-                    {blueprintEvent.blueprint.prerequisites?.length > 0 ? (
-                      <ul className="list-disc space-y-1 pl-4">
-                        {blueprintEvent.blueprint.prerequisites.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                <BlueprintInfoSection icon={UsersRound} label={t('chatWidget.blueprintTargetAudience')}>
+                  {blueprintEvent.blueprint.target_audience?.trim() || t('chatWidget.blueprintNotSpecified')}
+                </BlueprintInfoSection>
+
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                  <BlueprintInfoSection icon={Target} label={t('chatWidget.blueprintLearningOutcomes')}>
+                    {blueprintEvent.blueprint.learning_outcomes?.length ? (
+                      <ul className="space-y-2">
+                        {blueprintEvent.blueprint.learning_outcomes.map((item, index) => (
+                          <li key={`${item}-${index}`} className="flex gap-2">
+                            <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
                       </ul>
                     ) : t('chatWidget.blueprintNotSpecified')}
                   </BlueprintInfoSection>
-                </div>
 
-                {blueprintEvent.blueprint.assumptions?.length > 0 && (
-                  <section className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4">
-                    <p className="text-xs font-semibold text-foreground">{t('chatWidget.blueprintAssumptions')}</p>
-                    <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-                      {blueprintEvent.blueprint.assumptions.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
-                    </ul>
+                  <section className="min-w-0 rounded-lg border border-border/70 bg-card p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ListChecks className="h-3.5 w-3.5 text-primary" />
+                      <p className="text-xs font-semibold text-foreground">{t('chatWidget.blueprintQuality')}</p>
+                      <Badge variant="outline" className="ml-auto rounded-md text-[10px]">
+                        {qualityReady ? copy.ready : copy.review}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 space-y-2.5">
+                      {qualityChecks.map((check, index) => (
+                        <div key={`${check.key}-${index}`} className="flex items-start gap-2 text-xs leading-5">
+                          {check.passed ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" />}
+                          <span className={check.passed ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300'}>
+                            {getQualityCheckLabel(check.key, isVietnamese)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </section>
-                )}
+                </div>
               </div>
             </ScrollArea>
           </TabsContent>
@@ -658,58 +670,6 @@ export function LessonAuthorBlueprintDialog({
                 </div>
               </ScrollArea>
             </div>
-          </TabsContent>
-
-          <TabsContent value="quality" className="mt-0 min-h-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-5 sm:py-6">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <BlueprintInfoSection icon={Target} label={t('chatWidget.blueprintLearningOutcomes')}>
-                    {blueprintEvent.blueprint.learning_outcomes?.length ? (
-                      <ul className="space-y-2">
-                        {blueprintEvent.blueprint.learning_outcomes.map((item, index) => (
-                          <li key={`${item}-${index}`} className="flex gap-2">
-                            <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : t('chatWidget.blueprintNotSpecified')}
-                  </BlueprintInfoSection>
-                  <BlueprintInfoSection icon={ListChecks} label={t('chatWidget.blueprintAssessmentStrategy')}>
-                    {blueprintEvent.blueprint.assessment_strategy?.trim() || t('chatWidget.blueprintNotSpecified')}
-                  </BlueprintInfoSection>
-                </div>
-
-                <section className="rounded-lg border border-border/70 bg-card p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-semibold text-foreground">{t('chatWidget.blueprintQuality')}</p>
-                    <Badge variant="outline" className="ml-auto rounded-md text-[10px]">
-                      {qualityReady ? copy.ready : copy.review}
-                    </Badge>
-                  </div>
-                  <div className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-                    {qualityChecks.map((check, index) => (
-                      <div key={`${check.key}-${index}`} className="flex items-start gap-2 text-xs leading-5">
-                        {check.passed ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" />}
-                        <span className={check.passed ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300'}>
-                          {getQualityCheckLabel(check.key, isVietnamese)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {blueprintEvent.quality_report.review_notes?.length ? (
-                    <div className="mt-5 border-t border-border/70 pt-4">
-                      <p className="text-xs font-semibold text-foreground">{t('chatWidget.blueprintReviewNotes')}</p>
-                      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-                        {blueprintEvent.quality_report.review_notes.map((note, index) => <li key={`${note}-${index}`}>{note}</li>)}
-                      </ul>
-                    </div>
-                  ) : null}
-                </section>
-              </div>
-            </ScrollArea>
           </TabsContent>
 
           <TabsContent value="media" className="mt-0 min-h-0 flex-1 overflow-hidden">
