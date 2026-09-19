@@ -113,6 +113,33 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface ReportChatFilter {
+  date_from?: string;
+  date_to?: string;
+  group_id?: string;
+  subgroup_id?: string;
+  team_id?: string;
+}
+
+export type ReportPdfExportPhase = 'validating' | 'narrative' | 'rendering' | 'ready' | 'failed';
+
+export interface ReportPdfExportJob {
+  id: string;
+  phase: ReportPdfExportPhase;
+  locale: 'vi' | 'en';
+  fileName: string | null;
+  expiresAt: string | null;
+  errorCode: string | null;
+  updatedAt: string;
+}
+
+export class ReportPdfExportApiError extends Error {
+  constructor(message: string, public readonly code: string | null = null) {
+    super(message);
+    this.name = 'ReportPdfExportApiError';
+  }
+}
+
 export interface RagMessageSource {
   document_id?: string;
   document_name: string;
@@ -543,6 +570,7 @@ export function sendMessageStream(
     blueprint_id?: string;
     blueprint_chapter_index?: number;
     input_mode?: "text" | "voice";
+    report_filters?: ReportChatFilter;
     onProposal?: (event: LessonAuthorProposalEvent) => void;
     onBlueprint?: (event: LessonAuthorBlueprintEvent) => void;
     onProgress?: (event: LessonAuthorProgressEvent) => void;
@@ -604,6 +632,7 @@ export function sendMessageStream(
           blueprint_id: options.blueprint_id,
           blueprint_chapter_index: options.blueprint_chapter_index,
           input_mode: options.input_mode,
+          report_filters: options.report_filters,
         }),
         signal: controller.signal,
       });
@@ -672,4 +701,122 @@ export function sendMessageStream(
   })();
 
   return controller;
+}
+
+export async function downloadReportChatPdf(conversationId: string, assistantMessageId: string): Promise<Blob> {
+  const { accessToken, user } = useAuthStore.getState();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+  };
+  if (user?.role === 'superadmin') {
+    const { activeTenantId } = useTenantStore.getState();
+    if (activeTenantId) headers['X-Tenant-Id'] = activeTenantId;
+  }
+  const response = await fetch(
+    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${encodeURIComponent(conversationId)}/report-pdf?target=admin`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ assistant_message_id: assistantMessageId }),
+    },
+  );
+  if (!response.ok) {
+    let message = i18n.t('chatWidget.unknownError');
+    try {
+      const payload = await response.json();
+      message = normalizeStreamErrorPayload(payload, 'chatWidget.unknownError');
+    } catch {
+      // Keep the localized fallback when the server returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
+function getReportPdfHeaders(includeContentType = false): Record<string, string> {
+  const { accessToken, user } = useAuthStore.getState();
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+  if (includeContentType) headers['Content-Type'] = 'application/json';
+  if (user?.role === 'superadmin') {
+    const { activeTenantId } = useTenantStore.getState();
+    if (activeTenantId) headers['X-Tenant-Id'] = activeTenantId;
+  }
+  return headers;
+}
+
+async function throwReportPdfApiError(response: Response): Promise<never> {
+  let message = i18n.t('chatWidget.unknownError');
+  let code: string | null = null;
+  try {
+    const payload = await response.json() as { code?: unknown; message?: unknown; error?: unknown };
+    if (typeof payload.code === 'string') code = payload.code;
+    if (typeof payload.message === 'string' && payload.message.trim()) message = payload.message;
+    else if (typeof payload.error === 'string' && payload.error.trim()) message = payload.error;
+  } catch {
+    // Keep the localized generic fallback for malformed responses.
+  }
+  throw new ReportPdfExportApiError(message, code);
+}
+
+function readAttachmentFileName(header: string | null, fallback: string): string {
+  const encoded = header?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // Fall through to the plain filename value.
+    }
+  }
+  const plain = header?.match(/filename="?([^";]+)"?/i)?.[1]?.trim();
+  return plain || fallback;
+}
+
+export async function startReportPdfExportJob(
+  conversationId: string,
+  assistantMessageId: string,
+): Promise<ReportPdfExportJob> {
+  const response = await fetch(
+    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${encodeURIComponent(conversationId)}/report-pdf/jobs?target=admin`,
+    {
+      method: 'POST',
+      headers: getReportPdfHeaders(true),
+      body: JSON.stringify({ assistant_message_id: assistantMessageId }),
+    },
+  );
+  if (!response.ok) return throwReportPdfApiError(response);
+  const payload = await response.json() as ApiResponse<ReportPdfExportJob>;
+  return payload.data;
+}
+
+export async function getReportPdfExportJob(
+  conversationId: string,
+  assistantMessageId: string,
+  jobId: string,
+): Promise<ReportPdfExportJob> {
+  const query = new URLSearchParams({ target: 'admin', assistant_message_id: assistantMessageId });
+  const response = await fetch(
+    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${encodeURIComponent(conversationId)}/report-pdf/jobs/${encodeURIComponent(jobId)}?${query.toString()}`,
+    { headers: getReportPdfHeaders() },
+  );
+  if (!response.ok) return throwReportPdfApiError(response);
+  const payload = await response.json() as ApiResponse<ReportPdfExportJob>;
+  return payload.data;
+}
+
+export async function downloadReportPdfExportJob(
+  conversationId: string,
+  assistantMessageId: string,
+  jobId: string,
+): Promise<{ blob: Blob; fileName: string }> {
+  const query = new URLSearchParams({ target: 'admin', assistant_message_id: assistantMessageId });
+  const response = await fetch(
+    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${encodeURIComponent(conversationId)}/report-pdf/jobs/${encodeURIComponent(jobId)}/download?${query.toString()}`,
+    { headers: getReportPdfHeaders() },
+  );
+  if (!response.ok) return throwReportPdfApiError(response);
+  return {
+    blob: await response.blob(),
+    fileName: readAttachmentFileName(response.headers.get('Content-Disposition'), 'learning-report.pdf'),
+  };
 }

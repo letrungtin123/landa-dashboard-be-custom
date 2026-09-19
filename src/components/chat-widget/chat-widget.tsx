@@ -31,11 +31,16 @@ import {
   fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
   uploadLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript, downloadLessonAuthorVideoTranscript,
+  startReportPdfExportJob, getReportPdfExportJob, downloadReportPdfExportJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type BotPersona,
   type LessonAuthorBlueprint, type LessonAuthorBlueprintEvent, type LessonAuthorProgressEvent,
   type LessonAuthorProposalEvent, type LessonAuthorSettings,
   type OutlineMention, type LessonAuthorSourceDocument,
+  type ReportChatFilter,
+  type ReportPdfExportJob,
+  type ReportPdfExportPhase,
+  ReportPdfExportApiError,
   type LessonAuthorTranscriptionStatus,
 } from '@/api/custom-chat';
 import {
@@ -52,6 +57,12 @@ import { AppTooltip } from '@/components/ui/tooltip';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import {
+  getReportChatAppliedFilter,
+  getReportChatAttachment,
+  ReportChatCard,
+  ReportFilterAppliedBubble,
+} from './report-chat-card';
 
 // ── Types ──
 type WidgetState = 'loading' | 'no-bot' | 'persona-picker' | 'conversations' | 'chat' | 'config-warning';
@@ -71,6 +82,7 @@ type BlueprintDraftSelection = {
 const CHAT_SCROLL_STORAGE_PREFIX = 'chat-widget-scroll-v1:';
 const CHAT_PENDING_TURN_STORAGE_PREFIX = 'chat-widget-pending-turn-v1:';
 const LESSON_AUTHOR_PROGRESS_STORAGE_PREFIX = 'lesson-author-progress-v1:';
+const REPORT_PDF_EXPORT_STORAGE_PREFIX = 'report-pdf-export-v1:';
 const LESSON_AUTHOR_PROGRESS_STEP_COUNT = 4;
 const LESSON_AUTHOR_PROGRESS_TTL_MS = 30 * 60 * 1000;
 const CHAT_PENDING_TURN_TTL_MS = 30 * 60 * 1000;
@@ -79,6 +91,8 @@ const CHAT_PENDING_RECOVERY_POLL_MS = 1_500;
 const MIN_STREAMING_UI_MS = 1_500;
 const TRANSCRIPT_KB_INDEX_POLL_MS = 3_000;
 const TRANSCRIPT_KB_INDEX_TIMEOUT_MS = 5 * 60_000;
+const REPORT_PDF_EXPORT_STORAGE_TTL_MS = 30 * 60 * 1000;
+const REPORT_PDF_EXPORT_POLL_MS = 1_200;
 
 type StoredChatPendingTurn = {
   target: ChatSurface;
@@ -109,6 +123,11 @@ type StoredLessonAuthorProgress = {
   event: LessonAuthorProgressEvent;
   simulatedStepIndex: number;
   updatedAt: number;
+};
+
+type StoredReportPdfExport = {
+  job: ReportPdfExportJob;
+  storedAt: number;
 };
 
 function getChatScrollStorageKey(conversationId: string): string {
@@ -254,6 +273,87 @@ function clearStoredLessonAuthorProgress(conversationId: string | null | undefin
   } catch {
     // Session storage can be unavailable in privacy-restricted browser contexts.
   }
+}
+
+function getReportPdfExportStorageKey(conversationId: string, messageId: string): string {
+  return `${REPORT_PDF_EXPORT_STORAGE_PREFIX}${conversationId}:${messageId}`;
+}
+
+function isReportPdfExportPhase(value: unknown): value is ReportPdfExportPhase {
+  return value === 'validating' || value === 'narrative' || value === 'rendering' || value === 'ready' || value === 'failed';
+}
+
+function readStoredReportPdfExport(conversationId: string, messageId: string): ReportPdfExportJob | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const key = getReportPdfExportStorageKey(conversationId, messageId);
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredReportPdfExport> & { job?: Partial<ReportPdfExportJob> };
+    const job = parsed.job;
+    const storedAt = typeof parsed.storedAt === 'number' ? parsed.storedAt : Number.NaN;
+    if (
+      !job
+      || typeof job.id !== 'string'
+      || !isReportPdfExportPhase(job.phase)
+      || (job.locale !== 'vi' && job.locale !== 'en')
+      || typeof job.updatedAt !== 'string'
+      || !Number.isFinite(storedAt)
+      || Date.now() - storedAt > REPORT_PDF_EXPORT_STORAGE_TTL_MS
+    ) {
+      window.sessionStorage.removeItem(key);
+      return null;
+    }
+    return {
+      id: job.id,
+      phase: job.phase,
+      locale: job.locale,
+      fileName: typeof job.fileName === 'string' ? job.fileName : null,
+      expiresAt: typeof job.expiresAt === 'string' ? job.expiresAt : null,
+      errorCode: typeof job.errorCode === 'string' ? job.errorCode : null,
+      updatedAt: job.updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredReportPdfExport(conversationId: string, messageId: string, job: ReportPdfExportJob): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(getReportPdfExportStorageKey(conversationId, messageId), JSON.stringify({
+      job,
+      storedAt: Date.now(),
+    } satisfies StoredReportPdfExport));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function clearStoredReportPdfExport(conversationId: string | null | undefined, messageId: string): void {
+  if (typeof window === 'undefined' || !conversationId) return;
+  try {
+    window.sessionStorage.removeItem(getReportPdfExportStorageKey(conversationId, messageId));
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
+function getReportPdfExportErrorText(error: unknown, isEnglish: boolean): string {
+  const code = error instanceof ReportPdfExportApiError ? error.code : null;
+  if (code === 'REPORT_PDF_SCOPE_DENIED') {
+    return isEnglish ? 'You no longer have access to this report.' : 'Bạn không còn quyền truy cập báo cáo này.';
+  }
+  if (code === 'REPORT_PDF_NOT_READY') {
+    return isEnglish ? 'The report is still being prepared.' : 'Báo cáo vẫn đang được chuẩn bị.';
+  }
+  if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
+    return isEnglish ? 'This export session ended. Create the PDF again.' : 'Phiên tạo báo cáo đã kết thúc. Hãy tạo lại PDF.';
+  }
+  if (code === 'REPORT_PDF_QUEUE_FULL') {
+    return isEnglish ? 'The reporting service is busy. Please try again shortly.' : 'Hệ thống báo cáo đang bận. Vui lòng thử lại sau ít phút.';
+  }
+  return isEnglish ? 'Could not create the report PDF.' : 'Không thể tạo PDF báo cáo.';
 }
 
 function readNonNegativeInteger(value: unknown): number | null {
@@ -923,6 +1023,9 @@ export default function ChatWidget() {
   const [committingTranscriptJobId, setCommittingTranscriptJobId] = useState<string | null>(null);
   const [downloadingTranscriptJobId, setDownloadingTranscriptJobId] = useState<string | null>(null);
   const [draftingTranscriptJobId, setDraftingTranscriptJobId] = useState<string | null>(null);
+  const [downloadingReportMessageId, setDownloadingReportMessageId] = useState<string | null>(null);
+  const [startingReportMessageId, setStartingReportMessageId] = useState<string | null>(null);
+  const [reportPdfExportJobs, setReportPdfExportJobs] = useState<Record<string, ReportPdfExportJob>>({});
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -1385,6 +1488,62 @@ export default function ChatWidget() {
   const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
   const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
+  const reportAnalysisMessageIds = useMemo(() => messages
+    .filter(message => message.role === 'assistant' && getReportChatAttachment(message.metadata)?.kind === 'analysis')
+    .map(message => message.id), [messages]);
+
+  useEffect(() => {
+    const conversationId = currentConv?.id;
+    if (!open || isLessonAuthor || !conversationId || reportAnalysisMessageIds.length === 0) return;
+    let cancelled = false;
+
+    const applyJob = (messageId: string, job: ReportPdfExportJob) => {
+      if (cancelled) return;
+      writeStoredReportPdfExport(conversationId, messageId, job);
+      setReportPdfExportJobs(current => {
+        const previous = current[messageId];
+        if (previous
+          && previous.id === job.id
+          && previous.phase === job.phase
+          && previous.updatedAt === job.updatedAt
+          && previous.errorCode === job.errorCode) return current;
+        return { ...current, [messageId]: job };
+      });
+    };
+
+    const recoveredJobs = reportAnalysisMessageIds.flatMap(messageId => {
+      const known = reportPdfExportJobs[messageId] ?? readStoredReportPdfExport(conversationId, messageId);
+      return known ? [{ messageId, job: known }] : [];
+    });
+    for (const { messageId, job } of recoveredJobs) applyJob(messageId, job);
+
+    const refresh = async () => {
+      await Promise.all(recoveredJobs
+        .filter(({ job }) => job.phase !== 'ready' && job.phase !== 'failed')
+        .map(async ({ messageId, job }) => {
+          try {
+            applyJob(messageId, await getReportPdfExportJob(conversationId, messageId, job.id));
+          } catch (error) {
+            const code = error instanceof ReportPdfExportApiError ? error.code : null;
+            if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
+              applyJob(messageId, {
+                ...job,
+                phase: 'failed',
+                errorCode: code,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+          }
+        }));
+    };
+
+    void refresh();
+    const pollTimer = window.setInterval(() => { void refresh(); }, REPORT_PDF_EXPORT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollTimer);
+    };
+  }, [currentConv?.id, isLessonAuthor, open, reportAnalysisMessageIds, reportPdfExportJobs]);
 
   useEffect(() => {
     const conversationId = currentConv?.id;
@@ -1981,6 +2140,7 @@ export default function ChatWidget() {
     source: SendSource = 'text',
     draftSelectionOverride?: BlueprintDraftSelection | null,
     sourceDocumentsOverride?: LessonAuthorSourceDocument[],
+    reportFiltersOverride?: ReportChatFilter,
   ): boolean => {
     if (!currentConv || !rawContent.trim() || streaming) return false;
     const conversationId = currentConv.id;
@@ -2022,6 +2182,7 @@ export default function ChatWidget() {
     const outgoingBlueprintDraft = isLessonAuthor
       ? (draftSelectionOverride ?? blueprintDraftSelection)
       : null;
+    const outgoingReportFilters = isLessonAuthor ? undefined : reportFiltersOverride;
 
     stopVoiceCapture(true);
     cancelBotSpeech();
@@ -2045,6 +2206,7 @@ export default function ChatWidget() {
           lesson_author_blueprint_id: outgoingBlueprintDraft.blueprint_id,
           lesson_author_blueprint_chapter_index: outgoingBlueprintDraft.chapter_index,
         } : {}),
+        ...(outgoingReportFilters ? { report_filters: outgoingReportFilters } : {}),
       },
       created_at: new Date().toISOString(),
     };
@@ -2169,6 +2331,7 @@ export default function ChatWidget() {
         blueprint_id: outgoingBlueprintDraft?.blueprint_id,
         blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
         input_mode: isVoiceTurn ? 'voice' : 'text',
+        report_filters: outgoingReportFilters,
         onProposal: isLessonAuthor
           ? (event) => {
             if (currentConvIdRef.current === conversationId) {
@@ -2198,6 +2361,70 @@ export default function ChatWidget() {
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
   };
+
+  const handleApplyReportFilter = useCallback((question: string, filter: ReportChatFilter) => {
+    sendUserMessage(question, 'text', undefined, undefined, filter);
+  }, [sendUserMessage]);
+
+  const handleStartReportPdfExport = useCallback(async (messageId: string) => {
+    const conversationId = currentConv?.id;
+    if (!conversationId || startingReportMessageId) return;
+    const isEnglish = i18n.language === 'en';
+    setStartingReportMessageId(messageId);
+    try {
+      const job = await startReportPdfExportJob(conversationId, messageId);
+      writeStoredReportPdfExport(conversationId, messageId, job);
+      setReportPdfExportJobs(current => ({ ...current, [messageId]: job }));
+    } catch (error) {
+      toast.error(getReportPdfExportErrorText(error, isEnglish));
+    } finally {
+      setStartingReportMessageId(null);
+    }
+  }, [currentConv?.id, startingReportMessageId]);
+
+  const handleDownloadReportPdf = useCallback(async (messageId: string) => {
+    const conversationId = currentConv?.id;
+    const job = conversationId
+      ? reportPdfExportJobs[messageId] ?? readStoredReportPdfExport(conversationId, messageId)
+      : null;
+    if (!conversationId || !job || job.phase !== 'ready' || downloadingReportMessageId) return;
+    const isEnglish = i18n.language === 'en';
+    setDownloadingReportMessageId(messageId);
+    try {
+      const { blob, fileName } = await downloadReportPdfExportJob(conversationId, messageId, job.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      clearStoredReportPdfExport(conversationId, messageId);
+      setReportPdfExportJobs(current => {
+        const next = { ...current };
+        delete next[messageId];
+        return next;
+      });
+      toast.success(isEnglish ? 'Report PDF downloaded.' : 'Đã tải PDF báo cáo.');
+    } catch (error) {
+      const code = error instanceof ReportPdfExportApiError ? error.code : null;
+      if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
+        const failedJob: ReportPdfExportJob = {
+          ...job,
+          phase: 'failed',
+          errorCode: code,
+          updatedAt: new Date().toISOString(),
+        };
+        writeStoredReportPdfExport(conversationId, messageId, failedJob);
+        setReportPdfExportJobs(current => ({ ...current, [messageId]: failedJob }));
+      }
+      toast.error(getReportPdfExportErrorText(error, isEnglish));
+    } finally {
+      setDownloadingReportMessageId(null);
+    }
+  }, [currentConv?.id, downloadingReportMessageId, reportPdfExportJobs]);
 
   const handleDraftCourseFromTranscript = useCallback(async (
     jobId: string,
@@ -2857,6 +3084,12 @@ export default function ChatWidget() {
                   onDownloadTranscript={handleDownloadLessonAuthorTranscript}
                   draftingTranscriptJobId={draftingTranscriptJobId}
                   onDraftCourseFromTranscript={handleDraftCourseFromTranscript}
+                  onApplyReportFilter={handleApplyReportFilter}
+                  startingReportMessageId={startingReportMessageId}
+                  downloadingReportMessageId={downloadingReportMessageId}
+                  reportPdfExportJobs={reportPdfExportJobs}
+                  onStartReportPdfExport={handleStartReportPdfExport}
+                  onDownloadReportPdf={handleDownloadReportPdf}
                   scrollRef={scrollRef}
                   conversationId={currentConv?.id ?? null}
                   inputRef={inputRef}
@@ -3391,7 +3624,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -3440,6 +3673,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onDownloadTranscript?: (jobId: string, fileName: string) => void;
   draftingTranscriptJobId?: string | null;
   onDraftCourseFromTranscript?: (jobId: string, documentId: string, fileName: string) => void;
+  onApplyReportFilter?: (question: string, filter: ReportChatFilter) => void;
+  startingReportMessageId?: string | null;
+  downloadingReportMessageId?: string | null;
+  reportPdfExportJobs?: Record<string, ReportPdfExportJob>;
+  onStartReportPdfExport?: (messageId: string) => void;
+  onDownloadReportPdf?: (messageId: string) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   conversationId?: string | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -3983,6 +4222,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 draftingTranscriptJobId={draftingTranscriptJobId}
                 onDraftCourseFromTranscript={onDraftCourseFromTranscript}
                 courseAuthoringBusy={streaming}
+                onApplyReportFilter={onApplyReportFilter}
+                startingReport={startingReportMessageId === msg.id}
+                downloadingReport={downloadingReportMessageId === msg.id}
+                reportPdfExportJob={reportPdfExportJobs?.[msg.id]}
+                onStartReportPdfExport={onStartReportPdfExport}
+                onDownloadReportPdf={onDownloadReportPdf}
               />
             ))}
             {activeVideoUploadNotice && (
@@ -4813,7 +5058,7 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
   );
 }
 
-function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, courseAuthoringBusy }: {
+function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, courseAuthoringBusy, onApplyReportFilter, startingReport, downloadingReport, reportPdfExportJob, onStartReportPdfExport, onDownloadReportPdf }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
@@ -4824,11 +5069,20 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
   draftingTranscriptJobId?: string | null;
   onDraftCourseFromTranscript?: (jobId: string, documentId: string, fileName: string) => void;
   courseAuthoringBusy?: boolean;
+  onApplyReportFilter?: (question: string, filter: ReportChatFilter) => void;
+  startingReport?: boolean;
+  downloadingReport?: boolean;
+  reportPdfExportJob?: ReportPdfExportJob | null;
+  onStartReportPdfExport?: (messageId: string) => void;
+  onDownloadReportPdf?: (messageId: string) => void;
 }) {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
   const sourceDocuments = getMessageSourceDocuments(message.metadata);
   const transcriptAttachment = !isUser ? getLessonAuthorTranscriptAttachment(message.metadata) : null;
+  const reportAttachment = !isUser ? getReportChatAttachment(message.metadata) : null;
+  const reportAppliedFilter = isUser ? getReportChatAppliedFilter(message.metadata) : null;
+  const hasStructuredAttachment = Boolean(transcriptAttachment || reportAttachment || reportAppliedFilter);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -4836,7 +5090,7 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={transcriptAttachment
+        className={hasStructuredAttachment
           ? 'w-[85%]'
           : `max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm break-words ${
             isUser
@@ -4864,7 +5118,8 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
             ))}
           </div>
         )}
-        {message.content && !transcriptAttachment && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
+        {reportAppliedFilter && <ReportFilterAppliedBubble filter={reportAppliedFilter} />}
+        {message.content && !hasStructuredAttachment && (isUser ? <div>{message.content}</div> : <BotMarkdownContent content={message.content} />)}
         {transcriptAttachment && (
           <LessonAuthorTranscriptCard
             attachment={transcriptAttachment}
@@ -4881,6 +5136,21 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
               )
               : undefined}
           />
+        )}
+        {reportAttachment && (
+          <ReportChatCard
+            attachment={reportAttachment}
+            messageId={message.id}
+            applying={courseAuthoringBusy}
+            starting={startingReport}
+            downloading={downloadingReport}
+            pdfExportJob={reportPdfExportJob}
+            onApply={onApplyReportFilter ?? (() => undefined)}
+            onStartPdfExport={onStartReportPdfExport ?? (() => undefined)}
+            onDownloadPdfExport={onDownloadReportPdf ?? (() => undefined)}
+          >
+            <BotMarkdownContent content={message.content} />
+          </ReportChatCard>
         )}
       </div>
     </motion.div>
