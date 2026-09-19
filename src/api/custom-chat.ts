@@ -432,6 +432,17 @@ export async function commitLessonAuthorVideoTranscript(
   return data.data;
 }
 
+export async function downloadLessonAuthorVideoTranscript(
+  conversationId: string,
+  jobId: string,
+): Promise<Blob> {
+  const { data } = await customApiClient.get<Blob>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${conversationId}/transcriptions/${jobId}/download`,
+    { responseType: 'blob' },
+  );
+  return data;
+}
+
 export async function fetchActiveBotPersonas(target: ChatTarget = "admin"): Promise<BotPersona[]> {
   const { data } = await customApiClient.get<ApiResponse<BotPersona[]>>("/api/ai-chatbot/chat/active-bot/personas", {
     params: { target },

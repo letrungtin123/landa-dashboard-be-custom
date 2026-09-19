@@ -233,6 +233,7 @@ function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; re
   const [retrying, setRetrying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState("");
   const searchDebounced = useDebounce(searchInput);
   const [filterStatus, setFilterStatus] = useState("__all__");
@@ -250,7 +251,8 @@ function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; re
   useEffect(() => { if (!docs.some(d => d.status === "learning")) return; const i = setInterval(loadDocs, 8000); return () => clearInterval(i); }, [docs, loadDocs]);
   useEffect(() => { setSelectedIds(new Set()); }, [page, searchDebounced, filterStatus]);
 
-  const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
+  const deletableDocs = docs.filter(doc => doc.status !== "learning" && doc.status !== "deleting");
+  const allSelected = deletableDocs.length > 0 && deletableDocs.every(d => selectedIds.has(d.id));
   const someSelected = selectedIds.size > 0;
   const errorSelected = docs.filter(d => selectedIds.has(d.id) && d.status === "error");
 
@@ -266,13 +268,14 @@ function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; re
   async function handleBulkDelete() {
     if (restoreLocked) { toast.error(lockMessage); return; }
     if (!selectedIds.size) return;
-    const idsToDelete = Array.from(selectedIds);
+    const idsToDelete = Array.from(selectedIds).filter(id => deletableDocs.some(doc => doc.id === id));
+    if (!idsToDelete.length) return;
     setConfirmBulkDelete(false);
-    setDocs(prev => prev.map(d => idsToDelete.includes(d.id) ? { ...d, status: 'deleting' } : d));
+    setDeletingDocumentIds(new Set(idsToDelete));
     setSelectedIds(new Set());
     try { const r = await bulkDeleteDocuments(kb.id, idsToDelete); toast.success(t("aiChatbot.documentsDeleted", { count: r.deleted })); }
     catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.deleteFailed"))); }
-    finally { loadDocs(); }
+    finally { setDeletingDocumentIds(new Set()); loadDocs(); }
   }
   async function handleRetry() { if (restoreLocked) { toast.error(lockMessage); return; } const ids = errorSelected.map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); setSelectedIds(new Set()); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
   async function handleRetryAll() { if (restoreLocked) { toast.error(lockMessage); return; } const ids = docs.filter(d => d.status === "error").map(d => d.id); if (!ids.length) return; setRetrying(true); try { const r = await retryDocuments(kb.id, ids); toast.success(t("aiChatbot.retryCount", { count: r.retried })); loadDocs(); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); } finally { setRetrying(false); } }
@@ -300,7 +303,7 @@ function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; re
         <span className="text-sm font-medium">{t("aiChatbot.selectedCount", { count: selectedIds.size })}</span>
         <div className="flex gap-2 ml-auto">
           {errorSelected.length > 0 && <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying || restoreLocked} className="gap-1.5">{retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} {t("aiChatbot.retryCount", { count: errorSelected.length })}</Button>}
-          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} disabled={restoreLocked} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> {t("aiChatbot.deleteCount", { count: selectedIds.size })}</Button>
+          <Button variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)} disabled={restoreLocked || deletingDocumentIds.size > 0} className="gap-1.5"><Trash2 className="h-3.5 w-3.5" /> {t("aiChatbot.deleteCount", { count: selectedIds.size })}</Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>{t("aiChatbot.deselect")}</Button>
         </div>
       </motion.div>}
@@ -308,7 +311,7 @@ function FilesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase; re
 
       <div className="app-liquid-card rounded-lg border bg-card">
         {loading && docs.length === 0 ? <TableSkeleton cols={6} rows={5} />
-        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(docs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} onSetDeleting={id => setDocs(prev => prev.map(d => d.id === id ? { ...d, status: 'deleting' } : d))} restoreLocked={restoreLocked} lockMessage={lockMessage} />}
+        : <DocTable docs={docs} loading={loading} selectedIds={selectedIds} deletingDocumentIds={deletingDocumentIds} onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(deletableDocs.map(d => d.id)))} onToggle={id => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} onDeleteStart={id => setDeletingDocumentIds(prev => new Set(prev).add(id))} onDeleteFinish={id => setDeletingDocumentIds(prev => { const next = new Set(prev); next.delete(id); return next; })} kbId={kb.id} onRefresh={loadDocs} searchActive={!!searchDebounced || filterStatus !== "__all__"} restoreLocked={restoreLocked} lockMessage={lockMessage} />}
       </div>
       <PaginationBar page={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={s => { setPageSize(s); setPage(1); }} />
 
@@ -536,28 +539,32 @@ function ArticlesSubTab({ kb, restoreLocked, lockMessage }: { kb: Knowledgebase;
 // ───────────────────────────────────────
 // Shared Document Table (Files tab)
 // ───────────────────────────────────────
-function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onRefresh, searchActive, onSetDeleting, restoreLocked, lockMessage }: {
+function DocTable({ docs, loading, selectedIds, deletingDocumentIds, onToggleAll, onToggle, onDeleteStart, onDeleteFinish, kbId, onRefresh, searchActive, restoreLocked, lockMessage }: {
   docs: KbDocument[]; loading: boolean; selectedIds: Set<string>;
+  deletingDocumentIds: Set<string>;
   onToggleAll: () => void; onToggle: (id: string) => void;
+  onDeleteStart: (id: string) => void; onDeleteFinish: (id: string) => void;
   kbId: string; onRefresh: () => void; searchActive: boolean;
-  onSetDeleting?: (id: string) => void;
   restoreLocked?: boolean;
   lockMessage: string;
 }) {
   const { t } = useTranslation();
-  const allSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id));
+  const selectableDocs = docs.filter(doc => doc.status !== "learning" && doc.status !== "deleting" && !deletingDocumentIds.has(doc.id));
+  const allSelected = selectableDocs.length > 0 && selectableDocs.every(doc => selectedIds.has(doc.id));
   return (
     <Table><TableHeader><TableRow>
-      <TableHead className="w-[40px]"><Checkbox checked={allSelected && docs.length > 0} onCheckedChange={onToggleAll} /></TableHead>
+      <TableHead className="w-[40px]"><Checkbox checked={allSelected} disabled={selectableDocs.length === 0} onCheckedChange={onToggleAll} /></TableHead>
       <TableHead>{t("aiChatbot.fileName")}</TableHead><TableHead>{t("aiChatbot.type")}</TableHead><TableHead className="text-center">{t("aiChatbot.size")}</TableHead><TableHead className="text-center">{t("aiChatbot.status")}</TableHead><TableHead>{t("aiChatbot.uploadDate")}</TableHead><TableHead className="text-right">{t("aiChatbot.actions")}</TableHead>
     </TableRow></TableHeader>
       <TableBody>
         {docs.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">{searchActive ? t("aiChatbot.notFound") : t("aiChatbot.noFiles")}</TableCell></TableRow>
         : <AnimatePresence>{docs.map(doc => {
           const isSelected = selectedIds.has(doc.id);
+          const isDeleting = deletingDocumentIds.has(doc.id);
+          const isUnavailable = doc.status === "learning" || doc.status === "deleting" || isDeleting;
           return (
             <motion.tr key={doc.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={isSelected ? "bg-muted/40" : undefined}>
-              <TableCell><Checkbox checked={isSelected} onCheckedChange={() => onToggle(doc.id)} /></TableCell>
+              <TableCell><Checkbox checked={isSelected} disabled={isUnavailable} onCheckedChange={() => onToggle(doc.id)} /></TableCell>
               <TableCell><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground shrink-0" /><span className="font-medium truncate max-w-[250px]">{doc.name}</span></div></TableCell>
               <TableCell><Badge variant="outline" className="text-xs">{doc.source_info?.extension || doc.type}</Badge></TableCell>
               <TableCell className="text-center text-sm">{formatBytes(doc.source_info?.size)}</TableCell>
@@ -565,7 +572,7 @@ function DocTable({ docs, loading, selectedIds, onToggleAll, onToggle, kbId, onR
               <TableCell className="text-sm text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-1">
                 {doc.status === "error" && <Button variant="ghost" size="icon" className="text-orange-500" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } try { await retryDocuments(kbId, [doc.id]); toast.success(t("aiChatbot.retry")); onRefresh(); } catch { toast.error(t("aiChatbot.genericError")); } }}><RotateCcw className="h-4 w-4" /></Button>}
-                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } onSetDeleting?.(doc.id); try { await deleteDocument(kbId, doc.id); toast.success(t("aiChatbot.delete")); } catch { toast.error(t("aiChatbot.deleteFailed")); } onRefresh(); }}><Trash2 className="h-4 w-4" /></Button>}
+                {doc.status !== "deleting" && doc.status !== "learning" && <Button variant="ghost" size="icon" className="text-destructive" disabled={restoreLocked || isDeleting} onClick={async () => { if (restoreLocked) { toast.error(lockMessage); return; } onDeleteStart(doc.id); try { await deleteDocument(kbId, doc.id); toast.success(t("aiChatbot.delete")); } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.deleteFailed"))); } finally { onDeleteFinish(doc.id); onRefresh(); } }}>{isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</Button>}
               </div></TableCell>
             </motion.tr>
           );

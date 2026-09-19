@@ -15,7 +15,7 @@ import {
   Loader2, Bot, Sparkles, Clock, Maximize2, Minimize2, AlertTriangle,
   BookOpenCheck, CheckCircle2, AtSign, FileText, Search,
   ChevronDown, ChevronRight, BookOpen, Target, Clock3, ClipboardCheck, ListTree,
-  Mic, MicOff, PhoneOff, Play, Volume2, VolumeX, Video,
+  Mic, MicOff, PhoneOff, Play, Volume2, VolumeX, Video, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -30,7 +30,7 @@ import {
   deleteConversation, fetchMessages, sendMessageStream,
   fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
-  uploadLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript,
+  uploadLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript, downloadLessonAuthorVideoTranscript,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type BotPersona,
   type LessonAuthorBlueprint, type LessonAuthorBlueprintEvent, type LessonAuthorProgressEvent,
@@ -77,6 +77,8 @@ const CHAT_PENDING_TURN_TTL_MS = 30 * 60 * 1000;
 const CHAT_PENDING_RECOVERY_MAX_MS = 5 * 60 * 1000;
 const CHAT_PENDING_RECOVERY_POLL_MS = 1_500;
 const MIN_STREAMING_UI_MS = 1_500;
+const TRANSCRIPT_KB_INDEX_POLL_MS = 3_000;
+const TRANSCRIPT_KB_INDEX_TIMEOUT_MS = 5 * 60_000;
 
 type StoredChatPendingTurn = {
   target: ChatSurface;
@@ -919,6 +921,8 @@ export default function ChatWidget() {
   const [videoUploadNotice, setVideoUploadNotice] = useState<LessonAuthorVideoUploadNotice | null>(null);
   const [videoUploadError, setVideoUploadError] = useState<LessonAuthorVideoUploadError | null>(null);
   const [committingTranscriptJobId, setCommittingTranscriptJobId] = useState<string | null>(null);
+  const [downloadingTranscriptJobId, setDownloadingTranscriptJobId] = useState<string | null>(null);
+  const [draftingTranscriptJobId, setDraftingTranscriptJobId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -1022,6 +1026,28 @@ export default function ChatWidget() {
       setCommittingTranscriptJobId(null);
     }
   }, [committingTranscriptJobId, currentConv?.id, i18n.language, refreshLessonAuthorMessages, t]);
+
+  const handleDownloadLessonAuthorTranscript = useCallback(async (jobId: string, fileName: string) => {
+    const conversationId = currentConv?.id;
+    if (!conversationId || downloadingTranscriptJobId) return;
+    setDownloadingTranscriptJobId(jobId);
+    try {
+      const transcript = await downloadLessonAuthorVideoTranscript(conversationId, jobId);
+      const downloadUrl = URL.createObjectURL(transcript);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = fileName;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1_000);
+    } catch (error) {
+      toast.error(getLocalizedApiError(error, i18n.language === 'en' ? 'Could not download the transcript.' : 'Không thể tải bản chép lời.'));
+    } finally {
+      setDownloadingTranscriptJobId(null);
+    }
+  }, [currentConv?.id, downloadingTranscriptJobId, i18n.language]);
 
   const cancelPendingRecovery = useCallback(() => {
     const recovery = pendingRecoveryRef.current;
@@ -1950,7 +1976,12 @@ export default function ChatWidget() {
     writeStoredLessonAuthorProgress(conversationId, event, storedProgress?.simulatedStepIndex ?? 0);
   }, []);
 
-  const sendUserMessage = useCallback((rawContent: string, source: SendSource = 'text', draftSelectionOverride?: BlueprintDraftSelection | null): boolean => {
+  const sendUserMessage = useCallback((
+    rawContent: string,
+    source: SendSource = 'text',
+    draftSelectionOverride?: BlueprintDraftSelection | null,
+    sourceDocumentsOverride?: LessonAuthorSourceDocument[],
+  ): boolean => {
     if (!currentConv || !rawContent.trim() || streaming) return false;
     const conversationId = currentConv.id;
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
@@ -1979,7 +2010,7 @@ export default function ChatWidget() {
       }))
       : [];
     const outgoingSourceDocuments: LessonAuthorSourceDocument[] = isLessonAuthor
-      ? selectedSourceDocuments.map(({ document_id, kb_id, name, type, status, source_info }) => ({
+      ? (sourceDocumentsOverride ?? selectedSourceDocuments).map(({ document_id, kb_id, name, type, status, source_info }) => ({
         document_id,
         kb_id,
         name,
@@ -2167,6 +2198,50 @@ export default function ChatWidget() {
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
   };
+
+  const handleDraftCourseFromTranscript = useCallback(async (
+    jobId: string,
+    documentId: string,
+    fileName: string,
+  ) => {
+    if (streaming || draftingTranscriptJobId) return;
+    const isEnglish = getLessonAuthorContentLocale(i18n.language) === 'en';
+    setDraftingTranscriptJobId(jobId);
+    try {
+      const deadline = Date.now() + TRANSCRIPT_KB_INDEX_TIMEOUT_MS;
+      let sourceDocument: LessonAuthorSourceDocument | undefined;
+      while (Date.now() < deadline && !sourceDocument) {
+        const documents = await fetchLessonAuthorSourceDocuments({ search: fileName, limit: 20 });
+        setSourceDocumentOptions(documents);
+        sourceDocument = documents.find(document => (
+          document.document_id === documentId && document.status === 'learned'
+        ));
+        if (!sourceDocument) {
+          await new Promise<void>(resolve => window.setTimeout(resolve, TRANSCRIPT_KB_INDEX_POLL_MS));
+        }
+      }
+      if (!sourceDocument) {
+        toast.error(isEnglish
+          ? 'The transcript is still indexing. Try authoring the course again once it is ready in the Knowledge Base.'
+          : 'Bản chép lời vẫn đang được lập chỉ mục. Hãy thử soạn khóa học lại khi tài liệu sẵn sàng trong Kho tri thức.');
+        return;
+      }
+      const prompt = isEnglish
+        ? `Create the complete course blueprint and detailed learning content for the entire course. Treat ${fileName} as the single source of truth.`
+        : `Hãy tạo bản thiết kế khóa học hoàn chỉnh và nội dung học chi tiết cho toàn bộ khóa học. Dùng file ${fileName} làm nguồn sự thật duy nhất.`;
+      if (!sendUserMessage(prompt, 'text', null, [sourceDocument])) {
+        toast.error(isEnglish
+          ? 'Could not start course authoring from this transcript.'
+          : 'Không thể bắt đầu soạn khóa học từ bản chép lời này.');
+      }
+    } catch (error) {
+      toast.error(getLocalizedApiError(error, isEnglish
+        ? 'Could not load the transcript from the Knowledge Base.'
+        : 'Không thể tải bản chép lời từ Kho tri thức.'));
+    } finally {
+      setDraftingTranscriptJobId(null);
+    }
+  }, [draftingTranscriptJobId, i18n.language, sendUserMessage, streaming]);
 
   const handleVoiceToggle = useCallback(async () => {
     clearVoiceAutoListenTimer();
@@ -2778,6 +2853,10 @@ export default function ChatWidget() {
                   onVideoUpload={handleLessonAuthorVideoUpload}
                   committingTranscriptJobId={committingTranscriptJobId}
                   onCommitTranscript={handleCommitLessonAuthorTranscript}
+                  downloadingTranscriptJobId={downloadingTranscriptJobId}
+                  onDownloadTranscript={handleDownloadLessonAuthorTranscript}
+                  draftingTranscriptJobId={draftingTranscriptJobId}
+                  onDraftCourseFromTranscript={handleDraftCourseFromTranscript}
                   scrollRef={scrollRef}
                   conversationId={currentConv?.id ?? null}
                   inputRef={inputRef}
@@ -3312,7 +3391,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
+function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -3357,6 +3436,10 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
   onVideoUpload?: (file: File) => void;
   committingTranscriptJobId?: string | null;
   onCommitTranscript?: (jobId: string) => void;
+  downloadingTranscriptJobId?: string | null;
+  onDownloadTranscript?: (jobId: string, fileName: string) => void;
+  draftingTranscriptJobId?: string | null;
+  onDraftCourseFromTranscript?: (jobId: string, documentId: string, fileName: string) => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   conversationId?: string | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -3878,6 +3961,11 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 onSourceDocumentClick={onSourceDocumentClick}
                 committingTranscriptJobId={committingTranscriptJobId}
                 onCommitTranscript={onCommitTranscript}
+                downloadingTranscriptJobId={downloadingTranscriptJobId}
+                onDownloadTranscript={onDownloadTranscript}
+                draftingTranscriptJobId={draftingTranscriptJobId}
+                onDraftCourseFromTranscript={onDraftCourseFromTranscript}
+                courseAuthoringBusy={streaming}
               />
             ))}
             {activeVideoUploadNotice && (
@@ -4261,23 +4349,31 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                     ) : (
                       (sourceDocumentOptions ?? []).map(doc => {
                         const selected = selectedSourceDocumentList.some(item => item.document_id === doc.document_id);
+                        const readyToSelect = doc.status === 'learned';
+                        const disabled = selected || !readyToSelect;
                         return (
                           <button
                             key={doc.document_id}
                             type="button"
-                            disabled={selected}
+                            disabled={disabled}
                             className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                              selected ? 'cursor-default opacity-50' : 'hover:bg-muted'
+                              disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted'
                             }`}
                             onMouseDown={(event) => {
                               event.preventDefault();
-                              if (!selected) handleSelectSourceDocument(doc);
+                              if (!disabled) handleSelectSourceDocument(doc);
                             }}
                           >
-                            <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                            {readyToSelect
+                              ? <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                              : <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-xs font-semibold">{doc.name}</span>
-                              <span className="block truncate text-[10px] text-muted-foreground">{t('chatWidget.knowledgeFile')}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {readyToSelect
+                                  ? t('chatWidget.knowledgeFile')
+                                  : (isVietnamese ? 'Đang lập chỉ mục trong Kho tri thức' : 'Indexing in Knowledge Base')}
+                              </span>
                             </span>
                           </button>
                         );
@@ -4502,6 +4598,7 @@ type LessonAuthorTranscriptAttachment = {
   transcriptFileName: string;
   status: LessonAuthorTranscriptionStatus;
   errorReason: string | null;
+  knowledgeDocumentId: string | null;
 };
 
 function getLessonAuthorTranscriptAttachment(metadata: Record<string, unknown>): LessonAuthorTranscriptAttachment | null {
@@ -4523,34 +4620,44 @@ function getLessonAuthorTranscriptAttachment(metadata: Record<string, unknown>):
     errorReason: typeof metadata.lesson_author_transcription_error === 'string'
       ? metadata.lesson_author_transcription_error
       : null,
+    knowledgeDocumentId: typeof metadata.lesson_author_kb_document_id === 'string'
+      ? metadata.lesson_author_kb_document_id
+      : null,
   };
 }
 
-function LessonAuthorTranscriptCard({ attachment, committing, onCommit }: {
+function LessonAuthorTranscriptCard({ attachment, committing, downloading, draftingCourse, onCommit, onDownload, onDraftCourse }: {
   attachment: LessonAuthorTranscriptAttachment;
   committing: boolean;
+  downloading: boolean;
+  draftingCourse: boolean;
   onCommit?: () => void;
+  onDownload?: () => void;
+  onDraftCourse?: () => void;
 }) {
   const { i18n: translationInstance } = useTranslation();
   const isVietnamese = translationInstance.language !== 'en';
   const isReady = attachment.status === 'succeeded';
   const isPending = attachment.status === 'queued' || attachment.status === 'running';
+  const isDownloadable = isReady || attachment.status === 'committed';
   const presentation = {
     queued: {
       title: isVietnamese ? 'Đang chuẩn bị bản chép lời' : 'Preparing transcript',
-      description: isVietnamese ? 'Đã nhận video, đang đưa vào hàng đợi xử lý.' : 'Video received and queued for processing.',
+      description: isVietnamese ? 'Đã nhận video, đang chờ tạo bản chép lời và đưa vào Kho tri thức.' : 'Video received and queued for transcription and Knowledge Base upload.',
       badge: isVietnamese ? 'ĐANG CHỜ' : 'QUEUED',
       tone: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300',
     },
     running: {
       title: isVietnamese ? 'Đang tạo bản chép lời' : 'Creating transcript',
-      description: isVietnamese ? 'Đang tách âm thanh và phân tích nội dung video.' : 'Extracting audio and analysing the video content.',
+      description: isVietnamese ? 'Đang phân tích video, sau đó sẽ tự động đưa bản chép lời vào Kho tri thức.' : 'Analysing the video, then the transcript will be added to the Knowledge Base automatically.',
       badge: isVietnamese ? 'ĐANG XỬ LÝ' : 'PROCESSING',
       tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     },
     succeeded: {
       title: isVietnamese ? 'Bản chép lời đã sẵn sàng' : 'Transcript is ready',
-      description: isVietnamese ? 'Kiểm tra nội dung rồi thêm vào Kho tri thức.' : 'Review the content, then add it to the Knowledge Base.',
+      description: attachment.errorReason
+        ? (isVietnamese ? 'Không thể tự động đưa vào Kho tri thức. Bạn có thể thử lại.' : 'The automatic Knowledge Base upload did not finish. You can retry it.')
+        : (isVietnamese ? 'Đang hoàn tất đưa bản chép lời vào Kho tri thức.' : 'Finalising the Knowledge Base upload.'),
       badge: isVietnamese ? 'SẴN SÀNG' : 'READY',
       tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     },
@@ -4568,7 +4675,7 @@ function LessonAuthorTranscriptCard({ attachment, committing, onCommit }: {
     },
     committed: {
       title: isVietnamese ? 'Đã thêm vào Kho tri thức' : 'Added to Knowledge Base',
-      description: isVietnamese ? 'Bản chép lời đã sẵn sàng để chuyên gia bài học sử dụng.' : 'The lesson-author expert can now use this transcript.',
+      description: isVietnamese ? 'Bản chép lời đang được lập chỉ mục và sẽ xuất hiện trong danh sách nguồn.' : 'The transcript is indexing and will appear in the source picker.',
       badge: isVietnamese ? 'HOÀN TẤT' : 'COMPLETED',
       tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     },
@@ -4619,37 +4726,70 @@ function LessonAuthorTranscriptCard({ attachment, committing, onCommit }: {
           />
         </div>
       )}
-      {(isReady || attachment.status === 'committed') && (
+      {isDownloadable && (
         <div className="border-t border-border/70 px-3 py-2.5">
-        {isReady ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 w-full gap-1.5 text-[11px]"
-            disabled={committing || !onCommit}
-            onClick={onCommit}
-          >
-            {committing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
-            {isVietnamese ? 'Thêm vào Kho tri thức' : 'Add to Knowledge Base'}
-          </Button>
-        ) : attachment.status === 'committed' ? (
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {isVietnamese ? 'Đã thêm bản chép lời vào Kho tri thức' : 'Transcript added to Knowledge Base'}
+          <div className="flex flex-wrap items-center gap-2">
+            {attachment.status === 'committed' && attachment.knowledgeDocumentId && (
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 flex-1 gap-1.5 text-[11px]"
+                disabled={draftingCourse || !onDraftCourse}
+                onClick={onDraftCourse}
+              >
+                {draftingCourse ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
+                {isVietnamese ? 'Soạn khóa học' : 'Author course'}
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 flex-1 gap-1.5 text-[11px]"
+              disabled={downloading || !onDownload}
+              onClick={onDownload}
+            >
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {isVietnamese ? 'Tải bản chép lời' : 'Download transcript'}
+            </Button>
+            {isReady && (
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 flex-1 gap-1.5 text-[11px]"
+                disabled={committing || !onCommit}
+                onClick={onCommit}
+              >
+                {committing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
+                {attachment.errorReason
+                  ? (isVietnamese ? 'Thử lại đưa vào KB' : 'Retry KB upload')
+                  : (isVietnamese ? 'Đưa vào Kho tri thức' : 'Add to Knowledge Base')}
+              </Button>
+            )}
           </div>
-        ) : null}
+          {attachment.status === 'committed' && (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {isVietnamese ? 'Đã thêm bản chép lời vào Kho tri thức' : 'Transcript added to Knowledge Base'}
+            </div>
+          )}
         </div>
       )}
     </section>
   );
 }
 
-function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript }: {
+function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, courseAuthoringBusy }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
   committingTranscriptJobId?: string | null;
   onCommitTranscript?: (jobId: string) => void;
+  downloadingTranscriptJobId?: string | null;
+  onDownloadTranscript?: (jobId: string, fileName: string) => void;
+  draftingTranscriptJobId?: string | null;
+  onDraftCourseFromTranscript?: (jobId: string, documentId: string, fileName: string) => void;
+  courseAuthoringBusy?: boolean;
 }) {
   const isUser = message.role === 'user';
   const mentions = getMessageOutlineMentions(message.metadata);
@@ -4695,7 +4835,17 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
           <LessonAuthorTranscriptCard
             attachment={transcriptAttachment}
             committing={committingTranscriptJobId === transcriptAttachment.jobId}
+            downloading={downloadingTranscriptJobId === transcriptAttachment.jobId}
+            draftingCourse={courseAuthoringBusy || draftingTranscriptJobId === transcriptAttachment.jobId}
             onCommit={onCommitTranscript ? () => onCommitTranscript(transcriptAttachment.jobId) : undefined}
+            onDownload={onDownloadTranscript ? () => onDownloadTranscript(transcriptAttachment.jobId, transcriptAttachment.transcriptFileName) : undefined}
+            onDraftCourse={transcriptAttachment.knowledgeDocumentId && onDraftCourseFromTranscript
+              ? () => onDraftCourseFromTranscript(
+                transcriptAttachment.jobId,
+                transcriptAttachment.knowledgeDocumentId!,
+                transcriptAttachment.transcriptFileName,
+              )
+              : undefined}
           />
         )}
       </div>
