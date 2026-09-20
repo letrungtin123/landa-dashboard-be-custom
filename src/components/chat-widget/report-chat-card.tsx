@@ -47,6 +47,7 @@ type ReportChatAttachment =
     generatedAt: string | null;
     hasData: boolean;
     snapshot: ReportSnapshotV2 | null;
+    courseDetail: ReportSnapshotV2['course_detail'] | null;
     narrative: ReportNarrative | null;
   };
 
@@ -130,6 +131,7 @@ export function getReportChatAttachment(metadata: Record<string, unknown>): Repo
         generatedAt: typeof metadata.report_generated_at === 'string' ? metadata.report_generated_at : null,
         hasData: readReportHasData(metadata.report_snapshot),
         snapshot: isReportSnapshotV2(metadata.report_snapshot) ? metadata.report_snapshot : null,
+        courseDetail: isReportSnapshotV2(metadata.report_snapshot) ? metadata.report_snapshot.course_detail ?? null : null,
         narrative: readReportNarrative(metadata.report_narrative),
       }
       : null;
@@ -569,11 +571,11 @@ function ReportFilterEditor({
 const KPI_ORDER = ['total_learners', 'active_learners', 'completion_rate', 'total_enrollments'] as const;
 type ReportChatKpiId = typeof KPI_ORDER[number];
 
-const KPI_TONES: Record<typeof KPI_ORDER[number], { card: string; accent: string; value: string; delta: string }> = {
-  total_learners: { card: 'border-blue-500/25 bg-blue-500/[0.07] dark:bg-blue-400/[0.08]', accent: 'bg-blue-500', value: 'text-blue-700 dark:text-blue-300', delta: 'bg-blue-500/[0.11] text-blue-700 dark:text-blue-300' },
-  active_learners: { card: 'border-emerald-500/25 bg-emerald-500/[0.07] dark:bg-emerald-400/[0.08]', accent: 'bg-emerald-500', value: 'text-emerald-700 dark:text-emerald-300', delta: 'bg-emerald-500/[0.11] text-emerald-700 dark:text-emerald-300' },
-  completion_rate: { card: 'border-violet-500/25 bg-violet-500/[0.07] dark:bg-violet-400/[0.08]', accent: 'bg-violet-500', value: 'text-violet-700 dark:text-violet-300', delta: 'bg-violet-500/[0.11] text-violet-700 dark:text-violet-300' },
-  total_enrollments: { card: 'border-amber-500/25 bg-amber-500/[0.07] dark:bg-amber-400/[0.08]', accent: 'bg-amber-500', value: 'text-amber-700 dark:text-amber-300', delta: 'bg-amber-500/[0.11] text-amber-700 dark:text-amber-300' },
+const KPI_TONES: Record<typeof KPI_ORDER[number], { card: string; accent: string; label: string; value: string; delta: string }> = {
+  total_learners: { card: 'border-blue-500/25 bg-blue-500/[0.07] dark:bg-blue-400/[0.08]', accent: 'bg-blue-500', label: 'text-muted-foreground', value: 'text-blue-700 dark:text-blue-300', delta: 'bg-blue-500/[0.11] text-blue-700 dark:text-blue-300' },
+  active_learners: { card: 'border-emerald-500/25 bg-emerald-500/[0.07] dark:bg-emerald-400/[0.08]', accent: 'bg-emerald-500', label: 'text-muted-foreground', value: 'text-emerald-700 dark:text-emerald-300', delta: 'bg-emerald-500/[0.11] text-emerald-700 dark:text-emerald-300' },
+  completion_rate: { card: 'border-violet-500/25 bg-violet-500/[0.07] dark:bg-violet-400/[0.08]', accent: 'bg-violet-500', label: 'text-muted-foreground', value: 'text-violet-700 dark:text-violet-300', delta: 'bg-violet-500/[0.11] text-violet-700 dark:text-violet-300' },
+  total_enrollments: { card: 'border-blue-500/25 bg-blue-500/[0.07] dark:bg-blue-400/[0.08]', accent: 'bg-blue-500', label: 'text-muted-foreground', value: 'text-blue-700 dark:text-blue-300', delta: 'bg-blue-500/[0.11] text-blue-700 dark:text-blue-300' },
 };
 
 function getMetric(snapshot: ReportSnapshotV2, id: typeof KPI_ORDER[number]): ReportMetricFact | null {
@@ -671,6 +673,34 @@ function scopeSummary(snapshot: ReportSnapshotV2, t: TFunction): string {
     : t('chatWidget.report.allAccessibleScope');
 }
 
+function CourseDetailSummary({ course }: { course: NonNullable<ReportSnapshotV2['course_detail']> }) {
+  const locale = useLocaleStore((state) => state.locale);
+  const { t } = useTranslation();
+  const number = new Intl.NumberFormat(locale === 'en' ? 'en-US' : 'vi-VN');
+  const statuses = [
+    { id: 'not_started', label: t('chatWidget.report.courseNotStarted'), value: course.not_started_enrollments, tone: 'border-amber-500/30 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300' },
+    { id: 'learning', label: t('chatWidget.report.courseInProgress'), value: course.in_progress_enrollments, tone: 'border-sky-500/30 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300' },
+    { id: 'completed', label: t('chatWidget.report.courseCompleted'), value: course.completed_enrollments, tone: 'border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300' },
+  ];
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/[0.035] p-3">
+      <p className="truncate text-sm font-semibold text-foreground">{course.name}</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">
+        {t('chatWidget.report.courseEnrollmentCount', { count: number.format(course.total_enrollments) })}
+      </p>
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        {statuses.map((status) => (
+          <div key={status.id} className={`min-w-0 rounded-md border px-2 py-2 ${status.tone}`}>
+            <p className="truncate text-[9px] font-medium leading-3">{status.label}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums leading-none">{number.format(status.value)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SnapshotKpiGrid({ snapshot, onSelectMetric }: { snapshot: ReportSnapshotV2; onSelectMetric: (metricId: ReportChatKpiId) => void }) {
   const locale = useLocaleStore((state) => state.locale);
   const isEnglish = locale === 'en';
@@ -693,7 +723,7 @@ function SnapshotKpiGrid({ snapshot, onSelectMetric }: { snapshot: ReportSnapsho
             aria-label={metricTitle(id, t)}
           >
             <span className={`absolute inset-x-0 top-0 h-0.5 ${tone.accent}`} aria-hidden="true" />
-            <p className="min-h-8 text-[10px] font-medium leading-4 text-muted-foreground">{metricTitle(id, t)}</p>
+            <p className={`min-h-8 text-[10px] font-medium leading-4 ${tone.label}`}>{metricTitle(id, t)}</p>
             <p className={`mt-1 text-xl font-semibold tabular-nums tracking-normal ${tone.value}`}>{formatMetricValue(metric, isEnglish)}</p>
             <p className={`mt-1 inline-flex max-w-full items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-3 ${tone.delta}`}>
               {DeltaIcon && <DeltaIcon className="h-3 w-3 shrink-0" aria-hidden="true" />}
@@ -870,6 +900,7 @@ export function ReportChatCard({
     setDetailView(null);
     setSelectedKpiMetric(null);
   }, [messageId]);
+  const courseDetail = attachment.kind === 'analysis' ? attachment.courseDetail : null;
   const snapshot = attachment.kind === 'analysis' ? attachment.snapshot : null;
   const hasReportData = attachment.kind !== 'analysis'
     || (snapshot ? snapshot.availability.state === 'available' : attachment.hasData);
@@ -926,11 +957,13 @@ export function ReportChatCard({
       {snapshot ? (
         <div className="px-3 py-3">
           {snapshot.availability.state === 'available' ? (
-            <>
-              <SnapshotKpiGrid snapshot={snapshot} onSelectMetric={setSelectedKpiMetric} />
-              <SnapshotInsights snapshot={snapshot} />
-              {expanded && <SnapshotDetails snapshot={snapshot} />}
-            </>
+            courseDetail
+              ? <CourseDetailSummary course={courseDetail} />
+              : <>
+                  <SnapshotKpiGrid snapshot={snapshot} onSelectMetric={setSelectedKpiMetric} />
+                  <SnapshotInsights snapshot={snapshot} />
+                  {expanded && <SnapshotDetails snapshot={snapshot} />}
+                </>
           ) : (
             <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-3 text-[11px] leading-5 text-muted-foreground dark:bg-white/[0.02]">
               {snapshot.availability.state === 'no_accessible_scope'
@@ -955,15 +988,24 @@ export function ReportChatCard({
                 ? t('chatWidget.report.changeFilters')
                 : t('chatWidget.report.filters')}
             </Button>
-            {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setExpanded((value) => !value)}><BarChart3 className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{expanded ? t('chatWidget.report.collapseAnalysis') : t('chatWidget.report.viewDetails')}</span><ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} /></Button>}
-            {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setDetailView('course-ranking')}>
-                <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{t('chatWidget.report.viewCourseRanking')}</span>
-              </Button>}
-            {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setDetailView('learners')}>
+            {hasReportData && courseDetail ? (
+              <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setDetailView('course-ranking')}>
                 <Users className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{t('chatWidget.report.viewLearners')}</span>
-              </Button>}
+                <span className="truncate">{t('chatWidget.report.viewCourseLearners')}</span>
+              </Button>
+            ) : (
+              <>
+                {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setExpanded((value) => !value)}><BarChart3 className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{expanded ? t('chatWidget.report.collapseAnalysis') : t('chatWidget.report.viewDetails')}</span><ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} /></Button>}
+                {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setDetailView('course-ranking')}>
+                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{t('chatWidget.report.viewCourseRanking')}</span>
+                  </Button>}
+                {hasReportData && <Button type="button" variant="outline" size="sm" className="h-9 min-w-0 w-full justify-center gap-1.5 px-2 text-center text-[10px]" onClick={() => setDetailView('learners')}>
+                    <Users className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{t('chatWidget.report.viewLearners')}</span>
+                  </Button>}
+              </>
+            )}
           </div>
           {!isLearnerPlus && (
             <div className="mt-2">
@@ -993,6 +1035,7 @@ export function ReportChatCard({
           filter={attachment.filter}
           open={detailView !== null}
           view={detailView}
+          initialCourse={courseDetail}
           onOpenChange={(open) => { if (!open) setDetailView(null); }}
         />
       )}

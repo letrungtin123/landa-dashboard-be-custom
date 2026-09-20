@@ -135,6 +135,7 @@ export function CourseCompletionRankingWidget({
   disablePageScrollRestore = false,
   scrollableContent = false,
   modalLayer = false,
+  initialCourse = null,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -145,6 +146,7 @@ export function CourseCompletionRankingWidget({
   disablePageScrollRestore?: boolean;
   scrollableContent?: boolean;
   modalLayer?: boolean;
+  initialCourse?: ReportCourseCompletionRanking | null;
 }) {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -157,6 +159,7 @@ export function CourseCompletionRankingWidget({
   const [debouncedLearnerSearch, setDebouncedLearnerSearch] = useState('');
   const [learnerStatus, setLearnerStatus] = useState<ReportCourseCompletionStatus>('all');
   const pendingScrollRestoreRef = useRef<{ target: HTMLElement | null; top: number; left: number } | null>(null);
+  const initialCourseId = initialCourse?.course_id ?? null;
 
   const getDashboardScrollContainer = useCallback(() => {
     if (typeof document === 'undefined') return null;
@@ -188,8 +191,12 @@ export function CourseCompletionRankingWidget({
 
   useEffect(() => {
     setPage(1);
-    setSelectedCourse(null);
-  }, [dateFrom, dateTo, groupId, subgroupId, teamId]);
+    setSelectedCourse(initialCourse);
+    setLearnerPage(1);
+    setLearnerSearch('');
+    setDebouncedLearnerSearch('');
+    setLearnerStatus('all');
+  }, [dateFrom, dateTo, groupId, subgroupId, teamId, initialCourse, initialCourseId]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedLearnerSearch(learnerSearch), 300);

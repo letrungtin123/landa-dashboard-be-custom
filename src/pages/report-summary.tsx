@@ -457,10 +457,10 @@ export default function ReportSummaryPage() {
   const enrollmentsTrend = calculateTrend(overview.total_enrollments, prevOverview?.total_enrollments, true, '');
 
   const stats = [
-    { title: t('reports.totalLearnersCreated'), value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: t('reports.totalLearnersDescription'), supportingText: '', notice: '', disabled: false },
-    { title: t('reports.activeLearners'), value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: t('reports.activeLearnersDescription'), supportingText: '', notice: '', disabled: false },
-    { title: t('reports.averageCompletionRate'), value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: t('reports.completionRateDescription'), supportingText: '', notice: '', disabled: false },
-    { title: t('reports.periodEnrollments'), value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: t('reports.enrollmentsDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.totalLearnersCreated'), value: overview.total_learners, icon: Users, colorClass: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400', titleClass: 'text-muted-foreground', trend: learnersTrend.text, trendType: learnersTrend.type, key: 'total_learners', suffix: '', description: t('reports.totalLearnersDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.activeLearners'), value: overview.active_learners, icon: UserCheck, colorClass: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400', titleClass: 'text-muted-foreground', trend: activeTrend.text, trendType: activeTrend.type, key: 'active_learners', suffix: '', description: t('reports.activeLearnersDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.averageCompletionRate'), value: Math.round(overview.completion_rate), icon: CheckCircle2, colorClass: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10 dark:text-purple-400', titleClass: 'text-muted-foreground', trend: completionTrend.text, trendType: completionTrend.type, key: 'completion_rate', suffix: '%', description: t('reports.completionRateDescription'), supportingText: '', notice: '', disabled: false },
+    { title: t('reports.periodEnrollments'), value: overview.total_enrollments, icon: CalendarIcon, colorClass: 'text-red-500 bg-red-50 dark:bg-red-500/10 dark:text-red-400', titleClass: 'text-muted-foreground', trend: enrollmentsTrend.text, trendType: enrollmentsTrend.type, key: 'total_enrollments', suffix: '', description: t('reports.enrollmentsDescription'), supportingText: '', notice: '', disabled: false },
   ];
 
   return (
@@ -732,7 +732,7 @@ export default function ReportSummaryPage() {
                     <div className={`p-1.5 rounded-md ${stat.colorClass}`}>
                       <stat.icon className="h-4 w-4" />
                     </div>
-                    <span className="text-[13px] font-medium text-muted-foreground">{stat.title}</span>
+                    <span className={`text-[13px] font-medium ${stat.titleClass}`}>{stat.title}</span>
                   </div>
                   <AppTooltip content={stat.description}>
                     <div

@@ -178,6 +178,16 @@ export interface ReportSnapshotV2 {
     incomplete_enrollments: number;
     completion_rate: number;
   }>;
+  course_detail?: {
+    course_id: string;
+    name: string;
+    total_enrollments: number;
+    completed_enrollments: number;
+    incomplete_enrollments: number;
+    not_started_enrollments: number;
+    in_progress_enrollments: number;
+    completion_rate: number;
+  };
   availability: { state: 'available' | 'empty' | 'no_accessible_scope'; limitations: string[] };
 }
 

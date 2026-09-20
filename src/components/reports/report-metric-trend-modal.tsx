@@ -20,7 +20,7 @@ function formatPercent(value: number | null | undefined, locale: AppLocale) {
 function getMetricChartColors(metricKey: string | null): string[] {
   if (metricKey === 'active_learners') return ['#10b981'];
   if (metricKey === 'completion_rate') return ['#8b5cf6'];
-  if (metricKey === 'total_enrollments') return ['#ef4444'];
+  if (metricKey === 'total_enrollments') return ['#3b82f6'];
   return ['#3b82f6'];
 }
 

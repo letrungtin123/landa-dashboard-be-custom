@@ -4,6 +4,7 @@ import { ReportLearnerListWidget } from '@/components/reports/report-learner-lis
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 import type { ReportChatFilter } from '@/api/custom-chat';
+import type { ReportCourseCompletionRanking } from '@/api/custom-reports';
 import { useTranslation } from 'react-i18next';
 
 export type ReportDetailView = 'course-ranking' | 'learners';
@@ -12,6 +13,7 @@ type Props = {
   filter: ReportChatFilter;
   open: boolean;
   view: ReportDetailView | null;
+  initialCourse?: ReportCourseCompletionRanking | null;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -19,12 +21,12 @@ function scopeId(value: string | undefined): string | 'all' {
   return value || 'all';
 }
 
-export function ReportDetailModal({ filter, open, view, onOpenChange }: Props) {
+export function ReportDetailModal({ filter, open, view, initialCourse = null, onOpenChange }: Props) {
   const { t } = useTranslation();
   const [selectedLearner, setSelectedLearner] = useState<string | null>(null);
   const filterKey = useMemo(
-    () => [filter.date_from, filter.date_to, filter.group_id, filter.subgroup_id, filter.team_id, view].join(':'),
-    [filter.date_from, filter.date_to, filter.group_id, filter.subgroup_id, filter.team_id, view],
+    () => [filter.date_from, filter.date_to, filter.group_id, filter.subgroup_id, filter.team_id, view, initialCourse?.course_id].join(':'),
+    [filter.date_from, filter.date_to, filter.group_id, filter.subgroup_id, filter.team_id, view, initialCourse?.course_id],
   );
   const hasDateRange = Boolean(filter.date_from && filter.date_to);
 
@@ -46,13 +48,13 @@ export function ReportDetailModal({ filter, open, view, onOpenChange }: Props) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           overlayClassName="z-[10040]"
-          className="z-[10050] flex h-[min(760px,calc(100dvh-32px))] max-h-[calc(100dvh-32px)] w-[calc(100vw-24px)] max-w-[1180px] flex-col gap-0 overflow-hidden border-border/80 bg-background p-0 shadow-2xl sm:w-[min(94vw,1180px)]"
+          className="z-[10050] flex max-h-[calc(100dvh-32px)] w-[calc(100vw-24px)] max-w-[1180px] flex-col gap-0 overflow-hidden border-border/80 bg-background p-0 shadow-2xl sm:w-[min(94vw,1180px)]"
         >
           <DialogHeader className="sr-only">
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{t('chatWidget.report.detailDialogDescription')}</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 w-full flex-1 overflow-hidden">
+          <div className="w-full max-h-[calc(100dvh-32px)] overflow-y-auto">
             {view === 'course-ranking' ? (
               <CourseCompletionRankingWidget
                 key={filterKey}
@@ -65,6 +67,7 @@ export function ReportDetailModal({ filter, open, view, onOpenChange }: Props) {
                 disablePageScrollRestore
                 scrollableContent
                 modalLayer
+                initialCourse={initialCourse}
               />
             ) : (
               <ReportLearnerListWidget
