@@ -573,7 +573,7 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
   const publishMut = useMutation({
     mutationFn: () => publishBlock(node.id),
     onSuccess: () => { toast.success(i18n.t('courseOutline.publishedSuccess')); onStructureChange(); },
-    onError: () => toast.error(i18n.t('courseOutline.publishFailed')),
+    onError: (err: unknown) => toast.error(getLocalizedApiError(err, i18n.t('courseOutline.publishFailed'))),
   });
 
   const rollbackMut = useMutation({

@@ -6,6 +6,7 @@
  */
 
 import { customApiClient } from './custom-client';
+import { config } from '@/config/env';
 import {
   COURSE_ASSET_MAX_UPLOAD_BYTES,
   COURSE_ASSET_UPLOAD_TIMEOUT_MS,
@@ -115,6 +116,25 @@ export interface GetCourseAssetsOptions {
   assetType?: string;
   cursor?: string | null;
   cursorPagination?: boolean;
+}
+
+export const COURSE_ASSET_UPLOAD_STATE_EVENT = 'course-asset-upload-state';
+
+export interface CourseAssetUploadStateEventDetail {
+  courseId: string;
+  uploadId: string;
+  active: boolean;
+}
+
+function notifyCourseAssetUploadState(detail: CourseAssetUploadStateEventDetail): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<CourseAssetUploadStateEventDetail>(COURSE_ASSET_UPLOAD_STATE_EVENT, { detail }));
+}
+
+function courseAssetUploadEndpoint(courseId: string): string {
+  const relativePath = `${BASE}/assets/${encodeURIComponent(courseId)}`;
+  if (!config.courseAssetUploadOrigin) return relativePath;
+  return new URL(relativePath, config.courseAssetUploadOrigin).toString();
 }
 
 export interface Course {
@@ -427,22 +447,31 @@ export async function uploadCourseAsset(
 
   const formData = new FormData();
   formData.append('file', file);
-  const { data } = await customApiClient.post(
-    `${BASE}/assets/${encodeURIComponent(courseId)}`,
-    formData,
-    {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: COURSE_ASSET_UPLOAD_TIMEOUT_MS,
-      onUploadProgress: (event) => {
-        if (!event.total || event.total <= 0) return;
-        // The browser has sent the body at 100%, but the server still has to
-        // persist it to Storage. Keep the UI below completion until the API
-        // confirms the full transaction.
-        onProgress?.(Math.min(95, Math.round((event.loaded / event.total) * 100)));
+  const uploadId = typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  notifyCourseAssetUploadState({ courseId, uploadId, active: true });
+
+  try {
+    const { data } = await customApiClient.post(
+      courseAssetUploadEndpoint(courseId),
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: COURSE_ASSET_UPLOAD_TIMEOUT_MS,
+        onUploadProgress: (event) => {
+          if (!event.total || event.total <= 0) return;
+          // The browser has sent the body at 100%, but the server still has to
+          // persist it to Storage. Keep the UI below completion until the API
+          // confirms the full transaction.
+          onProgress?.(Math.min(95, Math.round((event.loaded / event.total) * 100)));
+        },
       },
-    },
-  );
-  return (data as any).data || data;
+    );
+    return (data as any).data || data;
+  } finally {
+    notifyCourseAssetUploadState({ courseId, uploadId, active: false });
+  }
 }
 
 export async function deleteCourseAsset(courseId: string, assetId: string): Promise<void> {

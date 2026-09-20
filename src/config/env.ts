@@ -53,6 +53,28 @@ function isSameOriginToken(value: string): boolean {
   return normalized === "auto" || normalized === "same-origin" || normalized === "self";
 }
 
+function resolveSameOriginPath(value: string, runtimeOrigin: string, key: string): string | null {
+  const prefix = "same-origin:";
+  if (!value.toLowerCase().startsWith(prefix)) return null;
+
+  const pathname = value.slice(prefix.length).trim();
+  const unsafeSegment = pathname.split('/').some((segment) => segment === '.' || segment === '..');
+  if (
+    !runtimeOrigin ||
+    !pathname.startsWith("/") ||
+    pathname.startsWith("//") ||
+    pathname.includes("\\") ||
+    pathname.includes("%") ||
+    pathname.includes("?") ||
+    pathname.includes("#") ||
+    unsafeSegment
+  ) {
+    throw new Error(`[ENV] ${key} must use a safe same-origin absolute path, for example "same-origin:/admin".`);
+  }
+
+  return `${runtimeOrigin}${pathname.replace(/\/+$/, "")}`;
+}
+
 function resolvePublicOrigin(): string {
   const runtimeOrigin = getRuntimeOrigin();
   const raw = (import.meta.env.VITE_PUBLIC_ORIGIN || "").trim();
@@ -88,12 +110,27 @@ function resolvePublicOrigin(): string {
 }
 
 function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
+}
+
+function isPrivateLiteralHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isLoopbackHost(normalized) || normalized === "0.0.0.0" || normalized === "::") return true;
+  if (/^(?:10|127)\./.test(normalized)) return true;
+  if (/^192\.168\./.test(normalized)) return true;
+  if (/^169\.254\./.test(normalized)) return true;
+  if (/^172\.(?:1[6-9]|2\d|3[01])\./.test(normalized)) return true;
+  if (/^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(normalized)) return true;
+  return normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
 }
 
 function resolveCustomApiUrl(): string {
   const raw = (import.meta.env.VITE_CUSTOM_API_URL || "").trim();
   const runtimeOrigin = getRuntimeOrigin();
+
+  const sameOriginPath = resolveSameOriginPath(raw, runtimeOrigin, "VITE_CUSTOM_API_URL");
+  if (sameOriginPath) return sameOriginPath;
 
   if (isSameOriginToken(raw)) {
     if (runtimeOrigin) return runtimeOrigin;
@@ -114,6 +151,18 @@ function resolveCustomApiUrl(): string {
   }
 
   return configuredUrl;
+}
+
+function resolveCourseAssetUploadOrigin(): string {
+  const raw = (import.meta.env.VITE_COURSE_ASSET_UPLOAD_ORIGIN || "").trim();
+  if (!raw || isSameOriginToken(raw)) return "";
+
+  const configuredUrl = requireUrl("VITE_COURSE_ASSET_UPLOAD_ORIGIN");
+  const parsed = parseUrl(configuredUrl);
+  if (!parsed || parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash || isPrivateLiteralHost(parsed.hostname)) {
+    throw new Error("[ENV] VITE_COURSE_ASSET_UPLOAD_ORIGIN must be a public HTTPS origin without a path, credentials, query, or fragment.");
+  }
+  return parsed.origin;
 }
 
 export const config = {
@@ -150,6 +199,15 @@ export const config = {
   /** Custom Express Backend URL — bắt buộc cho auth mới */
   get customApiUrl(): string {
     return resolveCustomApiUrl();
+  },
+
+  /**
+   * Optional dedicated HTTPS origin for large authenticated course-asset
+   * uploads. It is intentionally separate from Storage; the browser still
+   * sends the upload through the audited application API.
+   */
+  get courseAssetUploadOrigin(): string {
+    return resolveCourseAssetUploadOrigin();
   },
 
   get apiBaseUrl(): string {

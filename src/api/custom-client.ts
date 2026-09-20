@@ -39,7 +39,17 @@ function getHeaderTenantId(req: InternalAxiosRequestConfig): string | null {
 
 function isQuotaRelevantMutation(req: InternalAxiosRequestConfig): boolean {
   const method = req.method?.toLowerCase();
-  return Boolean(method && MUTATING_METHODS.has(method) && req.url?.startsWith('/api/'));
+  if (!method || !MUTATING_METHODS.has(method) || !req.url) return false;
+
+  // Preserve relative API requests when the configured base URL has a path
+  // prefix such as same-origin:/admin.
+  if (req.url.startsWith('/api/')) return true;
+
+  try {
+    return new URL(req.url, req.baseURL || window.location.origin).pathname.startsWith('/api/');
+  } catch {
+    return req.url.startsWith('/api/');
+  }
 }
 
 // ── Request Interceptor: gắn Bearer token + X-Tenant-Id (superadmin/superuser) ──

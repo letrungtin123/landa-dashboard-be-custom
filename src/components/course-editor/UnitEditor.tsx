@@ -7,7 +7,8 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, discardDraft, reorderChildren,
-  deleteCourseAssetByStoragePath, fetchCurrentTenantCourseComponentPermissions,
+  COURSE_ASSET_UPLOAD_STATE_EVENT, deleteCourseAssetByStoragePath, fetchCurrentTenantCourseComponentPermissions,
+  type CourseAssetUploadStateEventDetail,
 } from '@/api/custom-course-authoring';
 import {
   DndContext,
@@ -564,7 +565,26 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [recoveredDraft, setRecoveredDraft] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
   const [draftConflict, setDraftConflict] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
+  const [activeCourseAssetUploadIds, setActiveCourseAssetUploadIds] = useState<Set<string>>(() => new Set());
   const editorLoadSequenceRef = useRef(0);
+
+  useEffect(() => {
+    if (!courseId || typeof window === 'undefined') return;
+    const onCourseAssetUploadState = (event: Event) => {
+      const detail = (event as CustomEvent<CourseAssetUploadStateEventDetail>).detail;
+      if (!detail || detail.courseId !== courseId) return;
+      setActiveCourseAssetUploadIds((previous) => {
+        const next = new Set(previous);
+        if (detail.active) next.add(detail.uploadId);
+        else next.delete(detail.uploadId);
+        return next;
+      });
+    };
+    window.addEventListener(COURSE_ASSET_UPLOAD_STATE_EVENT, onCourseAssetUploadState);
+    return () => window.removeEventListener(COURSE_ASSET_UPLOAD_STATE_EVENT, onCourseAssetUploadState);
+  }, [courseId]);
+
+  const isCourseAssetUploading = activeCourseAssetUploadIds.size > 0;
 
   const draftScope = useMemo<CourseComponentDraftScope | null>(() => {
     const tenantId = activeTenantId || currentUser?.tenant_id || '';
@@ -700,12 +720,16 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
 
   const handleEditingOpenChange = useCallback((open: boolean) => {
     if (open) return;
+    if (isCourseAssetUploading) {
+      toast.info(i18n.t('courseEditorForms.uploading'));
+      return;
+    }
     editorLoadSequenceRef.current += 1;
     setIsEditing(false);
     setEditingBlockData(null);
     setIsDraftLoading(false);
     setDraftConflict(null);
-  }, []);
+  }, [isCourseAssetUploading]);
 
   const useServerVersion = useCallback(() => {
     if (draftScope) clearCourseComponentDraft(draftScope);
@@ -868,7 +892,16 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
 
       {/* Edit Dialog for Normal Components */}
       <Dialog open={isEditing && block.block_type !== 'la_diagram'} onOpenChange={handleEditingOpenChange}>
-        <DialogContent className="w-[95vw] sm:max-w-7xl max-h-[92vh] flex flex-col overflow-hidden p-0">
+        <DialogContent
+          className="w-[95vw] sm:max-w-7xl max-h-[92vh] flex flex-col overflow-hidden p-0"
+          showCloseButton={!isCourseAssetUploading}
+          onPointerDownOutside={(event) => {
+            if (isCourseAssetUploading) event.preventDefault();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (isCourseAssetUploading) event.preventDefault();
+          }}
+        >
           <DialogHeader className="px-6 py-4 border-b bg-muted/20 shrink-0">
             <DialogTitle className="text-lg font-bold">
               {i18n.t('courseUnit.editingName', { name: editingBlockData?.display_name || blockData?.display_name || block.display_name })}
