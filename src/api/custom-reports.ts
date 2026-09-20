@@ -280,6 +280,7 @@ export async function downloadReportExcel(params: ReportDateParams & {
   group_label?: string;
   subgroup_label?: string;
   team_label?: string;
+  locale?: 'vi' | 'en';
 }): Promise<{ blob: Blob; fileName: string }> {
   const response = await customApiClient.get<Blob>(`${BASE}/export.xlsx`, {
     params,
@@ -289,11 +290,13 @@ export async function downloadReportExcel(params: ReportDateParams & {
   const disposition = response.headers['content-disposition'] as string | undefined;
   const utf8Name = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
   const plainName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+  const exportPrefix = params.locale === 'en' ? 'learning-report' : 'bao-cao-tong-hop';
+  const dateRangeSeparator = params.locale === 'en' ? 'to' : 'den';
   const fileName = utf8Name
     ? decodeURIComponent(utf8Name)
     : plainName || (params.date_from && params.date_to
-      ? `bao-cao-tong-hop-${params.date_from}-den-${params.date_to}.xlsx`
-      : `bao-cao-tong-hop-${params.month ? `${params.month}-` : ''}${params.year || new Date().getFullYear()}.xlsx`);
+      ? `${exportPrefix}-${params.date_from}-${dateRangeSeparator}-${params.date_to}.xlsx`
+      : `${exportPrefix}-${params.month ? `${params.month}-` : ''}${params.year || new Date().getFullYear()}.xlsx`);
 
   return { blob: response.data, fileName };
 }

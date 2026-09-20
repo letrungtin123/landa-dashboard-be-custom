@@ -221,9 +221,11 @@ interface Props {
   teamId?: string | 'all' | null;
   reportDateFrom?: string;
   reportDateTo?: string;
+  lockReportScope?: boolean;
+  layerAboveChat?: boolean;
 }
 
-export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId, reportDateFrom, reportDateTo }: Props) {
+export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgroupId, teamId, reportDateFrom, reportDateTo, lockReportScope = false, layerAboveChat = false }: Props) {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
   const courseStatusOptions: Array<{ value: ReportCourseCompletionStatus; label: string }> = [
@@ -232,10 +234,12 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
     { value: 'learning', label: t('learnerDetail.learning') },
     { value: 'not_started', label: t('learnerDetail.notStarted') },
   ];
-  const courseDataScopeOptions: Array<{ value: LearnerDetailDataScope; label: string }> = [
-    { value: 'report_filter', label: t('learnerDetail.reportFilterScope') },
-    { value: 'learner_history', label: t('learnerDetail.learnerHistoryScope') },
-  ];
+  const courseDataScopeOptions: Array<{ value: LearnerDetailDataScope; label: string }> = lockReportScope
+    ? [{ value: 'report_filter', label: t('learnerDetail.reportFilterScope') }]
+    : [
+      { value: 'report_filter', label: t('learnerDetail.reportFilterScope') },
+      { value: 'learner_history', label: t('learnerDetail.learnerHistoryScope') },
+    ];
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [coursePage, setCoursePage] = useState(1);
@@ -258,9 +262,9 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
     setSearch('');
     setDebouncedSearch('');
     setCourseStatus('all');
-    if (hasReportContext) setCourseDataScope('report_filter');
+    if (hasReportContext || lockReportScope) setCourseDataScope('report_filter');
     setCoursePage(1);
-  }, [username, isOpen, hasReportContext]);
+  }, [username, isOpen, hasReportContext, lockReportScope]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -442,7 +446,10 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[100vw] max-w-[100vw] sm:w-[95vw] sm:max-w-[95vw] md:max-w-[90vw] lg:max-w-[1200px] h-[100dvh] sm:h-auto sm:max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background border-0 sm:border sm:border-border shadow-2xl rounded-none sm:rounded-2xl">
+      <DialogContent
+        overlayClassName={layerAboveChat ? 'z-[10060]' : undefined}
+        className={`${layerAboveChat ? 'z-[10070]' : ''} w-[100vw] max-w-[100vw] sm:w-[95vw] sm:max-w-[95vw] md:max-w-[90vw] lg:max-w-[1200px] h-[100dvh] sm:h-auto sm:max-h-[85vh] flex flex-col p-0 overflow-hidden bg-background border-0 sm:border sm:border-border shadow-2xl rounded-none sm:rounded-2xl`}
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-muted/10 pointer-events-none z-0" />
         <div className="z-10 flex flex-col h-full overflow-hidden">
           <DialogHeader className="p-4 sm:p-6 pb-4 sm:pb-5 border-b border-border/40 bg-muted/20 backdrop-blur-md shrink-0">
@@ -496,7 +503,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[170px]">
+                <DropdownMenuContent align="end" className={`w-[170px] ${layerAboveChat ? 'z-[10080]' : ''}`}>
                   {courseStatusOptions.map((option) => (
                     <DropdownMenuItem
                       key={option.value}
@@ -509,7 +516,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              {hasReportContext && (
+              {hasReportContext && !lockReportScope && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -521,7 +528,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[248px]">
+                  <DropdownMenuContent align="end" className={`w-[248px] ${layerAboveChat ? 'z-[10080]' : ''}`}>
                     {courseDataScopeOptions.map((option) => (
                       <DropdownMenuItem
                         key={option.value}

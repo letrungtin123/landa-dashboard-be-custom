@@ -40,6 +40,7 @@ import {
   type ReportChatFilter,
   type ReportPdfExportJob,
   type ReportPdfExportPhase,
+  type ReportStreamStatus,
   ReportPdfExportApiError,
   type LessonAuthorTranscriptionStatus,
 } from '@/api/custom-chat';
@@ -56,11 +57,13 @@ import {
 import { AppTooltip } from '@/components/ui/tooltip';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import {
   getReportChatAppliedFilter,
   getReportChatAttachment,
   ReportChatCard,
+  ReportChatLoadingCard,
   ReportFilterAppliedBubble,
 } from './report-chat-card';
 
@@ -125,8 +128,13 @@ type StoredLessonAuthorProgress = {
   updatedAt: number;
 };
 
+type ReportPdfExportUiJob = ReportPdfExportJob & {
+  // This is presentation-only state. The backend job remains the PDF source of truth.
+  presentationStartedAt: number;
+};
+
 type StoredReportPdfExport = {
-  job: ReportPdfExportJob;
+  job: ReportPdfExportUiJob;
   storedAt: number;
 };
 
@@ -283,7 +291,7 @@ function isReportPdfExportPhase(value: unknown): value is ReportPdfExportPhase {
   return value === 'validating' || value === 'narrative' || value === 'rendering' || value === 'ready' || value === 'failed';
 }
 
-function readStoredReportPdfExport(conversationId: string, messageId: string): ReportPdfExportJob | null {
+function readStoredReportPdfExport(conversationId: string, messageId: string): ReportPdfExportUiJob | null {
   if (typeof window === 'undefined') return null;
   try {
     const key = getReportPdfExportStorageKey(conversationId, messageId);
@@ -312,13 +320,18 @@ function readStoredReportPdfExport(conversationId: string, messageId: string): R
       expiresAt: typeof job.expiresAt === 'string' ? job.expiresAt : null,
       errorCode: typeof job.errorCode === 'string' ? job.errorCode : null,
       updatedAt: job.updatedAt,
+      // Use the original storage time for sessions created before this UI field existed.
+      presentationStartedAt: typeof job.presentationStartedAt === 'number'
+        && Number.isFinite(job.presentationStartedAt)
+        ? job.presentationStartedAt
+        : storedAt,
     };
   } catch {
     return null;
   }
 }
 
-function writeStoredReportPdfExport(conversationId: string, messageId: string, job: ReportPdfExportJob): void {
+function writeStoredReportPdfExport(conversationId: string, messageId: string, job: ReportPdfExportUiJob): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(getReportPdfExportStorageKey(conversationId, messageId), JSON.stringify({
@@ -339,21 +352,15 @@ function clearStoredReportPdfExport(conversationId: string | null | undefined, m
   }
 }
 
-function getReportPdfExportErrorText(error: unknown, isEnglish: boolean): string {
+function getReportPdfExportErrorText(error: unknown, t: TFunction): string {
   const code = error instanceof ReportPdfExportApiError ? error.code : null;
-  if (code === 'REPORT_PDF_SCOPE_DENIED') {
-    return isEnglish ? 'You no longer have access to this report.' : 'Bạn không còn quyền truy cập báo cáo này.';
-  }
-  if (code === 'REPORT_PDF_NOT_READY') {
-    return isEnglish ? 'The report is still being prepared.' : 'Báo cáo vẫn đang được chuẩn bị.';
-  }
+  if (code === 'REPORT_PDF_SCOPE_DENIED' || code === 'REPORT_PDF_PERMISSION_DENIED') return t('chatWidget.report.permissionDenied');
+  if (code === 'REPORT_PDF_NOT_READY') return t('chatWidget.report.notReady');
   if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
-    return isEnglish ? 'This export session ended. Create the PDF again.' : 'Phiên tạo báo cáo đã kết thúc. Hãy tạo lại PDF.';
+    return t('chatWidget.report.exportExpired');
   }
-  if (code === 'REPORT_PDF_QUEUE_FULL') {
-    return isEnglish ? 'The reporting service is busy. Please try again shortly.' : 'Hệ thống báo cáo đang bận. Vui lòng thử lại sau ít phút.';
-  }
-  return isEnglish ? 'Could not create the report PDF.' : 'Không thể tạo PDF báo cáo.';
+  if (code === 'REPORT_PDF_QUEUE_FULL') return t('chatWidget.report.exportBusy');
+  return t('chatWidget.report.exportFailed');
 }
 
 function readNonNegativeInteger(value: unknown): number | null {
@@ -1025,9 +1032,10 @@ export default function ChatWidget() {
   const [draftingTranscriptJobId, setDraftingTranscriptJobId] = useState<string | null>(null);
   const [downloadingReportMessageId, setDownloadingReportMessageId] = useState<string | null>(null);
   const [startingReportMessageId, setStartingReportMessageId] = useState<string | null>(null);
-  const [reportPdfExportJobs, setReportPdfExportJobs] = useState<Record<string, ReportPdfExportJob>>({});
+  const [reportPdfExportJobs, setReportPdfExportJobs] = useState<Record<string, ReportPdfExportUiJob>>({});
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
+  const [reportStreamStatus, setReportStreamStatus] = useState<ReportStreamStatus | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -1499,15 +1507,21 @@ export default function ChatWidget() {
 
     const applyJob = (messageId: string, job: ReportPdfExportJob) => {
       if (cancelled) return;
-      writeStoredReportPdfExport(conversationId, messageId, job);
       setReportPdfExportJobs(current => {
         const previous = current[messageId];
+        const hydratedJob: ReportPdfExportUiJob = {
+          ...job,
+          presentationStartedAt: previous?.presentationStartedAt
+            ?? readStoredReportPdfExport(conversationId, messageId)?.presentationStartedAt
+            ?? Date.now(),
+        };
         if (previous
-          && previous.id === job.id
-          && previous.phase === job.phase
-          && previous.updatedAt === job.updatedAt
-          && previous.errorCode === job.errorCode) return current;
-        return { ...current, [messageId]: job };
+          && previous.id === hydratedJob.id
+          && previous.phase === hydratedJob.phase
+          && previous.updatedAt === hydratedJob.updatedAt
+          && previous.errorCode === hydratedJob.errorCode) return current;
+        writeStoredReportPdfExport(conversationId, messageId, hydratedJob);
+        return { ...current, [messageId]: hydratedJob };
       });
     };
 
@@ -2214,6 +2228,7 @@ export default function ChatWidget() {
     activeStreamConversationIdsRef.current.add(conversationId);
     setStreaming(true);
     setStreamText('');
+    setReportStreamStatus(null);
     setProposalEvent(null);
     // Keep the approved blueprint visible while drafting a chapter from it.
     // The proposal card still hides the full blueprint card, but its
@@ -2290,6 +2305,7 @@ export default function ChatWidget() {
           setStreamText('');
           setStreaming(false);
           setLessonAuthorProgress(null);
+          setReportStreamStatus(null);
           streamAccRef.current = '';
           clearStoredChatPendingTurn(conversationId);
           clearStoredLessonAuthorProgress(conversationId);
@@ -2353,6 +2369,11 @@ export default function ChatWidget() {
         onProgress: isLessonAuthor
           ? (event) => handleLessonAuthorProgress(conversationId, event)
           : undefined,
+        onReportStatus: !isLessonAuthor
+          ? (status) => {
+            if (currentConvIdRef.current === conversationId) setReportStreamStatus(status);
+          }
+          : undefined,
       },
     );
     return true;
@@ -2369,18 +2390,21 @@ export default function ChatWidget() {
   const handleStartReportPdfExport = useCallback(async (messageId: string) => {
     const conversationId = currentConv?.id;
     if (!conversationId || startingReportMessageId) return;
-    const isEnglish = i18n.language === 'en';
     setStartingReportMessageId(messageId);
     try {
       const job = await startReportPdfExportJob(conversationId, messageId);
-      writeStoredReportPdfExport(conversationId, messageId, job);
-      setReportPdfExportJobs(current => ({ ...current, [messageId]: job }));
+      const presentedJob: ReportPdfExportUiJob = {
+        ...job,
+        presentationStartedAt: Date.now(),
+      };
+      writeStoredReportPdfExport(conversationId, messageId, presentedJob);
+      setReportPdfExportJobs(current => ({ ...current, [messageId]: presentedJob }));
     } catch (error) {
-      toast.error(getReportPdfExportErrorText(error, isEnglish));
+      toast.error(getReportPdfExportErrorText(error, t));
     } finally {
       setStartingReportMessageId(null);
     }
-  }, [currentConv?.id, startingReportMessageId]);
+  }, [currentConv?.id, startingReportMessageId, t]);
 
   const handleDownloadReportPdf = useCallback(async (messageId: string) => {
     const conversationId = currentConv?.id;
@@ -2388,7 +2412,6 @@ export default function ChatWidget() {
       ? reportPdfExportJobs[messageId] ?? readStoredReportPdfExport(conversationId, messageId)
       : null;
     if (!conversationId || !job || job.phase !== 'ready' || downloadingReportMessageId) return;
-    const isEnglish = i18n.language === 'en';
     setDownloadingReportMessageId(messageId);
     try {
       const { blob, fileName } = await downloadReportPdfExportJob(conversationId, messageId, job.id);
@@ -2407,11 +2430,11 @@ export default function ChatWidget() {
         delete next[messageId];
         return next;
       });
-      toast.success(isEnglish ? 'Report PDF downloaded.' : 'Đã tải PDF báo cáo.');
+      toast.success(t('chatWidget.report.downloadSuccess'));
     } catch (error) {
       const code = error instanceof ReportPdfExportApiError ? error.code : null;
       if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
-        const failedJob: ReportPdfExportJob = {
+        const failedJob: ReportPdfExportUiJob = {
           ...job,
           phase: 'failed',
           errorCode: code,
@@ -2420,11 +2443,11 @@ export default function ChatWidget() {
         writeStoredReportPdfExport(conversationId, messageId, failedJob);
         setReportPdfExportJobs(current => ({ ...current, [messageId]: failedJob }));
       }
-      toast.error(getReportPdfExportErrorText(error, isEnglish));
+      toast.error(getReportPdfExportErrorText(error, t));
     } finally {
       setDownloadingReportMessageId(null);
     }
-  }, [currentConv?.id, downloadingReportMessageId, reportPdfExportJobs]);
+  }, [currentConv?.id, downloadingReportMessageId, reportPdfExportJobs, t]);
 
   const handleDraftCourseFromTranscript = useCallback(async (
     jobId: string,
@@ -3039,6 +3062,7 @@ export default function ChatWidget() {
                   messages={messages}
                   streamText={streamText}
                   streaming={streaming}
+                  reportStreamStatus={reportStreamStatus}
                   loading={loadingMessages}
                   hasMore={hasMore}
                   loadingMore={loadingMore}
@@ -3624,10 +3648,11 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
+function ChatView({ messages, streamText, streaming, reportStreamStatus, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
+  reportStreamStatus: ReportStreamStatus | null;
   loading: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -4016,7 +4041,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
     if (!el) return;
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (isNearBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages.length, proposalEvent?.job_id, streamText, scrollRef]);
+  }, [messages.length, proposalEvent?.job_id, reportStreamStatus, streamText, scrollRef]);
 
   useEffect(() => { if (!loading) inputRef.current?.focus(); }, [loading, inputRef]);
 
@@ -4266,7 +4291,12 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 </div>
               </div>
             )}
-            {streaming && streamText && (
+            {streaming && reportStreamStatus && (
+              <div className="flex justify-start">
+                <ReportChatLoadingCard status={reportStreamStatus} />
+              </div>
+            )}
+            {streaming && streamText && !reportStreamStatus && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-muted/50 text-sm break-words">
                   <BotMarkdownContent content={streamText} />
@@ -4275,7 +4305,7 @@ function ChatView({ messages, streamText, streaming, loading, hasMore, loadingMo
                 </div>
               </div>
             )}
-            {streaming && !streamText && (
+            {streaming && !streamText && !reportStreamStatus && (
               <div className="flex justify-start">
                 <motion.div
                   initial={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -5091,7 +5121,9 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
     >
       <div
         className={hasStructuredAttachment
-          ? 'w-[85%]'
+          ? reportAttachment
+            ? 'w-full max-w-[760px]'
+            : 'w-[85%]'
           : `max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm break-words ${
             isUser
               ? 'bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap'

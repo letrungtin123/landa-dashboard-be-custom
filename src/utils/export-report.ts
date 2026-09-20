@@ -2,7 +2,7 @@ import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { downloadReportExcel } from '@/api/custom-reports';
 import i18n from '@/i18n';
-import { DEFAULT_GROUP_LABELS } from '@/utils/group-labels';
+import { getLocalizedDefaultGroupLabel } from '@/utils/group-labels';
 
 interface ExportParams {
   dateFrom: string;
@@ -22,10 +22,11 @@ export async function exportReportExcel(params: ExportParams) {
     selectedGroupId,
     selectedSubGroupId = 'all',
     selectedTeamId = 'all',
-    groupLabel = DEFAULT_GROUP_LABELS.group,
-    subgroupLabel = DEFAULT_GROUP_LABELS.subgroup,
-    teamLabel = DEFAULT_GROUP_LABELS.team,
+    groupLabel,
+    subgroupLabel,
+    teamLabel,
   } = params;
+  const locale = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en' : 'vi';
 
   const toastId = toast.loading(i18n.t('reports.exportPreparing'));
 
@@ -36,9 +37,10 @@ export async function exportReportExcel(params: ExportParams) {
       group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
       subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
       team_id: selectedTeamId === 'all' ? undefined : selectedTeamId,
-      group_label: groupLabel,
-      subgroup_label: subgroupLabel,
-      team_label: teamLabel,
+      group_label: groupLabel || getLocalizedDefaultGroupLabel('group'),
+      subgroup_label: subgroupLabel || getLocalizedDefaultGroupLabel('subgroup'),
+      team_label: teamLabel || getLocalizedDefaultGroupLabel('team'),
+      locale,
     });
 
     saveAs(blob, fileName);

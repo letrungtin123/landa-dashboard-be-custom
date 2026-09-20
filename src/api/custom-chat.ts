@@ -121,6 +121,75 @@ export interface ReportChatFilter {
   team_id?: string;
 }
 
+export type ReportMetricId = 'total_learners' | 'active_learners' | 'completion_rate' | 'total_enrollments' | 'incomplete_enrollments';
+export type ReportMetricUnit = 'count' | 'percentage';
+
+export interface ReportMetricFact {
+  id: ReportMetricId;
+  unit: ReportMetricUnit;
+  current: number;
+  previous: number | null;
+  delta_absolute: number | null;
+  delta_percent: number | null;
+  delta_percentage_points: number | null;
+}
+
+export interface ReportAnalyticsSignal {
+  id: string;
+  category: 'enrollment' | 'completion' | 'activity' | 'course';
+  severity: 'attention' | 'warning' | 'neutral';
+  threshold_version: string;
+  evidence: {
+    metric_id?: ReportMetricId;
+    course_id?: string;
+    course_name?: string;
+    current?: number;
+    previous?: number;
+    delta_absolute?: number;
+    delta_percentage_points?: number;
+    affected_course_count?: number;
+    enrollment_count?: number;
+    completion_rate?: number;
+  };
+}
+
+export interface ReportSnapshotV2 {
+  version: 2;
+  generated_at: string;
+  timezone: string;
+  filter: Required<Pick<ReportChatFilter, 'date_from' | 'date_to'>> & ReportChatFilter;
+  scope_display?: { group_name?: string; subgroup_name?: string; team_name?: string };
+  comparison: { date_from: string; date_to: string; basis: string };
+  comparison_display?: Record<'vi' | 'en', {
+    title: string;
+    date_label: string;
+    delta_suffix: string;
+  }>;
+  enrollment_trend_context?: { granularity?: 'day' | 'week' | 'month' };
+  factual_metrics: ReportMetricFact[];
+  signals: ReportAnalyticsSignal[];
+  signal_threshold_version: string;
+  completion_status_distribution?: { not_started: number; in_progress: number; completed: number };
+  course_portfolio?: Array<{
+    course_id: string;
+    name: string;
+    total_enrollments: number;
+    completed_enrollments: number;
+    incomplete_enrollments: number;
+    completion_rate: number;
+  }>;
+  availability: { state: 'available' | 'empty' | 'no_accessible_scope'; limitations: string[] };
+}
+
+export interface ReportNarrative {
+  selected_signal_ids: string[];
+  interpretation: string[];
+  recommended_actions: Array<{ signal_id: string | null; priority: 'high' | 'medium' | 'low'; action: string }>;
+  limitations: string[];
+}
+
+export type ReportStreamStatus = 'collecting' | 'analyzing';
+
 export type ReportPdfExportPhase = 'validating' | 'narrative' | 'rendering' | 'ready' | 'failed';
 
 export interface ReportPdfExportJob {
@@ -574,6 +643,7 @@ export function sendMessageStream(
     onProposal?: (event: LessonAuthorProposalEvent) => void;
     onBlueprint?: (event: LessonAuthorBlueprintEvent) => void;
     onProgress?: (event: LessonAuthorProgressEvent) => void;
+    onReportStatus?: (status: ReportStreamStatus) => void;
   } = {},
 ): AbortController {
   const controller = new AbortController();
@@ -671,6 +741,7 @@ export function sendMessageStream(
           else if (event.type === 'proposal') options.onProposal?.(event);
           else if (event.type === 'blueprint') options.onBlueprint?.(event);
           else if (event.type === 'progress') options.onProgress?.(event);
+          else if (event.type === 'report_status' && (event.stage === 'collecting' || event.stage === 'analyzing')) options.onReportStatus?.(event.stage);
         } catch { /* skip malformed line */ }
       };
 
