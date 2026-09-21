@@ -1310,24 +1310,29 @@
 .lesson-html-content :where(table) {
   color: var(--foreground);
   border-color: var(--border);
+  max-width: none;
 }
 
-.lesson-html-content :where(thead, thead tr) {
-  background-color: var(--muted) !important;
+.lesson-html-content {
+  overflow-x: auto;
 }
 
-.lesson-html-content :where(th, thead td) {
+.lesson-html-content :where(th:not([data-landa-cell-bg])) {
   color: var(--foreground) !important;
   background-color: var(--muted) !important;
   border-color: var(--border) !important;
 }
 
-.lesson-html-content :where(th, thead td) * {
+.lesson-html-content :where(th:not([data-landa-cell-bg])) * {
   color: var(--foreground) !important;
 }
 
 .lesson-html-content :where(td) {
   border-color: var(--border);
+}
+
+.lesson-html-content :where(em, i) {
+  font-style: italic !important;
 }
 
 /* ── NProgress Loading Bar — Gradient ── */

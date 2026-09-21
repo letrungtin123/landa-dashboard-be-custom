@@ -8,6 +8,7 @@
  */
 
 import { apiClient } from './client';
+import i18n from '@/i18n';
 
 // ─────────────────────────────────────────────
 // Types
@@ -123,6 +124,17 @@ function cmsHeaders() {
   return { 'X-CSRFToken': getCsrfToken() };
 }
 
+function defaultComponentDisplayName(category?: string): string {
+  const key = category && [
+    'chapter', 'sequential', 'vertical', 'video', 'html', 'problem',
+    'la_media_quiz', 'la_image_choice_quiz', 'la_scenario_chat',
+    'la_crossword', 'la_sortable', 'la_diagram', 'la_faq', 'la_pdf',
+  ].includes(category)
+    ? category
+    : 'fallback';
+  return i18n.t(`courseComponentDefaults.blockNames.${key}`);
+}
+
 // ─────────────────────────────────────────────
 // Course Index API (Outline)
 // ─────────────────────────────────────────────
@@ -190,11 +202,12 @@ export async function getUnitChildren(unitId: string): Promise<UnitChildrenRespo
  * POST /landa-admin/api/authoring/xblock/
  */
 export async function createXBlock(payload: CreateXBlockPayload): Promise<{ locator: string; courseKey: string }> {
+  const displayName = payload.display_name?.trim() || defaultComponentDisplayName(payload.type || payload.category);
   const body = {
     type: payload.type || payload.category,
     category: payload.category || payload.type,
     parent_locator: payload.parent_locator,
-    ...(payload.display_name && { display_name: payload.display_name }),
+    display_name: displayName,
     ...(payload.boilerplate && { boilerplate: payload.boilerplate }),
   };
   const { data } = await apiClient.post('/cms-api/landa-admin/api/authoring/xblock/', body);

@@ -24,10 +24,17 @@ async function getAuthStore() {
   return useAuthStore;
 }
 
+async function getLocaleStore() {
+  const { useLocaleStore } = await import("@/utils/locale-store");
+  return useLocaleStore;
+}
+
 // Request: gắn Bearer + CSRF
 apiClient.interceptors.request.use(async (req) => {
   const store = await getAuthStore();
+  const localeStore = await getLocaleStore();
   const { accessToken } = store.getState();
+  req.headers["X-UI-Locale"] = localeStore.getState().locale;
   if (accessToken) {
     req.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -93,4 +100,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-

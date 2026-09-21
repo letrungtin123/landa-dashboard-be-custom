@@ -46,7 +46,7 @@ export function normalizeDiagramData(value: unknown): DiagramDataLike | null {
     .map((diagram, diagramIndex) => ({
       ...diagram,
       id: String(diagram.id ?? `diagram-${diagramIndex + 1}`),
-      name: String(diagram.name ?? `Sơ đồ ${diagramIndex + 1}`),
+      name: String(diagram.name ?? i18n.t('courseComponentDefaults.diagram.name', { count: diagramIndex + 1 })),
       nodes: Array.isArray(diagram.nodes) ? diagram.nodes : [],
       edges: Array.isArray(diagram.edges) ? diagram.edges : [],
     }));
@@ -151,3 +151,4 @@ export function normalizeDiagramEdges(edges: any[], nodes: any[]): any[] {
     .filter(Boolean);
   return normalized;
 }
+import i18n from '@/i18n';

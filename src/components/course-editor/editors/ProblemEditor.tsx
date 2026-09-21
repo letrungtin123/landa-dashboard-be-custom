@@ -410,11 +410,11 @@ export default function ProblemEditor({
     return {
       type: 'multiplechoiceresponse',
       rootAttrs: '',
-      questionHtml: '<p>Nhập câu hỏi của bạn vào đây</p>',
+      questionHtml: `<p>${t('courseComponentDefaults.problem.question')}</p>`,
       explanationHtml: '',
       choices: [
-        { id: 'c1', html: 'Đáp án đúng', correct: true },
-        { id: 'c2', html: 'Đáp án sai', correct: false }
+        { id: 'c1', html: t('courseComponentDefaults.problem.correct'), correct: true },
+        { id: 'c2', html: t('courseComponentDefaults.problem.incorrect'), correct: false }
       ],
       hints: []
     };
@@ -620,13 +620,13 @@ export default function ProblemEditor({
       const newState: ProblemState = {
         type: type.id as any,
         rootAttrs: '',
-        questionHtml: '<p>Câu hỏi của bạn</p>',
+        questionHtml: `<p>${t(type.id === 'numericalresponse' ? 'courseComponentDefaults.problem.numericalQuestion' : 'courseComponentDefaults.problem.question')}</p>`,
         explanationHtml: '',
         choices: isNumStr ? [
-          { id: 'c1', html: type.id === 'numericalresponse' ? '100' : 'đáp án đúng', correct: true }
+          { id: 'c1', html: type.id === 'numericalresponse' ? '100' : t('courseComponentDefaults.problem.correct'), correct: true }
         ] : [
-          { id: 'c1', html: 'Đáp án đúng', correct: true },
-          { id: 'c2', html: 'Đáp án sai', correct: false }
+          { id: 'c1', html: t('courseComponentDefaults.problem.correct'), correct: true },
+          { id: 'c2', html: t('courseComponentDefaults.problem.incorrect'), correct: false }
         ],
         tolerance: type.id === 'numericalresponse' ? '5%' : undefined,
         hints: []
@@ -649,7 +649,7 @@ export default function ProblemEditor({
   const handleAddChoice = () => {
     updateState(s => ({
       ...s,
-      choices: [...s.choices, { id: `c-${Date.now()}`, html: 'Đáp án mới', correct: false }]
+      choices: [...s.choices, { id: `c-${Date.now()}`, html: t('courseComponentDefaults.problem.newAnswer'), correct: false }]
     }));
   };
 
@@ -668,7 +668,7 @@ export default function ProblemEditor({
   };
 
   const handleAddHint = () => {
-    updateState(s => ({ ...s, hints: [...s.hints, 'Gợi ý mới'] }));
+    updateState(s => ({ ...s, hints: [...s.hints, t('courseComponentDefaults.problem.newHint')] }));
   };
 
   const handleUpdateHint = (idx: number, val: string) => {

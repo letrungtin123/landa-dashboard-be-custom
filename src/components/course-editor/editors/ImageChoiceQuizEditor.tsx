@@ -47,10 +47,14 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function defaultImageChoiceText(key: string, options?: Record<string, number>) {
+  return i18n.t(`courseComponentDefaults.imageChoice.${key}`, options);
+}
+
 function defaultChoice(index: number, correct = false): ImageChoiceQuizChoice {
   return {
     id: makeId('choice'),
-    html: `<p>${correct ? 'Đáp án đúng' : `Đáp án sai ${index}`}</p>`,
+    html: `<p>${correct ? defaultImageChoiceText('correct') : defaultImageChoiceText('incorrect', { count: index })}</p>`,
     correct,
     image: {
       storage_path: '',
@@ -62,7 +66,7 @@ function defaultChoice(index: number, correct = false): ImageChoiceQuizChoice {
 export function createDefaultImageChoiceQuizData(): ImageChoiceQuizData {
   return {
     version: 1,
-    prompt_html: '<p>Câu hỏi của bạn</p>',
+    prompt_html: `<p>${defaultImageChoiceText('question')}</p>`,
     explanation_html: '',
     hints: [],
     choices: [defaultChoice(1, true), defaultChoice(2, false)],
@@ -78,7 +82,7 @@ function stripHtml(value: string): string {
 function normalizeChoice(raw: any, index: number): ImageChoiceQuizChoice {
   return {
     id: typeof raw?.id === 'string' && raw.id ? raw.id : `choice_${index + 1}`,
-    html: typeof raw?.html === 'string' && raw.html.trim() ? raw.html : `<p>Đáp án ${index + 1}</p>`,
+    html: typeof raw?.html === 'string' && raw.html.trim() ? raw.html : `<p>${defaultImageChoiceText('answer', { count: index + 1 })}</p>`,
     correct: raw?.correct === true,
     image: {
       storage_path: typeof raw?.image?.storage_path === 'string' ? raw.image.storage_path.trim() : '',
@@ -106,7 +110,7 @@ export function normalizeImageChoiceQuizData(raw: any): ImageChoiceQuizData {
     version: 1,
     prompt_html: typeof raw?.prompt_html === 'string' && raw.prompt_html.trim()
       ? raw.prompt_html
-      : '<p>Câu hỏi của bạn</p>',
+      : `<p>${defaultImageChoiceText('question')}</p>`,
     explanation_html: typeof raw?.explanation_html === 'string' ? raw.explanation_html : '',
     hints: Array.isArray(raw?.hints)
       ? raw.hints
@@ -293,7 +297,7 @@ export default function ImageChoiceQuizEditor({
     }
     updateQuiz(previous => ({
       ...previous,
-      hints: [...(previous.hints || []), '<p>Gợi ý mới</p>'],
+      hints: [...(previous.hints || []), `<p>${i18n.t('courseComponentDefaults.problem.newHint')}</p>`],
     }));
   };
 

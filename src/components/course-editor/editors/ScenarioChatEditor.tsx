@@ -51,34 +51,38 @@ function textValue(raw: unknown, fallback = ''): string {
   return typeof raw === 'string' ? raw : fallback;
 }
 
+function defaultScenarioText(key: string) {
+  return i18n.t(`courseComponentDefaults.scenario.${key}`);
+}
+
 function defaultChoices(): ScenarioChatChoice[] {
   return [
     {
       id: makeId('choice'),
-      text: 'Phản hồi phù hợp',
+      text: defaultScenarioText('correctChoice'),
       correct: true,
-      response_message: 'Cảm ơn bạn, cách phản hồi này phù hợp với tình huống.',
-      response_description: 'Phản hồi của nhân vật',
+      response_message: defaultScenarioText('correctResponse'),
+      response_description: defaultScenarioText('responseDescription'),
       character_status: '',
-      explanation: 'Đáp án này đúng vì thể hiện thái độ và nội dung phù hợp với mục tiêu giao tiếp.',
+      explanation: defaultScenarioText('correctExplanation'),
     },
     {
       id: makeId('choice'),
-      text: 'Phản hồi chưa phù hợp 1',
+      text: defaultScenarioText('incorrectChoiceOne'),
       correct: false,
-      response_message: 'Cách phản hồi này có thể khiến cuộc trao đổi đi sai hướng.',
-      response_description: 'Phản hồi của nhân vật',
+      response_message: defaultScenarioText('incorrectResponseOne'),
+      response_description: defaultScenarioText('responseDescription'),
       character_status: '',
-      explanation: 'Đáp án này chưa đúng. Hãy chọn cách phản hồi rõ ràng và phù hợp hơn.',
+      explanation: defaultScenarioText('incorrectExplanationOne'),
     },
     {
       id: makeId('choice'),
-      text: 'Phản hồi chưa phù hợp 2',
+      text: defaultScenarioText('incorrectChoiceTwo'),
       correct: false,
-      response_message: 'Tôi chưa nhận được thông tin cần thiết từ câu trả lời này.',
-      response_description: 'Phản hồi của nhân vật',
+      response_message: defaultScenarioText('incorrectResponseTwo'),
+      response_description: defaultScenarioText('responseDescription'),
       character_status: '',
-      explanation: 'Đáp án này chưa đúng vì chưa xử lý trọng tâm của tình huống.',
+      explanation: defaultScenarioText('incorrectExplanationTwo'),
     },
   ];
 }
@@ -88,9 +92,9 @@ export function createScenarioChatRound(index: number): ScenarioChatRound {
     id: makeId('round'),
     scenario_message: {
       text: index === 0
-        ? 'Chào bạn, tôi cần trao đổi với bạn về tình huống này.'
-        : 'Tình huống tiếp theo diễn ra như sau.',
-      description: 'Hãy chọn phản hồi phù hợp nhất.',
+        ? defaultScenarioText('firstScenario')
+        : defaultScenarioText('nextScenario'),
+      description: defaultScenarioText('scenarioDescription'),
     },
     choices: defaultChoices(),
   };
@@ -124,13 +128,13 @@ function ensureThreeChoices(rawChoices: any[]): ScenarioChatChoice[] {
 function scenarioContextDescription(parsed: any): string {
   if (typeof parsed?.context_description === 'string') return parsed.context_description;
   if (typeof parsed?.status_line === 'string') return parsed.status_line;
-  if (!Array.isArray(parsed?.rounds)) return 'Tình huống bắt đầu';
+  if (!Array.isArray(parsed?.rounds)) return defaultScenarioText('context');
 
   const legacyRoundContext = parsed.rounds
     .map((round: any) => textValue(round?.status_line).trim())
     .find((value: string) => value.length > 0);
 
-  return legacyRoundContext || 'Tình huống bắt đầu';
+  return legacyRoundContext || defaultScenarioText('context');
 }
 
 export function normalizeScenarioChatData(raw: any): ScenarioChatData {
@@ -152,12 +156,12 @@ export function normalizeScenarioChatData(raw: any): ScenarioChatData {
     version: 1,
     context_description: scenarioContextDescription(parsed),
     participant: {
-      name: textValue(parsed?.participant?.name, 'Nhân vật tình huống') || 'Nhân vật tình huống',
-      description: textValue(parsed?.participant?.description, 'Người đối thoại trong kịch bản'),
+      name: textValue(parsed?.participant?.name, defaultScenarioText('participantName')) || defaultScenarioText('participantName'),
+      description: textValue(parsed?.participant?.description, defaultScenarioText('participantDescription')),
     },
     learner: {
-      name: textValue(parsed?.learner?.name, 'Bạn') || 'Bạn',
-      description: textValue(parsed?.learner?.description, 'Học viên'),
+      name: textValue(parsed?.learner?.name, defaultScenarioText('learnerName')) || defaultScenarioText('learnerName'),
+      description: textValue(parsed?.learner?.description, defaultScenarioText('learnerDescription')),
     },
     rounds: rounds.length > 0 ? rounds : [createScenarioChatRound(0)],
   };

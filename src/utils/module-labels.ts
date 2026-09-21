@@ -5,6 +5,7 @@ export const MODULE_DISPLAY_NAME_KEYS: Record<string, string> = {
   library: "modules.library",
   courses: "modules.courses",
   course_categories: "modules.courseCategories",
+  badge_management: "modules.badgeManagement",
   account: "modules.account",
   groups: "modules.groups",
   permission_groups: "modules.permissionGroups",

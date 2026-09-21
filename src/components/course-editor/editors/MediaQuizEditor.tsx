@@ -63,12 +63,16 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function defaultMediaQuizText(key: string, options?: Record<string, number>) {
+  return i18n.t(`courseComponentDefaults.mediaQuiz.${key}`, options);
+}
+
 function defaultChoices(mode: MediaQuizMode): MediaQuizChoice[] {
   return [
-    { id: makeId('choice'), html: '<p>Đáp án đúng</p>', correct: true },
-    { id: makeId('choice'), html: '<p>Đáp án sai</p>', correct: false },
+    { id: makeId('choice'), html: `<p>${defaultMediaQuizText('correct')}</p>`, correct: true },
+    { id: makeId('choice'), html: `<p>${defaultMediaQuizText('incorrect')}</p>`, correct: false },
     ...(mode === 'multiple_select'
-      ? [{ id: makeId('choice'), html: '<p>Một đáp án đúng khác</p>', correct: true }]
+      ? [{ id: makeId('choice'), html: `<p>${defaultMediaQuizText('additionalCorrect')}</p>`, correct: true }]
       : []),
   ];
 }
@@ -77,7 +81,7 @@ function createQuestion(mode: MediaQuizMode, index: number): MediaQuizQuestion {
   return {
     id: makeId('q'),
     mode,
-    prompt_html: `<p>Câu hỏi ${index + 1}</p>`,
+    prompt_html: `<p>${defaultMediaQuizText('question', { count: index + 1 })}</p>`,
     explanation_html: '',
     hints: [],
     media: null,
@@ -101,7 +105,7 @@ function parseMediaQuizMode(raw: unknown, fallback: MediaQuizMode): MediaQuizMod
 function normalizeChoice(raw: any, index: number, mode: MediaQuizMode): MediaQuizChoice {
   return {
     id: typeof raw?.id === 'string' && raw.id ? raw.id : `choice-${index}`,
-    html: typeof raw?.html === 'string' && raw.html.trim() ? raw.html : `<p>Lựa chọn ${index + 1}</p>`,
+    html: typeof raw?.html === 'string' && raw.html.trim() ? raw.html : `<p>${defaultMediaQuizText('option', { count: index + 1 })}</p>`,
     correct: typeof raw?.correct === 'boolean'
       ? raw.correct
       : mode === 'single_select' && index === 0,
@@ -123,7 +127,7 @@ export function normalizeMediaQuizData(raw: any, fallbackMode: MediaQuizMode = '
         mode: questionMode,
         prompt_html: typeof q?.prompt_html === 'string' && q.prompt_html.trim()
           ? q.prompt_html
-          : `<p>Câu hỏi ${index + 1}</p>`,
+          : `<p>${defaultMediaQuizText('question', { count: index + 1 })}</p>`,
         explanation_html: typeof q?.explanation_html === 'string' ? q.explanation_html : '',
         hints: Array.isArray(q?.hints)
           ? q.hints.filter((hint: unknown): hint is string => typeof hint === 'string').slice(0, 10)
@@ -477,7 +481,7 @@ export default function MediaQuizEditor({
   const handleAddHint = (questionId: string) => {
     updateQuestion(questionId, question => ({
       ...question,
-      hints: [...(question.hints || []), '<p>Gợi ý mới</p>'],
+      hints: [...(question.hints || []), `<p>${i18n.t('courseComponentDefaults.problem.newHint')}</p>`],
     }));
   };
 

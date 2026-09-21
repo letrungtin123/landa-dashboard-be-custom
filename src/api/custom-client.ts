@@ -32,6 +32,11 @@ async function getTenantStore() {
   return useTenantStore;
 }
 
+async function getLocaleStore() {
+  const { useLocaleStore } = await import("@/utils/locale-store");
+  return useLocaleStore;
+}
+
 function getHeaderTenantId(req: InternalAxiosRequestConfig): string | null {
   const rawValue = req.headers['X-Tenant-Id'] ?? req.headers['x-tenant-id'];
   return typeof rawValue === 'string' && rawValue.trim() ? rawValue.trim() : null;
@@ -55,7 +60,9 @@ function isQuotaRelevantMutation(req: InternalAxiosRequestConfig): boolean {
 // ── Request Interceptor: gắn Bearer token + X-Tenant-Id (superadmin/superuser) ──
 customApiClient.interceptors.request.use(async (req) => {
   const store = await getAuthStore();
+  const localeStore = await getLocaleStore();
   const { accessToken, user } = store.getState();
+  req.headers['X-UI-Locale'] = localeStore.getState().locale;
   if (accessToken) {
     req.headers.Authorization = `Bearer ${accessToken}`;
   }
