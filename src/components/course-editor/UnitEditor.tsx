@@ -2,7 +2,7 @@
  * UnitEditor.tsx — Hiển thị và chỉnh sửa components trong một Unit
  * Hỗ trợ: video, html, problem (5 dạng), la_crossword, la_sortable
  */
-import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -97,12 +97,7 @@ import { useTenantStore } from '@/utils/tenant-store';
 import { useAuthStore } from '@/utils/store';
 import { normalizeCourseComponentPermissionTypes } from '@/utils/course-component-permissions';
 import {
-  clearCourseComponentDraft,
-  courseComponentServerFingerprint,
-  loadCourseComponentDraft,
-  pruneExpiredCourseComponentDrafts,
-  saveCourseComponentDraft,
-  type CourseComponentDraftScope,
+  clearLegacyCourseComponentDrafts,
 } from '@/utils/course-component-draft-store';
 import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
@@ -156,6 +151,26 @@ function removedUploadedHtmlImagePaths(beforeHtml: string, afterHtml: string): s
   const beforePaths = extractUploadedHtmlImagePaths(beforeHtml);
   const afterPaths = new Set(extractUploadedHtmlImagePaths(afterHtml));
   return beforePaths.filter((path) => !afterPaths.has(path));
+}
+
+/**
+ * Removes only durable course-asset image nodes from the active edit state.
+ * This is used after an inline image autosave fails, so a later reopen cannot
+ * render a broken image after Storage cleanup.
+ */
+function removeUploadedHtmlImages(html: string, storagePaths: ReadonlySet<string>): string {
+  if (!html || storagePaths.size === 0 || typeof DOMParser === 'undefined') return html;
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('img').forEach((img) => {
+      const storagePath = htmlImageStoragePath(img.getAttribute('src'));
+      if (storagePath && storagePaths.has(storagePath)) img.remove();
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
 }
 
 async function cleanupCourseHtmlImages(courseId: string | undefined, storagePaths: string[]): Promise<void> {
@@ -334,7 +349,10 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
   const activeTenantId = useTenantStore((s) => s.activeTenantId);
 
   useEffect(() => {
-    pruneExpiredCourseComponentDrafts();
+    // Version before 2026-09 kept component edits in browser storage. The
+    // editor no longer recovers local drafts, so remove that legacy data once
+    // the author enters the course editor.
+    clearLegacyCourseComponentDrafts();
   }, []);
 
   const { data: unitChildren, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
@@ -556,15 +574,14 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const blockId = block.id || block.block_id;
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
-  const activeTenantId = useTenantStore((state) => state.activeTenantId);
   const [isEditing, setIsEditing] = useState(false);
   const [blockData, setBlockData] = useState<any>(null);
   const [editingBlockData, setEditingBlockData] = useState<any>(null);
   const [detailVersion, setDetailVersion] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState(true);
-  const [isDraftLoading, setIsDraftLoading] = useState(false);
-  const [recoveredDraft, setRecoveredDraft] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
-  const [draftConflict, setDraftConflict] = useState<{ state: ComponentEditDraftState; createdAt: number } | null>(null);
+  const [isEditorLoading, setIsEditorLoading] = useState(false);
+  const [hasUnsavedEditorChanges, setHasUnsavedEditorChanges] = useState(false);
+  const [showDiscardUnsavedDialog, setShowDiscardUnsavedDialog] = useState(false);
   const [activeCourseAssetUploadIds, setActiveCourseAssetUploadIds] = useState<Set<string>>(() => new Set());
   const editorLoadSequenceRef = useRef(0);
 
@@ -585,18 +602,6 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   }, [courseId]);
 
   const isCourseAssetUploading = activeCourseAssetUploadIds.size > 0;
-
-  const draftScope = useMemo<CourseComponentDraftScope | null>(() => {
-    const tenantId = activeTenantId || currentUser?.tenant_id || '';
-    if (!currentUser?.id || !tenantId || !courseId || !blockId || !block.block_type) return null;
-    return {
-      actorId: currentUser.id,
-      tenantId,
-      courseId,
-      blockId,
-      componentType: block.block_type,
-    };
-  }, [activeTenantId, block.block_type, blockId, courseId, currentUser?.id, currentUser?.tenant_id]);
 
   // ── dnd-kit sortable hook ──
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: blockId });
@@ -626,7 +631,6 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const delMut = useMutation({
     mutationFn: () => deleteXBlock(blockId),
     onSuccess: () => {
-      if (draftScope) clearCourseComponentDraft(draftScope);
       toast.success(i18n.t('courseUnit.deleted'));
       onDelete();
     },
@@ -639,7 +643,6 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const rollbackMut = useMutation({
     mutationFn: () => discardDraft(blockId),
     onSuccess: async () => {
-      if (draftScope) clearCourseComponentDraft(draftScope);
       toast.success(i18n.t('courseUnit.restored'));
       await loadDetail();
       if (courseId) queryClient.invalidateQueries({ queryKey: ['course-assets', courseId] });
@@ -648,15 +651,20 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     onError: () => toast.error(i18n.t('courseUnit.restoreFailed')),
   });
 
-  const handleSaved = useCallback(async () => {
-    if (draftScope) clearCourseComponentDraft(draftScope);
+  const closeEditor = useCallback(() => {
+    editorLoadSequenceRef.current += 1;
     setIsEditing(false);
     setEditingBlockData(null);
-    setRecoveredDraft(null);
-    setDraftConflict(null);
+    setIsEditorLoading(false);
+    setHasUnsavedEditorChanges(false);
+    setShowDiscardUnsavedDialog(false);
+  }, []);
+
+  const handleSaved = useCallback(async () => {
+    closeEditor();
     await loadDetail(); // Refresh preview sau save
     onSaved();
-  }, [draftScope, loadDetail, onSaved]);
+  }, [closeEditor, loadDetail, onSaved]);
 
   const handleImmediateSaved = useCallback(() => {
     onSaved();
@@ -668,82 +676,39 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     const sequence = editorLoadSequenceRef.current + 1;
     editorLoadSequenceRef.current = sequence;
     setIsEditing(true);
-    setIsDraftLoading(true);
-    setRecoveredDraft(null);
-    setDraftConflict(null);
+    setIsEditorLoading(true);
+    setHasUnsavedEditorChanges(false);
 
     try {
-      // Always compare against a fresh server snapshot. The card deliberately
-      // does not refetch while an editor is open, so reusing blockData here
-      // could silently accept a stale draft after another admin changed it.
       const currentBlock = await fetchBlockDetail(block);
       if (editorLoadSequenceRef.current !== sequence) return;
-      setEditingBlockData(currentBlock);
-      if (!draftScope) {
-        if (currentBlock.__detailLoadFailed) {
-          toast.error(i18n.t('courseUnit.loadFailed'));
-          setEditingBlockData(null);
-          setIsEditing(false);
-        }
-        return;
-      }
-
-      const draft = await loadCourseComponentDraft<ComponentEditDraftState>(draftScope);
-      if (editorLoadSequenceRef.current !== sequence) return;
-      if (currentBlock.__detailLoadFailed && !draft) {
+      if (currentBlock.__detailLoadFailed) {
         toast.error(i18n.t('courseUnit.loadFailed'));
         setEditingBlockData(null);
         setIsEditing(false);
         return;
       }
-      if (!draft) return;
-
-      const payload = { state: draft.state, createdAt: draft.createdAt };
-      if (currentBlock.__detailLoadFailed) {
-        // Never offer a misleading "latest" version when the latest server
-        // snapshot could not be read. The complete local state remains usable
-        // and the user does not lose it merely because the network blipped.
-        setRecoveredDraft(payload);
-        toast.warning(i18n.t('courseComponentDraft.serverCheckUnavailable'));
-        return;
-      }
-      if (draft.baselineFingerprint === courseComponentServerFingerprint(currentBlock)) {
-        setRecoveredDraft(payload);
-        toast.info(i18n.t('courseComponentDraft.localDraftRestored'));
-      } else {
-        setDraftConflict(payload);
-      }
+      setEditingBlockData(currentBlock);
     } finally {
-      if (editorLoadSequenceRef.current === sequence) setIsDraftLoading(false);
+      if (editorLoadSequenceRef.current === sequence) setIsEditorLoading(false);
     }
-  }, [block, draftScope]);
+  }, [block]);
 
-  const handleEditingOpenChange = useCallback((open: boolean) => {
-    if (open) return;
+  const requestEditorClose = useCallback(() => {
     if (isCourseAssetUploading) {
       toast.info(i18n.t('courseEditorForms.uploading'));
       return;
     }
-    editorLoadSequenceRef.current += 1;
-    setIsEditing(false);
-    setEditingBlockData(null);
-    setIsDraftLoading(false);
-    setDraftConflict(null);
-  }, [isCourseAssetUploading]);
+    if (hasUnsavedEditorChanges) {
+      setShowDiscardUnsavedDialog(true);
+      return;
+    }
+    closeEditor();
+  }, [closeEditor, hasUnsavedEditorChanges, isCourseAssetUploading]);
 
-  const useServerVersion = useCallback(() => {
-    if (draftScope) clearCourseComponentDraft(draftScope);
-    setRecoveredDraft(null);
-    setDraftConflict(null);
-  }, [draftScope]);
-
-  const discardLocalDraftAndClose = useCallback(() => {
-    if (draftScope) clearCourseComponentDraft(draftScope);
-    setRecoveredDraft(null);
-    setDraftConflict(null);
-    setEditingBlockData(null);
-    setIsEditing(false);
-  }, [draftScope]);
+  const handleEditingOpenChange = useCallback((open: boolean) => {
+    if (!open) requestEditorClose();
+  }, [requestEditorClose]);
 
   return (
     <div
@@ -852,24 +817,10 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
       {/* Fullscreen Editor for Diagram */}
       {isEditing && block.block_type === 'la_diagram' && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 left-0 top-0 z-[9999] flex h-[100dvh] w-screen flex-col overflow-hidden bg-background">
-          {loadingDetail || isDraftLoading ? (
+          {loadingDetail || isEditorLoading ? (
             <div className="m-auto w-full max-w-3xl space-y-4 p-6">
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-[48vh] w-full" />
-            </div>
-          ) : draftConflict ? (
-            <div className="m-auto flex max-w-xl flex-col items-center gap-5 p-6 text-center">
-              <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                {i18n.t('courseComponentDraft.localDraftConflictBadge')}
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-base font-semibold">{i18n.t('courseComponentDraft.localDraftConflictTitle')}</h3>
-                <p className="text-sm leading-6 text-muted-foreground">{i18n.t('courseComponentDraft.localDraftConflictDescription')}</p>
-              </div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <Button variant="outline" onClick={useServerVersion}>{i18n.t('courseComponentDraft.useServerVersion')}</Button>
-                <Button onClick={() => { setRecoveredDraft(draftConflict); setDraftConflict(null); }}>{i18n.t('courseComponentDraft.useLocalDraft')}</Button>
-              </div>
             </div>
           ) : (
             <ComponentEditForm
@@ -878,12 +829,8 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
               courseId={courseId}
               onSaved={handleSaved}
               onImmediateSaved={handleImmediateSaved}
-              onCancel={handleEditingOpenChange.bind(null, false)}
-              draftScope={draftScope}
-              initialDraft={recoveredDraft?.state}
-              initialDraftCreatedAt={recoveredDraft?.createdAt}
-              restoredFromDraft={Boolean(recoveredDraft)}
-              onDiscardLocalDraft={discardLocalDraftAndClose}
+              onCancel={requestEditorClose}
+              onDirtyChange={setHasUnsavedEditorChanges}
             />
           )}
         </div>,
@@ -896,10 +843,12 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
           className="w-[95vw] sm:max-w-7xl max-h-[92vh] flex flex-col overflow-hidden p-0"
           showCloseButton={!isCourseAssetUploading}
           onPointerDownOutside={(event) => {
-            if (isCourseAssetUploading) event.preventDefault();
+            event.preventDefault();
+            requestEditorClose();
           }}
           onEscapeKeyDown={(event) => {
-            if (isCourseAssetUploading) event.preventDefault();
+            event.preventDefault();
+            requestEditorClose();
           }}
         >
           <DialogHeader className="px-6 py-4 border-b bg-muted/20 shrink-0">
@@ -911,29 +860,11 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-6 py-5">
-            {loadingDetail || isDraftLoading ? (
+            {loadingDetail || isEditorLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-40 w-full" />
                 <Skeleton className="h-40 w-full" />
-              </div>
-            ) : draftConflict ? (
-              <div className="mx-auto flex max-w-xl flex-col items-center gap-5 py-8 text-center">
-                <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                  {i18n.t('courseComponentDraft.localDraftConflictBadge')}
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-base font-semibold">{i18n.t('courseComponentDraft.localDraftConflictTitle')}</h3>
-                  <p className="text-sm leading-6 text-muted-foreground">{i18n.t('courseComponentDraft.localDraftConflictDescription')}</p>
-                </div>
-                <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                  <Button variant="outline" onClick={useServerVersion}>
-                    {i18n.t('courseComponentDraft.useServerVersion')}
-                  </Button>
-                  <Button onClick={() => { setRecoveredDraft(draftConflict); setDraftConflict(null); }}>
-                    {i18n.t('courseComponentDraft.useLocalDraft')}
-                  </Button>
-                </div>
               </div>
             ) : (
               <ComponentEditForm
@@ -942,17 +873,30 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
                 courseId={courseId}
                 onSaved={handleSaved}
                 onImmediateSaved={handleImmediateSaved}
-                onCancel={handleEditingOpenChange.bind(null, false)}
-                draftScope={draftScope}
-                initialDraft={recoveredDraft?.state}
-                initialDraftCreatedAt={recoveredDraft?.createdAt}
-                restoredFromDraft={Boolean(recoveredDraft)}
-                onDiscardLocalDraft={discardLocalDraftAndClose}
+                onCancel={requestEditorClose}
+                onDirtyChange={setHasUnsavedEditorChanges}
               />
             )}
           </div>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={showDiscardUnsavedDialog} onOpenChange={setShowDiscardUnsavedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{i18n.t('courseUnit.unsavedChangesTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{i18n.t('courseUnit.unsavedChangesDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{i18n.t('courseUnit.continueEditing')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={closeEditor}
+            >
+              {i18n.t('courseUnit.discardChanges')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {courseId && <CourseOutlineTransferDialog
         open={showTransferDialog}
         onOpenChange={setShowTransferDialog}
@@ -1803,7 +1747,10 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
         const parser = new DOMParser();
         const doc = parser.parseFromString(rewrittenHtml, 'text/html');
         const uploadedImgEls = Array.from(doc.querySelectorAll('img'))
-          .filter((img) => isUploadedStorageImageSrc(img.getAttribute('src')));
+          .filter((img) => (
+            isUploadedStorageImageSrc(img.getAttribute('src'))
+            && img.getAttribute('data-landa-image-mode') !== 'inline'
+          ));
 
         if (uploadedImgEls.length >= 2) {
           images = uploadedImgEls.map(img => ({
@@ -3217,46 +3164,24 @@ function createComponentEditDraftState(blockInfo: any): ComponentEditDraftState 
   };
 }
 
-function hydrateComponentEditDraftState(blockInfo: any, localDraft?: ComponentEditDraftState): ComponentEditDraftState {
-  const source = createComponentEditDraftState(blockInfo);
-  if (!localDraft) return source;
-  return {
-    ...source,
-    ...localDraft,
-    metadata: { ...source.metadata, ...(localDraft.metadata || {}) },
-    editorUi: { ...source.editorUi, ...(localDraft.editorUi || {}) },
-    cwWords: Array.isArray(localDraft.cwWords) ? localDraft.cwWords : source.cwWords,
-    soItems: Array.isArray(localDraft.soItems) ? localDraft.soItems : source.soItems,
-    faqItems: Array.isArray(localDraft.faqItems) ? localDraft.faqItems : source.faqItems,
-  };
-}
-
 function ComponentEditForm({
   blockInfo,
   courseId,
   onSaved,
   onImmediateSaved,
   onCancel,
-  draftScope,
-  initialDraft,
-  initialDraftCreatedAt,
-  restoredFromDraft,
-  onDiscardLocalDraft,
+  onDirtyChange,
 }: {
   blockInfo: any;
   courseId?: string;
   onSaved: () => void;
   onImmediateSaved?: () => void;
   onCancel: () => void;
-  draftScope?: CourseComponentDraftScope | null;
-  initialDraft?: ComponentEditDraftState;
-  initialDraftCreatedAt?: number;
-  restoredFromDraft?: boolean;
-  onDiscardLocalDraft?: () => void;
+  onDirtyChange?: (hasUnsavedChanges: boolean) => void;
 }) {
   const category = blockInfo?.category || blockInfo?.block_type || '';
   const initialStateRef = useRef<ComponentEditDraftState | null>(null);
-  if (!initialStateRef.current) initialStateRef.current = hydrateComponentEditDraftState(blockInfo, initialDraft);
+  if (!initialStateRef.current) initialStateRef.current = createComponentEditDraftState(blockInfo);
   const initialState = initialStateRef.current;
   const initialHtmlContent = typeof blockInfo?.data === 'string' ? blockInfo.data : '';
 
@@ -3280,6 +3205,15 @@ function ComponentEditForm({
   const savedImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialState.imageChoiceQuizData);
   const currentImageChoiceQuizDataRef = useRef<ImageChoiceQuizData>(initialState.imageChoiceQuizData);
   const uploadedImageChoiceQuizPathsRef = useRef<Set<string>>(new Set());
+  // Inline clipboard images are uploaded before the block is saved. Keep their
+  // paths local to this edit session so a cancel/close can remove only assets
+  // that never became part of committed HTML.
+  const uploadedInlineHtmlImagePathsRef = useRef<Set<string>>(new Set());
+  const savedHtmlContentRef = useRef(initialHtmlContent);
+  const htmlContentRef = useRef(htmlContent);
+  const htmlWriteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const htmlSaveWorkPendingRef = useRef(0);
+  const htmlEditorMountedRef = useRef(true);
   const mediaQuizSaveInFlightRef = useRef(0);
   const imageChoiceQuizSaveInFlightRef = useRef(0);
   const metadataRef = useRef<any>(metadata);
@@ -3293,29 +3227,32 @@ function ComponentEditForm({
   useEffect(() => {
     metadataRef.current = metadata;
   }, [metadata]);
+  useEffect(() => {
+    htmlContentRef.current = htmlContent;
+  }, [htmlContent]);
 
-  const initialDraftSnapshotRef = useRef<ComponentEditDraftState>(initialState);
-  const draftCreatedAtRef = useRef<number | undefined>(initialDraftCreatedAt);
-  const baselineFingerprintRef = useRef(courseComponentServerFingerprint(blockInfo));
-  const [draftBaselineRevision, setDraftBaselineRevision] = useState(0);
-  const [draftStorageStatus, setDraftStorageStatus] = useState<'available' | 'memory-only'>('available');
-  const [showDiscardLocalDraftDialog, setShowDiscardLocalDraftDialog] = useState(false);
+  useEffect(() => {
+    if (category !== 'html') return;
+    htmlEditorMountedRef.current = true;
 
-  // Some editors save uploaded assets immediately. Refresh only the draft's
-  // server baseline after that succeeds so a later reopen does not mistake the
-  // editor's own committed asset change for somebody else's concurrent edit.
-  const acknowledgeServerAutoSave = useCallback(() => {
-    const id = blockInfo?.id;
-    if (id) {
-      void getBlockInfo(id)
-        .then((latestBlock) => {
-          baselineFingerprintRef.current = courseComponentServerFingerprint(latestBlock);
-          setDraftBaselineRevision((revision) => revision + 1);
-        })
-        .catch(() => undefined);
-    }
-    onImmediateSaved?.();
-  }, [blockInfo?.id, onImmediateSaved]);
+    return () => {
+      htmlEditorMountedRef.current = false;
+      // A queued/in-flight write owns these assets now. It will either mark
+      // them persisted or clean them on failure, avoiding a close-vs-save race.
+      if (htmlSaveWorkPendingRef.current > 0) return;
+
+      const savedPaths = new Set(extractUploadedHtmlImagePaths(savedHtmlContentRef.current));
+      const unsavedPaths = Array.from(uploadedInlineHtmlImagePathsRef.current)
+        .filter((path) => !savedPaths.has(path));
+      if (unsavedPaths.length === 0) return;
+
+      cleanupCourseHtmlImages(courseId, unsavedPaths).catch((err) => {
+        console.warn('Failed to cleanup unsaved inline HTML images:', err);
+      });
+    };
+  }, [category, courseId]);
+
+  const [savedSnapshot, setSavedSnapshot] = useState<ComponentEditDraftState>(initialState);
 
   const currentDraftState = useMemo<ComponentEditDraftState>(() => ({
     displayName,
@@ -3351,25 +3288,25 @@ function ComponentEditForm({
     soQuestionText,
   ]);
 
-  const hasLocalDraftChanges = useMemo(() => (
-    Boolean(restoredFromDraft)
-      || JSON.stringify(currentDraftState) !== JSON.stringify(initialDraftSnapshotRef.current)
-  ), [currentDraftState, restoredFromDraft]);
+  const hasUnsavedChanges = useMemo(() => (
+    JSON.stringify(currentDraftState) !== JSON.stringify(savedSnapshot)
+  ), [currentDraftState, savedSnapshot]);
 
-  // sessionStorage is written synchronously inside saveCourseComponentDraft. This
-  // layout effect runs before paint, so a normal reload immediately after typing
-  // still has a recovery journal; IndexedDB mirrors it without blocking the UI.
-  useLayoutEffect(() => {
-    if (!draftScope || !hasLocalDraftChanges) return;
-    const status = saveCourseComponentDraft(
-      draftScope,
-      baselineFingerprintRef.current,
-      currentDraftState,
-      draftCreatedAtRef.current,
-    );
-    if (!draftCreatedAtRef.current) draftCreatedAtRef.current = Date.now();
-    setDraftStorageStatus(status);
-  }, [currentDraftState, draftBaselineRevision, draftScope, hasLocalDraftChanges]);
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => () => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
+  // Asset flows may persist only one part of a component while the author is
+  // still editing other fields. Advance just that saved baseline so closing
+  // after an image autosave does not show a false unsaved-change warning.
+  const acknowledgeServerAutoSave = useCallback((savedPatch: Partial<ComponentEditDraftState>) => {
+    setSavedSnapshot((previous) => ({ ...previous, ...savedPatch }));
+    onImmediateSaved?.();
+  }, [onImmediateSaved]);
 
   useEffect(() => {
     if (category !== 'la_media_quiz') return;
@@ -3410,6 +3347,14 @@ function ComponentEditForm({
       });
     };
   }, [category, courseId]);
+
+  const enqueueHtmlWrite = useCallback((work: () => Promise<any>) => {
+    const queued = htmlWriteQueueRef.current
+      .catch(() => undefined)
+      .then(work);
+    htmlWriteQueueRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
+  }, []);
 
   const saveMut = useMutation({
     mutationFn: async (options?: {
@@ -3462,20 +3407,40 @@ function ComponentEditForm({
         });
       }
       if (category === 'html') {
-        const updated = await updateXBlock(id, {
-          metadata: { ...effectiveMetadata, display_name: displayName },
-          data: htmlContent,
-        });
-        const removedPaths = removedUploadedHtmlImagePaths(initialHtmlContent, htmlContent);
-        if (removedPaths.length > 0) {
-          try {
-            await cleanupCourseHtmlImages(courseId, removedPaths);
-          } catch (err) {
-            console.warn('Failed to cleanup removed HTML images:', err);
-            toast.warning(i18n.t('courseUnit.contentSavedImagesNotCleaned'));
-          }
+        const contentToSave = htmlContent;
+        htmlSaveWorkPendingRef.current += 1;
+        try {
+          return await enqueueHtmlWrite(async () => {
+            const updated = await updateXBlock(id, {
+              metadata: { ...effectiveMetadata, display_name: displayName },
+              data: contentToSave,
+            });
+            const savedPaths = new Set(extractUploadedHtmlImagePaths(contentToSave));
+            const removedPaths = removedUploadedHtmlImagePaths(savedHtmlContentRef.current, contentToSave);
+            const pathsToCleanup = Array.from(new Set(removedPaths));
+
+            let cleanupSucceeded = true;
+            if (pathsToCleanup.length > 0) {
+              try {
+                await cleanupCourseHtmlImages(courseId, pathsToCleanup);
+              } catch (err) {
+                cleanupSucceeded = false;
+                console.warn('Failed to cleanup removed HTML images:', err);
+                toast.warning(i18n.t('courseUnit.contentSavedImagesNotCleaned'));
+              }
+            }
+            savedHtmlContentRef.current = contentToSave;
+            if (cleanupSucceeded) {
+              uploadedInlineHtmlImagePathsRef.current = new Set(
+                Array.from(uploadedInlineHtmlImagePathsRef.current)
+                  .filter((path) => !savedPaths.has(path)),
+              );
+            }
+            return updated;
+          });
+        } finally {
+          htmlSaveWorkPendingRef.current = Math.max(0, htmlSaveWorkPendingRef.current - 1);
         }
-        return updated;
       }
       if (category === 'problem') {
         const payloadMetadata = { ...effectiveMetadata, display_name: displayName };
@@ -3608,26 +3573,95 @@ function ComponentEditForm({
     onSuccess: (_data, options) => {
       if (!options?.silent) toast.success(i18n.t('courseUnit.saved'));
       if (options?.keepOpen) {
-        acknowledgeServerAutoSave();
+        // keepOpen is currently used by the Image Choice editor after an
+        // asset change. This request persisted its complete draft payload.
+        acknowledgeServerAutoSave({
+          displayName,
+          metadata,
+          imageChoiceQuizData: normalizeImageChoiceQuizData(options.imageChoiceQuizData ?? imageChoiceQuizData),
+        });
       } else {
-        if (draftScope) clearCourseComponentDraft(draftScope);
         onSaved();
       }
     },
     onError: (err: any, options) => {
+      if (category === 'html' && !htmlEditorMountedRef.current) {
+        const savedPaths = new Set(extractUploadedHtmlImagePaths(savedHtmlContentRef.current));
+        const unsavedPaths = Array.from(uploadedInlineHtmlImagePathsRef.current)
+          .filter((path) => !savedPaths.has(path));
+        void cleanupCourseHtmlImages(courseId, unsavedPaths).catch(() => undefined);
+      }
       if (!options?.silent) toast.error(i18n.t('courseUnit.saveFailed', { message: getLocalizedApiError(err, i18n.t('courseUnit.unknownError')) }));
     },
   });
-
-  const [shouldAutoSave, setShouldAutoSave] = useState(false);
-  useEffect(() => {
-    if (shouldAutoSave) {
-      setShouldAutoSave(false);
-      saveMut.mutate({ keepOpen: true });
+  const persistInlineHtmlImageDraft = useCallback((nextHtmlContent: string) => {
+    if (category !== 'html') return;
+    const id = blockInfo?.id;
+    if (!id) {
+      toast.error(i18n.t('courseUnit.invalidBlockId'));
+      return;
     }
-  }, [shouldAutoSave, metadata, displayName, cwWords, soItems, htmlContent, problemXml, mediaQuizData, imageChoiceQuizData, saveMut]);
 
-  const triggerAutoSave = () => setShouldAutoSave(true);
+    // Reserve this write before it enters the promise queue. A close event may
+    // happen in the next browser event turn; the unmount cleanup must see that
+    // this Storage object already has an owner and must not delete it.
+    htmlContentRef.current = nextHtmlContent;
+    htmlSaveWorkPendingRef.current += 1;
+
+    void enqueueHtmlWrite(async () => {
+      try {
+        // A pasted image is part of the component body, not the carousel. Do
+        // not include metadata/display name here: unrelated edits remain local
+        // until the author uses the explicit Save action.
+        await updateXBlock(id, { data: nextHtmlContent });
+        const savedPaths = new Set(extractUploadedHtmlImagePaths(nextHtmlContent));
+        const removedPaths = removedUploadedHtmlImagePaths(savedHtmlContentRef.current, nextHtmlContent);
+
+        if (removedPaths.length > 0) {
+          try {
+            await cleanupCourseHtmlImages(courseId, removedPaths);
+          } catch (error) {
+            console.warn('Failed to cleanup removed HTML images after inline draft save:', error);
+            if (htmlEditorMountedRef.current) {
+              toast.warning(i18n.t('courseUnit.contentSavedImagesNotCleaned'));
+            }
+          }
+        }
+
+        savedHtmlContentRef.current = nextHtmlContent;
+        uploadedInlineHtmlImagePathsRef.current = new Set(
+          Array.from(uploadedInlineHtmlImagePathsRef.current)
+            .filter((path) => !savedPaths.has(path)),
+        );
+
+        acknowledgeServerAutoSave({ htmlContent: nextHtmlContent });
+      } catch (error) {
+        const persistedPaths = new Set(extractUploadedHtmlImagePaths(savedHtmlContentRef.current));
+        const failedPaths = extractUploadedHtmlImagePaths(nextHtmlContent)
+          .filter((path) => !persistedPaths.has(path));
+
+        if (failedPaths.length > 0) {
+          try {
+            await cleanupCourseHtmlImages(courseId, failedPaths);
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup inline HTML images after draft save failure:', cleanupError);
+          }
+
+          failedPaths.forEach((path) => uploadedInlineHtmlImagePathsRef.current.delete(path));
+          const cleanedHtml = removeUploadedHtmlImages(htmlContentRef.current, new Set(failedPaths));
+          htmlContentRef.current = cleanedHtml;
+
+          if (htmlEditorMountedRef.current) setHtmlContent(cleanedHtml);
+        }
+
+        if (htmlEditorMountedRef.current) {
+          toast.error(i18n.t('courseEditorForms.clipboardImageAutoSaveFailed'));
+        }
+      } finally {
+        htmlSaveWorkPendingRef.current = Math.max(0, htmlSaveWorkPendingRef.current - 1);
+      }
+    });
+  }, [acknowledgeServerAutoSave, blockInfo?.id, category, courseId, enqueueHtmlWrite]);
   const buildVideoPayload = (nextMetadata: any) => {
     const payloadMetadata = { display_name: displayName, ...nextMetadata };
     if (payloadMetadata.start_time === "00:00:00" || payloadMetadata.start_time === "") delete payloadMetadata.start_time;
@@ -3660,7 +3694,7 @@ function ComponentEditForm({
     } else {
       await updateXBlock(id, { metadata: { ...nextMetadata, display_name: displayName } });
     }
-    acknowledgeServerAutoSave();
+    acknowledgeServerAutoSave({ metadata: nextMetadata, displayName });
   };
   const autoSaveProblemMediaDraft = async (nextMedia: ProblemMedia) => {
     const normalized = normalizeProblemMedia(nextMedia);
@@ -3680,15 +3714,21 @@ function ComponentEditForm({
     const mediaQuizMode = hasSingle && hasMultiple ? 'mixed' : payloadData.mode;
     const removedPaths = removedMediaQuizStoragePaths(savedMediaQuizDataRef.current, payloadData);
 
+    const nextMetadata = { ...metadataRef.current, media_quiz_mode: mediaQuizMode };
     await updateXBlock(id, {
-      metadata: { ...metadataRef.current, display_name: displayName, media_quiz_mode: mediaQuizMode },
+      metadata: { ...nextMetadata, display_name: displayName },
       data: payloadData,
     });
 
     savedMediaQuizDataRef.current = payloadData;
     currentMediaQuizDataRef.current = payloadData;
     setMediaQuizData(payloadData);
-    acknowledgeServerAutoSave();
+    setMetadata(nextMetadata);
+    acknowledgeServerAutoSave({
+      displayName,
+      metadata: nextMetadata,
+      mediaQuizData: payloadData,
+    });
     if (removedPaths.length > 0) {
       await cleanupCourseMediaQuizAssets(courseId, removedPaths);
     }
@@ -3705,10 +3745,10 @@ function ComponentEditForm({
 
   const autoSavePdfDraft = async (nextPdfUrl: string) => {
     const id = blockInfo?.id;
-      if (!id) throw new Error(i18n.t('courseUnit.invalidBlockId'));
+    if (!id) throw new Error(i18n.t('courseUnit.invalidBlockId'));
     setPdfUrl(nextPdfUrl);
     await studioSubmit(id, { display_name: displayName, pdf_url: nextPdfUrl });
-    acknowledgeServerAutoSave();
+    acknowledgeServerAutoSave({ displayName, pdfUrl: nextPdfUrl });
   };
 
   const renderEditor = () => {
@@ -3734,11 +3774,18 @@ function ComponentEditForm({
             displayName={displayName}
             onDisplayNameChange={setDisplayName}
             htmlContent={htmlContent}
-            onHtmlChange={setHtmlContent}
+            onHtmlChange={(nextHtmlContent) => {
+              htmlContentRef.current = nextHtmlContent;
+              setHtmlContent(nextHtmlContent);
+            }}
             metadata={metadata}
             onMetadataChange={setMetadata}
             courseId={courseId || ''}
-            onImmediateSaved={acknowledgeServerAutoSave}
+            onImmediateSaved={(savedMetadata) => acknowledgeServerAutoSave({ metadata: savedMetadata })}
+            onInlineImageUploaded={(storagePath) => {
+              uploadedInlineHtmlImagePathsRef.current.add(storagePath);
+            }}
+            onInlineImageInserted={persistInlineHtmlImageDraft}
           />
         );
       case 'problem':
@@ -3881,43 +3928,6 @@ function ComponentEditForm({
     <div className="space-y-5">
       {renderEditor()}
       <DialogFooter className="pt-5 border-t border-border">
-        {draftScope && hasLocalDraftChanges && (
-          <div className="mr-auto flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${draftStorageStatus === 'available' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            <span>
-              {draftStorageStatus === 'available'
-                ? (restoredFromDraft ? i18n.t('courseComponentDraft.localDraftRestored') : i18n.t('courseComponentDraft.localDraftSaved'))
-                : i18n.t('courseComponentDraft.localDraftMemoryOnly')}
-            </span>
-          </div>
-        )}
-        {draftScope && hasLocalDraftChanges && onDiscardLocalDraft && (
-          <AlertDialog open={showDiscardLocalDraftDialog} onOpenChange={setShowDiscardLocalDraftDialog}>
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={() => setShowDiscardLocalDraftDialog(true)}
-            >
-              {i18n.t('courseComponentDraft.discardLocalDraft')}
-            </Button>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{i18n.t('courseComponentDraft.discardLocalDraftTitle')}</AlertDialogTitle>
-                <AlertDialogDescription>{i18n.t('courseComponentDraft.discardLocalDraftDescription')}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{i18n.t('common.cancel')}</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={onDiscardLocalDraft}
-                >
-                  {i18n.t('courseComponentDraft.discardLocalDraft')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
         <Button
           onClick={() => saveMut.mutate({ keepOpen: false })}
           disabled={saveMut.isPending}

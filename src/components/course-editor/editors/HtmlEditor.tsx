@@ -30,8 +30,15 @@ interface HtmlEditorProps {
   metadata: Record<string, any>;
   onMetadataChange: (v: Record<string, any>) => void;
   courseId: string;
-  onImmediateSaved?: () => void;
+  onImmediateSaved?: (savedMetadata: Record<string, any>) => void;
+  /** Registers an immediately uploaded inline clipboard image so the parent
+   * can delete it if the component form is closed without being saved. */
+  onInlineImageUploaded?: (storagePath: string) => void;
+  /** Persists the HTML draft after the uploaded image is actually inserted. */
+  onInlineImageInserted?: (htmlContent: string) => void;
 }
+
+const INLINE_IMAGE_PASTE_MAX_BYTES = 20 * 1024 * 1024;
 
 export default function HtmlEditor({
   blockId,
@@ -43,23 +50,46 @@ export default function HtmlEditor({
   onMetadataChange,
   courseId,
   onImmediateSaved,
+  onInlineImageUploaded,
+  onInlineImageInserted,
 }: HtmlEditorProps) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = React.useState(false);
+  const [inlineUploadCount, setInlineUploadCount] = React.useState(0);
   const [deletingPath, setDeletingPath] = React.useState<string | null>(null);
 
   const uploadedImages = React.useMemo(() => getHtmlMediaImages(metadata), [metadata]);
   const carouselImages = React.useMemo(() => htmlMediaCarouselImages(uploadedImages), [uploadedImages]);
   const metadataRef = useRef<Record<string, any>>(metadata);
   const uploadedImagesRef = useRef<HtmlMediaImage[]>(uploadedImages);
+  const htmlContentRef = useRef(htmlContent);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     metadataRef.current = metadata;
   }, [metadata]);
   useEffect(() => {
     uploadedImagesRef.current = uploadedImages;
   }, [uploadedImages]);
+  useEffect(() => {
+    htmlContentRef.current = htmlContent;
+  }, [htmlContent]);
+
+  const handleHtmlChange = React.useCallback((nextHtmlContent: string) => {
+    htmlContentRef.current = nextHtmlContent;
+    onHtmlChange(nextHtmlContent);
+  }, [onHtmlChange]);
+
+  const handleInlineImageInserted = React.useCallback(() => {
+    onInlineImageInserted?.(htmlContentRef.current);
+  }, [onInlineImageInserted]);
 
   const persistImages = React.useCallback(async (nextImages: HtmlMediaImage[]) => {
     if (!blockId) throw new Error(t('courseEditorForms.invalidBlockId'));
@@ -72,7 +102,7 @@ export default function HtmlEditor({
     metadataRef.current = nextMetadata;
     uploadedImagesRef.current = nextImages;
     onMetadataChange(nextMetadata);
-    onImmediateSaved?.();
+    onImmediateSaved?.(nextMetadata);
   }, [blockId, onImmediateSaved, onMetadataChange, t]);
 
   const handleUpload = async (file: File) => {
@@ -111,6 +141,54 @@ export default function HtmlEditor({
       setUploading(false);
     }
   };
+
+  // Clipboard screenshots belong to the document body, not to html_media.
+  // Upload now so the editor can insert a durable URL at the cursor, while
+  // the parent tracks this path until the component's HTML is actually saved.
+  const handleInlineImagePaste = React.useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.warning(t('courseEditorForms.clipboardImageOnly'));
+      return null;
+    }
+    if (file.size > INLINE_IMAGE_PASTE_MAX_BYTES) {
+      toast.warning(t('courseEditorForms.clipboardImageTooLarge', { size: '20 MB' }));
+      return null;
+    }
+    if (!courseId || !blockId) {
+      toast.error(t('courseEditorForms.invalidBlockId'));
+      return null;
+    }
+
+    setInlineUploadCount((count) => count + 1);
+    let uploadedPath = '';
+    try {
+      const result = await uploadCourseAsset(courseId, file);
+      uploadedPath = htmlImageStoragePath(result?.url) || '';
+      if (!uploadedPath) throw new Error(t('courseEditorForms.uploadResponseMissingPath'));
+
+      // The user may close the modal while the upload is in flight. The parent
+      // cleanup has already run in that case, so delete this late result here
+      // instead of leaving a detached Storage object behind.
+      if (!mountedRef.current) {
+        await deleteCourseAssetByStoragePath(courseId, uploadedPath);
+        return null;
+      }
+
+      onInlineImageUploaded?.(uploadedPath);
+      toast.success(t('courseEditorForms.clipboardImageUploaded'));
+      return { src: uploadedPath, alt: file.name };
+    } catch (err: any) {
+      if (uploadedPath) {
+        deleteCourseAssetByStoragePath(courseId, uploadedPath).catch(() => {});
+      }
+      toast.error(t('courseEditorForms.clipboardImageUploadFailed', {
+        message: getLocalizedApiError(err, t('courseUnit.unknownError')),
+      }));
+      return null;
+    } finally {
+      setInlineUploadCount((count) => Math.max(0, count - 1));
+    }
+  }, [blockId, courseId, onInlineImageUploaded, t]);
 
   const handleDeleteImage = async (image: HtmlMediaImage) => {
     setDeletingPath(image.src);
@@ -226,7 +304,10 @@ export default function HtmlEditor({
         <div className="rounded-xl overflow-hidden border border-input bg-background shadow-sm focus-within:ring-4 focus-within:ring-primary/10 focus-within:border-primary transition-all duration-200">
           <RichTextEditorWithRef
             content={htmlContent}
-            onChange={onHtmlChange}
+            onChange={handleHtmlChange}
+            onImageFilePaste={handleInlineImagePaste}
+            onInlineImageInserted={handleInlineImageInserted}
+            inlineUploadCount={inlineUploadCount}
           />
         </div>
       </Field>
@@ -235,19 +316,33 @@ export default function HtmlEditor({
 }
 
 function RichTextEditorWithRef({
-  content, onChange,
+  content, onChange, onImageFilePaste, onInlineImageInserted, inlineUploadCount,
 }: {
   content: string;
   onChange: (v: string) => void;
+  onImageFilePaste: (file: File) => Promise<{ src: string; alt?: string } | null>;
+  onInlineImageInserted: () => void;
+  inlineUploadCount: number;
 }) {
   const { t } = useTranslation();
   return (
-    <RichTextEditor
-      content={content}
-      onChange={onChange}
-      onUnsupportedImagePaste={() => {
-        toast.warning(t('courseEditorForms.clipboardExternalUrlNeeded'));
-      }}
-    />
+    <>
+      <RichTextEditor
+        content={content}
+        onChange={onChange}
+        enableTables
+        enableImageKeyboardDelete
+        onImageFilePaste={onImageFilePaste}
+        onInlineImageInserted={onInlineImageInserted}
+        onUnsupportedImagePaste={() => {
+          toast.warning(t('courseEditorForms.clipboardExternalUrlNeeded'));
+        }}
+      />
+      {inlineUploadCount > 0 && (
+        <p className="mt-2 px-1 text-xs font-medium text-muted-foreground">
+          {t('courseEditorForms.clipboardImageUploading', { count: inlineUploadCount })}
+        </p>
+      )}
+    </>
   );
 }

@@ -7,7 +7,6 @@ import {
   Background,
   useNodesState,
   useEdgesState,
-  addEdge,
   Connection,
   Edge,
   Node,
@@ -244,10 +243,11 @@ export default function DiagramEditor({
 
   const onConnect = useCallback(
     (params: Connection | Edge) => {
-      const newEdges = addEdge(params, activeDiagram.edges).map((edge) => {
-        const alreadyExists = activeDiagram.edges.some(existing => existing.id === edge.id);
-        return alreadyExists ? edge : withEdgeAppearance(edge as Record<string, any>, {}) as Edge;
-      });
+      // React Flow's addEdge intentionally rejects an identical connection.
+      // Diagrams allow parallel relationships, including ones that use the
+      // same source, target, and handles, so each connection gets its own id.
+      const newEdge = withEdgeAppearance({ ...params, id: uuidv4() }, {}) as Edge;
+      const newEdges = [...activeDiagram.edges, newEdge];
       const newDiagrams = [...diagrams];
       newDiagrams[activeDiagramIndex] = { ...activeDiagram, edges: newEdges };
       const newData = { ...diagramData, diagrams: newDiagrams };

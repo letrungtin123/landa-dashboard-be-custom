@@ -114,43 +114,11 @@ function getFallbackHandles(source: any, target: any) {
   };
 }
 
-function edgeLabel(edge: any): string {
-  const value = edge?.label ?? edge?.data?.label;
-  return typeof value === 'string' ? value.trim().toLocaleLowerCase() : '';
-}
-
-function removeRedundantRelationships(edges: any[]): any[] {
-  const acceptedByDirection = new Map<string, any>();
-  const result: any[] = [];
-
-  for (const edge of edges) {
-    const direction = `${edge.source}->${edge.target}`;
-    if (acceptedByDirection.has(direction)) continue;
-
-    const reverse = acceptedByDirection.get(`${edge.target}->${edge.source}`);
-    if (reverse) {
-      const currentLabel = edgeLabel(edge);
-      const reverseLabel = edgeLabel(reverse);
-      if (!currentLabel || !reverseLabel || currentLabel === reverseLabel) continue;
-    }
-
-    acceptedByDirection.set(direction, edge);
-    result.push(edge);
-  }
-
-  return result;
-}
-
 function isFeedbackEdge(edge: any, source: any, target: any): boolean {
   const explicitRouting = edge?.routing ?? edge?.data?.routing;
-  if (explicitRouting === 'feedback') return true;
-  return Number(target?.position?.y ?? 0) < Number(source?.position?.y ?? 0) - 1;
+  return explicitRouting === 'feedback';
 }
 
-function getFeedbackHandles(node: any, role: 'source' | 'target'): string {
-  if (node?.type === 'junction') return role === 'source' ? 'right-source' : 'left-target';
-  return 'right';
-}
 
 export function normalizeDiagramEdges(edges: any[], nodes: any[]): any[] {
   const nodesById = new Map(nodes.map(node => [String(node?.id ?? ''), node]));
@@ -165,12 +133,10 @@ export function normalizeDiagramEdges(edges: any[], nodes: any[]): any[] {
       return {
         ...edge,
         id: String(edge.id ?? `diagram-edge-${index + 1}`),
-        sourceHandle: feedback
-          ? getFeedbackHandles(source, 'source')
-          : normalizedHandle(edge.sourceHandle, source.type ?? 'customShape', 'source') ?? fallback.sourceHandle,
-        targetHandle: feedback
-          ? getFeedbackHandles(target, 'target')
-          : normalizedHandle(edge.targetHandle, target.type ?? 'customShape', 'target') ?? fallback.targetHandle,
+        // Feedback edges retain the ports chosen by the author. Only their
+        // route is special; the endpoints must not be forced to the right.
+        sourceHandle: normalizedHandle(edge.sourceHandle, source.type ?? 'customShape', 'source') ?? fallback.sourceHandle,
+        targetHandle: normalizedHandle(edge.targetHandle, target.type ?? 'customShape', 'target') ?? fallback.targetHandle,
         data: {
           ...(isRecord(edge.data) ? edge.data : {}),
           routing: feedback ? 'feedback' : 'orthogonal',
@@ -183,5 +149,5 @@ export function normalizeDiagramEdges(edges: any[], nodes: any[]): any[] {
       };
     })
     .filter(Boolean);
-  return removeRedundantRelationships(normalized);
+  return normalized;
 }

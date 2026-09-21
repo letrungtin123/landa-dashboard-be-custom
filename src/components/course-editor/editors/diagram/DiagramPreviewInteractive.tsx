@@ -37,16 +37,12 @@ const EMPTY_DIAGRAM: Diagram = { id: '', name: '', nodes: [], edges: [] };
 
 function normalizePreviewEdges(edges: any[], nodes: Node[]) {
   const nodesById = new Map(nodes.map(node => [node.id, node]));
-  const seen = new Set<string>();
 
   return normalizeDiagramEdges(edges, nodes)
     .filter(edge => {
       const source = String(edge?.source ?? '');
       const target = String(edge?.target ?? '');
       if (!source || !target || source === target || !nodesById.has(source) || !nodesById.has(target)) return false;
-      const key = `${source}->${target}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
       return true;
     })
     .map((edge, index) => {
