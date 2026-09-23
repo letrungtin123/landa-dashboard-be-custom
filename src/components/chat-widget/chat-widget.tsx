@@ -60,6 +60,12 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import {
+  readLessonAuthorEditorContext,
+  isValidLessonAuthorCourseId,
+  subscribeLessonAuthorEditorContext,
+  type LessonAuthorEditorContext,
+} from '@/utils/lesson-author-editor-context';
+import {
   getReportChatAppliedFilter,
   getReportChatAttachment,
   ReportChatCard,
@@ -1021,6 +1027,7 @@ export default function ChatWidget() {
   const [inputValue, setInputValue] = useState('');
   const [outlineMentionOptions, setOutlineMentionOptions] = useState<OutlineMentionOption[]>([]);
   const [selectedMentions, setSelectedMentions] = useState<OutlineMentionOption[]>([]);
+  const [editorContext, setEditorContext] = useState<LessonAuthorEditorContext | null>(null);
   const [sourceDocumentOptions, setSourceDocumentOptions] = useState<LessonAuthorSourceDocument[]>([]);
   const [selectedSourceDocuments, setSelectedSourceDocuments] = useState<LessonAuthorSourceDocument[]>([]);
   const [loadingSourceDocuments, setLoadingSourceDocuments] = useState(false);
@@ -1496,6 +1503,17 @@ export default function ChatWidget() {
   const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
   const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
+
+  useEffect(() => {
+    if (!courseId) {
+      setEditorContext(null);
+      return;
+    }
+    setEditorContext(readLessonAuthorEditorContext(courseId));
+    return subscribeLessonAuthorEditorContext((context) => {
+      setEditorContext(context?.course_id === courseId ? context : null);
+    });
+  }, [courseId]);
   const reportAnalysisMessageIds = useMemo(() => messages
     .filter(message => message.role === 'assistant' && getReportChatAttachment(message.metadata)?.kind === 'analysis')
     .map(message => message.id), [messages]);
@@ -2193,6 +2211,12 @@ export default function ChatWidget() {
         source_info,
       }))
       : [];
+    const outgoingEditorContext = isLessonAuthor
+      && isValidLessonAuthorCourseId(courseId)
+      && editorContext?.course_id === courseId
+      && isValidLessonAuthorCourseId(editorContext.course_id)
+      ? editorContext
+      : undefined;
     const outgoingBlueprintDraft = isLessonAuthor
       ? (draftSelectionOverride ?? blueprintDraftSelection)
       : null;
@@ -2216,6 +2240,7 @@ export default function ChatWidget() {
         ...(isVoiceTurn ? { input_mode: 'voice' } : {}),
         ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
         ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
+        ...(outgoingEditorContext ? { editor_context: outgoingEditorContext } : {}),
         ...(outgoingBlueprintDraft ? {
           lesson_author_blueprint_id: outgoingBlueprintDraft.blueprint_id,
           lesson_author_blueprint_chapter_index: outgoingBlueprintDraft.chapter_index,
@@ -2344,6 +2369,7 @@ export default function ChatWidget() {
         mode: isLessonAuthor ? (outgoingBlueprintDraft ? 'draft_lesson' : 'auto') : 'chat',
         outline_mentions: outgoingMentions,
         source_documents: outgoingSourceDocuments,
+        editor_context: outgoingEditorContext,
         blueprint_id: outgoingBlueprintDraft?.blueprint_id,
         blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
         input_mode: isVoiceTurn ? 'voice' : 'text',
@@ -2377,7 +2403,7 @@ export default function ChatWidget() {
       },
     );
     return true;
-  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, handleLessonAuthorProgress, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
+  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, editorContext, handleLessonAuthorProgress, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');

@@ -336,12 +336,13 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
 
 // ─── UnitEditor (main) ────────────────────────────────────────────────────────
 
-export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange, onMissingUnit }: {
+export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange, onMissingUnit, onActiveComponentChange }: {
   unitId: string;
   courseId?: string;
   focusComponentId?: string | null;
   onContentChange: () => void;
   onMissingUnit?: () => void;
+  onActiveComponentChange?: (component: { id: string; blockType: string } | null) => void;
 }) {
   const { t, i18n: translationInstance } = useTranslation();
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -354,6 +355,10 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
     // the author enters the course editor.
     clearLegacyCourseComponentDrafts();
   }, []);
+
+  useEffect(() => () => {
+    onActiveComponentChange?.(null);
+  }, [onActiveComponentChange]);
 
   const { data: unitChildren, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['unit-children', unitId],
@@ -482,6 +487,7 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
                 courseId={courseId}
                 detailRefreshKey={`${dataUpdatedAt}`}
                 isFocused={focusComponentId === (child.id || child.block_id)}
+                onActiveComponentChange={onActiveComponentChange}
                 onDelete={() => { refetch(); onContentChange(); }}
                 onSaved={() => { refetch(); onContentChange(); }}
               />
@@ -563,11 +569,12 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
 
 // ─── ComponentCard ────────────────────────────────────────────────────────────
 
-function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete, onSaved }: {
+function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onActiveComponentChange, onDelete, onSaved }: {
   block: ChildBlock;
   courseId?: string;
   detailRefreshKey?: string | number;
   isFocused?: boolean;
+  onActiveComponentChange?: (component: { id: string; blockType: string } | null) => void;
   onDelete: () => void;
   onSaved: () => void;
 }) {
@@ -654,11 +661,12 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
   const closeEditor = useCallback(() => {
     editorLoadSequenceRef.current += 1;
     setIsEditing(false);
+    onActiveComponentChange?.(null);
     setEditingBlockData(null);
     setIsEditorLoading(false);
     setHasUnsavedEditorChanges(false);
     setShowDiscardUnsavedDialog(false);
-  }, []);
+  }, [onActiveComponentChange]);
 
   const handleSaved = useCallback(async () => {
     closeEditor();
@@ -676,6 +684,7 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
     const sequence = editorLoadSequenceRef.current + 1;
     editorLoadSequenceRef.current = sequence;
     setIsEditing(true);
+    onActiveComponentChange?.({ id: blockId, blockType: block.block_type });
     setIsEditorLoading(true);
     setHasUnsavedEditorChanges(false);
 
@@ -686,13 +695,18 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onDelete,
         toast.error(i18n.t('courseUnit.loadFailed'));
         setEditingBlockData(null);
         setIsEditing(false);
+        onActiveComponentChange?.(null);
         return;
       }
       setEditingBlockData(currentBlock);
     } finally {
       if (editorLoadSequenceRef.current === sequence) setIsEditorLoading(false);
     }
-  }, [block]);
+  }, [block, blockId, onActiveComponentChange]);
+
+  useEffect(() => () => {
+    onActiveComponentChange?.(null);
+  }, [onActiveComponentChange]);
 
   const requestEditorClose = useCallback(() => {
     if (isCourseAssetUploading) {
@@ -3119,6 +3133,15 @@ interface ComponentEditDraftState {
   editorUi: ComponentEditorUiDraftState;
 }
 
+function withCrosswordAnswerLengths(words: CrosswordWord[]) {
+  return words.map((word) => ({
+    ...word,
+    // The learner grid uses this value. Recalculate it here so an imported
+    // legacy `length` can never disagree with the answer being saved.
+    length: typeof word.answer === 'string' ? word.answer.length : 0,
+  }));
+}
+
 function createComponentEditDraftState(blockInfo: any): ComponentEditDraftState {
   const category = blockInfo?.category || blockInfo?.block_type || '';
   const metadata = { ...(blockInfo?.metadata || {}) };
@@ -3535,9 +3558,10 @@ function ComponentEditForm({
       if (category === 'la_crossword') {
         const kwCoords = cwWords.map((_, idx) => ({ row: idx, col: cwKeywordCol }));
         const cwMediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
+        const normalizedWords = withCrosswordAnswerLengths(cwWords);
         return studioSubmit(id, {
           display_name: displayName,
-          crossword_data: JSON.stringify({ words: cwWords, keyword_coordinates: kwCoords }),
+          crossword_data: JSON.stringify({ words: normalizedWords, keyword_coordinates: kwCoords }),
           ...(cwMediaForSave ? { problem_media: cwMediaForSave } : {}),
         });
       }

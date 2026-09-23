@@ -9,6 +9,8 @@ import { useLocaleStore } from "@/utils/locale-store";
 import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
+import type { LessonAuthorEditorContext } from "@/utils/lesson-author-editor-context";
+import { buildChatStreamUrl, isChatStreamNetworkError } from "./custom-chat-stream.logic";
 
 interface ApiResponse<T> { success: boolean; data: T; }
 
@@ -615,7 +617,7 @@ function streamText(key: string): string {
 
 function normalizeStreamErrorMessage(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err || '');
-  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) {
+  if (isChatStreamNetworkError(err)) {
     return streamText('chatWidget.connectionFailed');
   }
   return message || streamText('chatWidget.connectionError');
@@ -646,6 +648,7 @@ export function sendMessageStream(
     mode?: "chat" | "course_blueprint" | "draft_lesson" | "auto";
     outline_mentions?: OutlineMention[];
     source_documents?: LessonAuthorSourceDocument[];
+    editor_context?: LessonAuthorEditorContext;
     blueprint_id?: string;
     blueprint_chapter_index?: number;
     input_mode?: "text" | "voice";
@@ -673,13 +676,13 @@ export function sendMessageStream(
     }
   }
 
-  const streamUrl = new URL(
-    `${config.customApiUrl}/api/ai-chatbot/chat/conversations/${conversationId}/messages`,
-    typeof window !== 'undefined' ? window.location.origin : undefined,
-  );
-  streamUrl.searchParams.set('target', options.target ?? 'admin');
-  if (options.courseId) streamUrl.searchParams.set('courseId', options.courseId);
-  const url = streamUrl.toString();
+  const url = buildChatStreamUrl({
+    apiBaseUrl: config.customApiUrl,
+    browserOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+    conversationId,
+    target: options.target ?? 'admin',
+    courseId: options.courseId,
+  });
   let receivedDone = false;
   let receivedError = false;
 
@@ -709,6 +712,7 @@ export function sendMessageStream(
           mode: options.mode,
           outline_mentions: options.outline_mentions,
           source_documents: options.source_documents,
+          editor_context: options.editor_context,
           blueprint_id: options.blueprint_id,
           blueprint_chapter_index: options.blueprint_chapter_index,
           input_mode: options.input_mode,

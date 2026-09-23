@@ -16,6 +16,11 @@ import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import {
+  publishLessonAuthorEditorContext,
+  type LessonAuthorEditorContext,
+  type LessonAuthorEditorEntityType,
+} from '@/utils/lesson-author-editor-context';
 
 type FocusCourseBlockEventDetail = {
   courseId?: string;
@@ -58,6 +63,40 @@ function isComponentBlock(node: CourseIndexSection): boolean {
 function hasBlock(node: CourseIndexSection | undefined, blockId: string | null): boolean {
   if (!node || !blockId) return false;
   return Boolean(findBlockPath(node, blockId));
+}
+
+function lessonAuthorEntityType(blockType: string): LessonAuthorEditorEntityType {
+  if (blockType === 'course') return 'course';
+  if (blockType === 'chapter') return 'chapter';
+  if (blockType === 'sequential') return 'lesson';
+  if (blockType === 'vertical') return 'unit';
+  return 'component';
+}
+
+function buildLessonAuthorEditorContext(
+  courseId: string,
+  courseStructure: CourseIndexSection,
+  selectedUnitId: string | null,
+  activeComponent: { id: string; blockType: string } | null,
+): LessonAuthorEditorContext {
+  const selectedId = activeComponent?.id ?? selectedUnitId;
+  const selectedPath = selectedId ? findBlockPath(courseStructure, selectedId) : null;
+  const selectedNode = selectedPath?.[selectedPath.length - 1] ?? null;
+  const context: LessonAuthorEditorContext = { course_id: courseId };
+  if (!selectedNode) return context;
+
+  context.selected_entity = {
+    id: selectedNode.id,
+    type: lessonAuthorEntityType(selectedNode.block_type),
+    block_type: activeComponent?.blockType ?? selectedNode.block_type,
+  };
+  for (const node of selectedPath ?? []) {
+    if (node.block_type === 'chapter') context.current_chapter_id = node.id;
+    else if (node.block_type === 'sequential') context.current_lesson_id = node.id;
+    else if (node.block_type === 'vertical') context.current_unit_id = node.id;
+    else if (isComponentBlock(node)) context.current_component_id = node.id;
+  }
+  return context;
 }
 
 // ─────────────────────────────────────────────
@@ -126,6 +165,7 @@ export default function CourseEditorPage() {
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [focusedComponentId, setFocusedComponentId] = useState<string | null>(null);
+  const [activeComponent, setActiveComponent] = useState<{ id: string; blockType: string } | null>(null);
 
   // Sidebar resizer state
   const [sidebarWidth, setSidebarWidth] = useState(320);
@@ -187,9 +227,15 @@ export default function CourseEditorPage() {
       queryClient.removeQueries({ queryKey: ['unit-children', targetUnitId], exact: true });
     }
     setSelectedUnit(null);
+    setActiveComponent(null);
     setFocusedBlockId(null);
     setFocusedComponentId(null);
   }, [queryClient, selectedUnit]);
+
+  const handleSelectUnit = useCallback((unitId: string) => {
+    setSelectedUnit(unitId);
+    setActiveComponent(null);
+  }, []);
 
   const handleStructureChange = useCallback(() => {
     if (!courseId) return;
@@ -234,14 +280,17 @@ export default function CourseEditorPage() {
 
       if (target.block_type === 'vertical') {
         setSelectedUnit(target.id);
+        setActiveComponent(null);
         setFocusedBlockId(target.id);
         setFocusedComponentId(null);
       } else if (targetIsComponent && nearestUnit) {
         setSelectedUnit(nearestUnit.id);
+        setActiveComponent(null);
         setFocusedBlockId(nearestUnit.id);
         setFocusedComponentId(target.id);
       } else {
         setSelectedUnit(null);
+        setActiveComponent(null);
         setFocusedBlockId(target.id);
         setFocusedComponentId(null);
       }
@@ -270,6 +319,20 @@ export default function CourseEditorPage() {
     window.addEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
     return () => window.removeEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
   }, [courseId, handleStructureChange]);
+
+  useEffect(() => {
+    if (!courseId || !courseStructure) return;
+    publishLessonAuthorEditorContext(buildLessonAuthorEditorContext(
+      courseId,
+      courseStructure,
+      selectedUnit,
+      activeComponent,
+    ));
+  }, [activeComponent, courseId, courseStructure, selectedUnit]);
+
+  useEffect(() => () => {
+    publishLessonAuthorEditorContext(null);
+  }, []);
 
   if (isLoading) {
     return (
@@ -332,7 +395,7 @@ export default function CourseEditorPage() {
             <div className="p-3 flex-1 overflow-y-auto">
               <OutlineTree
                 courseId={courseId as string}
-                onSelectUnit={(unitId) => setSelectedUnit(unitId)}
+                onSelectUnit={handleSelectUnit}
                 selectedUnitId={selectedUnit}
                 focusedBlockId={focusedBlockId}
                 onStructureChange={handleStructureChange}
@@ -369,7 +432,7 @@ export default function CourseEditorPage() {
         <div className="p-3 flex-1 overflow-y-auto">
           <OutlineTree
             courseId={courseId as string}
-            onSelectUnit={(unitId) => setSelectedUnit(unitId)}
+            onSelectUnit={handleSelectUnit}
             selectedUnitId={selectedUnit}
             focusedBlockId={focusedBlockId}
             onStructureChange={handleStructureChange}
@@ -386,6 +449,7 @@ export default function CourseEditorPage() {
               unitId={selectedUnit}
               courseId={courseId as string}
               focusComponentId={focusedComponentId}
+              onActiveComponentChange={setActiveComponent}
               onMissingUnit={() => clearSelectedUnit(selectedUnit)}
               onContentChange={() => {
                 handleStructureChange();
