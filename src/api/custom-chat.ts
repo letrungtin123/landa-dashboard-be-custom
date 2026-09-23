@@ -331,6 +331,17 @@ export interface LessonAuthorBlueprintMediaPlan {
   rationale: string;
 }
 
+export type LessonAuthorMediaDecisionStatus = 'PROPOSED' | 'NOT_NEEDED' | 'SOURCE_GAP' | 'FAILED' | 'NOT_EVALUATED';
+
+export interface LessonAuthorBlueprintMediaReview {
+  version: 'media-review-v1';
+  decisions: Array<{
+    unit_path: string;
+    status: LessonAuthorMediaDecisionStatus;
+    reason_code: string;
+  }>;
+}
+
 export interface LessonAuthorBlueprintUnit {
   title: string;
   component_plan: LessonAuthorBlueprintComponentPlan[];
@@ -371,6 +382,8 @@ export interface LessonAuthorBlueprint {
   assessment_strategy: string;
   assumptions: string[];
   chapters: LessonAuthorBlueprintChapter[];
+  /** Absent on pre-media-evaluation Blueprints and means NOT_EVALUATED. */
+  media_review?: LessonAuthorBlueprintMediaReview;
 }
 
 export interface LessonAuthorBlueprintEvent {

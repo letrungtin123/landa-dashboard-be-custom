@@ -64,6 +64,45 @@ interface BlueprintMediaPlacement {
   lessonTitle: string;
   unitTitle: string;
   media: LessonAuthorBlueprintMediaPlan;
+  mediaStatus: 'PROPOSED' | 'NOT_NEEDED' | 'SOURCE_GAP' | 'FAILED' | 'NOT_EVALUATED';
+}
+
+interface BlueprintMediaDecisionPlacement {
+  chapterIndex: number;
+  lessonIndex: number;
+  unitIndex: number;
+  chapterTitle: string;
+  lessonTitle: string;
+  unitTitle: string;
+  mediaStatus: BlueprintMediaPlacement['mediaStatus'];
+  reasonCode: string;
+}
+
+function mediaDecisionLabel(
+  status: BlueprintMediaPlacement['mediaStatus'],
+  locale: LessonAuthorContentLocale,
+): string {
+  const labels: Record<BlueprintMediaPlacement['mediaStatus'], [string, string]> = {
+    PROPOSED: ['Đề xuất', 'Proposed'],
+    NOT_NEEDED: ['Không cần', 'Not needed'],
+    SOURCE_GAP: ['Thiếu bằng chứng nguồn', 'Source gap'],
+    FAILED: ['Đánh giá lỗi', 'Evaluation failed'],
+    NOT_EVALUATED: ['Chưa đánh giá', 'Not evaluated'],
+  };
+  return labels[status][locale === 'en' ? 1 : 0];
+}
+
+function mediaDecisionReason(
+  reasonCode: string,
+  locale: LessonAuthorContentLocale,
+): string {
+  const labels: Record<string, [string, string]> = {
+    NO_SOURCE_BACKED_VISUAL_CANDIDATE: ['Không có mục tiêu trực quan được evidence hỗ trợ.', 'No source-backed visual purpose was identified.'],
+    MEDIA_CANDIDATE_EVIDENCE_UNRESOLVED: ['Có thể cần media nhưng evidence nguồn chưa đủ để lập brief.', 'A visual may help, but source evidence is incomplete for a brief.'],
+    MEDIA_RECOMMENDATION_CAPACITY_EXCEEDED: ['Đánh giá đã vượt giới hạn số media brief của bản thiết kế.', 'The blueprint reached its bounded media-brief capacity.'],
+    LEGACY_BLUEPRINT: ['Bản thiết kế cũ chưa có đánh giá media.', 'This older blueprint has no media evaluation.'],
+  };
+  return labels[reasonCode]?.[locale === 'en' ? 1 : 0] ?? reasonCode;
 }
 
 function getAppliedChapterIndexes(
@@ -130,6 +169,7 @@ function BlueprintMediaCard({
     ? `Chapter: ${placement.chapterTitle} / Section: ${placement.lessonTitle} / Lesson: ${placement.unitTitle}`
     : `Chương: ${placement.chapterTitle} / Mục: ${placement.lessonTitle} / Bài học: ${placement.unitTitle}`;
   const Icon = isVideo ? Clapperboard : PanelsTopLeft;
+  const statusLabel = mediaDecisionLabel(placement.mediaStatus, locale);
 
   return (
     <article className="rounded-lg border border-border/70 bg-card p-4 sm:p-5">
@@ -146,14 +186,19 @@ function BlueprintMediaCard({
             <h3 className="mt-1 text-sm font-semibold leading-5 text-foreground">{placement.media.title}</h3>
           </div>
         </div>
-        <Badge
-          variant="outline"
-          className={`shrink-0 rounded-md text-[10px] ${isVideo
-            ? 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300'
-            : 'border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'}`}
-        >
-          {typeLabel}
-        </Badge>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          <Badge
+            variant="outline"
+            className={`rounded-md text-[10px] ${isVideo
+              ? 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+              : 'border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'}`}
+          >
+            {typeLabel}
+          </Badge>
+          <Badge variant="outline" className="rounded-md text-[10px] text-muted-foreground">
+            {statusLabel}
+          </Badge>
+        </div>
       </div>
       <div className="mt-4 grid gap-3 border-t border-border/70 pt-3.5 text-xs leading-5 sm:grid-cols-[minmax(0,1.4fr)_minmax(180px,1fr)]">
         <div className="min-w-0">
@@ -165,6 +210,35 @@ function BlueprintMediaCard({
           <p className="mt-1 text-muted-foreground">{placement.media.rationale}</p>
         </div>
       </div>
+    </article>
+  );
+}
+
+function BlueprintMediaDecisionCard({
+  placement,
+  locale,
+}: {
+  placement: BlueprintMediaDecisionPlacement;
+  locale: LessonAuthorContentLocale;
+}) {
+  const isVietnamese = locale === 'vi';
+  const location = isVietnamese
+    ? `Chương: ${placement.chapterTitle} / Mục: ${placement.lessonTitle} / Bài học: ${placement.unitTitle}`
+    : `Chapter: ${placement.chapterTitle} / Section: ${placement.lessonTitle} / Lesson: ${placement.unitTitle}`;
+  return (
+    <article className="rounded-lg border border-border/70 bg-card p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="break-words text-[11px] font-medium leading-4 text-muted-foreground">{location}</p>
+          <h3 className="mt-1 text-sm font-semibold leading-5 text-foreground">{placement.unitTitle}</h3>
+        </div>
+        <Badge variant="outline" className="shrink-0 rounded-md text-[10px] text-muted-foreground">
+          {mediaDecisionLabel(placement.mediaStatus, locale)}
+        </Badge>
+      </div>
+      <p className="mt-3 border-t border-border/70 pt-3 text-xs leading-5 text-muted-foreground">
+        {mediaDecisionReason(placement.reasonCode, locale)}
+      </p>
     </article>
   );
 }
@@ -325,8 +399,10 @@ export function LessonAuthorBlueprintDialog({
     [chapters],
   );
   const mediaPlacements = useMemo<BlueprintMediaPlacement[]>(
-    () => (chapters ?? []).flatMap((chapter, chapterIndex) => chapter.lessons.flatMap((lesson, lessonIndex) => (
-      (lesson.units ?? []).flatMap((unit, unitIndex) => unit.media_plan ? [{
+    () => {
+      const decisions = new globalThis.Map((blueprintEvent?.blueprint.media_review?.decisions ?? []).map(decision => [decision.unit_path, decision]));
+      return (chapters ?? []).flatMap((chapter, chapterIndex) => chapter.lessons.flatMap((lesson, lessonIndex) => (
+        (lesson.units ?? []).flatMap((unit, unitIndex) => unit.media_plan ? [{
         chapterIndex,
         lessonIndex,
         unitIndex,
@@ -334,10 +410,59 @@ export function LessonAuthorBlueprintDialog({
         lessonTitle: lesson.title,
         unitTitle: unit.title,
         media: unit.media_plan,
+        mediaStatus: decisions.get(`chapter_${chapterIndex + 1}.lesson_${lessonIndex + 1}.unit_${unitIndex + 1}`)?.status ?? 'NOT_EVALUATED',
       }] : [])
-    ))),
-    [chapters],
+      )));
+    },
+    [blueprintEvent?.blueprint.media_review, chapters],
   );
+  const mediaDecisionPlacements = useMemo<BlueprintMediaDecisionPlacement[]>(
+    () => {
+      const decisions = new globalThis.Map((blueprintEvent?.blueprint.media_review?.decisions ?? []).map(decision => [decision.unit_path, decision]));
+      return (chapters ?? []).flatMap((chapter, chapterIndex) => chapter.lessons.flatMap((lesson, lessonIndex) => (
+        (lesson.units ?? []).flatMap((unit, unitIndex) => {
+          if (unit.media_plan) return [];
+          const decision = decisions.get(`chapter_${chapterIndex + 1}.lesson_${lessonIndex + 1}.unit_${unitIndex + 1}`);
+          return decision ? [{
+            chapterIndex,
+            lessonIndex,
+            unitIndex,
+            chapterTitle: chapter.title,
+            lessonTitle: lesson.title,
+            unitTitle: unit.title,
+            mediaStatus: decision.status,
+            reasonCode: decision.reason_code,
+          }] : [];
+        })
+      )));
+    },
+    [blueprintEvent?.blueprint.media_review, chapters],
+  );
+  const mediaReview = blueprintEvent?.blueprint.media_review;
+  const mediaReviewNotice = useMemo(() => {
+    if (!mediaReview) {
+      return isVietnamese
+        ? 'Media của bản thiết kế này chưa được đánh giá; không được hiểu là không cần media.'
+        : 'Media has not been evaluated for this blueprint; this does not mean media is unnecessary.';
+    }
+    const counts = mediaReview.decisions.reduce<Record<string, number>>((result, decision) => ({
+      ...result,
+      [decision.status]: (result[decision.status] ?? 0) + 1,
+    }), {});
+    if ((counts.FAILED ?? 0) > 0 || (counts.SOURCE_GAP ?? 0) > 0) {
+      return isVietnamese
+        ? 'Một số unit chưa thể kết luận media do lỗi đánh giá hoặc thiếu bằng chứng nguồn.'
+        : 'Some units have no final media conclusion because evaluation failed or source evidence is incomplete.';
+    }
+    if ((counts.NOT_EVALUATED ?? 0) > 0) {
+      return isVietnamese
+        ? 'Một số unit chưa được đánh giá media.'
+        : 'Some units have not been evaluated for media.';
+    }
+    return isVietnamese
+      ? 'Các trạng thái dưới đây phản ánh kết quả đánh giá media theo từng unit.'
+      : 'The statuses below reflect the media evaluation for each unit.';
+  }, [isVietnamese, mediaReview]);
   useEffect(() => {
     if (!blueprintEvent || !chapters?.length) return;
 
@@ -684,26 +809,38 @@ export function LessonAuthorBlueprintDialog({
                       ? 'Mỗi đề xuất nằm ở đầu bài học tương ứng và chỉ là kế hoạch học liệu, chưa tạo hoặc chèn media vào khóa học.'
                       : 'Each recommendation is placed before its corresponding lesson and remains a media plan only; no asset is created or inserted into the course.'}
                   </p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{mediaReviewNotice}</p>
                 </section>
 
-                {mediaPlacements.length > 0 ? (
-                  mediaPlacements.map((placement) => (
-                    <BlueprintMediaCard
-                      key={`${placement.chapterIndex}-${placement.lessonIndex}-${placement.unitIndex}-${placement.media.type}-${placement.media.title}`}
-                      placement={placement}
-                      locale={locale}
-                    />
-                  ))
+                {mediaPlacements.length > 0 || mediaDecisionPlacements.length > 0 ? (
+                  <>
+                    {mediaPlacements.map((placement) => (
+                      <BlueprintMediaCard
+                        key={`${placement.chapterIndex}-${placement.lessonIndex}-${placement.unitIndex}-${placement.media.type}-${placement.media.title}`}
+                        placement={placement}
+                        locale={locale}
+                      />
+                    ))}
+                    {mediaDecisionPlacements.map((placement) => (
+                      <BlueprintMediaDecisionCard
+                        key={`${placement.chapterIndex}-${placement.lessonIndex}-${placement.unitIndex}-${placement.mediaStatus}`}
+                        placement={placement}
+                        locale={locale}
+                      />
+                    ))}
+                  </>
                 ) : (
                   <section className="border-y border-border/70 px-1 py-8 text-center">
                     <PanelsTopLeft className="mx-auto h-5 w-5 text-muted-foreground" />
                     <p className="mt-3 text-sm font-semibold text-foreground">
-                      {isVietnamese ? 'Chưa có đề xuất media cần thiết' : 'No media recommendation is needed'}
+                      {mediaReview
+                        ? (isVietnamese ? 'Chưa có đề xuất media sau đánh giá' : 'No media proposal after evaluation')
+                        : (isVietnamese ? 'Chưa đánh giá đề xuất media' : 'Media recommendations have not been evaluated')}
                     </p>
                     <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">
                       {isVietnamese
-                        ? 'Bản thiết kế chỉ đề xuất video hoặc infographic khi chúng giúp làm rõ nội dung có trong tài liệu nguồn.'
-                        : 'The blueprint recommends video or static infographics only when they clarify source-grounded course content.'}
+                        ? 'Chỉ một bản đánh giá hoàn tất mới có thể kết luận không cần media; trạng thái thiếu hoặc lỗi không phải là kết luận đó.'
+                        : 'Only a completed evaluation can conclude that media is not needed; missing or failed evaluation is not that conclusion.'}
                     </p>
                   </section>
                 )}
