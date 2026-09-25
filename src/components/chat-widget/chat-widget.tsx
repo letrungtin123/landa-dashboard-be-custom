@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { isChatRecoveryExpired, hasRecoveredAssistant } from '@/api/custom-chat-stream.logic';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,9 +29,11 @@ import { useTenantStore } from '@/utils/tenant-store';
 import {
   fetchActiveBot, fetchConversations, createConversation,
   deleteConversation, fetchMessages, sendMessageStream,
+  fetchPendingBlueprintJob, clearPendingBlueprintJob,
   fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
-  uploadLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript, downloadLessonAuthorVideoTranscript,
+  uploadLessonAuthorVideoTranscript, fetchLessonAuthorVideoTranscript,
+  commitLessonAuthorVideoTranscript, downloadLessonAuthorVideoTranscript,
   startReportPdfExportJob, getReportPdfExportJob, downloadReportPdfExportJob,
   type ActiveBot, type ChatConversation, type ChatMessage,
   type BotPersona,
@@ -44,6 +47,13 @@ import {
   ReportPdfExportApiError,
   type LessonAuthorTranscriptionStatus,
 } from '@/api/custom-chat';
+import {
+  createLessonAuthorUploadAttemptId,
+  lessonAuthorUploadSafeErrorCode,
+  lessonAuthorVideoUploadPhase,
+  shouldPollLessonAuthorTranscript,
+  type LessonAuthorVideoUploadPhase,
+} from '@/api/lesson-author-video-upload.logic';
 import {
   getCourseOutlineIndex,
   type CourseIndexResponse,
@@ -95,7 +105,6 @@ const REPORT_PDF_EXPORT_STORAGE_PREFIX = 'report-pdf-export-v1:';
 const LESSON_AUTHOR_PROGRESS_STEP_COUNT = 4;
 const LESSON_AUTHOR_PROGRESS_TTL_MS = 30 * 60 * 1000;
 const CHAT_PENDING_TURN_TTL_MS = 30 * 60 * 1000;
-const CHAT_PENDING_RECOVERY_MAX_MS = 5 * 60 * 1000;
 const CHAT_PENDING_RECOVERY_POLL_MS = 1_500;
 const MIN_STREAMING_UI_MS = 1_500;
 const TRANSCRIPT_KB_INDEX_POLL_MS = 3_000;
@@ -106,6 +115,7 @@ const REPORT_PDF_EXPORT_POLL_MS = 1_200;
 type StoredChatPendingTurn = {
   target: ChatSurface;
   startedAt: number;
+  baselineMessageId?: string | null;
 };
 
 type PendingChatRecovery = {
@@ -119,7 +129,8 @@ type PendingChatRecovery = {
 type LessonAuthorVideoUploadNotice = {
   conversationId: string | null;
   fileName: string;
-  progress: number;
+  progress: number | null;
+  phase: LessonAuthorVideoUploadPhase;
 };
 
 type LessonAuthorVideoUploadError = {
@@ -188,18 +199,19 @@ function readStoredChatPendingTurn(conversationId: string): StoredChatPendingTur
       window.sessionStorage.removeItem(getChatPendingTurnStorageKey(conversationId));
       return null;
     }
-    return { target, startedAt };
+    return { target, startedAt, baselineMessageId: typeof parsed.baselineMessageId === 'string' ? parsed.baselineMessageId : null };
   } catch {
     return null;
   }
 }
 
-function writeStoredChatPendingTurn(conversationId: string, target: ChatSurface): void {
+function writeStoredChatPendingTurn(conversationId: string, target: ChatSurface, baselineMessageId: string | null): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(getChatPendingTurnStorageKey(conversationId), JSON.stringify({
       target,
       startedAt: Date.now(),
+      baselineMessageId,
     } satisfies StoredChatPendingTurn));
   } catch {
     // Session storage can be unavailable in privacy-restricted browser contexts.
@@ -1181,6 +1193,7 @@ export default function ChatWidget() {
     startedAt: number,
   ) => {
     cancelPendingRecovery();
+    const baselineMessageId = readStoredChatPendingTurn(conversationId)?.baselineMessageId;
     const recovery: PendingChatRecovery = {
       id: ++pendingRecoverySequenceRef.current,
       conversationId,
@@ -1197,7 +1210,7 @@ export default function ChatWidget() {
       && !recovery.cancelled
       && currentConvIdRef.current === conversationId
     );
-    const isRecoveryExpired = () => Date.now() - startedAt > CHAT_PENDING_RECOVERY_MAX_MS;
+    const isRecoveryExpired = () => isChatRecoveryExpired(startedAt);
 
     const finishRecovery = (timedOut: boolean) => {
       if (recovery.timer !== null) window.clearTimeout(recovery.timer);
@@ -1224,6 +1237,12 @@ export default function ChatWidget() {
         return;
       }
       try {
+        const knownJob = target === 'lesson_author' ? await fetchPendingBlueprintJob(conversationId).catch(() => null) : null;
+        if (!isActiveRecovery()) { finishRecovery(false); return; }
+        if (knownJob && ['queued', 'running'].includes(knownJob.status)) {
+          setLessonAuthorProgress({ type: 'progress', stage: knownJob.progress_code ?? 'QUEUED',
+            detail: i18n.language.startsWith('vi') ? 'Tác vụ tạo khóa học vẫn đang chạy trên máy chủ.' : 'Course generation is still running on the server.' });
+        }
         const result = await fetchMessages(conversationId, undefined, target);
         if (!isActiveRecovery()) {
           finishRecovery(false);
@@ -1237,8 +1256,8 @@ export default function ChatWidget() {
 
         // The backend persists the assistant message even when the original
         // SSE connection was lost. Never re-POST the user turn on recovery.
-        const latestMessage = result.messages[result.messages.length - 1];
-        if (latestMessage?.role === 'assistant') {
+        if (hasRecoveredAssistant(result.messages, startedAt, baselineMessageId)) {
+          clearPendingBlueprintJob(conversationId);
           finishRecovery(false);
           clearStoredChatPendingTurn(conversationId);
           clearStoredLessonAuthorProgress(conversationId);
@@ -1579,25 +1598,68 @@ export default function ChatWidget() {
 
   useEffect(() => {
     const conversationId = currentConv?.id;
-    const hasPendingTranscript = messages.some(message => {
-      const status = message.metadata?.lesson_author_transcription_status;
-      return message.metadata?.kind === 'lesson_author_video_transcript'
-        && (status === 'queued' || status === 'running');
-    });
-    if (!open || state !== 'chat' || !isLessonAuthor || !conversationId || !hasPendingTranscript) return;
+    const pendingJobIds = Array.from(new Set(messages.flatMap(message => {
+      if (message.metadata?.kind !== 'lesson_author_video_transcript') return [];
+      const status = message.metadata.lesson_author_transcription_status;
+      const kbStatus = message.metadata.lesson_author_kb_document_status;
+      const sourceReady = message.metadata.lesson_author_source_ready === true;
+      const jobId = message.metadata.lesson_author_transcription_job_id;
+      const pending = shouldPollLessonAuthorTranscript(status, kbStatus, sourceReady);
+      return pending && typeof jobId === 'string' ? [jobId] : [];
+    })));
+    if (!open || state !== 'chat' || !isLessonAuthor || !conversationId || pendingJobIds.length === 0) return;
 
     let cancelled = false;
-    const refresh = () => {
-      void refreshLessonAuthorMessages(conversationId).catch(() => undefined);
+    const refresh = async () => {
+      const jobs = await Promise.all(pendingJobIds.map(jobId => (
+        fetchLessonAuthorVideoTranscript(conversationId, jobId).catch(() => null)
+      )));
+      if (cancelled) return;
+      const jobsById = new Map(jobs.filter(job => job !== null).map(job => [job.id, job]));
+      if (jobsById.size === 0) return;
+      setMessages(current => {
+        let changed = false;
+        const next = current.map(message => {
+        const jobId = message.metadata?.lesson_author_transcription_job_id;
+        const job = typeof jobId === 'string' ? jobsById.get(jobId) : undefined;
+        if (!job) return message;
+        if (
+          message.metadata.lesson_author_transcription_status === job.status
+          && message.metadata.lesson_author_transcription_error === job.error_reason
+          && message.metadata.lesson_author_kb_document_id === job.kb_document_id
+          && message.metadata.lesson_author_kb_document_status === job.kb_document_status
+          && message.metadata.lesson_author_source_ready === job.source_ready
+        ) return message;
+        changed = true;
+        return {
+          ...message,
+          metadata: {
+            ...message.metadata,
+            lesson_author_transcription_status: job.status,
+            lesson_author_transcription_error: job.error_reason,
+            lesson_author_kb_document_id: job.kb_document_id,
+            lesson_author_kb_document_status: job.kb_document_status,
+            lesson_author_source_ready: job.source_ready,
+          },
+        };
+        });
+        return changed ? next : current;
+      });
+      if (jobs.some(job => job?.source_ready)) {
+        void fetchLessonAuthorSourceDocuments({ limit: 20 })
+          .then(documents => { if (!cancelled) setSourceDocumentOptions(documents); })
+          .catch(() => undefined);
+      }
     };
+    void refresh();
     const timer = window.setInterval(() => {
-      if (!cancelled) refresh();
-    }, 3_000);
+      if (!cancelled) void refresh();
+    }, TRANSCRIPT_KB_INDEX_POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [currentConv?.id, isLessonAuthor, messages, open, refreshLessonAuthorMessages, state]);
+  }, [currentConv?.id, isLessonAuthor, messages, open, state]);
 
   const setRuntimeAvailability = useCallback((next: ChatRuntimeAvailability) => {
     setRuntimeAvailabilityState(next);
@@ -1933,11 +1995,27 @@ export default function ChatWidget() {
   const handleLessonAuthorVideoUpload = useCallback(async (file: File) => {
     const isEnglish = i18n.language === 'en';
     let conversationId = currentConv?.id ?? null;
-    const reportUploadError = (message: string) => {
+    let uploadAttemptId: string | null = null;
+    let uploadStage = 'precheck';
+    const uploadStartedAt = Date.now();
+    const reportUploadError = (message: string, error?: unknown) => {
+      const supportReference = uploadAttemptId?.slice(0, 8) ?? null;
+      console.warn('[LessonAuthorVideoUpload]', {
+        event: 'failed',
+        stage: uploadStage,
+        client_attempt_id: uploadAttemptId,
+        conversation_id: conversationId,
+        secure_context: window.isSecureContext,
+        random_uuid_available: typeof globalThis.crypto?.randomUUID === 'function',
+        get_random_values_available: typeof globalThis.crypto?.getRandomValues === 'function',
+        error_code: lessonAuthorUploadSafeErrorCode(error),
+        duration_ms: Date.now() - uploadStartedAt,
+      });
       setVideoUploadNotice(null);
       setVideoUploadProgress(null);
-      setVideoUploadError({ conversationId, fileName: file.name, message });
-      toast.error(message);
+      const displayMessage = supportReference ? `${message} (Mã: ${supportReference})` : message;
+      setVideoUploadError({ conversationId, fileName: file.name, message: displayMessage });
+      toast.error(displayMessage);
     };
 
     if (streaming) {
@@ -1951,35 +2029,41 @@ export default function ChatWidget() {
       return;
     }
 
-    // A transcript must be owned by a lesson-author conversation. Create one
-    // transparently so first-time users can upload without sending a chat turn.
-    setVideoUploadProgress(0);
-    setVideoUploadNotice({ conversationId, fileName: file.name, progress: 0 });
-    setVideoUploadError(null);
-    if (!conversationId) {
-      const createdConversation = await handleCreateConversation();
-      if (!createdConversation) {
-        reportUploadError(isEnglish
-          ? 'Could not prepare a lesson-author conversation for this video.'
-          : 'Không thể chuẩn bị cuộc trò chuyện chuyên gia bài học cho video này.');
-        return;
-      }
-      conversationId = createdConversation.id;
-      setVideoUploadNotice({ conversationId, fileName: file.name, progress: 0 });
-    }
-
     let accepted = false;
     try {
+      uploadStage = 'attempt_prepare';
+      uploadAttemptId = createLessonAuthorUploadAttemptId();
+      // A transcript must be owned by a lesson-author conversation. Create one
+      // transparently so first-time users can upload without sending a chat turn.
+      setVideoUploadProgress(0);
+      setVideoUploadNotice({ conversationId, fileName: file.name, progress: null, phase: 'preparing' });
+      setVideoUploadError(null);
+      uploadStage = 'conversation_prepare';
+      if (!conversationId) {
+        const createdConversation = await handleCreateConversation();
+        if (!createdConversation) {
+          reportUploadError(isEnglish
+            ? 'Could not prepare a lesson-author conversation for this video.'
+            : 'Không thể chuẩn bị cuộc trò chuyện chuyên gia bài học cho video này.');
+          return;
+        }
+        conversationId = createdConversation.id;
+        setVideoUploadNotice({ conversationId, fileName: file.name, progress: null, phase: 'uploading' });
+      }
+      uploadStage = 'browser_upload';
       const { job } = await uploadLessonAuthorVideoTranscript(
         conversationId,
         file,
         isEnglish ? 'en' : 'vi',
-        crypto.randomUUID(),
+        uploadAttemptId,
         progress => {
-          setVideoUploadProgress(progress);
-          setVideoUploadNotice(current => current?.conversationId === conversationId ? { ...current, progress } : current);
+          if (progress !== null) setVideoUploadProgress(progress);
+          setVideoUploadNotice(current => current?.conversationId === conversationId
+            ? { ...current, progress, phase: lessonAuthorVideoUploadPhase(progress) }
+            : current);
         },
       );
+      uploadStage = 'server_accepted';
       const locale = isEnglish ? 'en' : 'vi';
       const provisionalMessage: ChatMessage = {
         id: `lesson-author-transcription-${job.id}`,
@@ -1995,6 +2079,9 @@ export default function ChatWidget() {
           lesson_author_transcription_status: job.status,
           lesson_author_video_file_name: job.original_file_name,
           lesson_author_transcript_file_name: job.transcript_file_name,
+          lesson_author_kb_document_id: job.kb_document_id,
+          lesson_author_kb_document_status: job.kb_document_status,
+          lesson_author_source_ready: job.source_ready,
         },
         created_at: new Date().toISOString(),
       };
@@ -2018,7 +2105,10 @@ export default function ChatWidget() {
       toast.success(locale === 'en' ? 'Video uploaded. Creating transcript.' : 'Đã tải video lên. Đang tạo bản chép lời.');
       scrollChatToBottom('smooth');
     } catch (error) {
-      reportUploadError(getLocalizedApiError(error, isEnglish ? 'Could not upload the video.' : 'Không thể tải video lên.'));
+      reportUploadError(
+        getLocalizedApiError(error, isEnglish ? 'Could not upload the video.' : 'Không thể tải video lên.'),
+        error,
+      );
     } finally {
       setVideoUploadProgress(null);
       if (accepted) setVideoUploadNotice(null);
@@ -2054,9 +2144,9 @@ export default function ChatWidget() {
       setProposalEvent(getLatestPendingProposalEvent(result.messages));
       setBlueprintEvent(getLatestBlueprintEvent(result.messages));
       setBlueprintDraftSelection(null);
-      const latestMessage = result.messages[result.messages.length - 1];
       const pendingTurn = readStoredChatPendingTurn(conversationId);
-      const canRestorePending = latestMessage?.role === 'user' && pendingTurn?.target === target;
+      const canRestorePending = pendingTurn?.target === target
+        && !hasRecoveredAssistant(result.messages, pendingTurn.startedAt, pendingTurn.baselineMessageId);
       const storedProgress = canRestorePending && isLessonAuthor
         ? readStoredLessonAuthorProgress(conversationId)
         : null;
@@ -2178,7 +2268,8 @@ export default function ChatWidget() {
     const conversationId = currentConv.id;
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
-    const streamStartedAt = performance.now();
+    const streamStartedAt = performance.now(); // UI animation duration only.
+    const recoveryStartedAt = Date.now(); // Epoch time, comparable with persisted messages.
     const streamAccumulator = { value: '' };
     const isVoiceTurn = source === 'voice' || voiceModeActive;
     if (isVoiceTurn) {
@@ -2228,7 +2319,7 @@ export default function ChatWidget() {
     setSelectedMentions([]);
     setSelectedSourceDocuments([]);
     setBlueprintDraftSelection(null);
-    writeStoredChatPendingTurn(conversationId, target);
+    writeStoredChatPendingTurn(conversationId, target, messages[messages.length - 1]?.id ?? null);
     clearStoredLessonAuthorProgress(conversationId);
 
     const userMsg: ChatMessage = {
@@ -2293,6 +2384,7 @@ export default function ChatWidget() {
             ]
           : result.messages;
         setMessages(nextMessages);
+        clearPendingBlueprintJob(conversationId);
         setProposalEvent(getLatestPendingProposalEvent(nextMessages));
         const latestBlueprint = getLatestBlueprintEvent(nextMessages);
         setBlueprintEvent(current => (
@@ -2374,6 +2466,20 @@ export default function ChatWidget() {
         blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
         input_mode: isVoiceTurn ? 'voice' : 'text',
         report_filters: outgoingReportFilters,
+        onTransportInterrupted: isLessonAuthor ? () => {
+          // Keep the pending marker and never submit another generation request.
+          if (currentConvIdRef.current !== conversationId) {
+            activeStreamConversationIdsRef.current.delete(conversationId);
+            return;
+          }
+          handleLessonAuthorProgress(conversationId, {
+            type: 'progress', stage: 'recovering',
+            detail: i18n.language.startsWith('vi')
+              ? 'Kết nối phản hồi bị gián đoạn. Đang kiểm tra kết quả, không gửi lại yêu cầu AI.'
+              : 'Response connection interrupted. Checking the result without resubmitting the AI request.',
+          });
+          recoverPendingTurn(conversationId, target, recoveryStartedAt);
+        } : undefined,
         onProposal: isLessonAuthor
           ? (event) => {
             if (currentConvIdRef.current === conversationId) {
@@ -2403,7 +2509,7 @@ export default function ChatWidget() {
       },
     );
     return true;
-  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, editorContext, handleLessonAuthorProgress, isLessonAuthor, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
+  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, editorContext, handleLessonAuthorProgress, isLessonAuthor, messages, recoverPendingTurn, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
 
   const handleSend = () => {
     sendUserMessage(inputValue, 'text');
@@ -4291,17 +4397,29 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <span className="truncate font-medium">{activeVideoUploadNotice.fileName}</span>
-                        <span className="shrink-0 tabular-nums text-primary-foreground/80">{activeVideoUploadNotice.progress}%</span>
+                        <span className="shrink-0 tabular-nums text-primary-foreground/80">
+                          {activeVideoUploadNotice.progress === null ? '…' : `${activeVideoUploadNotice.progress}%`}
+                        </span>
                       </div>
                       <p className="mt-0.5 text-[11px] leading-4 text-primary-foreground/80">
-                        {activeVideoUploadNotice.progress >= 100
+                        {activeVideoUploadNotice.phase === 'preparing'
+                          ? (isVietnamese ? 'Đang chuẩn bị cuộc trò chuyện' : 'Preparing conversation')
+                          : activeVideoUploadNotice.phase === 'accepting'
                           ? (isVietnamese ? 'Đã nhận video, đang tạo yêu cầu transcript' : 'Video received, creating transcript request')
                           : (isVietnamese ? 'Đang tải video lên' : 'Uploading video')}
                       </p>
                     </div>
                   </div>
                   <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/20">
-                    <div className="h-full rounded-full bg-white transition-[width] duration-200" style={{ width: `${activeVideoUploadNotice.progress}%` }} />
+                    {activeVideoUploadNotice.progress === null ? (
+                      <motion.div
+                        className="h-full w-2/5 rounded-full bg-white"
+                        animate={{ x: ['-110%', '260%'] }}
+                        transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                    ) : (
+                      <div className="h-full rounded-full bg-white transition-[width] duration-200" style={{ width: `${activeVideoUploadNotice.progress}%` }} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -4607,16 +4725,28 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2 text-[11px] leading-4">
                 <span className="truncate font-medium text-foreground">{activeVideoUploadNotice.fileName}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">{activeVideoUploadNotice.progress}%</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {activeVideoUploadNotice.progress === null ? '…' : `${activeVideoUploadNotice.progress}%`}
+                </span>
               </div>
               <div className="mt-1 h-1 overflow-hidden rounded-full bg-primary/15">
-                <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-200"
-                  style={{ width: `${Math.min(100, Math.max(0, activeVideoUploadNotice.progress))}%` }}
-                />
+                {activeVideoUploadNotice.progress === null ? (
+                  <motion.div
+                    className="h-full w-2/5 rounded-full bg-primary"
+                    animate={{ x: ['-110%', '260%'] }}
+                    transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                ) : (
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(0, activeVideoUploadNotice.progress))}%` }}
+                  />
+                )}
               </div>
               <p className="mt-1 text-[10px] leading-3.5 text-muted-foreground">
-                {activeVideoUploadNotice.progress >= 100
+                {activeVideoUploadNotice.phase === 'preparing'
+                  ? (isVietnamese ? 'Đang chuẩn bị cuộc trò chuyện để nhận video' : 'Preparing the conversation to receive the video')
+                  : activeVideoUploadNotice.phase === 'accepting'
                   ? (isVietnamese ? 'Đã nhận video, đang tạo yêu cầu transcript' : 'Video received, creating transcript request')
                   : (isVietnamese ? 'Đang tải video lên và chuẩn bị bản chép lời' : 'Uploading video and preparing transcript')}
               </p>
@@ -4934,6 +5064,8 @@ type LessonAuthorTranscriptAttachment = {
   status: LessonAuthorTranscriptionStatus;
   errorReason: string | null;
   knowledgeDocumentId: string | null;
+  knowledgeDocumentStatus: 'draft' | 'learning' | 'learned' | 'error' | null;
+  sourceReady: boolean;
 };
 
 function getLessonAuthorTranscriptAttachment(metadata: Record<string, unknown>): LessonAuthorTranscriptAttachment | null {
@@ -4958,6 +5090,10 @@ function getLessonAuthorTranscriptAttachment(metadata: Record<string, unknown>):
     knowledgeDocumentId: typeof metadata.lesson_author_kb_document_id === 'string'
       ? metadata.lesson_author_kb_document_id
       : null,
+    knowledgeDocumentStatus: ['draft', 'learning', 'learned', 'error'].includes(String(metadata.lesson_author_kb_document_status))
+      ? metadata.lesson_author_kb_document_status as LessonAuthorTranscriptAttachment['knowledgeDocumentStatus']
+      : null,
+    sourceReady: metadata.lesson_author_source_ready === true,
   };
 }
 
@@ -4973,7 +5109,11 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
   const { i18n: translationInstance } = useTranslation();
   const isVietnamese = translationInstance.language !== 'en';
   const isReady = attachment.status === 'succeeded';
-  const isPending = attachment.status === 'queued' || attachment.status === 'running';
+  const isIndexing = attachment.status === 'committed'
+    && !attachment.sourceReady
+    && attachment.knowledgeDocumentStatus !== 'error';
+  const isKbError = attachment.status === 'committed' && attachment.knowledgeDocumentStatus === 'error';
+  const isPending = attachment.status === 'queued' || attachment.status === 'running' || isIndexing;
   const isDownloadable = isReady || attachment.status === 'committed';
   const presentation = {
     queued: {
@@ -5009,18 +5149,32 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
       tone: 'border-muted-foreground/25 bg-muted text-muted-foreground',
     },
     committed: {
-      title: isVietnamese ? 'Đã thêm vào Kho tri thức' : 'Added to Knowledge Base',
-      description: isVietnamese ? 'Bản chép lời đang được lập chỉ mục và sẽ xuất hiện trong danh sách nguồn.' : 'The transcript is indexing and will appear in the source picker.',
-      badge: isVietnamese ? 'HOÀN TẤT' : 'COMPLETED',
-      tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      title: attachment.sourceReady
+        ? (isVietnamese ? 'Nguồn transcript đã sẵn sàng' : 'Transcript source is ready')
+        : isKbError
+          ? (isVietnamese ? 'Không thể lập chỉ mục transcript' : 'Transcript indexing failed')
+          : (isVietnamese ? 'Đang học bản chép lời' : 'Learning transcript source'),
+      description: attachment.sourceReady
+        ? (isVietnamese ? 'Bản chép lời đã sẵn sàng làm nguồn cho AI Instructional Design.' : 'The transcript is ready as a source for AI Instructional Design.')
+        : isKbError
+          ? (isVietnamese ? 'Kho tri thức không thể học bản chép lời này. Hãy kiểm tra tài liệu trong Kho tri thức.' : 'The Knowledge Base could not learn this transcript. Check the document in the Knowledge Base.')
+          : (isVietnamese ? 'Bản chép lời đang được lập chỉ mục. Chỉ có thể soạn khóa học khi nguồn đã sẵn sàng.' : 'The transcript is being indexed. Course authoring is available after the source is ready.'),
+      badge: attachment.sourceReady
+        ? (isVietnamese ? 'SẴN SÀNG' : 'READY')
+        : isKbError
+          ? (isVietnamese ? 'LỖI KB' : 'KB ERROR')
+          : (isVietnamese ? 'ĐANG HỌC' : 'INDEXING'),
+      tone: isKbError
+        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+        : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     },
   }[attachment.status];
 
   const StatusIcon = isPending
     ? Loader2
-    : attachment.status === 'succeeded' || attachment.status === 'committed'
+    : attachment.status === 'succeeded' || (attachment.status === 'committed' && attachment.sourceReady)
       ? CheckCircle2
-      : attachment.status === 'failed'
+      : attachment.status === 'failed' || isKbError
         ? AlertTriangle
         : Clock3;
 
@@ -5069,7 +5223,7 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
                 type="button"
                 size="sm"
                 className="h-8 flex-1 gap-1.5 text-[11px]"
-                disabled={draftingCourse || !onDraftCourse}
+                disabled={draftingCourse || !onDraftCourse || !attachment.sourceReady}
                 onClick={onDraftCourse}
               >
                 {draftingCourse ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
@@ -5103,9 +5257,13 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
             )}
           </div>
           {attachment.status === 'committed' && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              {isVietnamese ? 'Đã thêm bản chép lời vào Kho tri thức' : 'Transcript added to Knowledge Base'}
+            <div className={`mt-2 flex items-center gap-1.5 text-[11px] font-medium ${isKbError ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-300'}`}>
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isKbError ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {attachment.sourceReady
+                ? (isVietnamese ? 'Đã học xong và sẵn sàng làm nguồn' : 'Learned and ready as a source')
+                : isKbError
+                  ? (isVietnamese ? 'Lập chỉ mục Kho tri thức thất bại' : 'Knowledge Base indexing failed')
+                  : (isVietnamese ? 'Đang lập chỉ mục trong Kho tri thức' : 'Indexing in Knowledge Base')}
             </div>
           )}
         </div>

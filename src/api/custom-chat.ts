@@ -10,9 +10,45 @@ import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
 import type { LessonAuthorEditorContext } from "@/utils/lesson-author-editor-context";
-import { buildChatStreamUrl, isChatStreamNetworkError } from "./custom-chat-stream.logic";
+import { buildChatStreamUrl, isChatStreamNetworkError, consumeChatEventStream, readGenerationAdmissionRejection } from "./custom-chat-stream.logic";
+import { normalizeLessonAuthorVideoUploadProgress } from "./lesson-author-video-upload.logic";
+import { pollBlueprintGeneration, readBlueprintGenerationStatus, type BlueprintGenerationStatus } from './lesson-author-generation.logic';
 
 interface ApiResponse<T> { success: boolean; data: T; }
+
+function blueprintJobStorageKey(conversationId: string): string {
+  const { user } = useAuthStore.getState();
+  const tenant = user?.role === 'superadmin' ? useTenantStore.getState().activeTenantId : user?.tenant_id;
+  return `lesson-author-job-v1:${tenant ?? ''}:${user?.id ?? ''}:${conversationId}`;
+}
+
+function storeBlueprintJob(conversationId: string, job: BlueprintGenerationStatus): void {
+  try { sessionStorage.setItem(blueprintJobStorageKey(conversationId), JSON.stringify({
+    job_id: job.job_id, correlation_id: job.correlation_id, deadline_at: job.deadline_at,
+  })); } catch { /* Existing message-only recovery remains available. */ }
+}
+
+export function clearPendingBlueprintJob(conversationId: string): void {
+  try { sessionStorage.removeItem(blueprintJobStorageKey(conversationId)); } catch { /* storage unavailable */ }
+}
+
+/** Reopen/reload reads the known job only. Never automatically resubmit a turn. */
+export async function fetchPendingBlueprintJob(conversationId: string): Promise<BlueprintGenerationStatus | null> {
+  let stored: { job_id?: string; correlation_id?: string; deadline_at?: string };
+  try { stored = JSON.parse(sessionStorage.getItem(blueprintJobStorageKey(conversationId)) ?? 'null'); }
+  catch { clearPendingBlueprintJob(conversationId); return null; }
+  if (!stored) return null;
+  if (!/^[0-9a-f-]{36}$/i.test(stored.job_id ?? '') || !Number.isFinite(Date.parse(stored.deadline_at ?? ''))
+    || Date.now() > Date.parse(stored.deadline_at!) + 60_000) {
+    clearPendingBlueprintJob(conversationId); return null;
+  }
+  const { data } = await customApiClient.get<ApiResponse<BlueprintGenerationStatus>>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${encodeURIComponent(conversationId)}/generation-jobs/${encodeURIComponent(stored.job_id!)}`,
+  );
+  const job = readBlueprintGenerationStatus(data.data);
+  if (job.job_id !== stored.job_id || job.correlation_id !== stored.correlation_id) throw new Error('GENERATION_STATUS_IDENTITY_CHANGED');
+  return job;
+}
 
 export type ChatTarget = "admin" | "learner" | "lesson_author";
 const AI_TOKEN_LIMIT_REACHED_CODE = "AI_TOKEN_LIMIT_REACHED";
@@ -448,6 +484,8 @@ export interface LessonAuthorTranscriptionJob {
   transcript_language: string | null;
   transcript_char_count: number | null;
   kb_document_id: string | null;
+  kb_document_status: 'draft' | 'learning' | 'learned' | 'error' | null;
+  source_ready: boolean;
   can_add_to_kb: boolean;
   can_retry: boolean;
   error_reason: string | null;
@@ -520,7 +558,7 @@ export async function uploadLessonAuthorVideoTranscript(
   file: File,
   locale: 'vi' | 'en',
   idempotencyKey: string,
-  onProgress?: (percent: number) => void,
+  onProgress?: (percent: number | null) => void,
 ): Promise<{ job: LessonAuthorTranscriptionJob; already_exists: boolean }> {
   const body = new FormData();
   body.append('video', file);
@@ -530,13 +568,25 @@ export async function uploadLessonAuthorVideoTranscript(
     `/api/ai-chatbot/chat/lesson-author/conversations/${conversationId}/transcriptions`,
     body,
     {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'X-Lesson-Author-Upload-Attempt': idempotencyKey,
+      },
       timeout: LESSON_AUTHOR_VIDEO_UPLOAD_TIMEOUT_MS,
       onUploadProgress: event => {
-        if (!event.total) return;
-        onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress?.(normalizeLessonAuthorVideoUploadProgress(event.loaded, event.total));
       },
     },
+  );
+  return data.data;
+}
+
+export async function fetchLessonAuthorVideoTranscript(
+  conversationId: string,
+  jobId: string,
+): Promise<LessonAuthorTranscriptionJob> {
+  const { data } = await customApiClient.get<ApiResponse<LessonAuthorTranscriptionJob>>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${conversationId}/transcriptions/${jobId}`,
   );
   return data.data;
 }
@@ -670,6 +720,8 @@ export function sendMessageStream(
     onBlueprint?: (event: LessonAuthorBlueprintEvent) => void;
     onProgress?: (event: LessonAuthorProgressEvent) => void;
     onReportStatus?: (status: ReportStreamStatus) => void;
+    /** Read-only recovery; must never re-POST the user turn. */
+    onTransportInterrupted?: () => void;
   } = {},
 ): AbortController {
   const controller = new AbortController();
@@ -680,6 +732,7 @@ export function sendMessageStream(
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
   };
+  if (options.target === 'lesson_author') headers['X-Lesson-Author-Job-Key'] = crypto.randomUUID();
   let quotaTenantId = user?.tenant_id ?? null;
   if (user?.role === 'superadmin') {
     const { activeTenantId } = useTenantStore.getState();
@@ -698,6 +751,12 @@ export function sendMessageStream(
   });
   let receivedDone = false;
   let receivedError = false;
+  const interrupted = () => {
+    if (receivedDone || receivedError) return;
+    receivedError = true;
+    if (options.onTransportInterrupted) options.onTransportInterrupted();
+    else onError(streamText('chatWidget.connectionFailed'));
+  };
 
   const emitDone = () => {
     if (receivedDone || receivedError) return;
@@ -734,10 +793,51 @@ export function sendMessageStream(
         signal: controller.signal,
       });
 
+      if (response.status === 202) {
+        const payload = await response.json();
+        const initial = readBlueprintGenerationStatus(payload?.data);
+        storeBlueprintJob(conversationId, initial);
+        scheduleTenantDataQuotaRefresh(quotaTenantId);
+        const statusUrl = new URL(url);
+        statusUrl.pathname = `/api/ai-chatbot/chat/lesson-author/conversations/${encodeURIComponent(conversationId)}/generation-jobs/${encodeURIComponent(initial.job_id)}`;
+        statusUrl.search = '';
+        const terminal = await pollBlueprintGeneration({ initial, signal: controller.signal,
+          read: async () => {
+            const statusResponse = await fetch(statusUrl.toString(), { method: 'GET', headers,
+              signal: controller.signal, cache: 'no-store' });
+            if (!statusResponse.ok) throw new Error('GENERATION_STATUS_UNAVAILABLE');
+            const body = await statusResponse.json();
+            return readBlueprintGenerationStatus(body?.data);
+          },
+          progress: job => options.onProgress?.({ type: 'progress', stage: job.progress_code ?? 'QUEUED',
+            detail: useLocaleStore.getState().locale === 'en'
+              ? 'The server is preparing your course blueprint. The result will be saved in this conversation.'
+              : 'Máy chủ đang tạo Bản thiết kế khóa học. Kết quả sẽ được lưu trong cuộc hội thoại này.' }),
+        });
+        // Existing widget reloads authorized, hydrated messages on done. It also
+        // resumes read-only message recovery after reload/lost 202; never re-POST.
+        if (terminal.assistant_message_id) emitDone();
+        else emitError(useLocaleStore.getState().locale === 'en'
+          ? 'The course blueprint could not be completed. No course changes were applied.'
+          : 'Chưa thể hoàn tất Bản thiết kế khóa học. Chưa có thay đổi nào được áp dụng.');
+        return;
+      }
+
       if (!response.ok || !response.body) {
+        let payload: unknown;
+        try { payload = await response.json(); } catch { /* proxy/empty response: outcome remains unknown */ }
+        const rejection = readGenerationAdmissionRejection(payload);
+        if (rejection) {
+          const message = normalizeStreamErrorPayload(payload, 'chatWidget.serverConnectionFailed');
+          emitError(`${message} [${rejection.code}; ${rejection.correlationId}]`);
+          return;
+        }
+        if (options.onTransportInterrupted && (response.status >= 500 || (response.ok && !response.body))) {
+          interrupted();
+          return;
+        }
         let message = streamText('chatWidget.serverConnectionFailed');
         try {
-          const payload = await response.json();
           message = normalizeStreamErrorPayload(payload, 'chatWidget.serverConnectionFailed');
         } catch {
           // Keep fallback message.
@@ -751,49 +851,22 @@ export function sendMessageStream(
       // the streamed assistant result is finalized below.
       scheduleTenantDataQuotaRefresh(quotaTenantId);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      const processLine = (line: string) => {
-        const normalizedLine = line.trimEnd();
-        if (!normalizedLine.startsWith('data: ')) return;
-        try {
-          const event = JSON.parse(normalizedLine.slice(6));
+      const terminal = await consumeChatEventStream(response.body, (event) => {
           if (event.type === 'chunk' && typeof event.text === 'string') onChunk(event.text);
           else if (event.type === 'done') emitDone();
           else if (event.type === 'error') {
             emitError(normalizeStreamErrorPayload(event, 'chatWidget.unknownError'));
           }
-          else if (event.type === 'proposal') options.onProposal?.(event);
-          else if (event.type === 'blueprint') options.onBlueprint?.(event);
-          else if (event.type === 'progress') options.onProgress?.(event);
+          else if (event.type === 'proposal') options.onProposal?.(event as unknown as LessonAuthorProposalEvent);
+          else if (event.type === 'blueprint') options.onBlueprint?.(event as unknown as LessonAuthorBlueprintEvent);
+          else if (event.type === 'progress') options.onProgress?.(event as unknown as LessonAuthorProgressEvent);
           else if (event.type === 'report_status' && (event.stage === 'collecting' || event.stage === 'analyzing')) options.onReportStatus?.(event.stage);
-        } catch { /* skip malformed line */ }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) processLine(line);
-      }
-
-      // A final SSE event can remain in the decoder/buffer when the stream closes.
-      buffer += decoder.decode();
-      if (buffer.trim()) {
-        for (const line of buffer.split('\n')) processLine(line);
-      }
-
-      // Safety: if stream ended without done/error event, still notify once.
-      emitDone();
+      });
+      if (!terminal) interrupted();
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        emitError(normalizeStreamErrorMessage(err));
+        if (options.onTransportInterrupted) interrupted();
+        else emitError(normalizeStreamErrorMessage(err));
       }
     }
   })();

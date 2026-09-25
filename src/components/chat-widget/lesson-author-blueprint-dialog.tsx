@@ -35,11 +35,16 @@ import type { CourseIndexResponse } from '@/api/custom-course-authoring';
 import type {
   LessonAuthorBlueprintChapter,
   LessonAuthorBlueprintEvent,
-  LessonAuthorBlueprintMediaPlan,
   LessonAuthorProposalEvent,
 } from '@/api/custom-chat';
 import { resolveLessonAuthorContentLocale, type LessonAuthorContentLocale } from './lesson-author-locale';
 import { LessonAuthorMindmapPanel } from './lesson-author-mindmap-modal';
+import {
+  buildBlueprintMediaPresentation,
+  getBlueprintMediaReviewCopy,
+  type BlueprintMediaPlacement,
+  type BlueprintMediaDecisionPlacement,
+} from './lesson-author-blueprint-media.logic';
 
 interface LessonAuthorBlueprintDialogProps {
   open: boolean;
@@ -55,28 +60,6 @@ interface LessonAuthorBlueprintDialogProps {
 }
 
 type BlueprintTab = 'overview' | 'chapters' | 'media' | 'mindmap';
-
-interface BlueprintMediaPlacement {
-  chapterIndex: number;
-  lessonIndex: number;
-  unitIndex: number;
-  chapterTitle: string;
-  lessonTitle: string;
-  unitTitle: string;
-  media: LessonAuthorBlueprintMediaPlan;
-  mediaStatus: 'PROPOSED' | 'NOT_NEEDED' | 'SOURCE_GAP' | 'FAILED' | 'NOT_EVALUATED';
-}
-
-interface BlueprintMediaDecisionPlacement {
-  chapterIndex: number;
-  lessonIndex: number;
-  unitIndex: number;
-  chapterTitle: string;
-  lessonTitle: string;
-  unitTitle: string;
-  mediaStatus: BlueprintMediaPlacement['mediaStatus'];
-  reasonCode: string;
-}
 
 function mediaDecisionLabel(
   status: BlueprintMediaPlacement['mediaStatus'],
@@ -101,6 +84,7 @@ function mediaDecisionReason(
     MEDIA_CANDIDATE_EVIDENCE_UNRESOLVED: ['Có thể cần media nhưng evidence nguồn chưa đủ để lập brief.', 'A visual may help, but source evidence is incomplete for a brief.'],
     MEDIA_RECOMMENDATION_CAPACITY_EXCEEDED: ['Đánh giá đã vượt giới hạn số media brief của bản thiết kế.', 'The blueprint reached its bounded media-brief capacity.'],
     LEGACY_BLUEPRINT: ['Bản thiết kế cũ chưa có đánh giá media.', 'This older blueprint has no media evaluation.'],
+    MEDIA_PLAN_MISSING: ['Dữ liệu đề xuất media chưa đầy đủ để hiển thị.', 'The media recommendation data is incomplete.'],
   };
   return labels[reasonCode]?.[locale === 'en' ? 1 : 0] ?? reasonCode;
 }
@@ -398,71 +382,12 @@ export function LessonAuthorBlueprintDialog({
     () => (chapters ?? []).reduce((total, chapter) => total + chapter.lessons.length, 0),
     [chapters],
   );
-  const mediaPlacements = useMemo<BlueprintMediaPlacement[]>(
-    () => {
-      const decisions = new globalThis.Map((blueprintEvent?.blueprint.media_review?.decisions ?? []).map(decision => [decision.unit_path, decision]));
-      return (chapters ?? []).flatMap((chapter, chapterIndex) => chapter.lessons.flatMap((lesson, lessonIndex) => (
-        (lesson.units ?? []).flatMap((unit, unitIndex) => unit.media_plan ? [{
-        chapterIndex,
-        lessonIndex,
-        unitIndex,
-        chapterTitle: chapter.title,
-        lessonTitle: lesson.title,
-        unitTitle: unit.title,
-        media: unit.media_plan,
-        mediaStatus: decisions.get(`chapter_${chapterIndex + 1}.lesson_${lessonIndex + 1}.unit_${unitIndex + 1}`)?.status ?? 'NOT_EVALUATED',
-      }] : [])
-      )));
-    },
+  const mediaPresentation = useMemo(
+    () => buildBlueprintMediaPresentation(chapters ?? [], blueprintEvent?.blueprint.media_review),
     [blueprintEvent?.blueprint.media_review, chapters],
   );
-  const mediaDecisionPlacements = useMemo<BlueprintMediaDecisionPlacement[]>(
-    () => {
-      const decisions = new globalThis.Map((blueprintEvent?.blueprint.media_review?.decisions ?? []).map(decision => [decision.unit_path, decision]));
-      return (chapters ?? []).flatMap((chapter, chapterIndex) => chapter.lessons.flatMap((lesson, lessonIndex) => (
-        (lesson.units ?? []).flatMap((unit, unitIndex) => {
-          if (unit.media_plan) return [];
-          const decision = decisions.get(`chapter_${chapterIndex + 1}.lesson_${lessonIndex + 1}.unit_${unitIndex + 1}`);
-          return decision ? [{
-            chapterIndex,
-            lessonIndex,
-            unitIndex,
-            chapterTitle: chapter.title,
-            lessonTitle: lesson.title,
-            unitTitle: unit.title,
-            mediaStatus: decision.status,
-            reasonCode: decision.reason_code,
-          }] : [];
-        })
-      )));
-    },
-    [blueprintEvent?.blueprint.media_review, chapters],
-  );
-  const mediaReview = blueprintEvent?.blueprint.media_review;
-  const mediaReviewNotice = useMemo(() => {
-    if (!mediaReview) {
-      return isVietnamese
-        ? 'Media của bản thiết kế này chưa được đánh giá; không được hiểu là không cần media.'
-        : 'Media has not been evaluated for this blueprint; this does not mean media is unnecessary.';
-    }
-    const counts = mediaReview.decisions.reduce<Record<string, number>>((result, decision) => ({
-      ...result,
-      [decision.status]: (result[decision.status] ?? 0) + 1,
-    }), {});
-    if ((counts.FAILED ?? 0) > 0 || (counts.SOURCE_GAP ?? 0) > 0) {
-      return isVietnamese
-        ? 'Một số unit chưa thể kết luận media do lỗi đánh giá hoặc thiếu bằng chứng nguồn.'
-        : 'Some units have no final media conclusion because evaluation failed or source evidence is incomplete.';
-    }
-    if ((counts.NOT_EVALUATED ?? 0) > 0) {
-      return isVietnamese
-        ? 'Một số unit chưa được đánh giá media.'
-        : 'Some units have not been evaluated for media.';
-    }
-    return isVietnamese
-      ? 'Các trạng thái dưới đây phản ánh kết quả đánh giá media theo từng unit.'
-      : 'The statuses below reflect the media evaluation for each unit.';
-  }, [isVietnamese, mediaReview]);
+  const { proposals: mediaPlacements, decisions: mediaDecisionPlacements } = mediaPresentation;
+  const mediaCopy = getBlueprintMediaReviewCopy(mediaPresentation.state, locale);
   useEffect(() => {
     if (!blueprintEvent || !chapters?.length) return;
 
@@ -809,7 +734,7 @@ export function LessonAuthorBlueprintDialog({
                       ? 'Mỗi đề xuất nằm ở đầu bài học tương ứng và chỉ là kế hoạch học liệu, chưa tạo hoặc chèn media vào khóa học.'
                       : 'Each recommendation is placed before its corresponding lesson and remains a media plan only; no asset is created or inserted into the course.'}
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{mediaReviewNotice}</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground" role={mediaPresentation.state === 'attention' ? 'status' : undefined}>{mediaCopy.notice}</p>
                 </section>
 
                 {mediaPlacements.length > 0 || mediaDecisionPlacements.length > 0 ? (
@@ -833,14 +758,10 @@ export function LessonAuthorBlueprintDialog({
                   <section className="border-y border-border/70 px-1 py-8 text-center">
                     <PanelsTopLeft className="mx-auto h-5 w-5 text-muted-foreground" />
                     <p className="mt-3 text-sm font-semibold text-foreground">
-                      {mediaReview
-                        ? (isVietnamese ? 'Chưa có đề xuất media sau đánh giá' : 'No media proposal after evaluation')
-                        : (isVietnamese ? 'Chưa đánh giá đề xuất media' : 'Media recommendations have not been evaluated')}
+                      {mediaCopy.emptyTitle}
                     </p>
                     <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-                      {isVietnamese
-                        ? 'Chỉ một bản đánh giá hoàn tất mới có thể kết luận không cần media; trạng thái thiếu hoặc lỗi không phải là kết luận đó.'
-                        : 'Only a completed evaluation can conclude that media is not needed; missing or failed evaluation is not that conclusion.'}
+                      {mediaCopy.emptyDescription}
                     </p>
                   </section>
                 )}
