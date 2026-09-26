@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { isChatRecoveryExpired, hasRecoveredAssistant } from '@/api/custom-chat-stream.logic';
+import { chapterInterruptionVisible, chapterResumeRequest, type ChapterCheckpointStatus } from '@/api/lesson-author-chapter-checkpoint.logic';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,6 +31,7 @@ import {
   fetchActiveBot, fetchConversations, createConversation,
   deleteConversation, fetchMessages, sendMessageStream,
   fetchPendingBlueprintJob, clearPendingBlueprintJob,
+  fetchChapterCheckpointStatus,
   fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
   uploadLessonAuthorVideoTranscript, fetchLessonAuthorVideoTranscript,
@@ -1031,6 +1033,7 @@ export default function ChatWidget() {
   const [blueprintEvent, setBlueprintEvent] = useState<LessonAuthorBlueprintEvent | null>(null);
   const [blueprintDraftSelection, setBlueprintDraftSelection] = useState<BlueprintDraftSelection | null>(null);
   const [lessonAuthorProgress, setLessonAuthorProgress] = useState<LessonAuthorProgressEvent | null>(null);
+  const [chapterCheckpoint,setChapterCheckpoint]=useState<{conversationId:string;status:ChapterCheckpointStatus}|null>(null);
   const [applyingProposal, setApplyingProposal] = useState(false);
   const [mindmapOutline, setMindmapOutline] = useState<CourseIndexResponse | null>(null);
   const [blueprintDialogOpen, setBlueprintDialogOpen] = useState(false);
@@ -1243,6 +1246,7 @@ export default function ChatWidget() {
           setLessonAuthorProgress({ type: 'progress', stage: knownJob.progress_code ?? 'QUEUED',
             detail: i18n.language.startsWith('vi') ? 'Tác vụ tạo khóa học vẫn đang chạy trên máy chủ.' : 'Course generation is still running on the server.' });
         }
+        const chapterStatus=target==='lesson_author'?await fetchChapterCheckpointStatus(conversationId).catch(()=>null):null;
         const result = await fetchMessages(conversationId, undefined, target);
         if (!isActiveRecovery()) {
           finishRecovery(false);
@@ -1256,7 +1260,9 @@ export default function ChatWidget() {
 
         // The backend persists the assistant message even when the original
         // SSE connection was lost. Never re-POST the user turn on recovery.
-        if (hasRecoveredAssistant(result.messages, startedAt, baselineMessageId)) {
+        if (chapterStatus) setChapterCheckpoint({conversationId,status:chapterStatus});
+        if (hasRecoveredAssistant(result.messages, startedAt, baselineMessageId)
+          || chapterStatus?.interruption || chapterStatus?.status==='failed') {
           clearPendingBlueprintJob(conversationId);
           finishRecovery(false);
           clearStoredChatPendingTurn(conversationId);
@@ -1522,6 +1528,22 @@ export default function ChatWidget() {
   const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
   const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
+  useEffect(()=>{
+    if(!open || !isLessonAuthor || !currentConv?.id || streaming)return;
+    const conversationId=currentConv.id;
+    let cancelled=false;
+    void fetchChapterCheckpointStatus(conversationId).then(status=>{
+      if(cancelled || currentConvIdRef.current!==conversationId)return;
+      setChapterCheckpoint(status?{conversationId,status}:null);
+      if(status?.status==='running' && !activeStreamConversationIdsRef.current.has(conversationId)) {
+        recoverPendingTurn(conversationId,'lesson_author',Date.now());
+      }
+    }).catch(()=>{
+      // Unavailable/disabled status must never reveal a stale Continue action.
+      if(!cancelled && currentConvIdRef.current===conversationId)setChapterCheckpoint(null);
+    });
+    return()=>{cancelled=true;};
+  },[open,isLessonAuthor,currentConv?.id,streaming,recoverPendingTurn]);
 
   useEffect(() => {
     if (!courseId) {
@@ -2263,8 +2285,9 @@ export default function ChatWidget() {
     draftSelectionOverride?: BlueprintDraftSelection | null,
     sourceDocumentsOverride?: LessonAuthorSourceDocument[],
     reportFiltersOverride?: ReportChatFilter,
+    chapterResume?: {draft_id:string;previous_attempt_id:string},
   ): boolean => {
-    if (!currentConv || !rawContent.trim() || streaming) return false;
+    if (!currentConv || !rawContent.trim() || streaming || activeStreamConversationIdsRef.current.has(currentConv.id)) return false;
     const conversationId = currentConv.id;
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
@@ -2464,6 +2487,10 @@ export default function ChatWidget() {
         editor_context: outgoingEditorContext,
         blueprint_id: outgoingBlueprintDraft?.blueprint_id,
         blueprint_chapter_index: outgoingBlueprintDraft?.chapter_index,
+        chapter_resume:chapterResume,
+        onChapterCheckpoint:isLessonAuthor?(status)=>{
+          if(currentConvIdRef.current===conversationId)setChapterCheckpoint({conversationId,status});
+        }:undefined,
         input_mode: isVoiceTurn ? 'voice' : 'text',
         report_filters: outgoingReportFilters,
         onTransportInterrupted: isLessonAuthor ? () => {
@@ -3251,6 +3278,9 @@ export default function ChatWidget() {
                   inputRef={inputRef}
                   proposalEvent={proposalEvent}
                   blueprintEvent={blueprintEvent}
+                  chapterCheckpoint={chapterCheckpoint && chapterCheckpoint.conversationId===currentConv?.id?chapterCheckpoint.status:null}
+                  onContinueChapter={(status)=>sendUserMessage(i18n.language.startsWith('vi')?'Tiếp tục hoàn thành chương':'Continue completing the chapter',
+                    'text',null,[],undefined,chapterResumeRequest(status))}
                   blueprintDraftSelection={blueprintDraftSelection}
                   lessonAuthorProgress={lessonAuthorProgress}
                   applyingProposal={applyingProposal}
@@ -3780,7 +3810,7 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, reportStreamStatus, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter }: {
+function ChatView({ messages, streamText, streaming, reportStreamStatus, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter, chapterCheckpoint, onContinueChapter }: {
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -3847,6 +3877,8 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
   onApplyProposal?: () => void;
   onOpenBlueprint?: (blueprintId?: string) => void;
   onDraftBlueprintChapter?: (chapterIndex: number) => void;
+  chapterCheckpoint?:ChapterCheckpointStatus|null;
+  onContinueChapter?:(status:ChapterCheckpointStatus)=>void;
 }) {
   const { t, i18n: translationInstance } = useTranslation();
   const isVietnamese = translationInstance.language !== 'en';
@@ -4526,6 +4558,18 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
                   )}
                 </motion.div>
               </div>
+            )}
+            {isLessonAuthor && chapterInterruptionVisible(chapterCheckpoint ?? null,streaming) && (
+              <section className="mx-auto w-full max-w-3xl rounded-lg border border-amber-500/30 bg-card p-4" aria-live="polite">
+                <p className="text-sm font-semibold">{isVietnamese?'Soạn chương bị gián đoạn':'Chapter drafting interrupted'}</p>
+                <p className="mt-2 text-sm">{isVietnamese?'Đã lưu':'Saved'} {chapterCheckpoint!.interruption!.completed_units}/{chapterCheckpoint!.interruption!.total_units} unit.</p>
+                {chapterCheckpoint!.interruption!.usage_pending_reconciliation && <p className="mt-2 text-xs text-muted-foreground">
+                  {isVietnamese?'Token của lần xử lý bị gián đoạn đang chờ đối soát. Tiếp tục sẽ dùng ngân sách mới và không tạo lại unit đã lưu.':'Tokens from the interrupted attempt are pending reconciliation. Continuing uses a new budget without regenerating saved units.'}
+                </p>}
+                <Button className="mt-3" onClick={()=>onContinueChapter?.(chapterCheckpoint!)}>
+                  {isVietnamese?'Tiếp tục':'Continue'}
+                </Button>
+              </section>
             )}
             {blueprintEvent && !proposalEvent && !streaming && (
               <section className="mx-auto w-full max-w-3xl overflow-hidden rounded-lg border border-primary/30 bg-card shadow-lg shadow-primary/5">

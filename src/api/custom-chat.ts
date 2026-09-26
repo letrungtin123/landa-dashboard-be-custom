@@ -13,8 +13,14 @@ import type { LessonAuthorEditorContext } from "@/utils/lesson-author-editor-con
 import { buildChatStreamUrl, isChatStreamNetworkError, consumeChatEventStream, readGenerationAdmissionRejection } from "./custom-chat-stream.logic";
 import { normalizeLessonAuthorVideoUploadProgress } from "./lesson-author-video-upload.logic";
 import { pollBlueprintGeneration, readBlueprintGenerationStatus, type BlueprintGenerationStatus } from './lesson-author-generation.logic';
+import { readChapterCheckpointStatus, type ChapterCheckpointStatus } from './lesson-author-chapter-checkpoint.logic';
 
 interface ApiResponse<T> { success: boolean; data: T; }
+export async function fetchChapterCheckpointStatus(conversationId:string):Promise<ChapterCheckpointStatus|null> {
+  const {data}=await customApiClient.get<ApiResponse<unknown>>(
+    `/api/ai-chatbot/chat/lesson-author/conversations/${encodeURIComponent(conversationId)}/chapter-checkpoint`);
+  return readChapterCheckpointStatus(data.data);
+}
 
 function blueprintJobStorageKey(conversationId: string): string {
   const { user } = useAuthStore.getState();
@@ -714,6 +720,8 @@ export function sendMessageStream(
     editor_context?: LessonAuthorEditorContext;
     blueprint_id?: string;
     blueprint_chapter_index?: number;
+    chapter_resume?: {draft_id:string;previous_attempt_id:string};
+    onChapterCheckpoint?: (status:ChapterCheckpointStatus)=>void;
     input_mode?: "text" | "voice";
     report_filters?: ReportChatFilter;
     onProposal?: (event: LessonAuthorProposalEvent) => void;
@@ -733,6 +741,7 @@ export function sendMessageStream(
     'Authorization': `Bearer ${accessToken}`,
   };
   if (options.target === 'lesson_author') headers['X-Lesson-Author-Job-Key'] = crypto.randomUUID();
+  if (options.target === 'lesson_author') headers['X-Lesson-Author-Chapter-Key'] = crypto.randomUUID();
   let quotaTenantId = user?.tenant_id ?? null;
   if (user?.role === 'superadmin') {
     const { activeTenantId } = useTenantStore.getState();
@@ -787,6 +796,7 @@ export function sendMessageStream(
           editor_context: options.editor_context,
           blueprint_id: options.blueprint_id,
           blueprint_chapter_index: options.blueprint_chapter_index,
+          chapter_resume: options.chapter_resume,
           input_mode: options.input_mode,
           report_filters: options.report_filters,
         }),
@@ -860,6 +870,10 @@ export function sendMessageStream(
           else if (event.type === 'proposal') options.onProposal?.(event as unknown as LessonAuthorProposalEvent);
           else if (event.type === 'blueprint') options.onBlueprint?.(event as unknown as LessonAuthorBlueprintEvent);
           else if (event.type === 'progress') options.onProgress?.(event as unknown as LessonAuthorProgressEvent);
+          else if (event.type === 'chapter_checkpoint') {
+            const status=readChapterCheckpointStatus(event.checkpoint);
+            if(status) options.onChapterCheckpoint?.(status);
+          }
           else if (event.type === 'report_status' && (event.stage === 'collecting' || event.stage === 'analyzing')) options.onReportStatus?.(event.stage);
       });
       if (!terminal) interrupted();
