@@ -58,6 +58,28 @@ type UserFormProps = {
   onSuccess: () => void;
 };
 
+const TENANT_OPTIONS_PAGE_SIZE = 100;
+
+async function fetchAllTenantOptions(): Promise<Tenant[]> {
+  const firstPage = await fetchTenants({ page: 1, page_size: TENANT_OPTIONS_PAGE_SIZE });
+  const remainingPages = firstPage.totalPages > 1
+    ? await Promise.all(
+        Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
+          fetchTenants({ page: index + 2, page_size: TENANT_OPTIONS_PAGE_SIZE }),
+        ),
+      )
+    : [];
+  const seenTenantIds = new Set<string>();
+
+  return [firstPage, ...remainingPages]
+    .flatMap((page) => page.data)
+    .filter((tenant) => {
+      if (seenTenantIds.has(tenant.id)) return false;
+      seenTenantIds.add(tenant.id);
+      return true;
+    });
+}
+
 export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserFormProps) {
   const { t } = useTranslation();
   const currentUser = useAuthStore(function getUser(s) { return s.user; });
@@ -116,6 +138,13 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
   const watchedRole = form.watch('role');
   const currentRoleLabel = getRoleLabel(user?.role, roleLabels, user?.role || '');
   const watchedRoleLabel = getRoleLabel(watchedRole, roleLabels, watchedRole || '');
+  const shouldLoadAllTenantOptions = isSuperadmin && open && !isEditing && watchedRole !== 'superadmin';
+  const { data: tenantOptions = [] } = useQuery({
+    queryKey: ['all-tenants-for-user-form'],
+    queryFn: fetchAllTenantOptions,
+    enabled: shouldLoadAllTenantOptions,
+    staleTime: 10000,
+  });
 
   useEffect(function resetForm() {
     if (user && open) {
@@ -393,7 +422,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t('userForm.selectTenant')} /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {tenantList.map(function renderOpt(t) {
+                            {tenantOptions.map(function renderOpt(t) {
                               return <SelectItem key={t.id} value={t.id}>{t.name} ({t.slug})</SelectItem>;
                             })}
                           </SelectContent>
