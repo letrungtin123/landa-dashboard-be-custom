@@ -106,7 +106,11 @@ customApiClient.interceptors.response.use(
     }
 
     // Bỏ qua logic refresh nếu là request login hoặc refresh (tránh việc refresh lỗi -> F5 trang khi user nhập sai pass)
-    if (originalRequest.url?.includes('/api/auth/login') || originalRequest.url?.includes('/api/auth/refresh')) {
+    if (
+      originalRequest.url?.includes('/api/auth/login') ||
+      originalRequest.url?.includes('/api/auth/refresh') ||
+      originalRequest.url?.includes('/api/auth/logout')
+    ) {
       return Promise.reject(error);
     }
 
