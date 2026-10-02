@@ -32,7 +32,7 @@ import {
   deleteConversation, fetchMessages, sendMessageStream,
   fetchPendingBlueprintJob, clearPendingBlueprintJob,
   fetchChapterCheckpointStatus,
-  fetchActiveBotPersonas, fetchLessonAuthorChatSettings,
+  fetchActiveBotPersonas,
   fetchLessonAuthorSourceDocuments, applyLessonAuthorJob,
   uploadLessonAuthorVideoTranscript, fetchLessonAuthorVideoTranscript,
   commitLessonAuthorVideoTranscript, downloadLessonAuthorVideoTranscript,
@@ -62,6 +62,7 @@ import {
   type CourseIndexSection,
 } from '@/api/custom-course-authoring';
 import { LessonAuthorBlueprintDialog } from './lesson-author-blueprint-dialog';
+import { LessonAuthorActionPanel, hasLessonAuthorCreationStarted } from './lesson-author-action-panel';
 import {
   getLessonAuthorContentLocale,
   resolveLessonAuthorContentLocale,
@@ -1020,7 +1021,9 @@ export default function ChatWidget() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [surface, setSurface] = useState<ChatSurface>('admin');
+  // Keep the persisted type broad enough to read historical Lesson Author
+  // conversations, but this mounted floating surface is admin chat only.
+  const [surface] = useState<ChatSurface>('admin');
   const [state, setState] = useState<WidgetState>('loading');
   const [runtimeAvailability, setRuntimeAvailabilityState] = useState<ChatRuntimeAvailability>('loading');
   const [activeBot, setActiveBot] = useState<ActiveBot | null>(null);
@@ -1045,6 +1048,7 @@ export default function ChatWidget() {
   const [editorContext, setEditorContext] = useState<LessonAuthorEditorContext | null>(null);
   const [sourceDocumentOptions, setSourceDocumentOptions] = useState<LessonAuthorSourceDocument[]>([]);
   const [selectedSourceDocuments, setSelectedSourceDocuments] = useState<LessonAuthorSourceDocument[]>([]);
+  const [documentUploading, setDocumentUploading] = useState(false);
   const [loadingSourceDocuments, setLoadingSourceDocuments] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
   const [videoUploadNotice, setVideoUploadNotice] = useState<LessonAuthorVideoUploadNotice | null>(null);
@@ -1526,7 +1530,6 @@ export default function ChatWidget() {
   const queryClient = useQueryClient();
   const courseMatch = location.pathname.match(/^\/courses\/(.+)\/edit\/?$/);
   const courseId = courseMatch?.[1] ? decodeURIComponent(courseMatch[1]) : undefined;
-  const isCourseOutline = Boolean(courseId);
   const isLessonAuthor = surface === 'lesson_author';
   useEffect(()=>{
     if(!open || !isLessonAuthor || !currentConv?.id || streaming)return;
@@ -1691,8 +1694,9 @@ export default function ChatWidget() {
     openRef.current = open;
   }, [open]);
 
-  // Runtime chat is governed by a deployed bot, not by the ai_chatbot management module.
-  // On course editing pages, a lesson-author deployment is also sufficient to expose the FAB.
+  // The floating widget is deliberately normal chat only. AI ID owns its
+  // separate Course Editor workspace entrypoint and must never become a
+  // fallback bot here just because a course page is open.
   const refreshRuntimeAvailability = useCallback(async (forceBotPreview = false) => {
     const requestId = ++runtimeAvailabilityRequestRef.current;
     if (!runtimeTenantId) {
@@ -1701,30 +1705,23 @@ export default function ChatWidget() {
       return;
     }
 
-    setRuntimeAvailability('loading');
+    // A background window-focus refresh must not unmount the widget/file input
+    // before the native file picker dispatches change. Initial/tenant/assignment
+    // transitions explicitly enter loading at their own lifecycle boundaries.
     try {
-      const [adminBot, lessonSettings] = await Promise.all([
-        fetchActiveBot('admin'),
-        isCourseOutline ? fetchLessonAuthorChatSettings() : Promise.resolve(null),
-      ]);
+      const adminBot = await fetchActiveBot('admin');
       if (requestId !== runtimeAvailabilityRequestRef.current) return;
 
-      const lessonAuthorBot = lessonSettings?.active_bot ?? null;
-      const fallbackBot = adminBot ?? lessonAuthorBot;
-      if (forceBotPreview || !openRef.current) setActiveBot(fallbackBot);
-      setRuntimeAvailability(fallbackBot ? 'available' : 'unavailable');
-
-      if (!adminBot && lessonAuthorBot && isCourseOutline) {
-        setSurface(current => current === 'admin' ? 'lesson_author' : current);
-      }
-      if (!fallbackBot) setOpen(false);
+      if (forceBotPreview || !openRef.current) setActiveBot(adminBot);
+      setRuntimeAvailability(adminBot ? 'available' : 'unavailable');
+      if (!adminBot) setOpen(false);
     } catch {
       if (requestId !== runtimeAvailabilityRequestRef.current) return;
       setActiveBot(null);
       setRuntimeAvailability('unavailable');
       setOpen(false);
     }
-  }, [isCourseOutline, runtimeTenantId, setRuntimeAvailability]);
+  }, [runtimeTenantId, setRuntimeAvailability]);
 
   useEffect(() => {
     setRuntimeAvailability('loading');
@@ -1819,40 +1816,10 @@ export default function ChatWidget() {
     }
   }, [courseId, queryClient, i18n.language]);
 
-  const loadActiveBot = useCallback(async (nextSurface: ChatSurface = surface) => {
+  const loadActiveBot = useCallback(async () => {
     setState('loading');
     setLoadingConvs(false);
     try {
-      if (nextSurface === 'lesson_author') {
-        if (!courseId) {
-          setSurface('admin');
-          return;
-        }
-
-        const settings = await fetchLessonAuthorChatSettings();
-        setLessonSettings(settings);
-        setActiveBot(settings.active_bot);
-
-        const personaMismatch = Boolean(
-          settings.active_bot &&
-          settings.active_persona &&
-          settings.active_persona.bot_id !== settings.active_bot.bot_id,
-        );
-
-        if (!settings.active_bot || !settings.active_kb || !settings.active_persona || personaMismatch) {
-          setConversations([]);
-          setState('config-warning');
-          return;
-        }
-
-        setLoadingConvs(true);
-        const convs = await fetchConversations({ target: 'lesson_author', courseId });
-        setConversations(convs);
-        setLoadingConvs(false);
-        setState('conversations');
-        return;
-      }
-
       setLessonSettings(null);
       const bot = await fetchActiveBot('admin');
       setActiveBot(bot);
@@ -1880,7 +1847,7 @@ export default function ChatWidget() {
       setLoadingConvs(false);
       setState('no-bot');
     }
-  }, [courseId, surface]);
+  }, []);
 
   useEffect(() => {
     if (open) loadActiveBot();
@@ -1915,14 +1882,6 @@ export default function ChatWidget() {
       setLoadingSourceDocuments(false);
     }
   }, [isLessonAuthor, lessonSettings?.active_kb?.kb_id]);
-
-  useEffect(() => {
-    if (!isCourseOutline && isLessonAuthor) {
-      setSurface('admin');
-      resetChatState({ preservePendingTurns: true });
-      if (open) loadActiveBot('admin');
-    }
-  }, [isCourseOutline, isLessonAuthor, loadActiveBot, open, resetChatState]);
 
   // ── FAB pointer drag ──
   const onFabPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -2163,6 +2122,14 @@ export default function ChatWidget() {
       const result = await fetchMessages(conversationId, undefined, target);
       if (!isCurrentRequest()) return;
       setMessages(result.messages);
+      if (isLessonAuthor) {
+        const lastSource = [...result.messages].reverse().flatMap(message => getMessageSourceDocuments(message.metadata ?? {}))[0];
+        let hasLocalChoice = false;
+        try {
+          hasLocalChoice = localStorage.getItem(`lesson-author-source-v1:${runtimeTenantId}:${user?.id}:${courseId}:${conversationId}:${lessonSettings?.active_kb?.kb_id ?? ''}`) !== null;
+        } catch { /* History is the fallback when local storage is disabled. */ }
+        if (!hasLocalChoice) setSelectedSourceDocuments(lastSource ? [lastSource] : []);
+      }
       setProposalEvent(getLatestPendingProposalEvent(result.messages));
       setBlueprintEvent(getLatestBlueprintEvent(result.messages));
       setBlueprintDraftSelection(null);
@@ -2286,15 +2253,24 @@ export default function ChatWidget() {
     sourceDocumentsOverride?: LessonAuthorSourceDocument[],
     reportFiltersOverride?: ReportChatFilter,
     chapterResume?: {draft_id:string;previous_attempt_id:string},
+    createBlueprintAction = false,
   ): boolean => {
+    if (isLessonAuthor && documentUploading) {
+      toast.info(i18n.language === 'en' ? 'Wait for the document upload to finish.' : 'Vui lòng chờ tải tài liệu xong.');
+      return false;
+    }
     if (!currentConv || !rawContent.trim() || streaming || activeStreamConversationIdsRef.current.has(currentConv.id)) return false;
+    const action = !isLessonAuthor ? undefined : chapterResume ? 'CONTINUE_CHAPTER' as const
+      : createBlueprintAction ? 'GENERATE_COURSE_BLUEPRINT' as const
+        : (draftSelectionOverride ?? blueprintDraftSelection) ? 'DRAFT_BLUEPRINT_CHAPTER' as const : undefined;
+    if (isLessonAuthor && (!action || source === 'voice')) return false;
     const conversationId = currentConv.id;
     const target = isLessonAuthor ? 'lesson_author' : 'admin';
     const content = rawContent.trim();
     const streamStartedAt = performance.now(); // UI animation duration only.
     const recoveryStartedAt = Date.now(); // Epoch time, comparable with persisted messages.
     const streamAccumulator = { value: '' };
-    const isVoiceTurn = source === 'voice' || voiceModeActive;
+    const isVoiceTurn = !isLessonAuthor && (source === 'voice' || voiceModeActive);
     if (isVoiceTurn) {
       clearVoiceAutoListenTimer();
       voiceCallActiveRef.current = false;
@@ -2304,7 +2280,7 @@ export default function ChatWidget() {
       setVoiceCallStartedAt(null);
       setVoiceCallMuted(false);
     }
-    const outgoingMentions: OutlineMention[] = isLessonAuthor
+    const outgoingMentions: OutlineMention[] = isLessonAuthor && !action
       ? selectedMentions.map(({ block_id, block_type, display_name, path, unit_id, ancestor_ids, ancestor_types }) => ({
         block_id,
         block_type,
@@ -2316,7 +2292,7 @@ export default function ChatWidget() {
       }))
       : [];
     const outgoingSourceDocuments: LessonAuthorSourceDocument[] = isLessonAuthor
-      ? (sourceDocumentsOverride ?? selectedSourceDocuments).map(({ document_id, kb_id, name, type, status, source_info }) => ({
+      ? (action && action !== 'GENERATE_COURSE_BLUEPRINT' ? [] : (sourceDocumentsOverride ?? selectedSourceDocuments)).map(({ document_id, kb_id, name, type, status, source_info }) => ({
         document_id,
         kb_id,
         name,
@@ -2332,7 +2308,7 @@ export default function ChatWidget() {
       ? editorContext
       : undefined;
     const outgoingBlueprintDraft = isLessonAuthor
-      ? (draftSelectionOverride ?? blueprintDraftSelection)
+      ? (action === 'GENERATE_COURSE_BLUEPRINT' || action === 'CONTINUE_CHAPTER' ? null : (draftSelectionOverride ?? blueprintDraftSelection))
       : null;
     const outgoingReportFilters = isLessonAuthor ? undefined : reportFiltersOverride;
 
@@ -2340,7 +2316,8 @@ export default function ChatWidget() {
     cancelBotSpeech();
     setInputValue('');
     setSelectedMentions([]);
-    setSelectedSourceDocuments([]);
+    if (!isLessonAuthor) setSelectedSourceDocuments([]);
+    else if (action === 'GENERATE_COURSE_BLUEPRINT') setSelectedSourceDocuments(outgoingSourceDocuments);
     setBlueprintDraftSelection(null);
     writeStoredChatPendingTurn(conversationId, target, messages[messages.length - 1]?.id ?? null);
     clearStoredLessonAuthorProgress(conversationId);
@@ -2351,6 +2328,7 @@ export default function ChatWidget() {
       role: 'user',
       content,
       metadata: {
+        ...(action ? { lesson_author_action: action } : {}),
         ...(isVoiceTurn ? { input_mode: 'voice' } : {}),
         ...(outgoingMentions.length > 0 ? { outline_mentions: outgoingMentions } : {}),
         ...(outgoingSourceDocuments.length > 0 ? { source_documents: outgoingSourceDocuments } : {}),
@@ -2481,7 +2459,8 @@ export default function ChatWidget() {
       {
         target,
         courseId: isLessonAuthor ? courseId : undefined,
-        mode: isLessonAuthor ? (outgoingBlueprintDraft ? 'draft_lesson' : 'auto') : 'chat',
+        mode: isLessonAuthor ? (action === 'GENERATE_COURSE_BLUEPRINT' ? 'course_blueprint' : 'draft_lesson') : 'chat',
+        lesson_author_action: action,
         outline_mentions: outgoingMentions,
         source_documents: outgoingSourceDocuments,
         editor_context: outgoingEditorContext,
@@ -2536,9 +2515,10 @@ export default function ChatWidget() {
       },
     );
     return true;
-  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, editorContext, handleLessonAuthorProgress, isLessonAuthor, messages, recoverPendingTurn, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
+  }, [blueprintDraftSelection, cancelBotSpeech, clearVoiceAutoListenTimer, courseId, currentConv, documentUploading, editorContext, handleLessonAuthorProgress, isLessonAuthor, messages, recoverPendingTurn, resetMindmapState, scrollChatToBottom, selectedMentions, selectedSourceDocuments, stopVoiceCapture, streaming, voiceModeActive, waitForMinimumStreamDuration]);
 
   const handleSend = () => {
+    if (isLessonAuthor) return;
     sendUserMessage(inputValue, 'text');
   };
 
@@ -2638,7 +2618,7 @@ export default function ChatWidget() {
       const prompt = isEnglish
         ? `Create the complete course blueprint and detailed learning content for the entire course. Treat ${fileName} as the single source of truth.`
         : `Hãy tạo bản thiết kế khóa học hoàn chỉnh và nội dung học chi tiết cho toàn bộ khóa học. Dùng file ${fileName} làm nguồn sự thật duy nhất.`;
-      if (!sendUserMessage(prompt, 'text', null, [sourceDocument])) {
+      if (!sendUserMessage(prompt, 'text', null, [sourceDocument], undefined, undefined, true)) {
         toast.error(isEnglish
           ? 'Could not start course authoring from this transcript.'
           : 'Không thể bắt đầu soạn khóa học từ bản chép lời này.');
@@ -2653,6 +2633,7 @@ export default function ChatWidget() {
   }, [draftingTranscriptJobId, i18n.language, sendUserMessage, streaming]);
 
   const handleVoiceToggle = useCallback(async () => {
+    if (isLessonAuthor) return;
     clearVoiceAutoListenTimer();
     if (voiceCaptureState === 'listening') {
       stopVoiceCapture(false);
@@ -2784,7 +2765,7 @@ export default function ChatWidget() {
       setVoiceCallMuted(false);
       toast.error(i18n.t('chatWidget.microphoneStartFailed'));
     }
-  }, [cancelBotSpeech, clearVoiceAutoListenTimer, clearVoiceListenTimer, currentConv, primeBotAudioPlayback, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
+  }, [cancelBotSpeech, clearVoiceAutoListenTimer, clearVoiceListenTimer, currentConv, isLessonAuthor, primeBotAudioPlayback, sendUserMessage, stopVoiceCapture, streaming, voiceCaptureState]);
 
   useEffect(() => {
     voiceAutoListenCallbackRef.current = () => { void handleVoiceToggle(); };
@@ -2861,14 +2842,6 @@ export default function ChatWidget() {
       target: isLessonAuthor ? 'lesson_author' : 'admin',
       courseId: isLessonAuthor ? courseId : undefined,
     }).then(setConversations).catch(() => {});
-  };
-
-  const handleSwitchLessonAuthor = async () => {
-    if (!isCourseOutline || !courseId) return;
-    const nextSurface: ChatSurface = isLessonAuthor ? 'admin' : 'lesson_author';
-    setSurface(nextSurface);
-    resetChatState({ preservePendingTurns: true });
-    if (open) await loadActiveBot(nextSurface);
   };
 
   const loadMindmapOutline = useCallback(async (): Promise<boolean> => {
@@ -2983,21 +2956,6 @@ export default function ChatWidget() {
     const chapter = blueprintEvent.blueprint.chapters[chapterIndex];
     if (!chapter) return;
     const nextDraftPrompt = buildBlueprintChapterDraftPrompt(chapterIndex, chapter.title, isVietnamese);
-    const currentSelectionPrompt = blueprintDraftSelection
-      ? buildBlueprintChapterDraftPrompt(
-        blueprintDraftSelection.chapter_index,
-        blueprintDraftSelection.chapter_title,
-        isVietnamese,
-      )
-      : '';
-    if (inputValue.trim() && inputValue.trim() !== currentSelectionPrompt) {
-      toast.error(
-        isVietnamese
-          ? 'Bạn đang có nội dung chưa gửi. Hãy gửi hoặc xoá nội dung đó trước khi chọn chương khác.'
-          : 'You have an unsent message. Send or clear it before choosing another chapter.',
-      );
-      return;
-    }
     const draftSelection: BlueprintDraftSelection = {
       blueprint_id: blueprintEvent.blueprint_id,
       chapter_index: chapterIndex,
@@ -3006,7 +2964,7 @@ export default function ChatWidget() {
     if (sendUserMessage(nextDraftPrompt, 'text', draftSelection)) {
       setBlueprintDialogOpen(false);
     }
-  }, [blueprintDraftSelection, blueprintEvent, inputValue, pendingBlueprintChapterIndexes, sendUserMessage, streaming]);
+  }, [blueprintEvent, pendingBlueprintChapterIndexes, sendUserMessage, streaming]);
 
   const handleApplyProposal = async () => {
     if (!proposalEvent || !courseId || applyingProposal) return;
@@ -3168,18 +3126,6 @@ export default function ChatWidget() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                {isCourseOutline && (
-                  <AppTooltip content={t('chatWidget.lessonExpert')}><Button
-                    variant={isLessonAuthor ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-8 gap-1.5 px-2 text-xs"
-                    onClick={handleSwitchLessonAuthor}
-                    aria-label={t('chatWidget.lessonExpert')}
-                  >
-                    <BookOpenCheck className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">{t('chatWidget.expert')}</span>
-                  </Button></AppTooltip>
-                )}
                 <AppTooltip content={fullscreen ? t('chatWidget.minimize') : t('chatWidget.maximize')}><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setFullscreen(f => !f)} aria-label={fullscreen ? t('chatWidget.minimize') : t('chatWidget.maximize')}>
                   {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button></AppTooltip>
@@ -3252,6 +3198,22 @@ export default function ChatWidget() {
                   onSelectedMentionsChange={setSelectedMentions}
                   onMentionClick={handleMentionClick}
                   sourceDocumentOptions={sourceDocumentOptions}
+                  lessonAuthorActionPanel={isLessonAuthor && currentConv ? <LessonAuthorActionPanel
+                    key={`${runtimeTenantId}:${user?.id}:${courseId}:${currentConv.id}:${lessonSettings?.active_kb?.kb_id}`}
+                    scopeKey={`${runtimeTenantId}:${user?.id}:${courseId}:${currentConv.id}`}
+                    kbId={lessonSettings?.active_kb?.kb_id}
+                    busy={loadingMessages || streaming || applyingProposal || videoUploadProgress !== null || Boolean(draftingTranscriptJobId)}
+                    creationStarted={Boolean(blueprintEvent || proposalEvent?.blueprint_id) || hasLessonAuthorCreationStarted(messages)}
+                    canUpload={hasPermission('ai_chatbot', 'can_add') && canManageAiChatbot}
+                    english={i18n.language === 'en'}
+                    source={selectedSourceDocuments[0]}
+                    onSource={doc => setSelectedSourceDocuments(doc ? [doc] : [])}
+                    onVideo={handleLessonAuthorVideoUpload}
+                    onUploading={setDocumentUploading}
+                    onCreate={doc => sendUserMessage(i18n.language === 'en'
+                      ? 'Create learning content from the selected source document.' : 'Tạo nội dung bài học từ tài liệu đã chọn.',
+                      'text', null, [doc], undefined, undefined, true)}
+                  /> : undefined}
                   selectedSourceDocuments={selectedSourceDocuments}
                   loadingSourceDocuments={loadingSourceDocuments}
                   onLoadSourceDocuments={loadSourceDocuments}
@@ -3810,7 +3772,8 @@ function VoiceModeView({ active, phase, transcript, botText, botName, botAvatarS
   );
 }
 
-function ChatView({ messages, streamText, streaming, reportStreamStatus, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter, chapterCheckpoint, onContinueChapter }: {
+function ChatView({ messages, streamText, streaming, reportStreamStatus, loading, hasMore, loadingMore, onLoadMore, inputValue, onInputChange, onSend, onKeyDown, voiceCaptureState, botSpeaking, botSpeechLoading, botSpeechNeedsTap, botSpeechText, voiceModeActive, voiceModeTranscript, voiceCallStartedAt, voiceCallMuted, botName, botAvatarSrc, onVoiceToggle, onToggleVoiceMute, onResumeBotSpeech, onStopBotSpeech, onCloseVoiceMode, isLessonAuthor, outlineMentionOptions, selectedMentions, onSelectedMentionsChange, onMentionClick, sourceDocumentOptions, selectedSourceDocuments, loadingSourceDocuments, onLoadSourceDocuments, onSelectedSourceDocumentsChange, onSourceDocumentClick, videoUploadProgress, videoUploadNotice, videoUploadError, onVideoUpload, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, onApplyReportFilter, startingReportMessageId, downloadingReportMessageId, reportPdfExportJobs, onStartReportPdfExport, onDownloadReportPdf, scrollRef, conversationId, inputRef, proposalEvent, blueprintEvent, blueprintDraftSelection, lessonAuthorProgress, applyingProposal, onApplyProposal, onOpenBlueprint, onDraftBlueprintChapter, chapterCheckpoint, onContinueChapter, lessonAuthorActionPanel }: {
+  lessonAuthorActionPanel?: React.ReactNode;
   messages: ChatMessage[];
   streamText: string;
   streaming: boolean;
@@ -4359,7 +4322,7 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
   return (
     <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
       <VoiceModeView
-        active={voiceModeActive}
+        active={voiceModeActive && !isLessonAuthor}
         phase={voiceModePhase}
         transcript={voiceModeTranscript || inputValue}
         botText=''
@@ -4395,7 +4358,9 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
             {messages.length === 0 && !streaming && !activeVideoUploadNotice && !activeVideoUploadError && (
               <div className="flex flex-col items-center justify-center h-full text-center gap-2">
                 <Sparkles className="h-8 w-8 text-primary/30" />
-                <p className="text-xs text-muted-foreground">{t('chatWidget.startConversation')}</p>
+                <p className="text-xs text-muted-foreground">{isLessonAuthor
+                  ? (isVietnamese ? 'Bấm + để thêm tài liệu, sau đó chọn Tạo nội dung bài học.' : 'Use + to add a source, then choose Create learning content.')
+                  : t('chatWidget.startConversation')}</p>
               </div>
             )}
             {messages.map((msg) => (
@@ -4797,7 +4762,7 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
             </div>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        {isLessonAuthor ? lessonAuthorActionPanel : <div className="flex items-end gap-2">
           {isLessonAuthor && (
             <div className="relative flex shrink-0 gap-2">
               <input
@@ -4991,7 +4956,7 @@ function ChatView({ messages, streamText, streaming, reportStreamStatus, loading
           >
             {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
-        </div>
+        </div>}
       </div>
     </div>
   );

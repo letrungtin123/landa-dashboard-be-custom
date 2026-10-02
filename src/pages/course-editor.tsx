@@ -16,6 +16,8 @@ import { toast } from 'sonner';
 import { Check, X, Pencil, BookOpen } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { useCourseWorkspaceHost } from '@/components/lesson-author-workspace/workspace-course-host';
+import type { WorkspaceLaunchResolver } from '@/components/lesson-author-workspace/workspace-host.logic';
 import {
   publishLessonAuthorEditorContext,
   type LessonAuthorEditorContext,
@@ -158,7 +160,7 @@ function CourseRootHeader({ id, displayName, onStructureChange }: { id: string, 
   );
 }
 
-export default function CourseEditorPage() {
+export default function CourseEditorPage({ workspaceLaunch }: { workspaceLaunch?: WorkspaceLaunchResolver } = {}) {
   const { t } = useTranslation();
   const { courseId } = useParams<{ courseId: string }>();
   useHeaderInfo(t('courseEditor.title'));
@@ -220,6 +222,15 @@ export default function CourseEditorPage() {
   });
 
   const courseStructure = outline?.course_structure;
+  const handleStructureChange = useCallback(async () => {
+    if (!courseId) return;
+    const outlineKey = ['course-outline-index', courseId] as const;
+    await queryClient.invalidateQueries({ queryKey: outlineKey, exact: true });
+    await queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' });
+  }, [courseId, queryClient]);
+  const workspaceHost = useCourseWorkspaceHost(
+    courseId, !!courseStructure && !isError, workspaceLaunch, handleStructureChange,
+  );
 
   const clearSelectedUnit = useCallback((unitId?: string | null) => {
     const targetUnitId = unitId || selectedUnit;
@@ -236,13 +247,6 @@ export default function CourseEditorPage() {
     setSelectedUnit(unitId);
     setActiveComponent(null);
   }, []);
-
-  const handleStructureChange = useCallback(() => {
-    if (!courseId) return;
-    const outlineKey = ['course-outline-index', courseId] as const;
-    void queryClient.invalidateQueries({ queryKey: outlineKey, exact: true })
-      .then(() => queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' }));
-  }, [courseId, queryClient]);
 
   useEffect(() => {
     if (!courseStructure) return;
@@ -376,6 +380,7 @@ export default function CourseEditorPage() {
             onStructureChange={handleStructureChange}
           />
         </div>
+        {workspaceHost.trigger}
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 flex gap-2">
@@ -428,6 +433,7 @@ export default function CourseEditorPage() {
           <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate opacity-60">
             {courseId}
           </p>
+          {workspaceHost.trigger}
         </div>
         <div className="p-3 flex-1 overflow-y-auto">
           <OutlineTree
@@ -472,6 +478,7 @@ export default function CourseEditorPage() {
           </div>
         )}
       </div>
+      {workspaceHost.overlay}
     </div>
   );
 }

@@ -794,6 +794,10 @@ export default function ReportSummaryPage() {
             subgroupId={selectedSubGroupId}
             teamId={selectedTeamId}
             onSelectLearner={setSelectedLearner}
+            allowCourseExport={!isLearnerPlus}
+            groupLabel={labels.group}
+            subgroupLabel={labels.subgroup}
+            teamLabel={labels.team}
           />
         </motion.div>
 

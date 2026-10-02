@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Percent, Search, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Download, Percent, RefreshCcw, Search, Users } from 'lucide-react';
 import { ResponsiveContainer, Bar, BarChart, Cell, LabelList, Tooltip as ReTooltip, XAxis, YAxis } from 'recharts';
 import { getReportCourseCompletionLearners, getReportCourseCompletionRanking, type ReportCourseCompletionRanking, type ReportCourseCompletionStatus } from '@/api/custom-reports';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { AppTooltip } from '@/components/ui/tooltip';
 import { formatLocaleDate, formatLocaleNumber } from '@/utils/locale-format';
 import { useLocaleStore } from '@/utils/locale-store';
 import { useTranslation } from 'react-i18next';
+import { exportCourseLearnerExcel } from '@/utils/export-report';
 
 const REPORT_PAGE_SIZE_OPTIONS = [5, 10, 15, 20] as const;
 const softPageTransition = { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const };
@@ -136,6 +137,10 @@ export function CourseCompletionRankingWidget({
   scrollableContent = false,
   modalLayer = false,
   initialCourse = null,
+  allowCourseExport = false,
+  groupLabel,
+  subgroupLabel,
+  teamLabel,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -147,6 +152,10 @@ export function CourseCompletionRankingWidget({
   scrollableContent?: boolean;
   modalLayer?: boolean;
   initialCourse?: ReportCourseCompletionRanking | null;
+  allowCourseExport?: boolean;
+  groupLabel?: string;
+  subgroupLabel?: string;
+  teamLabel?: string;
 }) {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -158,6 +167,7 @@ export function CourseCompletionRankingWidget({
   const [learnerSearch, setLearnerSearch] = useState('');
   const [debouncedLearnerSearch, setDebouncedLearnerSearch] = useState('');
   const [learnerStatus, setLearnerStatus] = useState<ReportCourseCompletionStatus>('all');
+  const [isExportingCourse, setIsExportingCourse] = useState(false);
   const pendingScrollRestoreRef = useRef<{ target: HTMLElement | null; top: number; left: number } | null>(null);
   const initialCourseId = initialCourse?.course_id ?? null;
 
@@ -301,6 +311,27 @@ export function CourseCompletionRankingWidget({
     setLearnerStatus('all');
   };
 
+  const handleCourseExport = async () => {
+    if (!selectedCourseData || isExportingCourse) return;
+    setIsExportingCourse(true);
+    try {
+      await exportCourseLearnerExcel({
+        courseId: selectedCourseData.course_id,
+        courseName: selectedCourseData.name,
+        dateFrom,
+        dateTo,
+        selectedGroupId: groupId,
+        selectedSubGroupId: subgroupId,
+        selectedTeamId: teamId,
+        groupLabel,
+        subgroupLabel,
+        teamLabel,
+      });
+    } finally {
+      setIsExportingCourse(false);
+    }
+  };
+
   const rankingChartHeight = Math.max(270, (data?.results.length || pageSize) * 54);
 
   return (
@@ -337,9 +368,22 @@ export function CourseCompletionRankingWidget({
                   </div>
                 </div>
               </div>
-              <div className="hidden sm:flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20 shrink-0">
-                <Users className="h-3 w-3 text-primary" />
-                <span className="text-[9px] font-black text-primary tracking-widest uppercase">{t('reports.learners')}</span>
+              <div className="flex shrink-0 items-center gap-2">
+                {allowCourseExport && (
+                  <button
+                    type="button"
+                    disabled={isExportingCourse}
+                    onClick={() => { void handleCourseExport().catch(() => undefined); }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary px-2.5 text-[10px] font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isExportingCourse ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                    <span className="hidden sm:inline">{isExportingCourse ? t('reports.exporting') : t('reports.exportData')}</span>
+                  </button>
+                )}
+                <div className="hidden sm:flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
+                  <Users className="h-3 w-3 text-primary" />
+                  <span className="text-[9px] font-black text-primary tracking-widest uppercase">{t('reports.learners')}</span>
+                </div>
               </div>
             </motion.div>
           ) : (

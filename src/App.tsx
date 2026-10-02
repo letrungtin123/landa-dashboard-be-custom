@@ -45,11 +45,16 @@ import BadgesPage from './pages/badges';
 import TenantBadgesPage from '@/pages/tenant-badges';
 import SsoManagementPage from '@/pages/sso-management';
 import DemoLoginSettingsPage from '@/pages/demo-login-settings';
+import DevAiIdMindmapSkeletonPage, { AI_ID_MINDMAP_SKELETON_PREVIEW_PATH } from '@/pages/dev-ai-id-mindmap-skeleton';
 
 
 function AppRoutes() {
   return (
     <Routes>
+      {/* Compile-time development harness: no auth, workspace or provider
+          controller is mounted, and this route does not exist in production. */}
+      {import.meta.env.DEV && <Route path={AI_ID_MINDMAP_SKELETON_PREVIEW_PATH} element={<DevAiIdMindmapSkeletonPage />} />}
+
       {/* Public routes */}
       <Route element={<AuthGuard requireAuth={false} />}>
         <Route element={<AuthLayout />}>

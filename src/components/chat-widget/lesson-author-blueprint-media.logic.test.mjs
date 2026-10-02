@@ -27,6 +27,12 @@ function fixture(statuses) {
   };
 }
 
+test('Blueprint tabs preserve their routes in overview, mindmap, chapters, media order', () => {
+  const dialog = readFileSync(new URL('./lesson-author-blueprint-dialog.tsx', import.meta.url), 'utf8');
+  assert.deepEqual([...dialog.matchAll(/<TabsTrigger value="([^"]+)"/g)].map(match => match[1]),
+    ['overview', 'mindmap', 'chapters', 'media']);
+});
+
 function deepFreeze(value) {
   Object.freeze(value);
   for (const child of Object.values(value)) {
@@ -34,6 +40,21 @@ function deepFreeze(value) {
   }
   return value;
 }
+
+test('structured media briefs retain every bullet and context; legacy cards still work', () => {
+  const input = fixture(['PROPOSED']);
+  Object.assign(input.chapters[0].lessons[0].units[0].media_plan, {
+    brief_version: 2, content_points: ['Source point one.', 'Source point two.'],
+    context_description: 'One panel per source category.', evidence_language: 'original', content_basis: 'SOURCE_EXCERPTS',
+  });
+  const view = select(deepFreeze(input.chapters), input.review);
+  assert.deepEqual(view.proposals[0].media.content_points, ['Source point one.', 'Source point two.']);
+  assert.equal(view.proposals[0].media.context_description, 'One panel per source category.');
+  const dialog = readFileSync(new URL('./lesson-author-blueprint-dialog.tsx', import.meta.url), 'utf8');
+  assert.match(dialog, /media\.content_points/);
+  assert.match(dialog, /media\.context_description/);
+  assert.match(dialog, /media\.content_outline/);
+});
 
 test('five proposals and nine NOT_NEEDED decisions produce only five cards without mutating audit data', () => {
   const input = deepFreeze(fixture([...Array(5).fill('PROPOSED'), ...Array(9).fill('NOT_NEEDED')]));

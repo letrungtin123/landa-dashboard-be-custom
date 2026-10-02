@@ -370,6 +370,11 @@ export interface LessonAuthorBlueprintMediaPlan {
   type: 'video' | 'static_infographic';
   title: string;
   content_outline: string;
+  brief_version?: 2;
+  content_points?: string[];
+  context_description?: string;
+  evidence_language?: 'original';
+  content_basis?: 'SOURCE_EXCERPTS';
   rationale: string;
 }
 
@@ -714,6 +719,7 @@ export function sendMessageStream(
   onDone: () => void,
   onError: (message: string) => void,
   options: ChatConversationOptions & {
+    lesson_author_action?: 'GENERATE_COURSE_BLUEPRINT' | 'DRAFT_BLUEPRINT_CHAPTER' | 'CONTINUE_CHAPTER';
     mode?: "chat" | "course_blueprint" | "draft_lesson" | "auto";
     outline_mentions?: OutlineMention[];
     source_documents?: LessonAuthorSourceDocument[];
@@ -787,6 +793,7 @@ export function sendMessageStream(
         headers,
         body: JSON.stringify({
           content,
+          lesson_author_action: options.lesson_author_action,
           target: options.target,
           courseId: options.courseId,
           locale: useLocaleStore.getState().locale === 'en' ? 'en' : 'vi',

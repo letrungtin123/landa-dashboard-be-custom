@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { OnSelectionChangeParams } from '@xyflow/react';
 import {
   ReactFlow,
@@ -21,6 +21,7 @@ import {
   ConnectionLineType,
   MarkerType,
   type EdgeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
@@ -149,14 +150,20 @@ export interface DiagramXBlockData {
   start_diagram_id: string;
 }
 
-interface DiagramEditorProps {
+export type DiagramChangeIntent = 'persist' | 'transient';
+
+export interface DiagramEditorProps {
   displayName: string;
   onDisplayNameChange: (v: string) => void;
   diagramData: DiagramXBlockData;
-  onDiagramDataChange: (v: DiagramXBlockData) => void;
+  onDiagramDataChange: (v: DiagramXBlockData, intent?: DiagramChangeIntent) => void;
   onSave?: () => void;
   onCancel?: () => void;
   isSaving?: boolean;
+  /** Reuse the exact Course Outline editor inside a parent-owned modal. The
+   * parent supplies its own Close/Save/Apply actions, so duplicate chrome is
+   * hidden while the diagram canvas and editing controls stay identical. */
+  embedded?: boolean;
 }
 
 const defaultDiagram: Diagram = {
@@ -174,6 +181,7 @@ export default function DiagramEditor({
   onSave,
   onCancel,
   isSaving,
+  embedded = false,
 }: DiagramEditorProps) {
   const { t } = useTranslation();
   const { theme } = useTheme();
@@ -198,6 +206,63 @@ export default function DiagramEditor({
   const [selectedNode, setSelectedNode] = useState<Node<DiagramNodeData> | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const flowInstanceRef = useRef<ReactFlowInstance<Node<DiagramNodeData>, Edge> | null>(null);
+  const flowCanvasRef = useRef<HTMLDivElement | null>(null);
+  const fitFrameRef = useRef<number | null>(null);
+  const pendingInitialFitRef = useRef(true);
+
+  // React Flow can initialize before a nested dialog has finished resolving
+  // its flex dimensions. In that state the nodes exist, but the initial
+  // viewport is calculated from a zero/partial canvas and appears empty.
+  // Refit once the browser has completed layout and node measurement. The
+  // topology signature deliberately ignores positions so dragging a node does
+  // not keep snapping the viewport back under the user.
+  const topologySignature = useMemo(
+    () => `${activeDiagram.id}:${activeDiagram.nodes.map(node => node.id).join('|')}:${activeDiagram.edges.map(edge => edge.id).join('|')}`,
+    [activeDiagram],
+  );
+  const fitCanvasIfReady = useCallback(() => {
+    const instance = flowInstanceRef.current;
+    const canvas = flowCanvasRef.current;
+    if (!pendingInitialFitRef.current || !instance || !canvas || activeDiagram.nodes.length === 0) return;
+    const canvasBox = canvas.getBoundingClientRect();
+    if (canvasBox.width <= 0 || canvasBox.height <= 0) return;
+    const renderedNodes = Array.from(canvas.querySelectorAll<HTMLElement>('.react-flow__node'));
+    if (renderedNodes.length < activeDiagram.nodes.length
+      || renderedNodes.some(node => node.getBoundingClientRect().width <= 0 || node.getBoundingClientRect().height <= 0)) return;
+    pendingInitialFitRef.current = false;
+    void instance.fitView({ padding: 0.18, minZoom: 0.18, maxZoom: 1.15, duration: 0 });
+  }, [activeDiagram.nodes.length]);
+
+  const scheduleFitCanvas = useCallback(() => {
+    if (!pendingInitialFitRef.current) return;
+    if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current);
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = null;
+      fitCanvasIfReady();
+    });
+  }, [fitCanvasIfReady]);
+
+  useEffect(() => {
+    pendingInitialFitRef.current = true;
+    scheduleFitCanvas();
+  }, [activeDiagramId, topologySignature, scheduleFitCanvas]);
+
+  useEffect(() => {
+    const canvas = flowCanvasRef.current;
+    if (!canvas) return;
+    const resizeObserver = new ResizeObserver(scheduleFitCanvas);
+    const mutationObserver = new MutationObserver(scheduleFitCanvas);
+    resizeObserver.observe(canvas);
+    mutationObserver.observe(canvas, { childList: true, subtree: true });
+    scheduleFitCanvas();
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current);
+      fitFrameRef.current = null;
+    };
+  }, [scheduleFitCanvas]);
 
   // Clipboard for cross-diagram copy/paste (supports multi-node + edges)
   const clipboardRef = useRef<{ nodes: Node<DiagramNodeData>[]; edges: Edge[] } | null>(null);
@@ -217,9 +282,12 @@ export default function DiagramEditor({
       const newNodes = applyNodeChanges(snappedChanges, activeDiagram.nodes);
       const newDiagrams = [...diagrams];
       newDiagrams[activeDiagramIndex] = { ...activeDiagram, nodes: newNodes as Node<DiagramNodeData>[] };
-      onDiagramDataChange({ ...diagramData, diagrams: newDiagrams });
+      const persist = changes.some(change => change.type !== 'dimensions' && change.type !== 'select'
+        && (change.type !== 'position' || change.dragging !== true));
+      onDiagramDataChange({ ...diagramData, diagrams: newDiagrams }, persist ? 'persist' : 'transient');
+      if (changes.some(change => change.type === 'dimensions')) scheduleFitCanvas();
     },
-    [activeDiagram, activeDiagramIndex, diagrams, diagramData, onDiagramDataChange, applySmartSnap]
+    [activeDiagram, activeDiagramIndex, diagrams, diagramData, onDiagramDataChange, applySmartSnap, scheduleFitCanvas]
   );
 
   const onEdgesChange = useCallback(
@@ -231,7 +299,8 @@ export default function DiagramEditor({
       const newEdges = applyEdgeChanges(filtered, activeDiagram.edges);
       const newDiagrams = [...diagrams];
       newDiagrams[activeDiagramIndex] = { ...activeDiagram, edges: newEdges };
-      onDiagramDataChange({ ...diagramData, diagrams: newDiagrams });
+      onDiagramDataChange({ ...diagramData, diagrams: newDiagrams },
+        filtered.some(change => change.type !== 'select') ? 'persist' : 'transient');
     },
     [activeDiagram, activeDiagramIndex, diagrams, diagramData, onDiagramDataChange]
   );
@@ -400,7 +469,7 @@ export default function DiagramEditor({
         },
       };
     }) as Edge[];
-  }, [activeDiagram.edges, selectedEdgeId, deleteEdgeById, splitEdgeById, selectEdgeById]);
+  }, [activeDiagram.edges, activeDiagram.nodes, selectedEdgeId, deleteEdgeById, splitEdgeById, selectEdgeById]);
 
   const selectedEdge = selectedEdgeId
     ? activeDiagram.edges.find(edge => edge.id === selectedEdgeId) ?? null
@@ -560,10 +629,10 @@ export default function DiagramEditor({
         {/* Sidebar */}
         <div className="w-64 border-r border-border bg-muted/20 flex flex-col z-10 shadow-sm relative h-full">
           <div className="h-14 px-3 border-b border-border bg-background flex items-center gap-2 shrink-0">
-            <Button variant="ghost" size="sm" onClick={onCancel} className="h-8 px-2 text-muted-foreground hover:text-foreground">
+            {!embedded && <Button variant="ghost" size="sm" onClick={onCancel} className="h-8 px-2 text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4 mr-1.5" />
               {t('courseEditorForms.back')}
-            </Button>
+            </Button>}
             <span className="text-xs font-semibold uppercase text-muted-foreground ml-auto">{t('courseEditorForms.diagramEditor')}</span>
           </div>
           
@@ -622,16 +691,16 @@ export default function DiagramEditor({
           </div>
 
           {/* Action Buttons */}
-          <div className="p-4 border-t border-border bg-muted/20 mt-auto">
+          {!embedded && <div className="p-4 border-t border-border bg-muted/20 mt-auto">
             <Button className="w-full gap-2" size="sm" onClick={onSave} disabled={isSaving}>
               <Save className="h-4 w-4" />
               {isSaving ? t('courseOutline.saving') : t('courseEditorForms.saveDiagram')}
             </Button>
-          </div>
+          </div>}
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 relative flex flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <div className="h-14 border-b border-border flex items-center px-4 bg-background z-10 shrink-0 gap-4">
             <span className="text-sm font-semibold text-muted-foreground whitespace-nowrap">{t('courseEditorForms.activeDiagramName')}</span>
             <input
@@ -640,7 +709,7 @@ export default function DiagramEditor({
               onChange={e => updateActiveDiagramName(e.target.value)}
             />
           </div>
-          <div className="diagram-editor-flow flex-1">
+          <div ref={flowCanvasRef} className="diagram-editor-flow min-h-0 flex-1">
             <ReactFlow
               colorMode={theme === 'dark' ? 'dark' : 'light'}
               nodes={activeDiagram.nodes}
@@ -659,7 +728,12 @@ export default function DiagramEditor({
               edgeTypes={edgeTypes}
               connectionMode={ConnectionMode.Loose}
               connectionLineType={ConnectionLineType.Step}
+              onInit={instance => {
+                flowInstanceRef.current = instance;
+                scheduleFitCanvas();
+              }}
               fitView
+              fitViewOptions={{ padding: 0.18, minZoom: 0.18, maxZoom: 1.15, duration: 0 }}
               deleteKeyCode="Delete"
             >
               <Controls>

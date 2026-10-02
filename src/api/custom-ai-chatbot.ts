@@ -237,7 +237,10 @@ export async function fetchDocuments(kbId: string, params?: FetchDocumentsParams
 }
 
 /** Multi-file upload (up to 20 files) */
-export async function uploadDocuments(kbId: string, files: File[]): Promise<UploadResult> {
+export async function uploadDocuments(kbId: string, files: File[], options?: {
+  onProgress?: (percent: number | null) => void;
+  signal?: AbortSignal;
+}): Promise<UploadResult> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
@@ -245,7 +248,11 @@ export async function uploadDocuments(kbId: string, files: File[]): Promise<Uplo
   const { data } = await customApiClient.post<ApiResponse<UploadResult>>(
     `/api/ai-chatbot/kb/${kbId}/documents`,
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } },
+    { headers: { "Content-Type": "multipart/form-data" },
+      ...(options ? { timeout: 120_000, signal: options.signal, onUploadProgress: (event: { loaded: number; total?: number }) => {
+        options.onProgress?.(event.total ? Math.min(100, Math.round(event.loaded * 100 / event.total)) : null);
+      } } : {}),
+    },
   );
   return data.data;
 }

@@ -186,12 +186,17 @@ function BlueprintMediaCard({
       </div>
       <div className="mt-4 grid gap-3 border-t border-border/70 pt-3.5 text-xs leading-5 sm:grid-cols-[minmax(0,1.4fr)_minmax(180px,1fr)]">
         <div className="min-w-0">
-          <p className="font-semibold text-foreground">{locale === 'en' ? 'Proposed visual content' : 'Nội dung hình ảnh đề xuất'}</p>
-          <p className="mt-1 text-muted-foreground">{placement.media.content_outline}</p>
+          <p className="font-semibold text-foreground">{locale === 'en' ? 'Content' : 'Nội dung'}</p>
+          <ul className="mt-1 list-disc space-y-2 pl-4 text-muted-foreground">
+            {(placement.media.content_points?.length ? placement.media.content_points : [placement.media.content_outline]).map((point, index) => <li key={index}>{point}</li>)}
+          </ul>
+          {placement.media.content_basis === 'SOURCE_EXCERPTS' && <p className="mt-2 text-[11px] text-muted-foreground">
+            {locale === 'en' ? 'Selected source excerpts in their original language; not an exhaustive script.' : 'Trích ý nguồn ở ngôn ngữ gốc; chưa phải kịch bản đầy đủ.'}
+          </p>}
         </div>
         <div className="min-w-0 border-t border-border/60 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-          <p className="font-semibold text-foreground">{locale === 'en' ? 'Instructional rationale' : 'Lý do đề xuất'}</p>
-          <p className="mt-1 text-muted-foreground">{placement.media.rationale}</p>
+          <p className="font-semibold text-foreground">{locale === 'en' ? 'Context description' : 'Mô tả bối cảnh'}</p>
+          <p className="mt-1 text-muted-foreground">{placement.media.context_description || (locale === 'en' ? 'This legacy recommendation has no context description.' : 'Đề xuất cũ chưa có mô tả bối cảnh.')}</p>
         </div>
       </div>
     </article>
@@ -500,6 +505,10 @@ export function LessonAuthorBlueprintDialog({
                 <UsersRound className="h-3.5 w-3.5" />
                 {copy.overview}
               </TabsTrigger>
+              <TabsTrigger value="mindmap" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                <Map className="h-3.5 w-3.5" />
+                {copy.mindmap}
+              </TabsTrigger>
               <TabsTrigger value="chapters" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <Layers3 className="h-3.5 w-3.5" />
                 {copy.chapters}
@@ -507,10 +516,6 @@ export function LessonAuthorBlueprintDialog({
               <TabsTrigger value="media" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 <Clapperboard className="h-3.5 w-3.5" />
                 {copy.media}
-              </TabsTrigger>
-              <TabsTrigger value="mindmap" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm">
-                <Map className="h-3.5 w-3.5" />
-                {copy.mindmap}
               </TabsTrigger>
             </TabsList>
           </div>

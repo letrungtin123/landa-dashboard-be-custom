@@ -161,6 +161,10 @@ function hasPersistentImageInHtml(html: string): boolean {
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
+  /** Optional authoritative version token. Workspace editors use this after a
+   * Save/Reset readback to update the existing Tiptap instance without
+   * remounting the modal or resetting its scroll container on every keystroke. */
+  externalContentVersion?: string | number;
   onEditorReady?: (editor: any) => void;
   minHeight?: string;
   hideToolbar?: boolean;
@@ -679,6 +683,7 @@ const MenuBar = ({ editor, enableTables = false }: { editor: any; enableTables?:
 export default function RichTextEditor({
   content,
   onChange,
+  externalContentVersion,
   onEditorReady,
   minHeight,
   hideToolbar,
@@ -688,6 +693,7 @@ export default function RichTextEditor({
   enableTables = false,
   enableImageKeyboardDelete = false,
 }: RichTextEditorProps) {
+  const externalVersionRef = React.useRef(externalContentVersion);
   const editor = useEditor({
     extensions: [
       enableTables ? StarterKit.configure({ paragraph: false }) : StarterKit,
@@ -807,6 +813,14 @@ export default function RichTextEditor({
       },
     },
   });
+
+  React.useEffect(() => {
+    if (!editor || externalContentVersion === undefined
+      || externalVersionRef.current === externalContentVersion) return;
+    externalVersionRef.current = externalContentVersion;
+    const next = prepareContentForEditor(content);
+    if (editor.getHTML() !== next) editor.commands.setContent(next, { emitUpdate: false });
+  }, [content, editor, externalContentVersion]);
 
   return (
     <div className="flex flex-col w-full h-full border border-input rounded-md overflow-hidden bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">

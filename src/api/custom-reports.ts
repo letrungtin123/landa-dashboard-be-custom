@@ -301,6 +301,40 @@ export async function downloadReportExcel(params: ReportDateParams & {
   return { blob: response.data, fileName };
 }
 
+export async function downloadCourseLearnerExcel(courseId: string, courseName: string, params: ReportDateParams & {
+  month?: number;
+  year?: number;
+  group_id?: number | string;
+  subgroup_id?: number | string;
+  team_id?: number | string;
+  group_label?: string;
+  subgroup_label?: string;
+  team_label?: string;
+  locale?: 'vi' | 'en';
+}): Promise<{ blob: Blob; fileName: string }> {
+  const response = await customApiClient.get<Blob>(
+    `${BASE}/course-completion-ranking/${encodeURIComponent(courseId)}/export.xlsx`,
+    { params, responseType: 'blob', timeout: 0 },
+  );
+  const disposition = response.headers['content-disposition'] as string | undefined;
+  const utf8Name = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plainName = disposition?.match(/filename="?([^";]+)"?/i)?.[1];
+  const courseSlug = courseName
+    .replace(/[Đđ]/g, character => character === 'Đ' ? 'D' : 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'khoa-hoc';
+  const prefix = params.locale === 'en' ? 'course-learners' : 'chi-tiet-hoc-vien';
+  const separator = params.locale === 'en' ? 'to' : 'den';
+  const fallback = params.date_from && params.date_to
+    ? `${prefix}-${courseSlug}-${params.date_from}-${separator}-${params.date_to}.xlsx`
+    : `${prefix}-${courseSlug}-${params.month ? `${params.month}-` : ''}${params.year || new Date().getFullYear()}.xlsx`;
+  const fileName = utf8Name ? decodeURIComponent(utf8Name) : plainName || fallback;
+  return { blob: response.data, fileName };
+}
+
 export async function getLearnerDetail(params: {
   username: string;
   page?: number;
