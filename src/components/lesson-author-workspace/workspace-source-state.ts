@@ -40,6 +40,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   }) => SourceStreamClient;
 }) {
   let disposed = false, panelVisible = true, locale = dependencies.locale, settings: LessonAuthorSettings | null = null;
+  let preferredConversationId: string | null = null, forceNewConversation = false;
   let sourceStream: SourceStreamClient | null = null, sourceStreamDocumentId: string | null = null, sourceStreamSerial = 0;
   const listeners = new Set<() => void>();
   let state: Readonly<WorkspaceSourceState> = Object.freeze({ busy: false, phase: 'idle', ready: false, unknown: false, issue: null,
@@ -121,7 +122,12 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     const documents = normalizeDocuments(docs);
     const convs = await dependencies.api.conversations(scope.courseId); assertActive();
     if (!Array.isArray(convs)) throw new Error('UNAVAILABLE');
-    const conversation = convs.find(c => c.id === state.conversation?.id && owned(c)) ?? convs.find(owned) ?? null;
+    const retained = convs.find(c => c.id === state.conversation?.id && owned(c)) ?? null;
+    const preferred = preferredConversationId ? convs.find(c => c.id === preferredConversationId && owned(c)) ?? null : null;
+    // A selected session is an exact identity boundary. Never silently fall
+    // back to another conversation if it was deleted or became unauthorized.
+    if (preferredConversationId && !forceNewConversation && !preferred) throw new Error('UNAVAILABLE');
+    const conversation = forceNewConversation ? null : preferredConversationId ? preferred : retained ?? convs.find(owned) ?? null;
     emit({ documents, conversation: conversation ? Object.freeze({ ...conversation }) : null, ready: true });
   }
   async function conversation() {
@@ -167,6 +173,16 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     setUiLocale(value: WorkspaceLocale) {
       locale = value;
       if (!state.operation) emit({ contentLocale: value });
+    },
+    beginNewSession() {
+      if (state.busy || state.unknown || !allowed()) return;
+      stopSourceObservation(); preferredConversationId = null; forceNewConversation = true;
+      emit({ conversation: null, transcript: null, selectedId: null, issue: null, operation: null });
+    },
+    resumeSession(conversationId: string) {
+      if (state.busy || state.unknown || !allowed() || !isWorkspaceId(conversationId)) return;
+      stopSourceObservation(); preferredConversationId = conversationId; forceNewConversation = false;
+      emit({ conversation: null, transcript: null, selectedId: null, issue: null, operation: null });
     },
     select(documentId: string) {
       if (!state.busy && !state.unknown && allowed() && state.documents.some(d => d.document_id === documentId)) emit({ selectedId: documentId, issue: null });
@@ -239,6 +255,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     }, true),
     dispose() {
       stopSourceObservation(); disposed = true; settings = null; listeners.clear();
+      preferredConversationId = null; forceNewConversation = false;
       state = Object.freeze({ ...state, ready: false, documents: [], conversation: null, transcript: null, operation: null, selectedId: null });
     },
   };

@@ -1,6 +1,7 @@
+/* global URL, structuredClone */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import React from 'react';
@@ -34,7 +35,10 @@ function load(relative) {
     if (name.endsWith('/workspace-stream')) return { createWorkspaceStreamClient: () => ({ start() {}, close() {} }) };
     if (name.endsWith('/workspace-source-stream')) return { createWorkspaceSourceStreamClient: () => ({ start() {}, close() {} }) };
     if (name.endsWith('/workspace-sources')) return { workspaceSourceApi: {} };
+    if (name.endsWith('/custom-chat')) return { fetchLessonAuthorChatSettings: async () => ({ active_bot: null, active_kb: null, active_persona: null }) };
+    if (name.endsWith('/storage-url')) return { storageUrl: value => value || '' };
     if (name === './workspace-source-panel') return { WorkspaceSourcePanel: () => h('div', null, 'Sources') };
+    if (name === './workspace-ai-avatar') return { WorkspaceAiAvatar: () => h('span', null, 'AI') };
     if (name === '@/utils/store') return { useAuthStore: select => select({ user: null, isAuthenticated: false, hasPermission: () => false }) };
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };
     if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' } }) };
@@ -44,9 +48,17 @@ function load(relative) {
       const selected = props.state.opened && props.state.access === 'allowed' ? props.state.graph?.nodes.find(n => n.node_id === props.state.selectedNodeId) : null;
       return h('section', null, props.toolbar, props.renderNodeDetail(selected ?? null));
     } };
-    if (name === './workspace-node-detail') return { WorkspaceDetailContent: ({ detail }) => h('p', null, detail.content?.title) };
+    if (name === './workspace-node-detail') return {
+      WorkspaceDetailContent: ({ detail }) => h('p', null, detail.content?.title),
+      WorkspaceAuthorReviewCards: () => h('section', null, 'AI review'),
+      workspaceDetailStats: () => ({ sectionCount: 0, lessonCount: 0, interactionCount: 0, componentTypes: [] }),
+    };
     if (name === './workspace-node-editor') return { WorkspaceNodeEditor: props => { editorProps = props; return h('div', null, 'Controlled editor'); } };
-    if (name.startsWith('.')) return load(new URL(name + '.ts', url).href);
+    if (name.startsWith('.')) {
+      const tsUrl = new URL(name + '.ts', url);
+      const tsxUrl = new URL(name + '.tsx', url);
+      return load((existsSync(tsUrl) ? tsUrl : tsxUrl).href);
+    }
     return require(name);
   };
   new Function('require', 'module', 'exports', output)(localRequire, module, module.exports);
@@ -292,7 +304,7 @@ test('default-off hook produces no trigger or overlay', () => {
 for (const locale of ['en', 'vi']) test(`${locale}: missing discovery renders honest shell, no composer/Create/Apply`, async () => {
   const f = fixture({ resolve: undefined }); await f.host.launch();
   const html = render(f, locale); assert.match(html, /role="dialog"/);
-  assert.ok(html.includes(locale === 'en' ? 'Workspace discovery is not connected yet' : 'Chưa kết nối API tìm bản thảo'));
+  assert.ok(html.includes(locale === 'en' ? 'Workspace discovery is not connected yet' : 'Chưa kết nối API tìm bản thiết kế khoá học'));
   assert.doesNotMatch(html, /textarea|contenteditable|<button[^>]*>(Create|Apply|Tạo|Áp dụng)<\/button>/);
   assert.doesNotMatch(html, /workspace_id|conversation_id/); f.host.close(); assert.equal(render(f, locale), ''); f.host.dispose();
 });
@@ -350,7 +362,7 @@ test('course editor mounts two responsive triggers but one host, without replaci
   assert.match(editor, /key=\{`\$\{detail\.workspace_id\}:\$\{detail\.node_id\}`\}/);
   assert.doesNotMatch(editor, /key=\{`\$\{detail\.workspace_id\}:\$\{detail\.node_id\}:\$\{detail\.current_revision\}`\}/);
 });
-test('AI ID setup is a dedicated horizontal source workspace, not a free-text chat surface', () => {
+test('AI Instructional Design setup is a dedicated horizontal source workspace, not a free-text chat surface', () => {
   const host = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
   const source = readFileSync(new URL('./workspace-source-panel.tsx', import.meta.url), 'utf8');
   assert.match(host, /motion\.div/);
@@ -361,7 +373,7 @@ test('AI ID setup is a dedicated horizontal source workspace, not a free-text ch
   assert.match(source, /className="sr-only" type="file"/);
   assert.doesNotMatch(source, /<select/);
 });
-test('the legacy floating widget cannot switch into the AI ID lesson-author surface', () => {
+test('the legacy floating widget cannot switch into the AI Instructional Design lesson-author surface', () => {
   const widget = readFileSync(new URL('../chat-widget/chat-widget.tsx', import.meta.url), 'utf8');
   assert.match(widget, /const \[surface\] = useState<ChatSurface>\('admin'\);/);
   assert.doesNotMatch(widget, /handleSwitchLessonAuthor/);

@@ -99,16 +99,16 @@ export interface WorkspaceDetail extends WorkspaceView {
 // Safe client copy by code: never expose arbitrary transport/server exception text.
 const ERROR_COPY = {
   AUTH_REQUIRED: ['Chưa xác thực.', 'Authentication is required.'],
-  WORKSPACE_READ_FORBIDDEN: ['Bạn không có quyền xem bản thảo này.', 'You do not have permission to view this draft.'],
-  WORKSPACE_READ_DISABLED: ['Không gian bản thảo chưa được bật.', 'The draft workspace is not enabled.'],
+  WORKSPACE_READ_FORBIDDEN: ['Bạn không có quyền xem bản thiết kế khoá học này.', 'You do not have permission to view this draft.'],
+  WORKSPACE_READ_DISABLED: ['Tính năng bản thiết kế khoá học chưa được bật.', 'The draft workspace is not enabled.'],
   WORKSPACE_READ_INPUT_INVALID: ['Thông tin yêu cầu không hợp lệ.', 'The request parameters are invalid.'],
-  WORKSPACE_NOT_FOUND: ['Không tìm thấy bản thảo.', 'The draft was not found.'],
+  WORKSPACE_NOT_FOUND: ['Không tìm thấy bản thiết kế khoá học.', 'The draft was not found.'],
   WORKSPACE_NODE_NOT_FOUND: ['Không tìm thấy mục nội dung.', 'The content node was not found.'],
   WORKSPACE_REVISION_CONFLICT: ['Nội dung đã thay đổi. Bản sửa chưa lưu vẫn được giữ.', 'The content has changed. Unsaved edits are preserved.'],
-  WORKSPACE_EVENT_RESNAPSHOT_REQUIRED: ['Cần tải lại trạng thái bản thảo.', 'Please reload the draft snapshot.'],
-  WORKSPACE_READ_UNAVAILABLE: ['Chưa thể đọc bản thảo. Vui lòng thử lại sau.', 'The draft is temporarily unavailable. Please try again later.'],
-  WORKSPACE_READ_CONTRACT_INVALID: ['Dữ liệu bản thảo không hợp lệ.', 'The draft response is invalid.'],
-  WORKSPACE_READ_LIMIT: ['Bản thảo vượt giới hạn đọc của giao diện.', 'The draft exceeds the client read limit.'],
+  WORKSPACE_EVENT_RESNAPSHOT_REQUIRED: ['Cần tải lại trạng thái bản thiết kế khoá học.', 'Please reload the draft snapshot.'],
+  WORKSPACE_READ_UNAVAILABLE: ['Chưa thể đọc bản thiết kế khoá học. Vui lòng thử lại sau.', 'The draft is temporarily unavailable. Please try again later.'],
+  WORKSPACE_READ_CONTRACT_INVALID: ['Dữ liệu bản thiết kế khoá học không hợp lệ.', 'The draft response is invalid.'],
+  WORKSPACE_READ_LIMIT: ['Bản thiết kế khoá học vượt giới hạn đọc của giao diện.', 'The draft exceeds the client read limit.'],
 } as const;
 export type WorkspaceReadCode = keyof typeof ERROR_COPY;
 export class WorkspaceReadError extends Error {

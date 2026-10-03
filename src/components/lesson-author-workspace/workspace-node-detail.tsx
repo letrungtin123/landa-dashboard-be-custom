@@ -5,12 +5,12 @@ import { z } from 'zod';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import {
-  Activity, BookOpenCheck, CheckCircle2, ClipboardCheck, FileText, Image as ImageIcon,
-  Lightbulb, ListChecks, Sparkles, Target, Users, Video,
+  Activity, Blocks, BookOpenCheck, CheckCircle2, ClipboardCheck, FileText, Image as ImageIcon,
+  Lightbulb, ListChecks, ListTree, Sparkles, Target, Users, Video,
   type LucideIcon,
 } from 'lucide-react';
 import DiagramPreviewInteractive from '../course-editor/editors/diagram/DiagramPreviewInteractive';
-import type { WorkspaceDetail, WorkspaceLocale, WorkspaceNode } from '../../api/lesson-author-workspace.contract';
+import type { WorkspaceComponentType, WorkspaceDetail, WorkspaceLocale, WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 
 // Optional during the additive READ rollout. Missing protected binding types
 // MUST NOT be inferred from payload shape, title, or validation_contract.
@@ -61,9 +61,11 @@ export const workspaceCopy = {
     multiple_choice: 'Single choice', multiple_select: 'Multiple selection', dropdown: 'Dropdown', short_text: 'Short text', numerical: 'Numerical',
     reviewPurpose: 'Purpose', reviewExample: 'Example / illustrative situation', reviewVisual: 'Visual / supporting asset',
     reviewBehavior: 'Learner behavior / navigation', notAvailable: 'N/A', outcomes: 'Expected outcomes',
+    sectionsInScope: 'Sections', lessonsInScope: 'Lessons', interactionsInScope: 'Interactive content',
+    interactionTypes: 'Interactive content types', learnerAchievement: 'What learners will achieve',
   },
   vi: {
-    title: 'Bản thảo trực tiếp', overview: 'Tổng quan', mindmap: 'Mindmap toàn khóa', close: 'Đóng',
+    title: 'Bản thiết kế khoá học', overview: 'Tổng quan', mindmap: 'Mindmap toàn khóa', close: 'Đóng',
     review: 'Xem trước khóa học AI đang xây dựng. Mở từng mục để kiểm tra, chỉnh sửa hoặc đưa nội dung vào khóa học.',
     detail: 'Chi tiết nội dung', purpose: 'Mục đích', notes: 'Ghi chú triển khai', content: 'Nội dung giải thích',
     unsupported: 'Nội dung này chưa có bản xem trước theo kiểu được hỗ trợ. Chỉ có thể xem khi hợp đồng đọc hỗ trợ kiểu này.',
@@ -97,15 +99,17 @@ export const workspaceCopy = {
     outcomeHint: 'Mở từng chương để đọc mục tiêu hiện tại. Dữ liệu sơ đồ không chứa mục tiêu.',
     overviewHint: 'Mở chi tiết khóa học để đọc tóm tắt và đối tượng học đã ghi nhận.',
     progress: 'Đã hoàn thành', queued: 'AI đang chuẩn bị khóa học', designing: 'AI đang tạo bản thiết kế khóa học', drafting: 'AI đang soạn nội dung bài học',
-    ready: 'Bản thảo khóa học đã sẵn sàng để duyệt', failed: 'Quá trình tạo khóa học gặp lỗi', canceled: 'Quá trình tạo khóa học đã dừng',
+    ready: 'Bản thiết kế khoá học đã sẵn sàng để duyệt', failed: 'Quá trình tạo khóa học gặp lỗi', canceled: 'Quá trình tạo khóa học đã dừng',
     available: 'Chỉ những mục đã đưa vào khóa học thành công mới hiển thị màu xám.', unknown: 'Đang đọc tiến độ khóa học…',
-    unavailable: 'Không thể xem nội dung bản thảo.', emptyOverview: 'Đang chờ tổng quan được ghi nhận.',
-    terminalNeedsAction: 'Bản thảo cần được kiểm tra trước khi có thể ghi nhận thêm nội dung.', terminalFailed: 'Tác vụ bản thảo đã kết thúc nhưng chưa có nội dung khóa học được ghi nhận.',
-    terminalCanceled: 'Tác vụ bản thảo đã bị hủy trước khi ghi nhận nội dung khóa học.', terminalReady: 'Tác vụ đã hoàn tất nhưng màn hình này chưa có dữ liệu đã ghi nhận.', terminalReload: 'Tải lại trạng thái đã lưu',
+    unavailable: 'Không thể xem nội dung bản thiết kế khoá học.', emptyOverview: 'Đang chờ tổng quan được ghi nhận.',
+    terminalNeedsAction: 'Bản thiết kế khoá học cần được kiểm tra trước khi có thể ghi nhận thêm nội dung.', terminalFailed: 'Tác vụ thiết kế khoá học đã kết thúc nhưng chưa có nội dung khóa học được ghi nhận.',
+    terminalCanceled: 'Tác vụ thiết kế khoá học đã bị hủy trước khi ghi nhận nội dung khóa học.', terminalReady: 'Tác vụ đã hoàn tất nhưng màn hình này chưa có dữ liệu đã ghi nhận.', terminalReload: 'Tải lại trạng thái đã lưu',
     liveUnits: 'Bài học sẵn sàng theo thời gian thực',
     multiple_choice: 'Chọn một đáp án', multiple_select: 'Chọn nhiều đáp án', dropdown: 'Danh sách chọn', short_text: 'Câu trả lời ngắn', numerical: 'Câu trả lời số',
     reviewPurpose: 'Mục đích', reviewExample: 'Ví dụ / Tình huống minh hoạ', reviewVisual: 'Visual / Asset minh hoạ',
     reviewBehavior: 'Hành vi / Điều hướng của người học', notAvailable: 'N/A', outcomes: 'Kết quả đầu ra',
+    sectionsInScope: 'Số mục', lessonsInScope: 'Số bài học', interactionsInScope: 'Số nội dung tương tác',
+    interactionTypes: 'Các loại nội dung tương tác', learnerAchievement: 'Giúp học viên đạt được gì',
   },
 } as const;
 
@@ -236,6 +240,70 @@ function ReviewCard({ label, icon: Icon = FileText, tone = 'slate', children, cl
     </div>
     <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{children}</div>
   </section>;
+}
+
+export interface WorkspaceDetailStats {
+  sectionCount: number;
+  lessonCount: number;
+  interactionCount: number;
+  componentTypes: readonly WorkspaceComponentType[];
+}
+
+/** Counts are derived only from the authorized committed graph. Canonical
+ * paths are server-owned hierarchy identities, so partial title/content text
+ * can never change which descendants belong to the selected scope. */
+export function workspaceDetailStats(node: WorkspaceNode, nodes: readonly WorkspaceNode[]): WorkspaceDetailStats {
+  const prefix = `${node.canonical_path}.`;
+  const descendants = nodes.filter(candidate => candidate.canonical_path.startsWith(prefix));
+  const components = descendants.filter(candidate => candidate.kind === 'component');
+  return {
+    sectionCount: descendants.filter(candidate => candidate.kind === 'lesson').length,
+    lessonCount: descendants.filter(candidate => candidate.kind === 'unit').length,
+    interactionCount: components.length,
+    componentTypes: [...new Set(components.map(candidate => candidate.component_type)
+      .filter((value): value is WorkspaceComponentType => value !== null))],
+  };
+}
+
+function componentTypeLabel(type: WorkspaceComponentType, locale: WorkspaceLocale): string {
+  const c = workspaceCopy[locale];
+  return ({ html: c.componentHtml, problem: c.componentProblem, la_faq: c.componentFaq,
+    la_sortable: c.componentSortable, la_crossword: c.componentCrossword,
+    la_diagram: c.componentDiagram } as const)[type];
+}
+
+function WorkspaceScopeStats({ detail, stats, locale }: {
+  detail: WorkspaceTypedDetail; stats?: WorkspaceDetailStats; locale: WorkspaceLocale;
+}) {
+  if (!stats || !['chapter', 'lesson', 'unit'].includes(detail.kind)) return null;
+  const c = workspaceCopy[locale];
+  const metrics = detail.kind === 'chapter'
+    ? [{ label: c.sectionsInScope, value: stats.sectionCount, icon: ListTree, tone: 'violet' as const },
+      { label: c.lessonsInScope, value: stats.lessonCount, icon: BookOpenCheck, tone: 'emerald' as const },
+      { label: c.interactionsInScope, value: stats.interactionCount, icon: Blocks, tone: 'amber' as const }]
+    : detail.kind === 'lesson'
+      ? [{ label: c.lessonsInScope, value: stats.lessonCount, icon: BookOpenCheck, tone: 'emerald' as const },
+        { label: c.interactionsInScope, value: stats.interactionCount, icon: Blocks, tone: 'amber' as const }]
+      : [{ label: c.interactionsInScope, value: stats.interactionCount, icon: Blocks, tone: 'amber' as const }];
+  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    {metrics.map(metric => <ReviewCard key={metric.label} label={metric.label} icon={metric.icon} tone={metric.tone}>
+      <strong className="text-2xl tabular-nums">{metric.value}</strong>
+    </ReviewCard>)}
+    {detail.kind === 'unit' && <ReviewCard label={c.interactionTypes} icon={ListChecks} tone="violet" className="sm:col-span-2">
+      {stats.componentTypes.length ? <Lines values={stats.componentTypes.map(type => componentTypeLabel(type, locale))} tone="violet" /> : c.notAvailable}
+    </ReviewCard>}
+  </div>;
+}
+
+export function WorkspaceAuthorReviewCards({ detail, locale }: { detail: WorkspaceTypedDetail; locale: WorkspaceLocale }) {
+  if (detail.kind !== 'component') return null;
+  const c = workspaceCopy[locale];
+  return <div className="grid gap-3 md:grid-cols-2">
+    <ReviewCard label={c.reviewPurpose} icon={Target} tone="primary">{detail.author_review?.purpose ?? c.notAvailable}</ReviewCard>
+    <ReviewCard label={c.reviewExample} icon={Lightbulb} tone="violet">{detail.author_review?.example_scenario ?? c.notAvailable}</ReviewCard>
+    <ReviewCard label={c.reviewVisual} icon={ImageIcon} tone="amber">{detail.author_review?.visual_asset ?? c.notAvailable}</ReviewCard>
+    <ReviewCard label={c.reviewBehavior} icon={Activity} tone="emerald">{detail.author_review?.user_behavior_navigation ?? c.notAvailable}</ReviewCard>
+  </div>;
 }
 
 /** Structural overview is already authoritative before its review payloads
@@ -369,20 +437,16 @@ export function WorkspaceAggregateContent({ detail, locale }: { detail: Workspac
   return <p role="status">{c.unsupported}</p>;
 }
 
-export function WorkspaceDetailContent({ detail, locale }: { detail: WorkspaceTypedDetail; locale: WorkspaceLocale }) {
+export function WorkspaceDetailContent({ detail, locale, stats }: { detail: WorkspaceTypedDetail; locale: WorkspaceLocale; stats?: WorkspaceDetailStats }) {
   const c = workspaceCopy[locale];
   const preview = useMemo(() => readWorkspacePreview(detail), [detail]);
   if (!detail.content) return <DetailSkeleton label={c.waiting} />;
   return <div className="space-y-4" lang={detail.content_locale}>
-    {detail.content.purpose && <ReviewCard label={c.purpose} icon={Target} tone="primary">{detail.content.purpose}</ReviewCard>}
-    {detail.kind === 'component' && <div className="grid gap-3 md:grid-cols-2">
-      <ReviewCard label={c.reviewPurpose} icon={Target} tone="primary">{detail.author_review?.purpose ?? c.notAvailable}</ReviewCard>
-      <ReviewCard label={c.reviewExample} icon={Lightbulb} tone="violet">{detail.author_review?.example_scenario ?? c.notAvailable}</ReviewCard>
-      <ReviewCard label={c.reviewVisual} icon={ImageIcon} tone="amber">{detail.author_review?.visual_asset ?? c.notAvailable}</ReviewCard>
-      <ReviewCard label={c.reviewBehavior} icon={Activity} tone="emerald">{detail.author_review?.user_behavior_navigation ?? c.notAvailable}</ReviewCard>
-    </div>}
+    {detail.content.purpose && <ReviewCard label={detail.kind === 'unit' ? c.learnerAchievement : c.purpose} icon={Target} tone="primary">{detail.content.purpose}</ReviewCard>}
+    <WorkspaceAuthorReviewCards detail={detail} locale={locale} />
     {detail.kind === 'component' ? preview ? <ComponentContent preview={preview} locale={locale} /> : <p role="status">{c.unsupported}</p>
       : <WorkspaceAggregateContent detail={detail} locale={locale} />}
+    <WorkspaceScopeStats detail={detail} stats={stats} locale={locale} />
     {detail.content.implementation_notes && <ReviewCard label={c.notes} icon={Lightbulb} tone="amber">{detail.content.implementation_notes}</ReviewCard>}
   </div>;
 }

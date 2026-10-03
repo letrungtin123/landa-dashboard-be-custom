@@ -56,7 +56,7 @@ function load(filename) {
     } };
     if (specifier.startsWith('.')) {
       const base = path.resolve(path.dirname(filename), specifier);
-      return load(base + (specifier.endsWith('workspace-node-detail') ? '.tsx' : '.ts'));
+      return load(base + (specifier.endsWith('workspace-node-detail') || specifier.endsWith('workspace-ai-avatar') ? '.tsx' : '.ts'));
     }
     return require(specifier);
   }
@@ -65,7 +65,8 @@ function load(filename) {
   return module.exports;
 }
 const detailModule = load(path.join(directory, 'workspace-node-detail.tsx'));
-const { WorkspaceDetailContent, WorkspaceNodeDetail, readWorkspacePreview, workspaceCopy, workspaceLearningOutcomeLabel } = detailModule;
+const { WorkspaceDetailContent, WorkspaceNodeDetail, readWorkspacePreview, workspaceCopy, workspaceLearningOutcomeLabel,
+  workspaceDetailStats } = detailModule;
 const { WorkspaceDialog, WorkspaceGraphNode, WorkspacePendingSkeleton, projectWorkspaceGraph, collapseWorkspaceBranch, collapseWorkspaceToChapterLevel, initialWorkspaceExpansion, workspaceOverviewCounts,
   workspaceNodeTypeLabel, workspaceProgressiveRevealQueue } = load(path.join(directory, 'workspace-dialog.tsx'));
 const base = { workspace_id: 'workspace-private', correlation_id: 'run-private', contract_version: 1, content_locale: 'en',
@@ -94,7 +95,7 @@ const courseDetail = detail(null, { summary: 'Actual summary', target_audience: 
 const chapterDetail = detail(null, { objective: 'Real chapter outcome', learning_objectives: ['lo_1: Specific outcome'] }, chapter);
 const state = { opened: true, visible: true, busy: false, access: 'allowed', status: { ...base, node_count: 6, unit_count: 1, ready_unit_count: 1 },
   graph, stale: false, selectedNodeId: chapter.node_id, detail: chapterDetail, detailStale: false, drafts: {}, error: null };
-const renderDetail = (d, locale = 'en') => renderToStaticMarkup(h(WorkspaceDetailContent, { detail: d, locale }));
+const renderDetail = (d, locale = 'en', stats) => renderToStaticMarkup(h(WorkspaceDetailContent, { detail: d, locale, stats }));
 const renderDialog = (patch = {}, locale = 'en', other = {}) => renderToStaticMarkup(h(WorkspaceDialog, {
   open: true, locale, state: { ...state, ...patch }, onSelectNode() {}, onOpenChange() {}, ...other,
 }));
@@ -118,6 +119,12 @@ test('projects only complete committed graphs, opens committed branches for real
   const big = { ...graph, total_nodes: 1001, nodes: [root, ...Array.from({ length: 1000 }, (_, i) => node(`c${i}`, 'chapter', root.node_id, i))] };
   assert.equal(projectWorkspaceGraph(big).length, 1001);
   assert.equal(projectWorkspaceGraph(big, { [root.node_id]: false }).length, 1);
+});
+
+test('live draft header uses the exact authorized conversation title', () => {
+  const html = renderDialog({}, 'vi', { draftTitle: 'Thiết kế BiC dành cho lãnh đạo' });
+  assert.match(html, /Thiết kế BiC dành cho lãnh đạo/);
+  assert.doesNotMatch(html, />Bản thiết kế khoá học</);
 });
 
 test('overview counts committed hierarchy and interactive components without counting media briefs', () => {
@@ -280,7 +287,7 @@ for (const locale of ['en', 'vi']) {
   });
   test(`${locale}: transient resnapshot metadata is not shown as a technical user banner`, () => {
     const html = renderDialog({ stale: true, error: { code: 'WORKSPACE_EVENT_RESNAPSHOT_REQUIRED', message: 'internal' } }, locale);
-    assert.doesNotMatch(html, /WORKSPACE_EVENT_RESNAPSHOT_REQUIRED|Cần tải lại trạng thái bản thảo|Reload the draft state/);
+    assert.doesNotMatch(html, /WORKSPACE_EVENT_RESNAPSHOT_REQUIRED|Cần tải lại trạng thái bản thiết kế khoá học|Reload the draft state/);
   });
   for (const access of ['blocked', 'unknown']) test(`${locale}: ${access} hides cached private graph, details and overview data`, () => {
     const html = renderDialog({ access }, locale, { overviewDetails: [chapterDetail] });
@@ -427,6 +434,27 @@ test('FAQ, order, crossword and aggregate fields show actual data in review card
     'small status icons are centered beneath the larger card icon');
   assert.ok((lessonHtml.match(/md:col-span-2/g) ?? []).length >= 4,
     'long objective and activity cards use the full review width instead of wrapping in a half-empty column');
+});
+
+test('hierarchy detail counts committed descendants and labels lesson outcomes and interaction types', () => {
+  const chapterNode = { ...chapter, canonical_path: 'course.chapter_1' };
+  const sectionNode = { ...lesson, canonical_path: 'course.chapter_1.section_1' };
+  const lessonNode = { ...unit, canonical_path: 'course.chapter_1.section_1.lesson_1' };
+  const htmlNode = { ...component, canonical_path: 'course.chapter_1.section_1.lesson_1.component_1', component_type: 'html' };
+  const quizNode = { ...component, node_id: 'quiz-private', canonical_path: 'course.chapter_1.section_1.lesson_1.component_2', component_type: 'problem' };
+  const stats = workspaceDetailStats(chapterNode, [chapterNode, sectionNode, lessonNode, htmlNode, quizNode]);
+  assert.deepEqual(stats, { sectionCount: 1, lessonCount: 1, interactionCount: 2, componentTypes: ['html', 'problem'] });
+  const unitDetail = { ...detail(null, {}, lessonNode), content: { ...detail(null, {}, lessonNode).content, purpose: 'Learner result' } };
+  const html = renderDetail(unitDetail, 'en', workspaceDetailStats(lessonNode, [chapterNode, sectionNode, lessonNode, htmlNode, quizNode]));
+  for (const value of ['What learners will achieve', 'Learner result', 'Interactive content types', 'Theory', 'Quiz']) assert.ok(html.includes(value));
+});
+
+test('component author analysis always renders four read-only review cards with N/A fallback', () => {
+  const reviewed = { ...detail('html', '<p>Content</p>'), author_review: {
+    purpose: 'Purpose analysis', example_scenario: null, visual_asset: 'Visual analysis', user_behavior_navigation: null,
+  } };
+  const html = renderDetail(reviewed, 'en');
+  for (const value of ['Purpose analysis', 'Example / illustrative situation', 'Visual analysis', 'Learner behavior / navigation', 'N/A']) assert.ok(html.includes(value));
 });
 
 test('media briefs require server media type and render metadata only, including honest missing context', () => {

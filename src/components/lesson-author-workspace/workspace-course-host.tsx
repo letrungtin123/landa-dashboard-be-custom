@@ -8,21 +8,25 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
 import { createWorkspaceReadClient } from '../../api/lesson-author-workspace';
-import { createWorkspaceLaunchResolver } from '../../api/workspace-launch';
 import { createWorkspaceCreateClient } from '../../api/workspace-create';
 import { workspaceSourceApi } from '../../api/workspace-sources';
 import { createLessonAuthorUploadAttemptId } from '../../api/lesson-author-video-upload.logic';
 import { createWorkspaceSourceState } from './workspace-source-state';
 import { WorkspaceSourcePanel } from './workspace-source-panel';
+import { WorkspaceSessionBrowser } from './workspace-session-browser';
+import { listLessonAuthorSessions } from '../../api/workspace-sessions';
 import { createWorkspaceWriteClient, WorkspaceWriteError, workspaceWriteMessage } from '../../api/workspace-write';
 import { createWorkspaceApplyClient, workspaceApplyMessage, WorkspaceApplyError, type WorkspaceApplyCode } from '../../api/workspace-apply';
 import { createWorkspaceStreamClient, type WorkspaceStreamState } from '../../api/workspace-stream';
 import { createWorkspaceSourceStreamClient } from '../../api/workspace-source-stream';
+import { fetchLessonAuthorChatSettings } from '../../api/custom-chat';
+import { storageUrl } from '../../utils/storage-url';
 import { workspaceReadMessage, type WorkspaceContent, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 import { createWorkspaceSession } from './workspace-session';
 import { WorkspaceDialogBody, WorkspaceNodeTypePill } from './workspace-dialog';
-import { WorkspaceDetailContent } from './workspace-node-detail';
+import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, workspaceDetailStats } from './workspace-node-detail';
 import { WorkspaceNodeEditor, updateWorkspaceEditorField } from './workspace-node-editor';
+import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey,
   type WorkspaceLaunchContext, type WorkspaceLaunchResolver } from './workspace-host.logic';
 
@@ -31,7 +35,7 @@ import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey,
 const LaunchContext = createContext<WorkspaceLaunchResolver | undefined>(undefined);
 // Export the actual context provider used by the hook, without global mutable IDs.
 export const CourseWorkspaceLaunchProvider = LaunchContext.Provider;
-const latestWorkspace = createWorkspaceLaunchResolver();
+const sessionIndex: WorkspaceLaunchResolver = async () => null;
 const copy = {
   en: { label: 'AI Instructional Design', title: 'AI Instructional Design · Course workspace', open: 'Open AI Instructional Design workspace', close: 'Close', loading: 'Loading the authorized workspace…',
     discovery_unavailable: 'Workspace discovery is not connected yet. The existing Lesson Author and document upload remain available.',
@@ -46,21 +50,21 @@ const copy = {
     rebase: 'Keep my local edits against this saved revision', discard: 'Discard local edits', compare: 'Compare the saved content above with your local edits before choosing.',
     waiting: 'Waiting for an authorized detail read.', error: 'The action could not be completed. Reload saved state.', detail: 'Draft content', review: 'Review and edit committed draft content. Publishing remains separate.',
     readOnlyReview: 'AI design analysis for review.', appliedReview: 'This content has been added to the course and is now view-only.',
-    editTitle: 'Edit name', aiInsight: 'AI design insight' },
-  vi: { label: 'AI Instructional Design', title: 'AI Instructional Design · Không gian bản thảo', open: 'Mở không gian bản thảo AI Instructional Design', close: 'Đóng', loading: 'Đang tải bản thảo được phép truy cập…',
-    discovery_unavailable: 'Chưa kết nối API tìm bản thảo. Trợ lý soạn bài và tải tài liệu hiện tại vẫn sử dụng được.',
-    no_workspace: 'Khóa học chưa có bản thảo khả dụng. Chưa tạo nội dung nào.',
-    launch_invalid: 'Phản hồi bản thảo không khớp khóa học này. Truy cập đã bị chặn.',
-    launch_changed: 'Máy chủ chọn bản thảo khác. Bản sửa cục bộ trước đó vẫn được giữ; hãy mở lại đúng bản thảo đó.',
-    launch_failed: 'Chưa thể mở bản thảo. Kiểm tra quyền truy cập rồi thử lại.', retry: 'Kiểm tra lại', refresh: 'Tải lại trạng thái đã lưu',
-    overview: 'Tải chi tiết tổng quan', more: 'Tải thêm chi tiết tổng quan', readOnly: 'Bản thảo hiện chỉ cho phép xem.',
+    editTitle: 'Edit name', aiInsight: 'AI design insight', sessions: 'Draft list' },
+  vi: { label: 'AI Instructional Design', title: 'AI Instructional Design · Thiết kế khoá học', open: 'Mở bản thiết kế khoá học AI Instructional Design', close: 'Đóng', loading: 'Đang tải bản thiết kế khoá học được phép truy cập…',
+    discovery_unavailable: 'Chưa kết nối API tìm bản thiết kế khoá học. Trợ lý soạn bài và tải tài liệu hiện tại vẫn sử dụng được.',
+    no_workspace: 'Khóa học chưa có bản thiết kế khả dụng. Chưa tạo nội dung nào.',
+    launch_invalid: 'Phản hồi bản thiết kế khoá học không khớp khóa học này. Truy cập đã bị chặn.',
+    launch_changed: 'Máy chủ chọn bản thiết kế khoá học khác. Bản sửa cục bộ trước đó vẫn được giữ; hãy mở lại đúng bản thiết kế đó.',
+    launch_failed: 'Chưa thể mở bản thiết kế khoá học. Kiểm tra quyền truy cập rồi thử lại.', retry: 'Kiểm tra lại', refresh: 'Tải lại trạng thái đã lưu',
+    overview: 'Tải chi tiết tổng quan', more: 'Tải thêm chi tiết tổng quan', readOnly: 'Bản thiết kế khoá học hiện chỉ cho phép xem.',
     kept: 'Đóng vẫn giữ bản sửa cục bộ trong trang này và không dừng quá trình tạo nội dung. Rời hoặc tải lại trang sẽ mất bản sửa chưa lưu.',
-    saved: 'Máy chủ đã xác nhận phiên bản bản thảo này. Chưa áp dụng vào khóa học.', applied: 'Đã đưa đúng phạm vi được chọn vào bản nháp khóa học. Xuất bản là thao tác riêng.',
+    saved: 'Máy chủ đã xác nhận phiên bản bản thiết kế khoá học này. Chưa áp dụng vào khóa học.', applied: 'Đã đưa đúng phạm vi được chọn vào bản nháp khóa học. Xuất bản là thao tác riêng.',
     replay: 'Gửi lại đúng thao tác chưa xác nhận', replayHint: 'Tải lại trạng thái đã lưu trước. Gửi lại giữ nguyên mã thao tác và nội dung ban đầu.',
     rebase: 'Giữ bản sửa cục bộ trên phiên bản đã lưu này', discard: 'Bỏ bản sửa cục bộ', compare: 'So sánh nội dung đã lưu bên trên với bản sửa cục bộ trước khi chọn.',
-    waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thảo', review: 'Duyệt và sửa nội dung bản thảo đã ghi nhận. Xuất bản là thao tác riêng.',
+    waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thiết kế khoá học', review: 'Duyệt và sửa nội dung bản thiết kế khoá học đã ghi nhận. Xuất bản là thao tác riêng.',
     readOnlyReview: 'Phân tích thiết kế do AI đề xuất để bạn rà soát.', appliedReview: 'Nội dung này đã được đưa vào khóa học và hiện chỉ cho phép xem.',
-    editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI' },
+    editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI', sessions: 'Danh sách bản thiết kế khoá học' },
 } as const;
 type Host = ReturnType<typeof createWorkspaceCourseHost>;
 const emptySubscribe = () => () => {};
@@ -189,7 +193,7 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
   const permitted = useAuthStore(s => s.hasPermission('courses', 'can_edit'));
   const activeTenant = useTenantStore(s => s.activeTenantId);
   const tenantId = user?.role === 'superadmin' ? activeTenant : user?.tenant_id;
-  const provided = useContext(LaunchContext), resolver = launchResolver ?? provided ?? latestWorkspace;
+  const provided = useContext(LaunchContext), resolver = launchResolver ?? provided ?? sessionIndex;
   const enabled = workspaceHostEnabled(import.meta.env.VITE_LESSON_AUTHOR_WORKSPACE_ENABLED);
   const eligible = enabled && ready && authenticated && permitted && !!courseId && !!tenantId
     && !!user && ['staff', 'superuser', 'superadmin'].includes(user.role);
@@ -261,15 +265,15 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
   return {
     trigger: current ? <Button type="button" variant="outline" size="sm" className="mt-2 gap-2" aria-label={copy[locale].open}
       onClick={() => { void current.launch(); }}><Sparkles className="h-4 w-4" aria-hidden />{copy[locale].label}</Button> : null,
-    overlay: current ? <WorkspaceCourseHostOverlayMount host={current} locale={locale} sources={sources}
+    overlay: current ? <WorkspaceCourseHostOverlayMount host={current} courseId={courseId!} locale={locale} sources={sources}
       onCourseApplied={() => onCourseAppliedRef.current?.()} /> : null,
   };
 }
 
-function WorkspaceCourseHostOverlayMount({ host, locale, sources, onCourseApplied }: { host: Host; locale: WorkspaceLocale;
+function WorkspaceCourseHostOverlayMount({ host, courseId, locale, sources, onCourseApplied }: { host: Host; courseId: string; locale: WorkspaceLocale;
   sources: ReturnType<typeof createWorkspaceSourceState> | null; onCourseApplied?: () => Promise<void> | void }) {
   const state = useSyncExternalStore(host.subscribe, host.getState, emptySnapshot);
-  return state ? <WorkspaceCourseHostOverlay host={host} state={state} locale={locale} sources={sources}
+  return state ? <WorkspaceCourseHostOverlay host={host} courseId={courseId} state={state} locale={locale} sources={sources}
     onCourseApplied={onCourseApplied} /> : null;
 }
 
@@ -297,7 +301,7 @@ function useWorkspaceRealtimeBridge({ host, session, launch, locale, open }: {
   }, [host, launch, locale, open, session]);
 }
 
-/** A single Portal/focus-trap/scroll-lock for every state of an AI ID open.
+/** A single Portal/focus-trap/scroll-lock for every state of an AI Instructional Design open.
  * Do not replace this shell while discovery turns into source selection or a
  * workspace begins producing committed nodes. */
 function WorkspaceModalShell({ host, children }: { host: Host; children: ReactNode }) {
@@ -310,16 +314,50 @@ function WorkspaceModalShell({ host, children }: { host: Host; children: ReactNo
   </Dialog>;
 }
 
-export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCourseApplied }: { host: Host; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
+export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, onCourseApplied }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
   sources?: ReturnType<typeof createWorkspaceSourceState> | null; onCourseApplied?: () => Promise<void> | void }) {
   const c = copy[locale], session = host.getSession(), workspace = state.workspace;
   const [actionError, setActionError] = useState(false);
+  // Normal product entry has no selected launch and therefore starts at the
+  // session index. A pre-resolved host (embedded recovery/tests) may render its
+  // already-authorized workspace directly without a one-frame session flash.
+  const [view, setView] = useState<'sessions' | 'source' | 'workspace'>(() => state.launch || state.issue ? 'workspace' : 'sessions');
   const [applyState, setApplyState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle');
   const [applyError, setApplyError] = useState<WorkspaceApplyCode | null>(null);
   const [editingTitleNodeId, setEditingTitleNodeId] = useState<string | null>(null);
+  const [assistantAvatarSrc, setAssistantAvatarSrc] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState<{ id: string; title: string } | null>(null);
+  const titleLookupRef = useRef<string | null>(null);
   const overviewAttemptRef = useRef<string | null>(null);
   const sourceState = useSyncExternalStore(sources?.subscribe ?? emptySubscribe, sources?.getState ?? emptySnapshot, emptySnapshot);
-  useWorkspaceRealtimeBridge({ host, session, launch: state.launch, locale, open: state.open });
+  useWorkspaceRealtimeBridge({ host, session, launch: state.launch, locale, open: state.open && view === 'workspace' });
+  useEffect(() => {
+    if (!state.open) return;
+    let active = true;
+    void fetchLessonAuthorChatSettings().then(settings => {
+      if (!active) return;
+      const avatar = settings.active_persona?.persona_avatar_url || settings.active_bot?.bot_avatar_url;
+      setAssistantAvatarSrc(avatar ? storageUrl(avatar) : null);
+    }).catch(() => { if (active) setAssistantAvatarSrc(null); });
+    return () => { active = false; };
+  }, [state.open]);
+  useEffect(() => { if (!state.open) { setView('sessions'); setActiveConversation(null); titleLookupRef.current = null; } }, [state.open]);
+  useEffect(() => { if (state.launch && view === 'source') setView('workspace'); }, [state.launch, view]);
+  useEffect(() => {
+    const conversation = sourceState?.conversation;
+    if (conversation?.id && conversation.title?.trim()) setActiveConversation({ id: conversation.id, title: conversation.title.trim() });
+  }, [sourceState?.conversation]);
+  useEffect(() => {
+    const conversationId = state.launch?.conversation_id;
+    if (!state.open || !conversationId || activeConversation?.id === conversationId || titleLookupRef.current === conversationId) return;
+    titleLookupRef.current = conversationId;
+    const abort = new AbortController();
+    void listLessonAuthorSessions(courseId, locale, abort.signal).then(result => {
+      const match = result.items.find(item => item.conversation_id === conversationId);
+      if (match) setActiveConversation({ id: conversationId, title: match.title });
+    }).catch(() => undefined).finally(() => { if (titleLookupRef.current === conversationId) titleLookupRef.current = null; });
+    return () => abort.abort();
+  }, [activeConversation?.id, courseId, locale, state.launch?.conversation_id, state.open]);
   const act = (work: () => unknown) => { setActionError(false); try { void Promise.resolve(work()).catch(() => setActionError(true)); } catch { setActionError(true); } };
   const refreshWorkspace = () => {
     overviewAttemptRef.current = null;
@@ -351,14 +389,25 @@ export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCou
     workspace?.read.graph?.overview_ready, workspace?.read.graph?.structure_ready, workspace?.read.opened,
     workspace?.read.access, workspace?.read.stale, workspace?.writeBusy]);
   if (!state.open) return null;
+  if (!state.loading && view === 'sessions') return <WorkspaceModalShell host={host}><WorkspaceSessionBrowser
+    courseId={courseId} locale={locale} assistantAvatarSrc={assistantAvatarSrc}
+    onClose={() => host.close()}
+    onOpen={async (launch, title) => { setActionError(false); setActiveConversation({ id: launch.conversation_id, title }); try { await host.acceptCreated(launch); setView('workspace'); } catch { setActionError(true); } }}
+    onSource={(conversationId, title) => {
+      setActionError(false);
+      if (!sources || !host.clearSelection()) { setActionError(true); return; }
+      setActiveConversation(conversationId && title ? { id: conversationId, title } : null);
+      if (conversationId) sources.resumeSession(conversationId); else sources.beginNewSession();
+      setView('source');
+    }} /></WorkspaceModalShell>;
   if (!session || !workspace || state.loading || state.issue) return <WorkspaceModalShell host={host}>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16, ease: 'easeOut' }} className="flex min-h-0 flex-1 flex-col">
         <header className="flex shrink-0 items-start justify-between gap-4 border-b bg-card px-4 py-3 sm:px-5 sm:py-3.5">
-          <div className="flex min-w-0 items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-sm sm:h-10 sm:w-10"><Sparkles className="h-5 w-5" /></div><div className="min-w-0"><DialogTitle className="text-base font-semibold">{c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{state.issue === 'no_workspace' ? c.review : c[state.issue ?? 'launch_failed']}</DialogDescription></div></div>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => host.close()}>{c.close}</Button>
+          <div className="flex min-w-0 items-start gap-3"><WorkspaceAiAvatar src={assistantAvatarSrc} compact /><div className="min-w-0"><DialogTitle className="text-base font-semibold">{c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{state.issue === 'no_workspace' ? c.review : c[state.issue ?? 'launch_failed']}</DialogDescription></div></div>
+          <div className="flex shrink-0 gap-2">{view === 'source' && <Button type="button" variant="outline" size="sm" onClick={() => setView('sessions')}>{c.sessions}</Button>}<Button type="button" variant="outline" size="sm" onClick={() => host.close()}>{c.close}</Button></div>
         </header>
         {state.loading && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-hidden px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]" role="status"><div className="animate-pulse space-y-4 rounded-lg border border-border/70 bg-card p-5"><div className="h-5 w-2/5 rounded bg-muted" /><div className="h-16 rounded-lg bg-muted" /><div className="space-y-2"><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /></div></div><div className="hidden animate-pulse rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><div className="h-4 w-1/2 rounded bg-muted" /><div className="mt-4 h-24 rounded-lg bg-muted" /></div></div>}
-        {!state.loading && state.issue === 'no_workspace' && !state.launch && sources && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><WorkspaceSourcePanel controller={sources} locale={locale} /><aside className="hidden rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">AI Instructional Design</p><h3 className="mt-3 text-lg font-semibold">{locale === 'vi' ? 'Bản thảo có kiểm soát' : 'A controlled course draft'}</h3><ol className="mt-6 space-y-4 text-sm text-muted-foreground"><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">1</span>{locale === 'vi' ? 'Chọn đúng một tài liệu nguồn đã sẵn sàng.' : 'Choose one ready source document.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">2</span>{locale === 'vi' ? 'Tạo bản thảo và theo dõi tiến độ trong Tổng quan, Mindmap.' : 'Create the draft and follow its Overview and Mindmap progress.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">3</span>{locale === 'vi' ? 'Duyệt, sửa và Áp dụng theo phạm vi khi nội dung sẵn sàng.' : 'Review, edit and apply only ready scopes.'}</li></ol></aside></div>}
+        {!state.loading && state.issue === 'no_workspace' && !state.launch && sources && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><WorkspaceSourcePanel controller={sources} locale={locale} /><aside className="hidden rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">AI Instructional Design</p><h3 className="mt-3 text-lg font-semibold">{locale === 'vi' ? 'Bản thiết kế khoá học có kiểm soát' : 'A controlled course draft'}</h3><ol className="mt-6 space-y-4 text-sm text-muted-foreground"><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">1</span>{locale === 'vi' ? 'Chọn đúng một tài liệu nguồn đã sẵn sàng.' : 'Choose one ready source document.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">2</span>{locale === 'vi' ? 'Tạo bản thiết kế khoá học và theo dõi tiến độ trong Tổng quan, Mindmap.' : 'Create the draft and follow its Overview and Mindmap progress.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">3</span>{locale === 'vi' ? 'Duyệt, sửa và Áp dụng theo phạm vi khi nội dung sẵn sàng.' : 'Review, edit and apply only ready scopes.'}</li></ol></aside></div>}
         {!state.loading && state.issue !== 'no_workspace' && <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 text-center"><p role="status" className="max-w-lg text-sm text-muted-foreground">{c[state.issue ?? 'launch_failed']}</p><Button type="button" disabled={sourceState?.busy} onClick={() => { void host.launch(); }}>{c.retry}</Button></div>}
       </motion.div>
   </WorkspaceModalShell>;
@@ -378,6 +427,7 @@ export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCou
     if (!node) return null;
     const editor = session.editorProps(node.node_id), write = workspace.writes[node.node_id];
     const detail = editor.access === 'allowed' ? editor.detail : null;
+    const stats = workspace.read.graph ? workspaceDetailStats(node, workspace.read.graph.nodes) : undefined;
     const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind);
     const hierarchyTitle = !!detail && workspaceNodeUsesHeaderTitleEditor(detail.kind);
     // The graph marks an exact revision/hash as applied. The local done state
@@ -437,7 +487,7 @@ export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCou
             </div><span className="sr-only">{c.waiting}</span>
           </div>}
           {detail && !editorCapable && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-4 sm:px-6 sm:py-6"><div className="mx-auto max-w-5xl"><WorkspaceDetailContent detail={detail} locale={locale} /></div></motion.div>}
+            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-4 sm:px-6 sm:py-6"><div className="mx-auto max-w-5xl"><WorkspaceDetailContent detail={detail} locale={locale} stats={stats} /></div></motion.div>}
           {detail && !editorCapable && canApply && <div className="flex shrink-0 justify-end border-t border-border/70 bg-card/95 px-5 py-4 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl">
             <Button type="button" className="h-10 gap-2 rounded-xl px-5 shadow-md shadow-primary/20" disabled={applyState === 'busy'} onClick={() => { void apply(); }}>
               <Sparkles className="h-4 w-4" />{workspaceScopeApplyLabel(node.kind, locale, applyState === 'busy')}
@@ -450,7 +500,9 @@ export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCou
             onApply={applyScope ? (value, revision, changed) => { setEditingTitleNodeId(null); void apply(value, revision, changed); } : undefined}
             applyLabel={workspaceScopeApplyLabel(node.kind, locale)} applyingLabel={workspaceScopeApplyLabel(node.kind, locale, true)}
             applyBusy={applyState === 'busy'} applyDisabled={!canApply} readOnly={appliedReadOnly}
-            titleInHeader={hierarchyTitle} reviewContent={hierarchyTitle ? <WorkspaceDetailContent detail={detail!} locale={locale} /> : undefined} />}
+            titleInHeader={hierarchyTitle} reviewContent={hierarchyTitle
+              ? <WorkspaceDetailContent detail={detail!} locale={locale} stats={stats} />
+              : detail?.kind === 'component' ? <WorkspaceAuthorReviewCards detail={detail} locale={locale} /> : undefined} />}
           {editorCapable && !appliedReadOnly && editor.conflict && write?.phase !== 'unknown' && !workspace.writeBusy && !write?.readRequired && detail.current_revision !== null && <div className="mx-5 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
             <p>{c.compare}</p><Button type="button" variant="outline" onClick={() => act(() => session.rebaseDraft(node.node_id, detail.current_revision!))}>{c.rebase}</Button>
             <Button type="button" variant="outline" onClick={() => act(() => session.discardDraft(node.node_id))}>{c.discard}</Button></div>}
@@ -469,5 +521,7 @@ export function WorkspaceCourseHostOverlay({ host, state, locale, sources, onCou
   };
   return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={workspace.read} locale={locale}
     onSelectNode={nodeId => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(nodeId)); }} overviewDetails={workspace.overview.details} toolbar={toolbar} renderNodeDetail={renderDetail}
+    assistantAvatarSrc={assistantAvatarSrc}
+    draftTitle={state.launch && activeConversation?.id === state.launch.conversation_id ? activeConversation.title : null}
     onRefresh={() => act(refreshWorkspace)} /></WorkspaceModalShell>;
 }

@@ -18,11 +18,12 @@ function fixture(){
   const settings={active_bot:{target:'lesson_author',tenant_id:id(2),bot_id:id(3),ai_active_engine:'self_built_rag'},
     active_kb:{target:'lesson_author',tenant_id:id(2),kb_id:id(4)},active_persona:{target:'lesson_author',tenant_id:id(2),bot_id:id(3),persona_id:id(5)}};
   const conv={id:id(6),user_id:id(1),tenant_id:id(2),course_id:scope.courseId,target:'lesson_author',bot_id:id(3)};
+  const conversations=[conv];
   const docs=[{document_id:id(7),kb_id:id(4),name:'Synthetic.pdf',status:'learned'}];
   const state={authorized:true,visible:true,unknown:false,creates:0,conversations:0,uploads:0,video:0,documentReads:0};
   const results=[],requests=[];
   const streams=[];
-  const api={settings:async()=>settings,documents:async()=>{state.documentReads++;return docs;},conversations:async()=>[conv],createConversation:async()=>{state.conversations++;return conv;},
+  const api={settings:async()=>settings,documents:async()=>{state.documentReads++;return docs;},conversations:async()=>conversations,createConversation:async()=>{state.conversations++;return conv;},
     upload:async()=>{state.uploads++;return{results:[{success:true,data:{id:id(12),kb_id:id(4),name:'Uploaded.pdf',status:'learning',source_info:{extension:'pdf'}}}]};},
     video:async()=>{state.video++;return{job:{id:id(8),conversation_id:id(6),status:'queued',kb_document_id:null}};},
     transcript:async()=>{throw Error('unexpected');},commitTranscript:async()=>{throw Error('unexpected');}};
@@ -30,13 +31,20 @@ function fixture(){
     operationId:()=>id(9),locale:'vi',onCreated:r=>results.push(r),stream:(scope,deps)=>{const item={scope,deps,started:0,closed:0};streams.push(item);return{start(){item.started++;},close(){item.closed++;}};},create:async(...args)=>{state.creates++;requests.push(args);
       if(state.unknown)throw new WorkspaceCreateError('unknown','UNCONFIRMED');
       return{workspace_id:id(10),conversation_id:id(6),course_id:scope.courseId,content_locale:args[1].content_locale,correlation_id:id(11)};}});
-  return{scope,controller,state,settings,docs,results,requests,streams};
+  return{scope,controller,state,settings,docs,conversations,results,requests,streams};
 }
 test('source reads never generate and Create uses only learned source + global ENVI locale',async()=>{
   const f=fixture();await f.controller.refresh();assert.equal(f.state.creates,0);assert.equal(f.controller.getState().ready,true);
   f.controller.select(id(7));f.controller.setUiLocale('en');await f.controller.create();
   assert.equal(f.state.creates,1);assert.equal(f.state.conversations,0);assert.equal(f.results.length,1);
   assert.deepEqual(f.requests[0],[id(6),{operation_id:id(9),source_document_ids:[id(7)],content_locale:'en'},'en']);
+});
+test('session choice is exact: new creates once and missing resume never falls back to another draft',async()=>{
+  const fresh=fixture();await fresh.controller.refresh();fresh.controller.beginNewSession();fresh.controller.select(id(7));await fresh.controller.create();
+  assert.equal(fresh.state.conversations,1);assert.equal(fresh.state.creates,1);
+  const missing=fixture();await missing.controller.refresh();missing.controller.resumeSession(id(44));await missing.controller.refresh();
+  assert.equal(missing.controller.getState().issue,'unavailable');assert.equal(missing.controller.getState().conversation,null);
+  missing.controller.select(id(7));await missing.controller.create();assert.equal(missing.state.creates,0);assert.equal(missing.state.conversations,0);
 });
 test('not-ready source and changed assignment cannot dispatch generation',async()=>{
   const f=fixture();await f.controller.refresh();f.controller.select(id(7));f.docs[0].status='learning';await f.controller.create();

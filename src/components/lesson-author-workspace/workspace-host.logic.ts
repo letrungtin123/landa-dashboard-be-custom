@@ -66,6 +66,14 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
     for (const listener of listeners) { try { listener(); } catch { /* View errors cannot dispatch work. */ } }
   }
   function canWrite() { return !disposed && eligible && state.open && !state.loading && state.launch?.can_edit === true && !state.issue; }
+  function releaseSession() {
+    unsubscribe?.(); unsubscribe = null; session?.dispose(); session = null;
+  }
+  function hasUnsafeLocalState() {
+    const current = session?.getState();
+    return !!current && (Object.keys(current.drafts).length > 0 || current.writeBusy
+      || Object.values(current.writes).some(write => write.phase === 'unknown'));
+  }
   function close() {
     generation++; abort?.abort(); abort = null; pending = null;
     session?.close(); publish({ open: false, loading: false });
@@ -102,9 +110,21 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
      * launch identifiers and no extra latest lookup between receipt and read. */
     async acceptCreated(value: WorkspaceLaunchContext) {
       if (disposed || !eligible) return;
+      const next = readWorkspaceLaunch(value, bound);
+      if (state.launch && (state.launch.workspace_id !== next.workspace_id || state.launch.conversation_id !== next.conversation_id)) {
+        if (hasUnsafeLocalState()) throw new WorkspaceWriteError('WORKSPACE_EDIT_READ_REQUIRED');
+        releaseSession(); publish({ launch: null, workspace: null, issue: null });
+      }
       const token = ++generation; abort?.abort(); abort = null; pending = null;
       try { await activate(value, token); }
       catch { session?.close(); publish({ issue: 'launch_invalid', loading: false }); }
+    },
+    clearSelection() {
+      if (disposed || !eligible) return false;
+      if (hasUnsafeLocalState()) return false;
+      generation++; abort?.abort(); abort = null; pending = null; releaseSession();
+      publish({ launch: null, workspace: null, loading: false, issue: 'no_workspace', open: true });
+      return true;
     },
     launch(): Promise<void> {
       if (disposed || !eligible) return Promise.resolve();
@@ -137,7 +157,7 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
     assertCanWrite() { if (!canWrite()) throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN'); },
     dispose() {
       if (disposed) return;
-      close(); disposed = true; unsubscribe?.(); session?.dispose(); session = null; listeners.clear();
+      close(); disposed = true; releaseSession(); listeners.clear();
       state = Object.freeze({ ...state, open: false, workspace: null, launch: null });
     },
   };

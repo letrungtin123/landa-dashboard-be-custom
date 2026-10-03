@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { workspaceReadMessage, type WorkspaceFailureStage, type WorkspaceGraph, type WorkspaceLocale, type WorkspaceNode, type WorkspaceStatus } from '../../api/lesson-author-workspace.contract';
 import type { WorkspaceReadState } from './workspace-read-state';
 import { WorkspaceAggregateContent, WorkspaceCourseOverviewSkeleton, WorkspaceNodeDetail, workspaceCopy, workspaceDetailMatches, workspaceLearningOutcomeLabel, type WorkspaceTypedDetail } from './workspace-node-detail';
+import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 
 type Expansion = Readonly<Record<string, boolean>>;
 export interface WorkspaceProjectionNode { node: WorkspaceNode; position: { x: number; y: number }; childCount: number; expanded: boolean }
@@ -251,6 +252,9 @@ export interface WorkspaceDialogProps {
   overviewDetails?: readonly WorkspaceTypedDetail[];
   toolbar?: ReactNode;
   renderNodeDetail?: (node: WorkspaceNode | null) => ReactNode;
+  assistantAvatarSrc?: string | null;
+  /** Authorized conversation display name for this exact workspace. */
+  draftTitle?: string | null;
   /** Explicit, authorized read only. Never starts or retries generation. */
   onRefresh?: () => void;
 }
@@ -428,7 +432,7 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   if (status.failure_stage === 'finalize_course' && status.unit_count > 0 && status.ready_unit_count === status.unit_count) return {
     stage,
     message: vi ? 'Nội dung bài học đã được tạo và lưu. Hệ thống chưa hoàn tất bước kiểm tra cuối.' : 'Lesson content was created and saved, but the final check did not complete.',
-    note: vi ? 'Bạn vẫn có thể xem bản thảo. Hãy tải lại trạng thái trước khi thử thao tác tiếp theo.' : 'You can still review the draft. Reload its saved state before the next action.',
+    note: vi ? 'Bạn vẫn có thể xem bản thiết kế khoá học. Hãy tải lại trạng thái trước khi thử thao tác tiếp theo.' : 'You can still review the draft. Reload its saved state before the next action.',
   };
   return { stage,
     message: vi ? 'Hệ thống không thể hoàn tất bước này sau các lần thử an toàn.' : 'The system could not complete this step after its safe attempts.',
@@ -449,7 +453,7 @@ function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false }: 
         {failure.note && <p className="mt-1 text-xs leading-5 text-muted-foreground">{failure.note}</p>}
       </div></div>
     <div className="flex flex-wrap items-center gap-2">{onRefresh && <Button type="button" variant="outline" size="sm" onClick={onRefresh}>{c.terminalReload}</Button>}
-      {isFailure && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thảo mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}</div>
+      {isFailure && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}</div>
   </div>;
 }
 
@@ -527,7 +531,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps) {
 /** Body deliberately has no Dialog/Portal boundary. The host keeps one modal
  * mounted from source selection through workspace delivery, so a status/graph
  * update cannot recreate focus, scroll lock, entry animation, or viewport. */
-export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, renderNodeDetail, onRefresh }: WorkspaceDialogProps) {
+export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
   const c = workspaceCopy[locale];
   const [tab, setTab] = useState('overview');
   const [expansion, setExpansion] = useState<Expansion>({});
@@ -698,8 +702,8 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
       <span className="sr-only" ref={node => { if (node && !returnFocus.current) { returnFocus.current = document.activeElement as HTMLElement; } }} />
       <header className="flex shrink-0 items-start justify-between gap-3 border-b bg-card px-4 py-3 pr-4 sm:px-5 sm:py-3.5">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-sm sm:h-10 sm:w-10"><BookOpenCheck className="h-5 w-5" /></div>
-          <div className="min-w-0"><DialogTitle className="text-base font-semibold">{c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{c.review}</DialogDescription></div>
+          <WorkspaceAiAvatar src={assistantAvatarSrc} compact />
+          <div className="min-w-0"><DialogTitle className="truncate text-base font-semibold">{draftTitle?.trim() || c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{c.review}</DialogDescription></div>
         </div>
         <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
       </header>

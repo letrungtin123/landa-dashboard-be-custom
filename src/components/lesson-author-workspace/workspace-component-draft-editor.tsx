@@ -22,7 +22,7 @@ const copy = {
     diagram: 'Diagram editor', diagrams: 'Diagrams', activeDiagram: 'Active diagram', shape: 'Shape text', connection: 'Connection label', diagramHelp: 'Edit this diagram with the same tools as Course Outline.',
   },
   vi: {
-    displayName: 'Tên hiển thị', lessonContent: 'Nội dung bài học', htmlHelp: 'Chỉnh sửa toàn bộ nội dung người học sẽ thấy. Lưu chỉ cập nhật bản thảo AI; ảnh dán từ máy không được tải lên trong màn hình này.',
+    displayName: 'Tên hiển thị', lessonContent: 'Nội dung bài học', htmlHelp: 'Chỉnh sửa toàn bộ nội dung người học sẽ thấy. Lưu chỉ cập nhật bản thiết kế khoá học do AI tạo; ảnh dán từ máy không được tải lên trong màn hình này.',
     question: 'Câu hỏi', explanation: 'Giải thích', answer: 'Đáp án được chấp nhận', choice: 'Lựa chọn', correct: 'Đáp án đúng', hints: 'Gợi ý', addHint: 'Thêm gợi ý',
     addItem: 'Thêm mục', removeItem: 'Xóa mục', moveUp: 'Đưa lên', moveDown: 'Đưa xuống', keywordColumn: 'Cột từ khóa',
     tolerance: 'Sai số cho phép', caseSensitive: 'Phân biệt chữ hoa / thường', yes: 'Có', no: 'Không',

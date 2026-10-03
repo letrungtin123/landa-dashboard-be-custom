@@ -29,21 +29,21 @@ export interface WorkspaceWriteClient {
 }
 const COPY = {
   AUTH_REQUIRED: ['Chưa xác thực.', 'Authentication is required.'],
-  WORKSPACE_EDIT_FORBIDDEN: ['Bạn không có quyền sửa bản thảo này.', 'You do not have permission to edit this draft.'],
-  WORKSPACE_EDIT_DISABLED: ['Chỉnh sửa bản thảo chưa được bật.', 'Draft editing is not enabled.'],
+  WORKSPACE_EDIT_FORBIDDEN: ['Bạn không có quyền sửa bản thiết kế khoá học này.', 'You do not have permission to edit this draft.'],
+  WORKSPACE_EDIT_DISABLED: ['Chỉnh sửa bản thiết kế khoá học chưa được bật.', 'Draft editing is not enabled.'],
   WORKSPACE_EDIT_INPUT_INVALID: ['Thông tin chỉnh sửa không hợp lệ.', 'The edit request is invalid.'],
   WORKSPACE_EDIT_NOT_FOUND: ['Không tìm thấy mục nội dung.', 'The content node was not found.'],
   WORKSPACE_REVISION_CONFLICT: ['Nội dung đã thay đổi. Hãy tải lại và so sánh bản sửa chưa lưu.', 'The content changed. Reload and compare your unsaved edits.'],
   WORKSPACE_EDIT_IDEMPOTENCY_CONFLICT: ['Mã thao tác đã được dùng cho chỉnh sửa khác. Hãy tải lại trạng thái.', 'This operation ID was used for another edit. Reload the state.'],
   WORKSPACE_NODE_NOT_READY: ['Nội dung chưa sẵn sàng để sửa.', 'This content is not ready for editing.'],
-  WORKSPACE_EDIT_STATE_INVALID: ['Bản thảo không còn cho phép chỉnh sửa.', 'This draft no longer allows editing.'],
+  WORKSPACE_EDIT_STATE_INVALID: ['Bản thiết kế khoá học không còn cho phép chỉnh sửa.', 'This draft no longer allows editing.'],
   WORKSPACE_SOURCE_CHANGED: ['Nguồn đã thay đổi. Hãy tải lại trạng thái; bản sửa cục bộ vẫn được giữ.', 'The source changed. Reload the state; local edits are preserved.'],
   WORKSPACE_EDIT_VALIDATION_REQUIRED: ['Bản sửa chưa đạt kiểm tra nội dung. Chưa lưu thay đổi.', 'Content validation failed. No changes were saved.'],
   WORKSPACE_EDIT_UNAVAILABLE: ['Chưa xác nhận được kết quả. Hãy tải lại trước khi gửi lại cùng thao tác.', 'The outcome is unconfirmed. Reload before explicitly replaying the same operation.'],
   WORKSPACE_EDIT_RECEIPT_INVALID: ['Phản hồi lưu không hợp lệ; chưa xác nhận được kết quả.', 'The write response is invalid; the outcome is unconfirmed.'],
   WORKSPACE_EDIT_READ_REQUIRED: ['Hãy tải lại nội dung trước khi tiếp tục.', 'Reload the content before continuing.'],
   WORKSPACE_EDIT_BUSY: ['Đang xử lý một thao tác chỉnh sửa.', 'An edit operation is already in progress.'],
-  WORKSPACE_EDIT_RESET_CONFIRMATION_REQUIRED: ['Cần xác nhận đặt lại bản thảo.', 'Confirm the draft reset first.'],
+  WORKSPACE_EDIT_RESET_CONFIRMATION_REQUIRED: ['Cần xác nhận đặt lại bản thiết kế khoá học.', 'Confirm the draft reset first.'],
 } as const;
 export type WorkspaceWriteCode = keyof typeof COPY;
 export class WorkspaceWriteError extends Error {

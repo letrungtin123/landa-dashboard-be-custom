@@ -130,6 +130,13 @@ for (const locale of ['en', 'vi']) test(`${locale}: localized controlled form ke
   assert.equal(f.calls.length, 0);
 });
 
+test('component editor keeps the read-only AI analysis cards above editable fields', () => {
+  const f = harness(faq, { reviewContent: React.createElement('section', { 'data-ai-analysis': true }, 'Purpose and navigation analysis') });
+  assert.match(f.html(), /data-ai-analysis="true"/);
+  assert.match(f.html(), /Purpose and navigation analysis/);
+  assert.match(f.html(), /Question one/);
+});
+
 for (const access of ['unknown', 'blocked']) test(`${access}: editor hides all cached private content and write actions`, () => {
   const f = harness(faq, { access });
   assert.doesNotMatch(f.html(), /Original title|Question one|Save changes|Reset to AI baseline/);

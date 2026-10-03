@@ -52,7 +52,7 @@ const copy = {
     content_points: 'Các ý nội dung', context_description: 'Mô tả bối cảnh', media: 'Chỉ chỉnh sửa đề xuất; không tạo hoặc tải tài sản lên.',
     applyUnit: 'Áp dụng nội dung', applyingUnit: 'Đang áp dụng nội dung…',
     applyHint: 'Khi cần, hệ thống lưu component trước rồi chỉ đưa đúng nội dung này cùng cây cha bắt buộc vào khóa học.',
-    savedHint: 'Lưu chỉ cập nhật bản thảo AI. Áp dụng chỉ đưa đúng nội dung này cùng cây cha bắt buộc vào khóa học.',
+    savedHint: 'Lưu chỉ cập nhật bản thiết kế khoá học do AI tạo. Áp dụng chỉ đưa đúng nội dung này cùng cây cha bắt buộc vào khóa học.',
   },
 } as const;
 type Label = keyof typeof copy.en;
@@ -322,7 +322,10 @@ function EditorForm({ detail, draft, baseRevision, locale, busy = false, conflic
         {busy && <p role="status">{c.busy}</p>}
         {issue && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{c[issue]}</p>}
         {detail.kind === 'component'
-          ? <WorkspaceComponentDraftEditor detail={detail} draft={draft} locale={locale} disabled={locked} onChange={next => { setConfirmReset(false); onChange(next); }} />
+          ? <div className={diagram ? 'flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-5' : 'space-y-4'}>
+              {reviewContent}
+              <div className={diagram ? 'min-h-[34rem] flex-1' : ''}><WorkspaceComponentDraftEditor detail={detail} draft={draft} locale={locale} disabled={locked} onChange={next => { setConfirmReset(false); onChange(next); }} /></div>
+            </div>
           : titleInHeader ? <div className="mx-auto max-w-5xl">{reviewContent}</div>
           : <><p className="text-xs text-muted-foreground">{c.fixed}</p><fieldset disabled={locked || !values} className="grid gap-3 md:grid-cols-2">
             {values && groups.map(group => <div key={group.key} className={`relative space-y-3 rounded-xl border border-border/70 bg-muted/15 p-3.5 shadow-sm ${group.fields.length > 1 || group.fields.some(item => item.field.kind === 'lines') ? 'md:col-span-2' : ''}`}>

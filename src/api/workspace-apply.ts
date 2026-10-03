@@ -9,10 +9,10 @@ export class WorkspaceApplyError extends Error { constructor(readonly code: Work
 const messages: Record<WorkspaceApplyCode, readonly [string, string]> = {
   WORKSPACE_APPLY_FORBIDDEN: ['Bạn không có quyền đưa nội dung này vào khóa học.', 'You do not have permission to add this content to the course.'],
   WORKSPACE_APPLY_DISABLED: ['Chức năng đưa nội dung vào khóa học đang tạm khóa.', 'Adding draft content to the course is temporarily disabled.'],
-  WORKSPACE_APPLY_INPUT_INVALID: ['Thông tin nội dung không hợp lệ. Hãy tải lại bản thảo rồi thử lại.', 'The content request is invalid. Reload the draft and try again.'],
+  WORKSPACE_APPLY_INPUT_INVALID: ['Thông tin nội dung không hợp lệ. Hãy tải lại bản thiết kế khoá học rồi thử lại.', 'The content request is invalid. Reload the draft and try again.'],
   WORKSPACE_APPLY_NOT_READY: ['Nội dung này chưa sẵn sàng hoặc còn phụ thuộc vào một bài học khác.', 'This content is not ready or still depends on another lesson.'],
-  WORKSPACE_APPLY_CONFLICT: ['Bản thảo hoặc khóa học vừa thay đổi. Hãy tải lại trước khi áp dụng.', 'The draft or course changed. Reload before applying.'],
-  WORKSPACE_APPLY_VALIDATION_FAILED: ['Nội dung chưa đạt kiểm tra để đưa vào khóa học. Bản thảo vẫn được giữ nguyên.', 'The content did not pass the checks required to add it to the course. The draft is unchanged.'],
+  WORKSPACE_APPLY_CONFLICT: ['Bản thiết kế khoá học hoặc dữ liệu khóa học vừa thay đổi. Hãy tải lại trước khi áp dụng.', 'The draft or course changed. Reload before applying.'],
+  WORKSPACE_APPLY_VALIDATION_FAILED: ['Nội dung chưa đạt kiểm tra để đưa vào khóa học. Bản thiết kế khoá học vẫn được giữ nguyên.', 'The content did not pass the checks required to add it to the course. The draft is unchanged.'],
   WORKSPACE_APPLY_UNAVAILABLE: ['Chưa thể xác nhận nội dung đã được đưa vào khóa học. Hãy tải lại trạng thái trước khi thử lại.', 'The course update could not be confirmed. Reload its status before trying again.'],
 };
 export function workspaceApplyMessage(code: WorkspaceApplyCode, locale: WorkspaceLocale): string {

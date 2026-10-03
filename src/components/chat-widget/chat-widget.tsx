@@ -1694,7 +1694,7 @@ export default function ChatWidget() {
     openRef.current = open;
   }, [open]);
 
-  // The floating widget is deliberately normal chat only. AI ID owns its
+  // The floating widget is deliberately normal chat only. AI Instructional Design owns its
   // separate Course Editor workspace entrypoint and must never become a
   // fallback bot here just because a course page is open.
   const refreshRuntimeAvailability = useCallback(async (forceBotPreview = false) => {
