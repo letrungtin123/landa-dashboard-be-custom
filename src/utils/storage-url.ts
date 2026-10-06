@@ -54,7 +54,7 @@ export function isStoragePath(src: string | null | undefined): boolean {
   if (!value || isHttpUrl(value) || value.startsWith('//') || value.startsWith('/') || value.includes('://')) {
     return false;
   }
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(courses|library|avatars|branding|help-docs|kb-files|kb-faqs|kb-articles)\//i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(courses|library|avatars|branding|help-docs|news|kb-files|kb-faqs|kb-articles)\//i.test(value);
 }
 
 export function htmlImageStoragePath(src: string | null | undefined): string | null {

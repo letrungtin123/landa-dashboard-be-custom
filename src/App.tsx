@@ -34,6 +34,7 @@ import CourseEditorPage from '@/pages/course-editor';
 import CourseAssignmentsPage from '@/pages/course-assignments';
 import GroupsPage from '@/pages/groups';
 import HelpDocsPage from '@/pages/help-docs';
+import NewsManagementPage from '@/pages/news';
 import CourseCategoriesPage from './pages/course-categories';
 import TenantManagementPage from '@/pages/tenant-management';
 import PermissionGroupsPage from '@/pages/permission-groups';
@@ -79,6 +80,7 @@ function AppRoutes() {
           <Route path="/groups" element={<ModuleGuard module="groups"><GroupsPage /></ModuleGuard>} />
           <Route path="/course-categories" element={<ModuleGuard module="course_categories"><CourseCategoriesPage /></ModuleGuard>} />
           <Route path="/help-docs" element={<ModuleGuard module="help_docs"><HelpDocsPage /></ModuleGuard>} />
+          <Route path="/news" element={<ModuleGuard module="news"><NewsManagementPage /></ModuleGuard>} />
           <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
           <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
           <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />

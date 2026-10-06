@@ -104,6 +104,21 @@ test('status counts, version, sequence, locale and frozen workspace identity fai
   await assert.rejects(api.status(opts('en')), /WORKSPACE_READ_CONTRACT_INVALID/);
 });
 
+test('status accepts only bounded ordered architecture preview data', () => {
+  const preview = { run_id: id(40), course_title: 'Khóa học an toàn', total_chapters: 2,
+    completed_chapters: 1, chapters: [
+      { chapter_key: 'chapter-1', order: 0, title: 'Nhận diện', state: 'ready' },
+      { chapter_key: 'chapter-2', order: 1, title: 'Kiểm soát', state: 'generating' },
+    ] };
+  assert.deepEqual(contract.readWorkspaceStatus({ ...status, architecture_preview: preview }).architecture_preview, preview);
+  for (const architecture_preview of [
+    { ...preview, completed_chapters: 2 },
+    { ...preview, chapters: preview.chapters.map((chapter, index) => index ? { ...chapter, order: 3 } : chapter) },
+    { ...preview, chapters: preview.chapters.map((chapter, index) => index ? { ...chapter, state: 'private' } : chapter) },
+    { ...preview, course_title: '' },
+  ]) assert.throws(() => contract.readWorkspaceStatus({ ...status, architecture_preview }), /WORKSPACE_READ_CONTRACT_INVALID/);
+});
+
 test('input guards do not send invalid cursors, paths, locale or revision', async () => {
   const api = createWorkspaceReadClient(scope, { get: () => assert.fail('no request') });
   for (const invalid of [-1, 0.5, NaN, Number.MAX_SAFE_INTEGER + 1, '1']) {
@@ -166,6 +181,28 @@ test('optional server-bound detail discriminators support legacy omission/null a
   }
 });
 
+test('generated quality envelopes use the same compatibility matrix as orchestration V2', () => {
+  const generated = { ...ready, kind: 'component', parent_id: id(40), component_type: 'html', media_type: null };
+  for (const quality of [
+    { content_origin: 'provider_validated', quality_state: 'validated' },
+    { content_origin: 'structured_fallback', quality_state: 'validated' },
+    { content_origin: 'structured_fallback', quality_state: 'review_required' },
+    { content_origin: 'raw_source_fallback', quality_state: 'review_required' },
+  ]) assert.doesNotThrow(() => contract.readWorkspaceDetail({ ...generated, ...quality }), JSON.stringify(quality));
+
+  for (const quality of [
+    { content_origin: 'provider_validated', quality_state: 'review_required' },
+    { content_origin: 'raw_source_fallback', quality_state: 'validated' },
+    { content_origin: 'structured_fallback', quality_state: 'unknown' },
+    { content_origin: 'structured_fallback', quality_state: null },
+    { content_origin: null, quality_state: 'review_required' },
+  ]) assert.throws(() => contract.readWorkspaceDetail({ ...generated, ...quality }), /CONTRACT_INVALID/);
+
+  assert.doesNotThrow(() => contract.readWorkspaceDetail(generated));
+  assert.doesNotThrow(() => contract.readWorkspaceDetail({ ...generated, content_origin: null, quality_state: null }));
+  assert.throws(() => contract.readWorkspaceDetail({ ...ready, content_origin: 'provider_validated', quality_state: 'validated' }), /CONTRACT_INVALID/);
+});
+
 test('graph pages cannot imply readiness, truncate oversized pages or accept unordered IDs', () => {
   assert.deepEqual(contract.readWorkspaceGraph(graph), graph);
   const node = { node_id: id(3), parent_id: null, kind: 'course', canonical_path: 'course', sort_order: 0,
@@ -185,6 +222,8 @@ test('graph pages cannot imply readiness, truncate oversized pages or accept uno
   }
   const component = { ...node, node_id: id(4), parent_id: id(3), kind: 'component', component_type: 'la_diagram' };
   assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [component] }).nodes[0].component_type, 'la_diagram');
+  const validatedFallback = { ...component, content_origin: 'structured_fallback', quality_state: 'validated' };
+  assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [validatedFallback] }).nodes[0].quality_state, 'validated');
   const media = { ...node, node_id: id(5), parent_id: id(3), kind: 'media_brief', media_type: 'video' };
   assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [media] }).nodes[0].media_type, 'video');
 });

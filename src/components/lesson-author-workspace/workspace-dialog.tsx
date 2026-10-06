@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { motion } from 'framer-motion';
 import { Background, Controls, Handle, MarkerType, MiniMap, Panel, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, type Edge, type Node, type NodeProps, type ReactFlowInstance, type Viewport } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { AlertTriangle, Blocks, BookOpenCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDot, FileText, GitBranch, HelpCircle, Image as ImageIcon, Info, ListTree, Map as MapIcon, Network, RefreshCw, Rows3, Target } from 'lucide-react';
+import {
+  AlertTriangle, Blocks, BookOpenCheck, CheckCircle2, ChevronDown, ChevronRight, CircleDot, FileText,
+  GitBranch, Grid3X3, HelpCircle, Image as ImageIcon, Info, ListOrdered, ListTree, Map as MapIcon,
+  MessageCircleQuestion, Network, Rows3, Target, Video, Workflow,
+} from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,7 +22,12 @@ export interface WorkspaceProjectionNode { node: WorkspaceNode; position: { x: n
 /** Committed graph only. Stable server identity/order, never title matching or
  * planned/generated payload synthesis. Prune hidden descendants before Flow. */
 export function projectWorkspaceGraph(graph: WorkspaceGraph | null, expansion: Expansion = {}): WorkspaceProjectionNode[] {
-  if (!graph?.structure_ready || graph.has_more || graph.nodes.length !== graph.total_nodes) return [];
+  // A graph page is interactive authority once the complete committed snapshot
+  // has been read. `structure_ready` means every planned branch exists; it must
+  // not hide already committed nodes while generation is active or after a
+  // terminal partial-success run. Planned/provider preview data never reaches
+  // this function, so partial success cannot be mistaken for a loading shell.
+  if (!graph || graph.has_more || graph.nodes.length === 0 || graph.nodes.length !== graph.total_nodes) return [];
   const children = new Map<string | null, WorkspaceNode[]>();
   for (const node of graph.nodes) {
     const siblings = children.get(node.parent_id) ?? [];
@@ -102,7 +111,7 @@ export function collapseWorkspaceBranch(graph: WorkspaceGraph | null, expansion:
  * committed units appear live; reopening a terminal run starts at the useful
  * course + chapter index instead of rendering the complete tree at once. */
 export function initialWorkspaceExpansion(graph: WorkspaceGraph | null, status: WorkspaceStatus | null): Expansion | null {
-  if (!graph?.structure_ready || !status) return null;
+  if (!graph || graph.has_more || graph.nodes.length === 0 || graph.nodes.length !== graph.total_nodes || !status) return null;
   if (['queued', 'designing', 'drafting'].includes(status.status)) return {};
   return collapseWorkspaceToChapterLevel(graph);
 }
@@ -130,41 +139,57 @@ type FlowNode = Node<FlowData, 'workspace'>;
 type WorkspaceMindmapStatus = 'applied' | 'pending' | 'edited' | 'proposal';
 
 const statusClassName: Record<WorkspaceMindmapStatus, string> = {
-  applied: 'border-slate-300/60 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200',
-  pending: 'border-emerald-300/70 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-950/35 dark:text-emerald-200',
+  applied: 'border-emerald-300/70 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-950/35 dark:text-emerald-200',
+  pending: 'border-slate-300/60 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200',
   edited: 'border-amber-300/70 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-950/35 dark:text-amber-200',
-  proposal: 'border-sky-300/70 bg-sky-50 text-sky-700 dark:border-sky-500/70 dark:bg-sky-950/45 dark:text-sky-200',
+  proposal: 'border-green-300/70 bg-green-50 text-green-700 dark:border-green-700/70 dark:bg-green-950/40 dark:text-green-200',
 };
 
 const nodeShellClassName: Record<WorkspaceMindmapStatus, string> = {
-  applied: 'border-slate-300 bg-slate-50 text-slate-950 shadow-slate-950/5 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-50',
-  pending: 'border-emerald-300 bg-emerald-50 text-emerald-950 shadow-emerald-950/5 dark:border-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-50',
+  applied: 'border-emerald-300 bg-emerald-50 text-emerald-950 shadow-emerald-950/5 dark:border-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-50',
+  pending: 'border-slate-300 bg-slate-50 text-slate-950 shadow-slate-950/5 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-50',
   edited: 'border-yellow-500 bg-yellow-50 text-yellow-950 shadow-yellow-950/5 dark:border-yellow-600 dark:bg-yellow-950/55 dark:text-yellow-50',
-  proposal: 'border-sky-400 bg-sky-50 text-sky-950 shadow-sky-950/10 dark:border-sky-500 dark:bg-sky-950/55 dark:text-sky-50',
+  proposal: 'border-green-400 bg-green-50 text-green-950 shadow-green-950/10 dark:border-green-600 dark:bg-green-950/55 dark:text-green-50',
 };
 
 const nodeAccentClassName: Record<WorkspaceMindmapStatus, string> = {
-  applied: 'bg-slate-500',
-  pending: 'bg-emerald-500',
+  applied: 'bg-emerald-500',
+  pending: 'bg-slate-500',
   edited: 'bg-amber-500',
-  proposal: 'bg-sky-400',
+  proposal: 'bg-green-500',
 };
 
 const edgeColor: Record<WorkspaceMindmapStatus, string> = {
-  applied: '#94a3b8',
-  pending: '#10b981',
+  applied: '#10b981',
+  pending: '#94a3b8',
   edited: '#f59e0b',
-  proposal: '#38bdf8',
+  proposal: '#22c55e',
 };
 
-function getWorkspaceNodeIcon(kind: WorkspaceNode['kind']) {
-  if (kind === 'course') return Network;
-  if (kind === 'chapter') return GitBranch;
-  if (kind === 'lesson') return CircleDot;
-  if (kind === 'unit') return MapIcon;
-  if (kind === 'component') return HelpCircle;
-  if (kind === 'media_brief') return ImageIcon;
-  return FileText;
+type WorkspaceNodeVisualSource = Pick<WorkspaceNode, 'kind' | 'component_type' | 'media_type'>;
+
+/** Status belongs to the card surface; content identity belongs to the icon.
+ * Keeping these channels independent prevents a quiz, diagram or media brief
+ * from turning back into the same generic question-mark glyph. */
+function getWorkspaceNodeVisual(node: WorkspaceNodeVisualSource) {
+  if (node.kind === 'course') return { Icon: Network, key: 'course', tone: 'text-blue-600 dark:text-blue-300' };
+  if (node.kind === 'chapter') return { Icon: GitBranch, key: 'chapter', tone: 'text-violet-600 dark:text-violet-300' };
+  if (node.kind === 'lesson') return { Icon: CircleDot, key: 'lesson', tone: 'text-cyan-600 dark:text-cyan-300' };
+  if (node.kind === 'unit') return { Icon: MapIcon, key: 'unit', tone: 'text-emerald-600 dark:text-emerald-300' };
+  if (node.kind === 'media_brief') {
+    if (node.media_type === 'video') return { Icon: Video, key: 'media-video', tone: 'text-rose-600 dark:text-rose-300' };
+    return { Icon: ImageIcon, key: 'media-infographic', tone: 'text-sky-600 dark:text-sky-300' };
+  }
+  if (node.kind === 'component') {
+    if (node.component_type === 'html') return { Icon: FileText, key: 'component-html', tone: 'text-sky-600 dark:text-sky-300' };
+    if (node.component_type === 'problem') return { Icon: HelpCircle, key: 'component-problem', tone: 'text-rose-600 dark:text-rose-300' };
+    if (node.component_type === 'la_faq') return { Icon: MessageCircleQuestion, key: 'component-faq', tone: 'text-violet-600 dark:text-violet-300' };
+    if (node.component_type === 'la_sortable') return { Icon: ListOrdered, key: 'component-sortable', tone: 'text-orange-600 dark:text-orange-300' };
+    if (node.component_type === 'la_crossword') return { Icon: Grid3X3, key: 'component-crossword', tone: 'text-fuchsia-600 dark:text-fuchsia-300' };
+    if (node.component_type === 'la_diagram') return { Icon: Workflow, key: 'component-diagram', tone: 'text-teal-600 dark:text-teal-300' };
+    return { Icon: Blocks, key: 'component', tone: 'text-slate-600 dark:text-slate-300' };
+  }
+  return { Icon: FileText, key: 'content', tone: 'text-slate-600 dark:text-slate-300' };
 }
 
 const workspaceComponentLabelKeys = {
@@ -209,7 +234,7 @@ export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
   const { node, locale, childCount, expanded, onExpand } = data;
   const c = workspaceCopy[locale];
   const status = workspaceMindmapStatus(node);
-  const Icon = getWorkspaceNodeIcon(node.kind);
+  const { Icon, key: iconKey, tone: iconTone } = getWorkspaceNodeVisual(node);
   const kindLabel = workspaceNodeTypeLabel(node, locale);
   const stateLabel = status === 'proposal' ? c.proposal : status === 'applied' ? c.appliedSuccessfully
     : status === 'edited' ? c.editedPendingApply : node.content_state === 'content_ready' ? c.pendingApply : c[node.content_state];
@@ -222,7 +247,7 @@ export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
     <div className={`h-1.5 w-full ${nodeAccentClassName[status]}`} />
     <div className="p-3">
     <div className="flex items-start gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-background/80 text-current ring-1 ring-current/10">{status === 'edited' ? <RefreshCw className="h-4 w-4" /> : <Icon className="h-4 w-4" />}</span>
+      <span data-workspace-node-icon={iconKey} className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-background/80 ring-1 ring-current/10 ${iconTone}`}><Icon className="h-4 w-4" /></span>
           <span className="min-w-0 flex-1"><span className="flex flex-wrap gap-1.5"><WorkspaceNodeTypePill node={node} locale={locale} />
             <Badge variant="secondary" className="h-5 rounded-md bg-background/70 px-1.5 text-[10px]">{stateLabel}</Badge></span>
             <span className="mt-2 block h-10 min-w-0 max-w-full overflow-hidden break-words text-sm font-semibold leading-5 text-foreground" title={node.title ?? undefined}
@@ -317,7 +342,7 @@ function pendingMindmapEdgePath(fromId: string, toId: string) {
 function PendingMindmapNode({ label, kind, x, y, delay = 0 }: {
   label: string; kind: keyof typeof pendingNodeTone; x: number; y: number; delay?: number;
 }) {
-  const Icon = getWorkspaceNodeIcon(kind);
+  const { Icon } = getWorkspaceNodeVisual({ kind, component_type: null, media_type: null });
   return <motion.div initial={{ opacity: 0, scale: 0.96, x: -8 }} animate={{ opacity: 1, scale: 1, x: 0 }}
     transition={{ duration: 0.35, delay }}
     style={{ left: x, top: y }}
@@ -334,10 +359,12 @@ function PendingMindmapNode({ label, kind, x, y, delay = 0 }: {
   </motion.div>;
 }
 
-/** Visible product-shaped loading shell used before the first committed graph.
- * Labels are static UI copy; only unknown values and provider-owned content
- * use skeleton bars. No planned title/count is synthesized on the client. */
-export function WorkspacePendingSkeleton({ locale, stage }: { locale: WorkspaceLocale; stage: 'overview' | 'mindmap' }) {
+/** Product-shaped loading shell used before the first committed graph.
+ * It deliberately renders no planning/provider data: content is shown only
+ * after it belongs to the committed, interactive workspace graph. */
+export function WorkspacePendingSkeleton({ locale, stage }: {
+  locale: WorkspaceLocale; stage: 'overview' | 'mindmap';
+}) {
   const c = workspaceCopy[locale];
   return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
     className="h-full min-h-[320px] overflow-y-auto p-4 sm:p-5" role="status" aria-live="polite">
@@ -350,7 +377,7 @@ export function WorkspacePendingSkeleton({ locale, stage }: { locale: WorkspaceL
       <WorkspaceCourseOverviewSkeleton locale={locale} />
       <section className="rounded-2xl border border-primary/20 bg-card p-4 shadow-sm">
         <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><GitBranch className="h-5 w-5" aria-hidden /></span>
-          <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">{c.chapters}</p><div className="mt-2 h-4 w-48 max-w-[55vw] animate-pulse rounded bg-muted" aria-hidden /></div></div>
+          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">{c.chapters}</p><div className="mt-2 h-4 w-48 max-w-[55vw] animate-pulse rounded bg-muted" aria-hidden /></div></div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">{[0, 1].map(index => <div key={index} className="rounded-xl border border-violet-500/20 bg-violet-500/[0.045] p-3.5">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300">{c.chapter} {index + 1} · {c.outcomes}</p>
           <div className="mt-3 animate-pulse space-y-2" aria-hidden><div className="h-3 w-5/6 rounded bg-violet-500/10" /><div className="h-3 w-2/3 rounded bg-violet-500/10" /></div>
@@ -418,6 +445,15 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   };
   const chapter = status.failure_chapter_key?.match(/^chapter-(\d+)$/)?.[1];
   const stage = status.failure_stage ? `${stageNames[status.failure_stage][vi ? 0 : 1]}${chapter ? ` (${vi ? 'Chương' : 'Chapter'} ${chapter})` : ''}` : null;
+  if (status.failure_code === 'ASSESSMENT_REVIEW_REQUIRED') return {
+    stage: vi ? 'kiểm tra chất lượng đánh giá' : 'reviewing assessment quality',
+    message: vi
+      ? 'Nội dung bài học đã được tạo và lưu. Một số câu hỏi đánh giá cần được rà soát lại theo tài liệu nguồn trước khi khóa học được xác nhận hoàn tất.'
+      : 'Lesson content was created and saved. Some assessment questions require source review before the course can be finalized.',
+    note: vi
+      ? 'Bạn vẫn có thể xem và áp dụng các nội dung đã sẵn sàng trong bản thiết kế khoá học.'
+      : 'You can still review and apply the content that is ready in the course design.',
+  };
   if (status.failure_code === 'ORCHESTRATION_V2_EXECUTION_RUNTIME_CHANGED') return {
     stage, message: vi ? 'Cấu hình AI của doanh nghiệp đã thay đổi trong lúc tạo nội dung.' : 'The organization AI configuration changed while content was being created.',
     note: vi ? 'Yêu cầu của bước này chưa được gửi đến AI và không phát sinh lượt gọi cho lần thử đó.' : 'This step was not sent to the AI provider, so that attempt did not create a provider call.',
@@ -446,14 +482,17 @@ function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false }: 
   const failure = terminalFailureText(status, locale);
   const isFailure = status.status === 'needs_action' || status.status === 'failed';
   const contentCommitted = status.failure_stage === 'finalize_course' && status.unit_count > 0 && status.ready_unit_count === status.unit_count;
+  const assessmentReviewRequired = status.failure_code === 'ASSESSMENT_REVIEW_REQUIRED';
   return <div className={`${compact ? 'mx-4 my-3 sm:mx-5' : 'm-4 max-w-2xl'} flex flex-col gap-3 rounded-2xl border p-4 text-sm ${isFailure && !contentCommitted ? 'border-destructive/35 bg-destructive/[0.06]' : 'border-amber-500/30 bg-amber-500/[0.06]'}`} role={isFailure && !contentCommitted ? 'alert' : 'status'} aria-live="polite">
     <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isFailure && !contentCommitted ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}><AlertTriangle className="h-4 w-4" aria-hidden /></span>
       <div className="min-w-0"><p className="font-semibold">{c[status.status]}</p><p className="mt-1 leading-6 text-muted-foreground">{isFailure && status.failure_code ? failure.message : message}</p>
         {failure.stage && <p className="mt-1 text-xs font-medium text-foreground">{locale === 'vi' ? 'Bước gặp lỗi' : 'Failed step'}: {failure.stage}</p>}
         {failure.note && <p className="mt-1 text-xs leading-5 text-muted-foreground">{failure.note}</p>}
       </div></div>
-    <div className="flex flex-wrap items-center gap-2">{onRefresh && <Button type="button" variant="outline" size="sm" onClick={onRefresh}>{c.terminalReload}</Button>}
-      {isFailure && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}</div>
+    {(!assessmentReviewRequired && (onRefresh || isFailure)) && <div className="flex flex-wrap items-center gap-2">
+      {onRefresh && <Button type="button" variant="outline" size="sm" onClick={onRefresh}>{c.terminalReload}</Button>}
+      {isFailure && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}
+    </div>}
   </div>;
 }
 
@@ -564,7 +603,11 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
   const terminal = state.status && ['ready', 'needs_action', 'failed', 'canceled'].includes(state.status.status)
     ? state.status : null;
   const overviewLoading = canRead && runActive && !graph?.overview_ready;
-  const mindmapLoading = canRead && runActive && !graph?.structure_ready;
+  // Skeletons describe absence, never partially committed course data. As soon
+  // as one complete graph snapshot contains nodes, render the real interactive
+  // graph even while later branches are still being generated.
+  const mindmapLoading = canRead && runActive
+    && (!graph || graph.has_more || graph.nodes.length === 0 || graph.nodes.length !== graph.total_nodes);
   useEffect(() => { setNodePositions({}); }, [graph?.workspace_id]);
   useEffect(() => {
     const initial = initialWorkspaceExpansion(graph, state.status);
@@ -708,8 +751,9 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
         <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
       </header>
       {visibleReadError && <p role="alert" className="mx-4 mt-3 shrink-0 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-5">{workspaceReadMessage(visibleReadError.code, locale)}</p>}
-      {terminal && (terminal.status === 'needs_action' || terminal.status === 'failed') && (graph?.overview_ready || graph?.structure_ready)
-        && <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} compact />}
+      {/* A committed graph is the user's actionable state. Terminal workflow
+       * diagnostics stay in telemetry; a reload button cannot repair them and
+       * must not displace or discredit already saved course-design content. */}
       {toolbar && <div className="max-h-[25dvh] shrink-0 overflow-y-auto border-b bg-background px-4 py-2 sm:px-5">{toolbar}</div>}
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 overflow-x-auto border-b bg-muted/10 px-3 py-2 sm:px-5">
@@ -740,10 +784,10 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
                 <div role="tooltip" className="pointer-events-none absolute right-0 top-11 z-20 w-72 translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-2xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
                   <p className="text-xs font-semibold">{c.colorGuide}</p>
                   <div className="mt-2.5 space-y-2 text-[11px] leading-4 text-muted-foreground">
-                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />{c.legendPending}</p>
+                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-500" />{c.legendPending}</p>
                     <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />{c.legendEdited}</p>
-                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-500" />{c.legendApplied}</p>
-                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-400" />{c.legendProposal}</p>
+                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />{c.legendApplied}</p>
+                    <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-green-500 ring-1 ring-sky-400" />{c.legendProposal}</p>
                   </div>
                 </div>
               </div>

@@ -261,7 +261,12 @@ export function createWorkspaceSession(identity: WorkspaceSessionIdentity, depen
   }
   async function refresh() {
     active(); if (!reader.getState().opened) return;
-    readFault = false; error = null; clearCaches(); invalidate();
+    readFault = false; error = null;
+    // Manual refresh re-authorizes status/events but must not discard immutable
+    // exact-revision details. sync() reconciles both caches against the next
+    // authoritative graph and invalidates only identities/revisions that
+    // actually changed. Clearing here caused one click to fan out into every
+    // course/chapter detail GET and made complete overviews skeleton again.
     await reader.refresh();
     if (readable()) {
       const selected = reader.getState().selectedNodeId;

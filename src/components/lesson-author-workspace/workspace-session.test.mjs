@@ -158,6 +158,22 @@ test('Apply refresh preserves exact selected detail across an unrelated event-he
   f.session.dispose();
 });
 
+test('manual refresh preserves exact overview and selected detail without a detail request fan-out', async () => {
+  const f = fixture(); await f.session.open(); await f.session.loadOverview(); await select(f);
+  const beforeDetail = f.session.editorProps(id(1)).detail;
+  const beforeOverview = f.session.getState().overview.details;
+  assert.equal(f.session.getState().overview.complete, true);
+  assert.equal(beforeOverview.length, 3);
+  f.calls.length = 0;
+  await f.session.refresh(); await settle();
+  assert.equal(f.calls.filter(call => call[0] === 'detail').length, 0,
+    'unchanged exact-revision cache must not reload every course/chapter detail');
+  assert.equal(f.session.getState().overview.complete, true);
+  assert.deepEqual(f.session.getState().overview.details, beforeOverview);
+  assert.deepEqual(f.session.editorProps(id(1)).detail, beforeDetail);
+  f.session.dispose();
+});
+
 test('committed Save refreshes authorized reads and clears only the matching unchanged draft', async () => {
   const f = fixture(); await f.session.open(); await select(f);
   const draft = { ...f.session.editorProps(id(1)).draft, title: 'Saved title' }; f.session.setDraft(id(1), draft);

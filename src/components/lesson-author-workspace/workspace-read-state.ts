@@ -7,6 +7,12 @@ import {
 
 export const WORKSPACE_VISIBLE_POLL_MS = 1_000;
 export const WORKSPACE_HIDDEN_POLL_MS = 15_000;
+/** Keep one low-frequency status reconciliation until the sealed graph exists,
+ * so a dropped architecture progress event can never strand the modal until a
+ * manual F5. */
+export const WORKSPACE_PLANNING_POLL_MS = 30_000;
+export const WORKSPACE_TRANSIENT_RETRY_LIMIT = 8;
+export const WORKSPACE_TRANSIENT_RETRY_MAX_MS = 60_000;
 export const WORKSPACE_TERMINAL_RUN_STATES = ['ready', 'needs_action', 'failed', 'canceled'] as const;
 export const WORKSPACE_PAGES_PER_TICK = 4;
 export const WORKSPACE_MAX_GRAPH_NODES = 10_000;
@@ -84,6 +90,7 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
   let autoResnapshotHead: number | null = null;
   let recoveryPending = false;
   let eventDriven = options.eventDriven === true;
+  let transientFailures = 0;
 
   function publish(patch: Partial<WorkspaceReadState>) {
     state = freeze({ ...state, ...patch });
@@ -95,10 +102,23 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
     if (scheduled) scheduler.clear(timer);
     scheduled = false;
   }
+  /** SSE delivery and the read-model snapshot have separate cursors. A stream
+   * event is only a wake-up hint: receiving it must never be treated as proof
+   * that the graph snapshot was committed in this store. Keep a bounded retry
+   * alive whenever reconciliation is incomplete, including after the run has
+   * become terminal or the sealed graph normally switches polling off. */
+  function reconciliationPending() {
+    const statusHead = state.status?.last_event_sequence;
+    const graphHead = state.graph?.snapshot_sequence;
+    return transientFailures > 0 || state.stale || needsSnapshot || candidate !== null || replay !== null
+      || statusHead !== undefined && statusHead !== graphHead;
+  }
   function schedule(delay: number) {
     clearTimer();
-    if (disposed || !state.opened || state.access === 'blocked' || eventDriven
-      || WORKSPACE_TERMINAL_RUN_STATES.includes(state.status?.status as typeof WORKSPACE_TERMINAL_RUN_STATES[number])) return;
+    const pending = reconciliationPending();
+    if (disposed || !state.opened || state.access === 'blocked'
+      || eventDriven && state.graph?.structure_ready === true && !pending
+      || WORKSPACE_TERMINAL_RUN_STATES.includes(state.status?.status as typeof WORKSPACE_TERMINAL_RUN_STATES[number]) && !pending) return;
     scheduled = true;
     timer = scheduler.set(() => { scheduled = false; void pump(); }, delay);
   }
@@ -196,6 +216,7 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
       publish({ busy: true, error: null });
       const status = await client.status(read);
       guard(); check(status);
+      transientFailures = 0;
       publish({ status, access: 'allowed', stale: state.stale || status.last_event_sequence !== state.graph?.snapshot_sequence });
       if (!needsSnapshot) {
         try { await delta(read, guard); }
@@ -223,9 +244,12 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
           return;
         }
       }
+      if (failure.code === 'WORKSPACE_READ_UNAVAILABLE') transientFailures += 1;
+      else transientFailures = 0;
       const blocked = ['AUTH_REQUIRED', 'WORKSPACE_READ_FORBIDDEN', 'WORKSPACE_NOT_FOUND',
         'WORKSPACE_READ_DISABLED', 'WORKSPACE_READ_INPUT_INVALID', 'WORKSPACE_READ_LIMIT',
-        'WORKSPACE_READ_CONTRACT_INVALID'].includes(failure.code);
+        'WORKSPACE_READ_CONTRACT_INVALID'].includes(failure.code)
+        || failure.code === 'WORKSPACE_READ_UNAVAILABLE' && transientFailures >= WORKSPACE_TRANSIENT_RETRY_LIMIT;
       publish({ error: failure, stale: true, detailStale: !!state.selectedNodeId,
         access: blocked ? 'blocked' : state.access });
     } finally {
@@ -248,7 +272,13 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
       } else if (eventDriven && (candidate || replay || urgent) && !disposed && state.opened && state.access !== 'blocked') {
         queueMicrotask(() => { if (!disposed && state.opened) void pump(); });
       } else {
-        schedule(urgent ? 0 : state.visible ? WORKSPACE_VISIBLE_POLL_MS : WORKSPACE_HIDDEN_POLL_MS);
+        const normalDelay = eventDriven && state.graph?.structure_ready !== true
+          ? state.visible ? WORKSPACE_PLANNING_POLL_MS : WORKSPACE_HIDDEN_POLL_MS
+          : state.visible ? WORKSPACE_VISIBLE_POLL_MS : WORKSPACE_HIDDEN_POLL_MS;
+        const delay = transientFailures > 0
+          ? Math.min(WORKSPACE_TRANSIENT_RETRY_MAX_MS, 1_000 * (2 ** Math.min(transientFailures - 1, 6)))
+          : normalDelay;
+        schedule(urgent ? 0 : delay);
       }
     });
     return flight;
@@ -256,6 +286,7 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
   function close() {
     epoch++; clearTimer(); controller?.abort(); candidate = null; replay = null;
     urgent = false; recoveryPending = false; autoResnapshotHead = null;
+    transientFailures = 0;
     publish({ opened: false, busy: false });
   }
   return {
@@ -280,6 +311,7 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
     refresh(): Promise<void> {
       if (disposed || !state.opened) return Promise.resolve();
       autoResnapshotHead = null; recoveryPending = false;
+      transientFailures = 0;
       publish({ access: 'unknown' });
       return pump();
     },
@@ -300,9 +332,23 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
     setEventDriven(enabled: boolean) {
       if (disposed || eventDriven === enabled) return;
       eventDriven = enabled;
-      if (enabled) { clearTimer(); return; }
+      if (enabled) {
+        clearTimer();
+        if (!state.opened || state.access === 'blocked') return;
+        if (reconciliationPending()) {
+          if (flight) urgent = true;
+          else schedule(0);
+          return;
+        }
+        if (state.graph?.structure_ready === true
+          || WORKSPACE_TERMINAL_RUN_STATES.includes(state.status?.status as typeof WORKSPACE_TERMINAL_RUN_STATES[number])) return;
+        if (flight) urgent = true;
+        else schedule(state.visible ? WORKSPACE_PLANNING_POLL_MS : WORKSPACE_HIDDEN_POLL_MS);
+        return;
+      }
       if (!state.opened || state.access === 'blocked'
-        || WORKSPACE_TERMINAL_RUN_STATES.includes(state.status?.status as typeof WORKSPACE_TERMINAL_RUN_STATES[number])) return;
+        || WORKSPACE_TERMINAL_RUN_STATES.includes(state.status?.status as typeof WORKSPACE_TERMINAL_RUN_STATES[number])
+          && !reconciliationPending()) return;
       if (flight) urgent = true;
       else schedule(0);
     },

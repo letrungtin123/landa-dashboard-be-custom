@@ -365,7 +365,7 @@ export async function fetchCurrentTenantCourseComponentPermissions(): Promise<Co
 
 export async function updateXBlock(
   blockId: string,
-  payload: { metadata?: Record<string, any>; data?: any; children?: string[]; publish?: string },
+  payload: { metadata?: Record<string, any>; data?: any; children?: string[]; publish?: string; candidate_id?: string },
 ): Promise<XBlockInfo> {
   const { data } = await customApiClient.patch<ApiResponse<XBlockInfo>>(
     `${BASE}/blocks/${encodeURIComponent(blockId)}`,
@@ -384,8 +384,8 @@ export async function renameBlock(blockId: string, displayName: string): Promise
   return updateXBlock(blockId, { metadata: { display_name: displayName } });
 }
 
-export async function publishBlock(blockId: string): Promise<XBlockInfo> {
-  return updateXBlock(blockId, { publish: 'make_public' });
+export async function publishBlock(blockId: string, candidateId?: string): Promise<XBlockInfo> {
+  return updateXBlock(blockId, { publish: 'make_public', ...(candidateId ? { candidate_id: candidateId } : {}) });
 }
 
 export async function discardDraft(blockId: string): Promise<XBlockInfo> {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpenCheck, Eye, Network, Pencil, Sparkles, X } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -21,7 +21,7 @@ import { createWorkspaceStreamClient, type WorkspaceStreamState } from '../../ap
 import { createWorkspaceSourceStreamClient } from '../../api/workspace-source-stream';
 import { fetchLessonAuthorChatSettings } from '../../api/custom-chat';
 import { storageUrl } from '../../utils/storage-url';
-import { workspaceReadMessage, type WorkspaceContent, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
+import { workspaceReadMessage, type WorkspaceContent, type WorkspaceGraph, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 import { createWorkspaceSession } from './workspace-session';
 import { WorkspaceDialogBody, WorkspaceNodeTypePill } from './workspace-dialog';
 import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, workspaceDetailStats } from './workspace-node-detail';
@@ -125,6 +125,38 @@ export function workspaceApplyScope(nodes: readonly WorkspaceNode[], selectedNod
   const selected = nodes.find(node => node.node_id === selectedNodeId);
   if (!selected) return null;
   return ['chapter', 'lesson', 'unit', 'component'].includes(selected.kind) ? selected : null;
+}
+
+export interface WorkspaceAppliedRevisionOverlay {
+  workspaceId: string;
+  revisions: Readonly<Record<string, number>>;
+}
+
+/** The committed Apply compiler materializes the selected subtree together
+ * with its required hierarchy. Mirror that exact path rule only after the
+ * POST has returned a durable receipt, and bind every optimistic flag to the
+ * revision that was confirmed immediately before dispatch. */
+export function workspaceAppliedScopeRevisions(nodes: readonly WorkspaceNode[], selectedNodeId: string): Record<string, number> {
+  const selected = workspaceApplyScope(nodes, selectedNodeId);
+  if (!selected?.canonical_path) return {};
+  const within = (path: string, scope: string) => path === scope || path.startsWith(`${scope}.`);
+  return Object.fromEntries(nodes.filter(node => node.kind !== 'course' && node.kind !== 'media_brief'
+    && node.content_state === 'content_ready' && node.current_revision !== null
+    && (within(node.canonical_path, selected.canonical_path) || within(selected.canonical_path, node.canonical_path)))
+    .map(node => [node.node_id, node.current_revision!]));
+}
+
+/** Presentation-only reconciliation. The server graph remains authoritative;
+ * a later revision can never inherit an older successful Apply flag. */
+export function projectWorkspaceAppliedGraph(graph: WorkspaceGraph | null, overlay: WorkspaceAppliedRevisionOverlay | null): WorkspaceGraph | null {
+  if (!graph || !overlay || overlay.workspaceId !== graph.workspace_id) return graph;
+  let changed = false;
+  const nodes = graph.nodes.map(node => {
+    if (node.applied || node.current_revision === null || overlay.revisions[node.node_id] !== node.current_revision) return node;
+    changed = true;
+    return { ...node, applied: true };
+  });
+  return changed ? { ...graph, nodes } : graph;
 }
 
 export function workspaceNodeSupportsEditor(kind: WorkspaceNode['kind']): boolean {
@@ -325,6 +357,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   const [applyState, setApplyState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle');
   const [applyError, setApplyError] = useState<WorkspaceApplyCode | null>(null);
   const [editingTitleNodeId, setEditingTitleNodeId] = useState<string | null>(null);
+  const [appliedOverlay, setAppliedOverlay] = useState<WorkspaceAppliedRevisionOverlay | null>(null);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<{ id: string; title: string } | null>(null);
   const titleLookupRef = useRef<string | null>(null);
@@ -342,6 +375,10 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     return () => { active = false; };
   }, [state.open]);
   useEffect(() => { if (!state.open) { setView('sessions'); setActiveConversation(null); titleLookupRef.current = null; } }, [state.open]);
+  useEffect(() => {
+    const workspaceId = state.launch?.workspace_id ?? null;
+    setAppliedOverlay(current => current && current.workspaceId !== workspaceId ? null : current);
+  }, [state.launch?.workspace_id]);
   useEffect(() => { if (state.launch && view === 'source') setView('workspace'); }, [state.launch, view]);
   useEffect(() => {
     const conversation = sourceState?.conversation;
@@ -360,7 +397,10 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   }, [activeConversation?.id, courseId, locale, state.launch?.conversation_id, state.open]);
   const act = (work: () => unknown) => { setActionError(false); try { void Promise.resolve(work()).catch(() => setActionError(true)); } catch { setActionError(true); } };
   const refreshWorkspace = () => {
-    overviewAttemptRef.current = null;
+    // A failed/incomplete detail batch may be explicitly retried. A healthy
+    // terminal workspace keeps its exact-revision overview cache, preventing
+    // the refresh button from reissuing every course/chapter detail request.
+    if (workspace?.error && !workspace.overview.complete) overviewAttemptRef.current = null;
     return session?.refresh();
   };
   useEffect(() => {
@@ -388,6 +428,12 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     workspace?.overview.loading, workspace?.overview.details.length, workspace?.read.graph?.snapshot_sequence,
     workspace?.read.graph?.overview_ready, workspace?.read.graph?.structure_ready, workspace?.read.opened,
     workspace?.read.access, workspace?.read.stale, workspace?.writeBusy]);
+  const authoritativeRead = workspace?.read ?? null;
+  const presentationRead = useMemo(() => {
+    if (!authoritativeRead) return null;
+    const graph = projectWorkspaceAppliedGraph(authoritativeRead.graph, appliedOverlay);
+    return graph === authoritativeRead.graph ? authoritativeRead : { ...authoritativeRead, graph };
+  }, [authoritativeRead, appliedOverlay]);
   if (!state.open) return null;
   if (!state.loading && view === 'sessions') return <WorkspaceModalShell host={host}><WorkspaceSessionBrowser
     courseId={courseId} locale={locale} assistantAvatarSrc={assistantAvatarSrc}
@@ -427,13 +473,13 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     if (!node) return null;
     const editor = session.editorProps(node.node_id), write = workspace.writes[node.node_id];
     const detail = editor.access === 'allowed' ? editor.detail : null;
-    const stats = workspace.read.graph ? workspaceDetailStats(node, workspace.read.graph.nodes) : undefined;
+    const stats = presentationRead?.graph ? workspaceDetailStats(node, presentationRead.graph.nodes) : undefined;
     const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind);
     const hierarchyTitle = !!detail && workspaceNodeUsesHeaderTitleEditor(detail.kind);
     // The graph marks an exact revision/hash as applied. The local done state
     // closes the write window immediately, before the background read catches up.
     const appliedReadOnly = node.applied || applyState === 'done';
-    const applyScope = workspaceApplyScope(workspace.read.graph?.nodes ?? [], node.node_id);
+    const applyScope = workspaceApplyScope(presentationRead?.graph?.nodes ?? [], node.node_id);
     const canApply = host.canWrite() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
       && !appliedReadOnly && !!state.launch && !!workspace.read.status && !workspace.read.stale && !workspace.writeBusy;
     const apply = async (draft?: NonNullable<typeof editor.draft>, expectedRevision?: number, changed = false) => {
@@ -441,10 +487,16 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
       setActionError(false); setApplyError(null); setApplyState('busy');
       try {
         const client = createWorkspaceApplyClient({ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id });
-        await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
+        const confirmedScope = await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
           assertCanWrite: () => host.assertCanWrite(),
           apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, crypto.randomUUID(), sequence, locale); } });
-        completeWorkspaceApplyUi({ markApplied: () => setApplyState('done'),
+        const confirmedGraph = session.getState().read.graph;
+        const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
+        completeWorkspaceApplyUi({ markApplied: () => {
+          setAppliedOverlay(current => ({ workspaceId: state.launch!.workspace_id,
+            revisions: { ...(current?.workspaceId === state.launch!.workspace_id ? current.revisions : {}), ...confirmedRevisions } }));
+          setApplyState('done');
+        },
           refreshWorkspace: () => session.refreshForApply(), refreshCourse: onCourseApplied });
       } catch (error) {
         if (error instanceof WorkspaceApplyError) { setApplyError(error.code); setApplyState('failed'); }
@@ -458,7 +510,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     return <Dialog open onOpenChange={open => { if (!open) { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); } }}>
       <DialogContent showCloseButton={false} overlayClassName="z-[10060]"
         onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}
-        className={`z-[10070] flex flex-col overflow-hidden rounded-2xl border-border/70 bg-background p-0 shadow-[0_30px_100px_-24px_rgba(2,6,23,0.75)] duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none ${detail?.component_type === 'la_diagram' ? 'h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-h-none max-w-none' : detail?.kind === 'component' ? 'w-[calc(100vw-1rem)] max-h-[92dvh] max-w-[min(96vw,90rem)]' : 'w-[calc(100vw-1rem)] max-h-[90dvh] max-w-5xl'}`}>
+        className={`z-[10070] flex h-[calc(100dvh-2rem)] max-h-none flex-col overflow-hidden rounded-2xl border-border/70 bg-background p-0 shadow-[0_30px_100px_-24px_rgba(2,6,23,0.75)] duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none ${detail?.component_type === 'la_diagram' ? 'w-[calc(100vw-2rem)] max-w-none' : detail?.kind === 'component' ? 'w-[calc(100vw-1rem)] max-w-[min(96vw,90rem)]' : 'w-[calc(100vw-1rem)] max-w-5xl'}`}>
         <div className="relative flex shrink-0 items-start justify-between gap-4 overflow-hidden border-b border-border/70 bg-gradient-to-r from-primary/[0.08] via-card to-card px-5 py-4 sm:px-6 sm:py-5">
           <div className="pointer-events-none absolute -left-12 -top-20 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
           <div className="relative flex min-w-0 items-start gap-3.5">
@@ -519,7 +571,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
       </DialogContent>
     </Dialog>;
   };
-  return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={workspace.read} locale={locale}
+  return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={presentationRead!} locale={locale}
     onSelectNode={nodeId => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(nodeId)); }} overviewDetails={workspace.overview.details} toolbar={toolbar} renderNodeDetail={renderDetail}
     assistantAvatarSrc={assistantAvatarSrc}
     draftTitle={state.launch && activeConversation?.id === state.launch.conversation_id ? activeConversation.title : null}

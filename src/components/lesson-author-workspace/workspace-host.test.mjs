@@ -43,7 +43,9 @@ function load(relative) {
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };
     if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' } }) };
     if (name.startsWith('../ui/')) return ui;
-    if (name === './workspace-dialog') return { WorkspaceNodeTypePill: ({ node }) => h('span', null, node.kind), WorkspaceDialogBody: props => {
+    if (name === './workspace-dialog') return {
+      WorkspaceNodeTypePill: ({ node }) => h('span', null, node.kind),
+      WorkspaceDialogBody: props => {
       dialogProps = props;
       const selected = props.state.opened && props.state.access === 'allowed' ? props.state.graph?.nodes.find(n => n.node_id === props.state.selectedNodeId) : null;
       return h('section', null, props.toolbar, props.renderNodeDetail(selected ?? null));
@@ -71,7 +73,8 @@ const { WorkspaceReadError } = load('../../api/lesson-author-workspace.contract.
 const { workspaceApplyMessage } = load('../../api/workspace-apply.ts');
 const { WorkspaceCourseHostOverlay, useCourseWorkspaceHost, workspaceApplyScope, workspaceScopeApplyLabel,
   workspaceNodeSupportsEditor, workspaceNodeUsesHeaderTitleEditor, saveThenApplyWorkspaceScope,
-  completeWorkspaceApplyUi, workspaceOverviewAutoLoadAttempt } = load('./workspace-course-host.tsx');
+  completeWorkspaceApplyUi, workspaceOverviewAutoLoadAttempt, workspaceAppliedScopeRevisions,
+  projectWorkspaceAppliedGraph } = load('./workspace-course-host.tsx');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const scope = { actorId: id(1), tenantId: id(2), courseId: 'course-v1:TEST+HOST+2026' };
 const launch = { course_id: scope.courseId, conversation_id: id(3), workspace_id: id(4), content_locale: 'en', can_edit: true };
@@ -172,17 +175,34 @@ test('launch contract rejects mismatched course, fabricated/non-UUID IDs, unknow
   assert.notEqual(workspaceHostKey(scope), workspaceHostKey({ ...scope, tenantId: id(9) }));
 });
 test('Apply keeps the exact selected chapter/section/lesson/component scope', () => {
-  const chapter = { node_id: id(20), parent_id: id(19), kind: 'chapter', content_state: 'content_ready' };
-  const lesson = { node_id: id(21), parent_id: chapter.node_id, kind: 'lesson', content_state: 'content_ready' };
-  const unit = { node_id: id(22), parent_id: lesson.node_id, kind: 'unit', content_state: 'content_ready' };
-  const component = { node_id: id(23), parent_id: unit.node_id, kind: 'component', content_state: 'content_ready' };
-  const nodes = [{ node_id: id(19), parent_id: null, kind: 'course', content_state: 'content_ready' }, chapter, lesson, unit, component];
+  const shape = { sort_order: 0, current_revision: 2, component_type: null, media_type: null,
+    title: 'Node', user_modified: false, applied: false };
+  const chapter = { ...shape, node_id: id(20), parent_id: id(19), kind: 'chapter', canonical_path: 'chapter_1', content_state: 'content_ready' };
+  const lesson = { ...shape, node_id: id(21), parent_id: chapter.node_id, kind: 'lesson', canonical_path: 'chapter_1.lesson_1', content_state: 'content_ready' };
+  const unit = { ...shape, node_id: id(22), parent_id: lesson.node_id, kind: 'unit', canonical_path: 'chapter_1.lesson_1.unit_1', content_state: 'content_ready' };
+  const component = { ...shape, node_id: id(23), parent_id: unit.node_id, kind: 'component', canonical_path: 'chapter_1.lesson_1.unit_1.component_1', content_state: 'content_ready', component_type: 'html' };
+  const media = { ...shape, node_id: id(24), parent_id: unit.node_id, kind: 'media_brief', canonical_path: 'chapter_1.lesson_1.unit_1.media_1', content_state: 'content_ready', media_type: 'video' };
+  const sibling = { ...shape, node_id: id(25), parent_id: id(19), kind: 'chapter', canonical_path: 'chapter_2', content_state: 'content_ready' };
+  const root = { ...shape, node_id: id(19), parent_id: null, kind: 'course', canonical_path: 'course', content_state: 'content_ready' };
+  const nodes = [root, chapter, lesson, unit, component, media, sibling];
   assert.equal(workspaceApplyScope(nodes, component.node_id), component);
   assert.equal(workspaceApplyScope(nodes, unit.node_id), unit);
   assert.equal(workspaceApplyScope(nodes, chapter.node_id), chapter);
   assert.equal(workspaceApplyScope(nodes, lesson.node_id), lesson);
   assert.equal(workspaceApplyScope(nodes, nodes[0].node_id), null);
   assert.equal(workspaceApplyScope(nodes, id(99)), null);
+  assert.deepEqual(Object.keys(workspaceAppliedScopeRevisions(nodes, chapter.node_id)).sort(),
+    [chapter.node_id, lesson.node_id, unit.node_id, component.node_id].sort(), 'chapter receipt covers its exact materialized subtree');
+  assert.deepEqual(Object.keys(workspaceAppliedScopeRevisions(nodes, component.node_id)).sort(),
+    [chapter.node_id, lesson.node_id, unit.node_id, component.node_id].sort(), 'component receipt includes only its required hierarchy');
+  const graph = { workspace_id: id(4), nodes, marker: 'preserved' };
+  const projected = projectWorkspaceAppliedGraph(graph, { workspaceId: id(4), revisions: workspaceAppliedScopeRevisions(nodes, chapter.node_id) });
+  assert.equal(projected.nodes.find(node => node.node_id === component.node_id).applied, true);
+  assert.equal(projected.nodes.find(node => node.node_id === media.node_id).applied, false);
+  assert.equal(projected.nodes.find(node => node.node_id === sibling.node_id).applied, false);
+  assert.equal(projectWorkspaceAppliedGraph({ ...graph, nodes: nodes.map(node => node.node_id === component.node_id ? { ...node, current_revision: 3 } : node) },
+    { workspaceId: id(4), revisions: { [component.node_id]: 2 } }).nodes.find(node => node.node_id === component.node_id).applied, false,
+  'a newer revision cannot inherit an older Apply receipt');
   assert.deepEqual(['chapter', 'lesson', 'unit', 'component'].map(kind => workspaceScopeApplyLabel(kind, 'vi')),
     ['Áp dụng cả chương', 'Áp dụng cả mục', 'Áp dụng cả bài học', 'Áp dụng nội dung']);
   assert.deepEqual(['course', 'chapter', 'lesson', 'unit', 'component', 'media_brief'].map(workspaceNodeSupportsEditor),
@@ -356,6 +376,10 @@ test('course editor mounts two responsive triggers but one host, without replaci
   assert.doesNotMatch(host, /data-\[state=open\]:slide-in-from-bottom-2|data-\[state=open\]:zoom-in-\[0\.98\]/,
     'detail reconciliation must not replay a transform animation after Apply');
   assert.match(host, /data-\[state=open\]:animate-none data-\[state=closed\]:animate-none/);
+  assert.match(host, /h-\[calc\(100dvh-2rem\)\] max-h-none/,
+    'detail modal owns a stable viewport height while Apply changes its internal controls');
+  assert.doesNotMatch(host, /max-h-\[(?:90|92)dvh\]/,
+    'content-dependent modal height made its centered frame jump after Apply reconciliation');
   assert.doesNotMatch(host, /className=\{`relative z-\[10070\]/,
     'detail modal must not override the fixed viewport positioning supplied by DialogContent');
   const editor = readFileSync(new URL('./workspace-node-editor.tsx', import.meta.url), 'utf8');

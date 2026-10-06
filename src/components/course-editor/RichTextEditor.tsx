@@ -89,10 +89,10 @@ function prepareContentForEditor(html: string): string {
   });
 }
 
-export function prepareContentForSave(html: string): string {
+export function prepareContentForSave(html: string, preserveTransientImages = false): string {
   const restored = restoreContentUrls(html);
   return transformImageSources(restored, (src) => {
-    if (isTransientHtmlImageSrc(src)) return null;
+    if (isTransientHtmlImageSrc(src)) return preserveTransientImages ? src : null;
     return htmlImagePersistSrc(src);
   });
 }
@@ -180,6 +180,9 @@ interface RichTextEditorProps {
   /** Enable explicit image selection + Delete/Backspace handling for editors
    * whose images are part of the saved document body. */
   enableImageKeyboardDelete?: boolean;
+  /** Keep local blob/data sources in draft state. Callers must replace them
+   * with persisted paths before sending the document to the backend. */
+  preserveTransientImages?: boolean;
 }
 
 export interface RichTextEditorImageUploadResult {
@@ -692,6 +695,7 @@ export default function RichTextEditor({
   onInlineImageInserted,
   enableTables = false,
   enableImageKeyboardDelete = false,
+  preserveTransientImages = false,
 }: RichTextEditorProps) {
   const externalVersionRef = React.useRef(externalContentVersion);
   const editor = useEditor({
@@ -715,7 +719,7 @@ export default function RichTextEditor({
     content: prepareContentForEditor(content),
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
-      onChange(prepareContentForSave(html));
+      onChange(prepareContentForSave(html, preserveTransientImages));
     },
     onCreate: ({ editor }) => {
       if (onEditorReady) onEditorReady(editor);

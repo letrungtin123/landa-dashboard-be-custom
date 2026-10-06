@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { titleKey: 'nav.items.courses', url: '/courses', module: 'courses', fallbackIcon: 'GraduationCap' },
       { titleKey: 'nav.items.courseCategories', url: '/course-categories', module: 'course_categories', fallbackIcon: 'FolderKanban' },
       { titleKey: 'nav.items.badgeManagement', url: '/badge-management', module: 'badge_management', fallbackIcon: 'Award' },
+      { titleKey: 'nav.items.news', url: '/news', module: 'news', fallbackIcon: 'Newspaper' },
       { titleKey: 'nav.items.aiChatbot', url: '/ai-chatbot', module: 'ai_chatbot', fallbackIcon: 'Bot' },
     ],
   },

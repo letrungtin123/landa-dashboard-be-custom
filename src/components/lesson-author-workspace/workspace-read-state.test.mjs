@@ -9,7 +9,8 @@ const compile = source => `data:text/javascript;base64,${Buffer.from(ts.transpil
 const contractUrl = compile(readFileSync(new URL('../../api/lesson-author-workspace.contract.ts', import.meta.url), 'utf8'));
 const { WorkspaceReadError } = await import(contractUrl);
 const source = readFileSync(new URL('./workspace-read-state.ts', import.meta.url), 'utf8');
-const { createWorkspaceReadState, WORKSPACE_MAX_GRAPH_NODES } = await import(compile(source
+const { createWorkspaceReadState, WORKSPACE_MAX_GRAPH_NODES, WORKSPACE_PLANNING_POLL_MS,
+  WORKSPACE_TRANSIENT_RETRY_LIMIT, WORKSPACE_TRANSIENT_RETRY_MAX_MS } = await import(compile(source
   .replace("'../../api/lesson-author-workspace.contract'", JSON.stringify(contractUrl))));
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const base = { workspace_id: id(90000), correlation_id: id(90001), contract_version: 1, content_locale: 'vi',
@@ -26,7 +27,7 @@ function clock() {
 function fixture(count = 1, eventDriven = false) {
   const scheduler = clock();
   const calls = [];
-  let head = 1, revision = 0, runStatus = 'drafting';
+  let head = 1, revision = 0, runStatus = 'drafting', structureReady = true;
   let nodes = Array.from({ length: count }, (_, i) => ({ node_id: id(i + 1), parent_id: i ? id(1) : null,
     kind: i ? 'chapter' : 'course', canonical_path: `course.n${i}`, sort_order: i, content_state: 'content_ready',
     current_revision: revision, title: `Title ${i}`, user_modified: false, applied: false }));
@@ -36,6 +37,8 @@ function fixture(count = 1, eventDriven = false) {
     async graph(cursor, options) {
       calls.push(['graph', { ...cursor }, options]);
       if (cursor.snapshot_sequence !== undefined && cursor.snapshot_sequence !== head) throw new WorkspaceReadError('WORKSPACE_EVENT_RESNAPSHOT_REQUIRED');
+      if (!structureReady) return { ...view(), snapshot_sequence: head, total_nodes: 0, overview_ready: false,
+        structure_ready: false, nodes: [], has_more: false, next_after_node_id: null };
       const start = cursor.after_node_id ? nodes.findIndex(n => n.node_id === cursor.after_node_id) + 1 : 0;
       const page = nodes.slice(start, start + 100).map(n => ({ ...n }));
       const more = start + page.length < nodes.length;
@@ -61,6 +64,7 @@ function fixture(count = 1, eventDriven = false) {
   return { store, client, calls, scheduler,
     change(nextHead, nextRevision = revision) { head = nextHead; revision = nextRevision; nodes = nodes.map(n => ({ ...n, current_revision: revision })); },
     setNodes(value) { nodes = value; }, setStatus(value) { runStatus = value; },
+    setStructureReady(value) { structureReady = value; },
     get nodes() { return nodes; },
   };
 }
@@ -116,6 +120,66 @@ test('event-driven reader degrades to one bounded poller and stops it immediatel
   assert.equal(f.scheduler.delay, 1000, 'visible degraded workspace keeps exactly one bounded timer');
   f.store.setEventDriven(true);
   assert.equal(f.scheduler.delay, undefined, 'live SSE owns wakeups again');
+  f.store.dispose();
+});
+
+test('event-driven reader reconciles unsealed planning until structure commits without requiring F5', async () => {
+  const f = fixture(1, true); f.setStructureReady(false);
+  await f.store.open();
+  assert.equal(f.store.getState().graph.structure_ready, false);
+  assert.equal(f.scheduler.delay, WORKSPACE_PLANNING_POLL_MS,
+    'one bounded planning poll remains while SSE has no architecture progress events');
+  const statusBefore = f.calls.filter(call => call[0] === 'status').length;
+  f.scheduler.fire(); await settle();
+  assert.equal(f.calls.filter(call => call[0] === 'status').length, statusBefore + 1);
+  assert.equal(f.scheduler.delay, WORKSPACE_PLANNING_POLL_MS);
+  f.setStructureReady(true); f.change(2, 1);
+  f.scheduler.fire(); await settle();
+  assert.equal(f.store.getState().graph.structure_ready, true);
+  assert.equal(f.store.getState().graph.snapshot_sequence, 2);
+  assert.equal(f.scheduler.delay, undefined, 'sealed graph returns ownership to SSE-only wakeups');
+  f.store.dispose();
+});
+
+test('event-driven terminal workspace retries a failed reconciliation after SSE already advanced', async () => {
+  const f = fixture(1, true); await f.store.open();
+  const events = f.client.events; let failOnce = true;
+  f.setStatus('needs_action'); f.change(2, 1);
+  f.client.events = async (...args) => {
+    if (failOnce) { failOnce = false; throw new WorkspaceReadError('WORKSPACE_READ_UNAVAILABLE', 503); }
+    return events(...args);
+  };
+  await f.store.notifyCommittedEvent(2);
+  assert.equal(f.store.getState().status.status, 'needs_action');
+  assert.equal(f.store.getState().graph.snapshot_sequence, 1);
+  assert.equal(f.store.getState().stale, true);
+  assert.equal(f.scheduler.delay, 1_000,
+    'terminal status and a sealed old graph must not suppress the bounded reconciliation retry');
+  f.scheduler.fire(); await settle();
+  assert.equal(f.store.getState().graph.snapshot_sequence, 2);
+  assert.equal(f.store.getState().stale, false);
+  assert.equal(f.store.getState().error, null);
+  assert.equal(f.scheduler.delay, undefined, 'a reconciled terminal graph returns to zero polling');
+  f.store.dispose();
+});
+
+test('SSE recovery cannot clear a pending sealed-graph retry', async () => {
+  const f = fixture(1, true); await f.store.open();
+  const status = f.client.status; let failOnce = true;
+  f.change(2, 1);
+  f.client.status = async (...args) => {
+    if (failOnce) { failOnce = false; throw new WorkspaceReadError('WORKSPACE_READ_UNAVAILABLE', 503); }
+    return status(...args);
+  };
+  await f.store.notifyCommittedEvent(2);
+  assert.equal(f.scheduler.delay, 1_000);
+  f.store.setEventDriven(false);
+  f.store.setEventDriven(true);
+  assert.equal(f.scheduler.delay, 0, 'live transport must immediately reconcile stale read state');
+  f.scheduler.fire(); await settle();
+  assert.equal(f.store.getState().graph.snapshot_sequence, 2);
+  assert.equal(f.store.getState().stale, false);
+  assert.equal(f.scheduler.delay, undefined);
   f.store.dispose();
 });
 
@@ -243,6 +307,23 @@ test('network errors preserve graph, recover without generation and do not stran
   f.client.status = status; await f.store.refresh();
   assert.equal(f.store.getState().stale, false);
   assert.equal(f.store.getState().detail.node_id, id(1)); f.store.dispose();
+});
+
+test('repeated read outages back off exponentially and stop automatic 503 pressure', async () => {
+  const f = fixture();
+  f.client.status = async () => { throw new WorkspaceReadError('WORKSPACE_READ_UNAVAILABLE', 503); };
+  await f.store.open();
+  assert.equal(f.scheduler.delay, 1_000);
+  for (let failure = 2; failure <= WORKSPACE_TRANSIENT_RETRY_LIMIT; failure += 1) {
+    f.scheduler.fire(); await settle();
+    if (failure < WORKSPACE_TRANSIENT_RETRY_LIMIT) {
+      assert.equal(f.scheduler.delay,
+        Math.min(WORKSPACE_TRANSIENT_RETRY_MAX_MS, 1_000 * (2 ** Math.min(failure - 1, 6))));
+    }
+  }
+  assert.equal(f.store.getState().access, 'blocked');
+  assert.equal(f.scheduler.delay, undefined, 'bounded retry exhaustion must stop automatic reads');
+  f.store.dispose();
 });
 
 test('revoked auth, missing/disabled workspace and oversize graph stop automatic reads', async () => {

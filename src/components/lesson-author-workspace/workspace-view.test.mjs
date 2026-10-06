@@ -104,6 +104,9 @@ test('projects only complete committed graphs, opens committed branches for real
   assert.deepEqual(projectWorkspaceGraph(null), []);
   assert.deepEqual(projectWorkspaceGraph({ ...graph, has_more: true }), []);
   assert.deepEqual(projectWorkspaceGraph({ ...graph, total_nodes: 7 }), []);
+  assert.deepEqual(projectWorkspaceGraph({ ...graph, structure_ready: false }).map(n => n.node.node_id),
+    [root.node_id, chapter.node_id, lesson.node_id, unit.node_id, media.node_id, component.node_id],
+    'a complete committed partial-success snapshot remains interactive');
   assert.deepEqual(projectWorkspaceGraph(graph).map(n => n.node.node_id), [root.node_id, chapter.node_id, lesson.node_id, unit.node_id, media.node_id, component.node_id]);
   const all = Object.fromEntries(graph.nodes.map(n => [n.node_id, true]));
   const projected = projectWorkspaceGraph(graph, all);
@@ -153,14 +156,35 @@ test('component node pills use the protected component discriminator in both loc
   assert.equal(workspaceNodeTypeLabel({ kind: 'media_brief', component_type: null, media_type: null }, 'vi'), workspaceCopy.vi.media_brief);
 });
 
+test('quality metadata remains internal and is not rendered as a technical node pill', () => {
+  const markup = renderToStaticMarkup(h(WorkspaceGraphNode, {
+    data: { node: { ...node('quality-component', 'component'), quality_state: 'review_required' }, locale: 'vi', childCount: 0,
+      expanded: false, onExpand: () => undefined }, selected: false,
+  }));
+  assert.doesNotMatch(markup, /Nội dung theo tài liệu nguồn|review recommended/);
+});
+
 test('reopened terminal workspaces start collapsed at chapter level while active streams stay expanded', () => {
   const active = { ...state.status, status: 'drafting' };
   const terminal = { ...state.status, status: 'ready' };
   assert.deepEqual(initialWorkspaceExpansion(graph, active), {});
   const collapsed = initialWorkspaceExpansion(graph, terminal);
   assert.deepEqual(projectWorkspaceGraph(graph, collapsed).map(item => item.node.node_id), [root.node_id, chapter.node_id]);
-  assert.equal(initialWorkspaceExpansion({ ...graph, structure_ready: false }, terminal), null);
+  assert.deepEqual(initialWorkspaceExpansion({ ...graph, structure_ready: false }, terminal), collapseWorkspaceToChapterLevel(graph));
+  assert.deepEqual(initialWorkspaceExpansion({ ...graph, structure_ready: false }, active), {});
   assert.equal(initialWorkspaceExpansion(graph, null), null);
+});
+
+test('terminal partial-success graph renders committed interactive nodes instead of an endless skeleton', () => {
+  const partialGraph = { ...graph, status: 'needs_action', structure_ready: false };
+  const html = renderDialog({ graph: partialGraph, status: { ...state.status, status: 'needs_action',
+    node_count: partialGraph.total_nodes, unit_count: 2, ready_unit_count: 1 } }, 'vi');
+  assert.match(html, /Private course/);
+  assert.match(html, /Private chapter/);
+  assert.doesNotMatch(html, /data-pending-mindmap-canvas="true"/);
+  assert.doesNotMatch(html, new RegExp(workspaceCopy.vi.terminalNeedsAction));
+  assert.doesNotMatch(html, new RegExp(workspaceCopy.vi.terminalReload));
+  assert.doesNotMatch(html, /Bước gặp lỗi/);
 });
 
 test('collapsing a branch clears every hidden descendant so reopening reveals one level without a layout burst', () => {
@@ -232,17 +256,35 @@ test('node colors describe exact Apply state instead of treating content_ready a
     locale: 'en', onExpand() {},
   } }));
   const pending = renderNode({ ...root, applied: false, user_modified: false });
-  assert.match(pending, /bg-emerald-500/); assert.ok(pending.includes(workspaceCopy.en.pendingApply));
+  assert.match(pending, /bg-slate-500/); assert.ok(pending.includes(workspaceCopy.en.pendingApply));
   const edited = renderNode({ ...root, applied: false, user_modified: true });
   assert.match(edited, /bg-amber-500/); assert.ok(edited.includes(workspaceCopy.en.editedPendingApply));
   const applied = renderNode({ ...root, applied: true, user_modified: true });
-  assert.match(applied, /bg-slate-500/); assert.ok(applied.includes(workspaceCopy.en.appliedSuccessfully));
+  assert.match(applied, /bg-emerald-500/); assert.ok(applied.includes(workspaceCopy.en.appliedSuccessfully));
   const proposal = renderToStaticMarkup(WorkspaceGraphNode({ data: {
     ...projectWorkspaceGraph({ ...graph, total_nodes: graph.nodes.length + 1, nodes: [...graph.nodes, media] })
       .find(item => item.node.node_id === media.node_id), locale: 'en', onExpand() {},
   } }));
-  assert.match(proposal, /bg-sky-400/); assert.doesNotMatch(proposal, /violet/);
+  assert.match(proposal, /bg-green-500/); assert.doesNotMatch(proposal, /bg-sky-400/);
   assert.ok(proposal.includes(workspaceCopy.en.proposal));
+});
+
+test('mindmap uses a stable colored icon identity for every component and media discriminator', () => {
+  const renderIcon = value => renderToStaticMarkup(WorkspaceGraphNode({ data: {
+    node: value, locale: 'en', childCount: 0, expanded: false, onExpand() {}, position: { x: 0, y: 0 },
+  } }));
+  const componentIcons = {
+    html: 'component-html', problem: 'component-problem', la_faq: 'component-faq',
+    la_sortable: 'component-sortable', la_crossword: 'component-crossword', la_diagram: 'component-diagram',
+  };
+  for (const [component_type, icon] of Object.entries(componentIcons)) {
+    const markup = renderIcon({ ...component, component_type });
+    assert.match(markup, new RegExp(`data-workspace-node-icon="${icon}"`));
+  }
+  const video = renderIcon({ ...media, media_type: 'video' });
+  assert.match(video, /data-workspace-node-icon="media-video"/); assert.match(video, /text-rose-600/);
+  const infographic = renderIcon({ ...media, media_type: 'static_infographic' });
+  assert.match(infographic, /data-workspace-node-icon="media-infographic"/); assert.match(infographic, /text-sky-600/);
 });
 
 for (const locale of ['en', 'vi']) {
@@ -322,12 +364,22 @@ for (const locale of ['en', 'vi']) {
     assert.match(terminal, locale === 'vi' ? /Chương 2/ : /Chapter 2/);
     assert.match(terminal, locale === 'vi' ? /chưa được gửi đến AI/ : /not sent to the AI provider/);
   });
-  test(`${locale}: final-check failure with committed lessons is presented as recoverable draft state`, () => {
+  test(`${locale}: final-check failure stays internal when committed lessons are available`, () => {
     const terminal = renderDialog({ status: { ...state.status, status: 'needs_action',
       failure_code: 'ORCHESTRATION_V2_FINALIZATION_INPUT_INVALID', failure_stage: 'finalize_course' } }, locale);
     assert.doesNotMatch(terminal, /ORCHESTRATION_V2_FINALIZATION_INPUT_INVALID|font-mono/);
-    assert.match(terminal, locale === 'vi' ? /đã được tạo và lưu/ : /created and saved/);
-    assert.match(terminal, /border-amber-500/);
+    assert.doesNotMatch(terminal, locale === 'vi' ? /đã được tạo và lưu/ : /created and saved/);
+    assert.doesNotMatch(terminal, new RegExp(workspaceCopy[locale].terminalReload));
+    assert.match(terminal, /Private course/);
+  });
+  test(`${locale}: assessment source review stays internal when committed course data is available`, () => {
+    const terminal = renderDialog({ status: { ...state.status, status: 'needs_action',
+      failure_code: 'ASSESSMENT_REVIEW_REQUIRED', failure_stage: 'finalize_course' } }, locale, { onRefresh() {} });
+    assert.doesNotMatch(terminal, locale === 'vi' ? /cần được rà soát lại theo tài liệu nguồn/ : /require source review/);
+    assert.doesNotMatch(terminal, locale === 'vi' ? /kiểm tra chất lượng đánh giá/ : /reviewing assessment quality/);
+    assert.doesNotMatch(terminal, new RegExp(workspaceCopy[locale].terminalNeedsAction));
+    assert.doesNotMatch(terminal, new RegExp(workspaceCopy[locale].terminalReload));
+    assert.doesNotMatch(terminal, locale === 'vi' ? /Sau khi xử lý nguyên nhân/ : /After resolving the cause/);
   });
 }
 
@@ -356,6 +408,25 @@ for (const locale of ['en', 'vi']) test(`${locale}: pre-graph mindmap exposes no
   assert.match(html, /d="M [^"]+ H [^"]+ Q [^"]+ V [^"]+ Q [^"]+ H [^"]+"/);
   assert.doesNotMatch(html, /data-pending-edge-column|left:calc\(|right:68%|right:35%/);
   assert.doesNotMatch(html, /Private course|Private chapter|Real chapter outcome/);
+});
+
+test('pre-graph shells never expose non-interactive planning preview data', () => {
+  const preview = { run_id: '00000000-0000-4000-8000-000000000040', course_title: 'An toàn vận hành',
+    total_chapters: 3, completed_chapters: 1, chapters: [
+      { chapter_key: 'chapter-1', order: 0, title: 'Nhận diện mối nguy', state: 'ready' },
+      { chapter_key: 'chapter-2', order: 1, title: 'Đánh giá rủi ro', state: 'generating' },
+      { chapter_key: 'chapter-3', order: 2, title: 'Kiểm soát', state: 'planned' },
+    ] };
+  const overview = renderToStaticMarkup(h(WorkspacePendingSkeleton, { locale: 'vi', stage: 'overview', preview }));
+  const mindmap = renderToStaticMarkup(h(WorkspacePendingSkeleton, { locale: 'vi', stage: 'mindmap', preview }));
+  for (const text of ['An toàn vận hành', 'Nhận diện mối nguy', 'Đánh giá rủi ro', 'Kiểm soát']) {
+    assert.doesNotMatch(overview, new RegExp(text)); assert.doesNotMatch(mindmap, new RegExp(text));
+  }
+  assert.doesNotMatch(mindmap, /1\/3/);
+  assert.match(overview, /animate-pulse/, 'all values stay skeletonized until the interactive graph is committed');
+  assert.match(mindmap, /animate-pulse/);
+  assert.match(mindmap, /Nội dung sẽ hiển thị và có thể tương tác khi sẵn sàng/);
+  assert.doesNotMatch(`${overview}${mindmap}`, /source_scope|provider|PRIVATE/);
 });
 
 test('stale detail, mismatched revision/identity and local drafts are never shown as committed content', () => {

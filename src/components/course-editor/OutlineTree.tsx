@@ -68,6 +68,13 @@ import { getLocalizedApiError } from '@/utils/localized-error';
 import i18n from '@/i18n';
 import { useAuthStore } from '@/utils/store';
 import CourseOutlineTransferDialog from './CourseOutlineTransferDialog';
+import {
+  createCoursePublishCandidate,
+  getCoursePublishCandidateEligibility,
+  getCoursePublishGovernanceState,
+  isCoursePublishGovernanceUnavailable,
+  type CoursePublishGovernanceState,
+} from '@/api/course-publish-governance';
 
 interface OutlineTreeProps {
   courseId: string;
@@ -76,6 +83,18 @@ interface OutlineTreeProps {
   focusedBlockId?: string | null;
   onStructureChange?: () => void;
 }
+
+type PublishGovernanceContextValue = {
+  status: 'loading' | 'disabled' | 'enabled' | 'error';
+  state: CoursePublishGovernanceState | null;
+  refresh: () => Promise<void>;
+};
+
+const PublishGovernanceContext = React.createContext<PublishGovernanceContextValue>({
+  status: 'loading',
+  state: null,
+  refresh: async () => undefined,
+});
 
 function removeNodeFromOutline(node: CourseIndexSection, targetId: string): CourseIndexSection | null {
   if (node.id === targetId) return null;
@@ -107,11 +126,35 @@ function nodeContainsId(node: CourseIndexSection, targetId: string): boolean {
 
 export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, focusedBlockId, onStructureChange }: OutlineTreeProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { data: outline, isLoading, isError, refetch } = useQuery({
     queryKey: ['course-outline-index', courseId],
     queryFn: () => getCourseOutlineIndex(courseId),
     staleTime: 30_000,
   });
+  const governanceQuery = useQuery({
+    queryKey: ['course-publish-governance', courseId],
+    queryFn: async () => {
+      try {
+        return { enabled: true as const, state: await getCoursePublishGovernanceState(courseId) };
+      } catch (error) {
+        if (isCoursePublishGovernanceUnavailable(error)) return { enabled: false as const, state: null };
+        throw error;
+      }
+    },
+    retry: false,
+    staleTime: 10_000,
+  });
+
+  const governanceContext: PublishGovernanceContextValue = {
+    status: governanceQuery.isLoading ? 'loading'
+      : governanceQuery.isError ? 'error'
+        : governanceQuery.data?.enabled ? 'enabled' : 'disabled',
+    state: governanceQuery.data?.state ?? null,
+    refresh: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['course-publish-governance', courseId] });
+    },
+  };
 
   const notifyStructureChange = React.useCallback(() => {
     void refetch();
@@ -152,6 +195,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
   }
 
   return (
+    <PublishGovernanceContext.Provider value={governanceContext}>
     <div className="space-y-1">
       <SortableList
         items={structure.children || []}
@@ -179,6 +223,7 @@ export default function OutlineTree({ courseId, onSelectUnit, selectedUnitId, fo
       />
       <AssignmentOutlineSection courseId={courseId} />
     </div>
+    </PublishGovernanceContext.Provider>
   );
 }
 
@@ -535,6 +580,7 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const queryClient = useQueryClient();
+  const governance = React.useContext(PublishGovernanceContext);
   const currentUser = useAuthStore((state) => state.user);
   const canTransfer = Boolean(courseId && (currentUser?.role === 'superuser' || currentUser?.role === 'superadmin'));
 
@@ -571,8 +617,41 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
   });
 
   const publishMut = useMutation({
-    mutationFn: () => publishBlock(node.id),
-    onSuccess: () => { toast.success(i18n.t('courseOutline.publishedSuccess')); onStructureChange(); },
+    mutationFn: async () => {
+      if (!courseId || governance.status === 'disabled'
+        || (governance.status === 'enabled' && !governance.state?.policy)) {
+        await publishBlock(node.id);
+        return { published: true, reviewRequired: false };
+      }
+      if (governance.status !== 'enabled' || !governance.state?.policy) {
+        throw new Error('COURSE_PUBLISH_STATE_UNAVAILABLE');
+      }
+
+      let candidate = governance.state.candidates.find(item =>
+        item.status === 'open' && item.target_block_id === node.id,
+      );
+      let eligibility = candidate ? await getCoursePublishCandidateEligibility(candidate.id) : null;
+      const invalidCandidate = eligibility?.blockers.some(blocker =>
+        blocker === 'POLICY_CHANGED' || blocker === 'CANDIDATE_EXPIRED' || blocker === 'CANDIDATE_STALE',
+      );
+      if (!candidate || invalidCandidate) {
+        candidate = await createCoursePublishCandidate({
+          courseId,
+          targetBlockId: node.id,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        eligibility = await getCoursePublishCandidateEligibility(candidate.id);
+      }
+      if (!eligibility || !eligibility.eligible) return { published: false, reviewRequired: true };
+      await publishBlock(node.id, candidate.id);
+      return { published: true, reviewRequired: false };
+    },
+    onSuccess: async result => {
+      if (result.reviewRequired) toast.info(i18n.t('coursePublish.reviewRequiredCreated'));
+      else toast.success(i18n.t('courseOutline.publishedSuccess'));
+      await governance.refresh();
+      onStructureChange();
+    },
     onError: (err: unknown) => toast.error(getLocalizedApiError(err, i18n.t('courseOutline.publishFailed'))),
   });
 
