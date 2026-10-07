@@ -28,6 +28,8 @@ const ui = {
 };
 const flow = {
   Position: { Left: 'left', Right: 'right' }, MarkerType: { ArrowClosed: 'arrowclosed' }, Handle: () => null, Background: () => null, Controls: () => null, MiniMap: () => null, Panel: element('div'),
+  BaseEdge: () => null,
+  getSmoothStepPath: () => ['M 0 0 H 20 V 20 H 40'],
   ReactFlowProvider: element('div'),
   useNodesState: initial => [initial, () => {}, () => {}],
   useEdgesState: initial => [initial, () => {}, () => {}],
@@ -67,8 +69,10 @@ function load(filename) {
 const detailModule = load(path.join(directory, 'workspace-node-detail.tsx'));
 const { WorkspaceDetailContent, WorkspaceNodeDetail, readWorkspacePreview, workspaceCopy, workspaceLearningOutcomeLabel,
   workspaceDetailStats } = detailModule;
-const { WorkspaceDialog, WorkspaceGraphNode, WorkspacePendingSkeleton, projectWorkspaceGraph, collapseWorkspaceBranch, collapseWorkspaceToChapterLevel, initialWorkspaceExpansion, workspaceOverviewCounts,
-  workspaceNodeTypeLabel, workspaceProgressiveRevealQueue } = load(path.join(directory, 'workspace-dialog.tsx'));
+const { WorkspaceDialog, WorkspaceGraphNode, WorkspacePendingSkeleton, WorkspacePlanningOverview, projectWorkspaceGraph,
+  projectWorkspaceLiveGraph, workspacePresentationNodes, collapseWorkspaceBranch, collapseWorkspaceToChapterLevel,
+  initialWorkspaceExpansion, workspaceOverviewCounts, workspaceNodeTypeLabel, workspaceProgressiveRevealQueue,
+  workspaceBuildingNodeIds } = load(path.join(directory, 'workspace-dialog.tsx'));
 const base = { workspace_id: 'workspace-private', correlation_id: 'run-private', contract_version: 1, content_locale: 'en',
   status: 'ready', last_event_sequence: 4, updated_at: '2026-09-29T00:00:00Z' };
 function node(id, kind, parent = null, order = 0) {
@@ -389,44 +393,104 @@ for (const locale of ['en', 'vi']) test(`${locale}: pre-graph mindmap exposes no
     workspaceCopy[locale].lesson, workspaceCopy[locale].unit, workspaceCopy[locale].component]) {
     assert.ok(html.includes(label), `pre-graph mindmap must expose ${label}`);
   }
-  assert.match(html, /animate-pulse/);
+  assert.match(html, /workspace-build-shimmer/);
   assert.match(html, /data-pending-mindmap-canvas="true"/);
   assert.match(html, /viewBox="0 0 1180 560"/);
   assert.match(html, /data-pending-edge-layer="true"/);
   for (const edge of ['course-chapter-top', 'course-chapter-bottom', 'chapter-top-unit',
     'chapter-top-lesson', 'chapter-bottom-component']) assert.match(html, new RegExp(`data-pending-edge="${edge}"`));
   assert.equal((html.match(/data-pending-edge-track="true"/g) ?? []).length, 5);
-  assert.equal((html.match(/data-pending-edge-shimmer="true"/g) ?? []).length, 5);
+  assert.equal((html.match(/data-pending-edge-flow="true"/g) ?? []).length, 5);
   assert.match(html, /pending-map-edge-gradient/);
-  assert.match(html, /pending-map-edge-shimmer/);
-  assert.match(html, /bg-current\/\[0\.20\]/);
-  assert.match(html, /bg-current\/\[0\.14\]/);
-  assert.match(html, /dark:bg-current\/\[0\.13\]/);
-  assert.match(html, /dark:bg-current\/\[0\.09\]/);
-  assert.match(html, /stroke-dasharray="24 96"/);
-  assert.equal((html.match(/attributeName="stroke-dashoffset"/g) ?? []).length, 5);
+  assert.match(html, /bg-current\/\[0\.24\]/);
+  assert.match(html, /bg-current\/\[0\.18\]/);
+  assert.match(html, /dark:bg-current\/\[0\.17\]/);
+  assert.match(html, /dark:bg-current\/\[0\.12\]/);
+  assert.doesNotMatch(html, /<animateMotion|data-pending-edge-particle/);
+  assert.equal((html.match(/workspace-build-edge-flow/g) ?? []).length, 5);
   assert.match(html, /d="M [^"]+ H [^"]+ Q [^"]+ V [^"]+ Q [^"]+ H [^"]+"/);
   assert.doesNotMatch(html, /data-pending-edge-column|left:calc\(|right:68%|right:35%/);
   assert.doesNotMatch(html, /Private course|Private chapter|Real chapter outcome/);
 });
 
-test('pre-graph shells never expose non-interactive planning preview data', () => {
+test('durable planning preview renders real progress immediately and remains non-interactive until committed', () => {
   const preview = { run_id: '00000000-0000-4000-8000-000000000040', course_title: 'An toàn vận hành',
-    total_chapters: 3, completed_chapters: 1, chapters: [
+    total_chapters: 3, completed_chapters: 1, total_nodes: 5, truncated: false, chapters: [
       { chapter_key: 'chapter-1', order: 0, title: 'Nhận diện mối nguy', state: 'ready' },
       { chapter_key: 'chapter-2', order: 1, title: 'Đánh giá rủi ro', state: 'generating' },
       { chapter_key: 'chapter-3', order: 2, title: 'Kiểm soát', state: 'planned' },
+    ], nodes: [
+      { node_id: root.node_id, parent_id: null, kind: 'course', canonical_path: root.canonical_path, sort_order: 0,
+        title: 'An toàn vận hành', state: 'ready', component_type: null, media_type: null },
+      { node_id: 'preview-chapter-1', parent_id: root.node_id, kind: 'chapter', canonical_path: 'chapter_1', sort_order: 0,
+        title: 'Nhận diện mối nguy', state: 'ready', component_type: null, media_type: null },
+      { node_id: 'preview-chapter-2', parent_id: root.node_id, kind: 'chapter', canonical_path: 'chapter_2', sort_order: 1,
+        title: 'Đánh giá rủi ro', state: 'generating', component_type: null, media_type: null },
+      { node_id: 'preview-chapter-3', parent_id: root.node_id, kind: 'chapter', canonical_path: 'chapter_3', sort_order: 2,
+        title: 'Kiểm soát', state: 'planned', component_type: null, media_type: null },
+      { node_id: 'preview-unit-1', parent_id: 'preview-chapter-1', kind: 'unit', canonical_path: 'chapter_1.lesson_1.unit_1', sort_order: 0,
+        title: 'Bài học nhận diện', state: 'generating', component_type: null, media_type: null },
     ] };
-  const overview = renderToStaticMarkup(h(WorkspacePendingSkeleton, { locale: 'vi', stage: 'overview', preview }));
-  const mindmap = renderToStaticMarkup(h(WorkspacePendingSkeleton, { locale: 'vi', stage: 'mindmap', preview }));
+  const overview = renderToStaticMarkup(h(WorkspacePlanningOverview, { locale: 'vi', preview }));
+  let selected = 0;
+  const mindmap = renderDialog({ graph: null, status: { ...state.status, status: 'drafting', node_count: 0,
+    unit_count: 0, ready_unit_count: 0, architecture_preview: preview }, selectedNodeId: null, detail: null }, 'vi', { onSelectNode() { selected++; } });
   for (const text of ['An toàn vận hành', 'Nhận diện mối nguy', 'Đánh giá rủi ro', 'Kiểm soát']) {
-    assert.doesNotMatch(overview, new RegExp(text)); assert.doesNotMatch(mindmap, new RegExp(text));
+    assert.match(`${overview}${mindmap}`, new RegExp(text));
   }
-  assert.doesNotMatch(mindmap, /1\/3/);
-  assert.match(overview, /animate-pulse/, 'all values stay skeletonized until the interactive graph is committed');
-  assert.match(mindmap, /animate-pulse/);
-  assert.match(mindmap, /Nội dung sẽ hiển thị và có thể tương tác khi sẵn sàng/);
+  assert.equal(lastFlow.nodes.length, preview.nodes.length);
+  assert.ok(lastFlow.nodes.every(node => node.draggable === false && node.selectable === false && node.data.preview));
+  lastFlow.onNodeClick({}, lastFlow.nodes[0]); assert.equal(selected, 0, 'preview click cannot open a detail modal');
+  assert.match(mindmap, /data-workspace-preview=/);
+  const committedRoot = { ...root, canonical_path: root.canonical_path, title: 'Tên đã commit' };
+  const committedGraph = { ...graph, total_nodes: 1, nodes: [committedRoot] };
+  const merged = workspacePresentationNodes(committedGraph, preview);
+  assert.equal(merged.find(item => item.node.node_id === root.node_id).preview, false);
+  assert.equal(merged.find(item => item.node.node_id === root.node_id).node.title, 'Tên đã commit');
+  assert.equal(projectWorkspaceLiveGraph(committedGraph, preview).length, preview.nodes.length);
   assert.doesNotMatch(`${overview}${mindmap}`, /source_scope|provider|PRIVATE/);
+});
+
+test('workspace progress animations do not inherit the browser reduced-motion preference', () => {
+  const source = readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8');
+  const styles = readFileSync(path.join(directory, '..', '..', 'globals.css'), 'utf8');
+  assert.doesNotMatch(source, /motion-reduce:/);
+  assert.doesNotMatch(source, /prefers-reduced-motion/);
+  assert.doesNotMatch(source, /animate-spin/);
+  assert.doesNotMatch(source, /workspace-build-scan-line|animateMotion|workspace-build-edge-particle/);
+  assert.match(source, /workspace-build-edge-flow/);
+  assert.match(source, /--workspace-build-accent/);
+  assert.match(styles, /@property --workspace-build-angle/);
+  assert.match(styles, /conic-gradient/);
+  assert.match(styles, /mask-composite: exclude/);
+  assert.doesNotMatch(styles, /workspace-build-scan|workspace-build-edge-particle/);
+});
+
+test('media legend uses a yellow warning icon and explains that AI suggestions are not generated assets', () => {
+  const source = readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8');
+  assert.match(source, /AlertTriangle className="mt-0\.5 h-3\.5 w-3\.5 shrink-0 text-amber-500"/);
+  assert.equal(workspaceCopy.vi.legendProposal,
+    'Video/infographic AI chỉ đề xuất và gợi ý, không thể tạo trực tiếp video/infographic trên hệ thống!');
+  assert.equal(workspaceCopy.en.legendProposal,
+    'AI only recommends and suggests videos/infographics; the system cannot create videos/infographics directly.');
+});
+
+test('live build edge motion covers all unfinished child nodes, excludes terminal states and stays bounded', () => {
+  const item = (id, content_state, preview = false, previewState = null) => ({
+    node: { ...node(id, 'component', root.node_id), content_state }, preview, previewState,
+  });
+  const states = [item('committed-ready', 'content_ready'), item('committed-planned', 'planned'),
+    item('committed-generating', 'generating'), item('preview-planned', 'generating', true, 'planned'),
+    item('preview-generating', 'generating', true, 'generating'), item('preview-ready', 'generating', true, 'ready'),
+    item('preview-needs-action', 'needs_action', true, 'needs_action')];
+  assert.deepEqual(workspaceBuildingNodeIds(states, 20), [
+    'committed-planned', 'committed-generating', 'preview-planned', 'preview-generating', 'preview-ready',
+  ]);
+  const active = workspaceBuildingNodeIds(Array.from({ length: 12 }, (_, index) => item(
+    `building-${index}`, index % 2 ? 'planned' : 'generating',
+  )));
+  assert.equal(active.length, 8, 'GPU motion is capped even for large course graphs');
+  assert.deepEqual(active, Array.from({ length: 8 }, (_, index) => `building-${index}`));
 });
 
 test('stale detail, mismatched revision/identity and local drafts are never shown as committed content', () => {

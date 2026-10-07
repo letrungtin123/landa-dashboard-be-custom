@@ -206,9 +206,9 @@ test('Apply keeps the exact selected chapter/section/lesson/component scope', ()
   assert.deepEqual(['chapter', 'lesson', 'unit', 'component'].map(kind => workspaceScopeApplyLabel(kind, 'vi')),
     ['Áp dụng cả chương', 'Áp dụng cả mục', 'Áp dụng cả bài học', 'Áp dụng nội dung']);
   assert.deepEqual(['course', 'chapter', 'lesson', 'unit', 'component', 'media_brief'].map(workspaceNodeSupportsEditor),
-    [false, true, true, true, true, false]);
+    [false, false, false, false, true, false]);
   assert.deepEqual(['course', 'chapter', 'lesson', 'unit', 'component', 'media_brief'].map(workspaceNodeUsesHeaderTitleEditor),
-    [false, true, true, true, false, false]);
+    [false, false, false, false, false, false]);
 });
 test('dirty component is saved and authoritatively reconciled before exact component Apply', async () => {
   const unit = { node_id: id(22), parent_id: id(21), kind: 'unit', content_state: 'content_ready' };
@@ -339,18 +339,15 @@ test('aggregate analysis remains read-only; blocked reads and closed host hide i
     f.host.close(); assert.equal(render(f), '');
   } finally { f.host.dispose(); }
 });
-test('chapter title editor is available before Apply and remains mounted view-only after Apply', async () => {
+test('hierarchy nodes remain review-only before and after Apply', async () => {
   for (const applied of [false, true]) {
     const f = fixture({ nodePatch: { kind: 'chapter', parent_id: id(5), canonical_path: 'course.chapter_1', sort_order: 1, applied },
       detailPatch: { kind: 'chapter', parent_id: id(5), canonical_path: 'course.chapter_1', sort_order: 1, applied } });
     try {
-      await f.host.launch(); await f.host.getSession().selectNode(f.node.node_id); render(f);
-      assert.ok(editorProps, 'chapter uses the typed title editor');
-      assert.equal(editorProps.readOnly, applied);
-      assert.equal(editorProps.titleInHeader, true);
-      assert.ok(editorProps.reviewContent, 'AI review cards stay mounted below the header');
-      assert.equal(typeof editorProps.onApply, 'function');
-      assert.equal(editorProps.applyDisabled, applied);
+      await f.host.launch(); await f.host.getSession().selectNode(f.node.node_id); const html = render(f);
+      assert.equal(editorProps, null, 'chapter never mounts an editor');
+      assert.doesNotMatch(html, /Controlled editor/);
+      assert.match(html, /Saved title/, 'authorized review content remains visible');
     } finally { f.host.dispose(); }
   }
 });

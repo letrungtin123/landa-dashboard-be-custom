@@ -106,15 +106,27 @@ test('status counts, version, sequence, locale and frozen workspace identity fai
 
 test('status accepts only bounded ordered architecture preview data', () => {
   const preview = { run_id: id(40), course_title: 'Khóa học an toàn', total_chapters: 2,
-    completed_chapters: 1, chapters: [
+    completed_chapters: 1, total_nodes: 3, truncated: false, chapters: [
       { chapter_key: 'chapter-1', order: 0, title: 'Nhận diện', state: 'ready' },
       { chapter_key: 'chapter-2', order: 1, title: 'Kiểm soát', state: 'generating' },
+    ], nodes: [
+      { node_id: id(41), parent_id: null, kind: 'course', canonical_path: 'course', sort_order: 0,
+        title: 'Khóa học an toàn', state: 'ready', component_type: null, media_type: null },
+      { node_id: id(42), parent_id: id(41), kind: 'chapter', canonical_path: 'chapter_1', sort_order: 0,
+        title: 'Nhận diện', state: 'ready', component_type: null, media_type: null },
+      { node_id: id(43), parent_id: id(41), kind: 'chapter', canonical_path: 'chapter_2', sort_order: 1,
+        title: 'Kiểm soát', state: 'generating', component_type: null, media_type: null },
     ] };
   assert.deepEqual(contract.readWorkspaceStatus({ ...status, architecture_preview: preview }).architecture_preview, preview);
+  const rootOnly = { ...preview, total_chapters: 0, completed_chapters: 0, total_nodes: 1, chapters: [], nodes: [preview.nodes[0]] };
+  assert.deepEqual(contract.readWorkspaceStatus({ ...status, architecture_preview: rootOnly }).architecture_preview, rootOnly);
   for (const architecture_preview of [
     { ...preview, completed_chapters: 2 },
     { ...preview, chapters: preview.chapters.map((chapter, index) => index ? { ...chapter, order: 3 } : chapter) },
     { ...preview, chapters: preview.chapters.map((chapter, index) => index ? { ...chapter, state: 'private' } : chapter) },
+    { ...preview, total_nodes: 2 },
+    { ...preview, nodes: preview.nodes.map((node, index) => index === 1 ? { ...node, parent_id: id(99) } : node) },
+    { ...preview, nodes: preview.nodes.map((node, index) => index === 1 ? { ...node, component_type: 'html' } : node) },
     { ...preview, course_title: '' },
   ]) assert.throws(() => contract.readWorkspaceStatus({ ...status, architecture_preview }), /WORKSPACE_READ_CONTRACT_INVALID/);
 });

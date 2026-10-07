@@ -160,11 +160,11 @@ export function projectWorkspaceAppliedGraph(graph: WorkspaceGraph | null, overl
 }
 
 export function workspaceNodeSupportsEditor(kind: WorkspaceNode['kind']): boolean {
-  return ['chapter', 'lesson', 'unit', 'component'].includes(kind);
+  return kind === 'component';
 }
 
-export function workspaceNodeUsesHeaderTitleEditor(kind: WorkspaceNode['kind']): boolean {
-  return ['chapter', 'lesson', 'unit'].includes(kind);
+export function workspaceNodeUsesHeaderTitleEditor(_kind: WorkspaceNode['kind']): boolean {
+  return false;
 }
 
 export async function saveThenApplyWorkspaceScope(input: {
@@ -474,7 +474,8 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     const editor = session.editorProps(node.node_id), write = workspace.writes[node.node_id];
     const detail = editor.access === 'allowed' ? editor.detail : null;
     const stats = presentationRead?.graph ? workspaceDetailStats(node, presentationRead.graph.nodes) : undefined;
-    const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind);
+    const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind)
+      && detail.content_state === 'content_ready' && detail.current_revision !== null;
     const hierarchyTitle = !!detail && workspaceNodeUsesHeaderTitleEditor(detail.kind);
     // The graph marks an exact revision/hash as applied. The local done state
     // closes the write window immediately, before the background read catches up.

@@ -38,19 +38,33 @@ export interface WorkspaceStatus extends WorkspaceView {
   failure_stage?: WorkspaceFailureStage | null;
   failure_chapter_key?: string | null;
 }
-export type WorkspaceArchitecturePreviewState = 'planned' | 'generating' | 'ready';
+export type WorkspaceArchitecturePreviewState = 'planned' | 'generating' | 'ready' | 'needs_action';
 export interface WorkspaceArchitecturePreviewChapter {
   chapter_key: string;
   order: number;
   title: string;
   state: WorkspaceArchitecturePreviewState;
 }
+export interface WorkspaceArchitecturePreviewNode {
+  node_id: string;
+  parent_id: string | null;
+  kind: WorkspaceNodeKind;
+  canonical_path: string;
+  sort_order: number;
+  title: string;
+  state: WorkspaceArchitecturePreviewState;
+  component_type: WorkspaceComponentType | null;
+  media_type: WorkspaceMediaType | null;
+}
 export interface WorkspaceArchitecturePreview {
   run_id: string;
   course_title: string;
   total_chapters: number;
   completed_chapters: number;
+  total_nodes: number;
+  truncated: boolean;
   chapters: WorkspaceArchitecturePreviewChapter[];
+  nodes: WorkspaceArchitecturePreviewNode[];
 }
 export interface WorkspaceNode {
   node_id: string;
@@ -213,10 +227,13 @@ function architecturePreview(value: unknown): void {
   const preview = object(value);
   requireValid(isWorkspaceId(preview.run_id) && typeof preview.course_title === 'string'
     && !!preview.course_title.trim() && preview.course_title.length <= 500
-    && isWorkspaceSequence(preview.total_chapters) && preview.total_chapters >= 1
+    && isWorkspaceSequence(preview.total_chapters)
     && preview.total_chapters <= 512 && isWorkspaceSequence(preview.completed_chapters)
     && preview.completed_chapters <= preview.total_chapters && Array.isArray(preview.chapters)
-    && preview.chapters.length === preview.total_chapters);
+    && preview.chapters.length === preview.total_chapters
+    && isWorkspaceSequence(preview.total_nodes) && preview.total_nodes >= 1 && preview.total_nodes <= 10_000
+    && typeof preview.truncated === 'boolean' && Array.isArray(preview.nodes)
+    && preview.nodes.length === preview.total_nodes);
   const keys = new Set<string>();
   let completed = 0;
   for (const [index, raw] of (preview.chapters as unknown[]).entries()) {
@@ -224,11 +241,48 @@ function architecturePreview(value: unknown): void {
     requireValid(typeof chapter.chapter_key === 'string' && /^[a-z0-9][a-z0-9_.:-]{0,159}$/.test(chapter.chapter_key)
       && !keys.has(chapter.chapter_key) && chapter.order === index
       && typeof chapter.title === 'string' && !!chapter.title.trim() && chapter.title.length <= 500
-      && ['planned', 'generating', 'ready'].includes(chapter.state as string));
+      && ['planned', 'generating', 'ready', 'needs_action'].includes(chapter.state as string));
     keys.add(chapter.chapter_key);
     if (chapter.state === 'ready') completed++;
   }
   requireValid(completed === preview.completed_chapters);
+  const ids = new Set<string>();
+  const paths = new Set<string>();
+  const previewNodes = preview.nodes as unknown[];
+  const parsedNodes = new Map<string, Record<string, unknown>>();
+  for (const raw of previewNodes) {
+    const previewNode = object(raw);
+    requireValid(isWorkspaceId(previewNode.node_id)
+      && (previewNode.parent_id === null || isWorkspaceId(previewNode.parent_id))
+      && ['course', 'chapter', 'lesson', 'unit', 'component', 'media_brief'].includes(previewNode.kind as string)
+      && typeof previewNode.canonical_path === 'string'
+      && /^[A-Za-z][A-Za-z0-9_.-]{0,239}$/.test(previewNode.canonical_path)
+      && isWorkspaceSequence(previewNode.sort_order)
+      && typeof previewNode.title === 'string' && !!previewNode.title.trim() && previewNode.title.length <= 500
+      && ['planned', 'generating', 'ready', 'needs_action'].includes(previewNode.state as string)
+      && !ids.has(String(previewNode.node_id).toLowerCase()) && !paths.has(previewNode.canonical_path)
+      && (previewNode.kind === 'component'
+        ? WORKSPACE_COMPONENT_TYPES.includes(previewNode.component_type as WorkspaceComponentType)
+        : previewNode.component_type === null)
+      && (previewNode.kind === 'media_brief'
+        ? WORKSPACE_MEDIA_TYPES.includes(previewNode.media_type as WorkspaceMediaType)
+        : previewNode.media_type === null));
+    const id = String(previewNode.node_id).toLowerCase();
+    ids.add(id); paths.add(previewNode.canonical_path as string); parsedNodes.set(id, previewNode);
+  }
+  const roots = [...parsedNodes.values()].filter(previewNode => previewNode.parent_id === null);
+  requireValid(roots.length === 1 && roots[0]?.kind === 'course' && roots[0]?.canonical_path === 'course');
+  const expectedParentKind: Partial<Record<WorkspaceNodeKind, WorkspaceNodeKind>> = {
+    chapter: 'course', lesson: 'chapter', unit: 'lesson', component: 'unit', media_brief: 'unit',
+  };
+  for (const previewNode of parsedNodes.values()) {
+    if (previewNode.kind === 'course') {
+      requireValid(previewNode.parent_id === null);
+      continue;
+    }
+    const parent = parsedNodes.get(String(previewNode.parent_id).toLowerCase());
+    requireValid(!!parent && parent.kind === expectedParentKind[previewNode.kind as WorkspaceNodeKind]);
+  }
 }
 export function readWorkspaceStatus(value: unknown): WorkspaceStatus {
   const v = object(value); view(v);
