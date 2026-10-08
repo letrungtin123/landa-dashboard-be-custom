@@ -197,13 +197,15 @@ test('generated quality envelopes use the same compatibility matrix as orchestra
   const generated = { ...ready, kind: 'component', parent_id: id(40), component_type: 'html', media_type: null };
   for (const quality of [
     { content_origin: 'provider_validated', quality_state: 'validated' },
+    // IDM/semantic/evidence review: provider-authored unit flagged for author review.
+    { content_origin: 'provider_validated', quality_state: 'review_required' },
     { content_origin: 'structured_fallback', quality_state: 'validated' },
     { content_origin: 'structured_fallback', quality_state: 'review_required' },
     { content_origin: 'raw_source_fallback', quality_state: 'review_required' },
   ]) assert.doesNotThrow(() => contract.readWorkspaceDetail({ ...generated, ...quality }), JSON.stringify(quality));
 
   for (const quality of [
-    { content_origin: 'provider_validated', quality_state: 'review_required' },
+    { content_origin: 'provider_validated', quality_state: 'unknown' },
     { content_origin: 'raw_source_fallback', quality_state: 'validated' },
     { content_origin: 'structured_fallback', quality_state: 'unknown' },
     { content_origin: 'structured_fallback', quality_state: null },
@@ -236,6 +238,10 @@ test('graph pages cannot imply readiness, truncate oversized pages or accept uno
   assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [component] }).nodes[0].component_type, 'la_diagram');
   const validatedFallback = { ...component, content_origin: 'structured_fallback', quality_state: 'validated' };
   assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [validatedFallback] }).nodes[0].quality_state, 'validated');
+  // Regression (run 2a5e9ff2): one provider_validated/review_required unit must not reject the whole graph page.
+  const reviewedProvider = { ...component, content_origin: 'provider_validated', quality_state: 'review_required' };
+  assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [reviewedProvider] }).nodes[0].quality_state, 'review_required');
+  assert.throws(() => contract.readWorkspaceGraph({ ...sealed, nodes: [{ ...reviewedProvider, quality_state: null }] }), /CONTRACT_INVALID/);
   const media = { ...node, node_id: id(5), parent_id: id(3), kind: 'media_brief', media_type: 'video' };
   assert.equal(contract.readWorkspaceGraph({ ...sealed, nodes: [media] }).nodes[0].media_type, 'video');
 });

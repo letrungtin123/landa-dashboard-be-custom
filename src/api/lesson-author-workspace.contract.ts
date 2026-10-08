@@ -214,7 +214,9 @@ function quality(value: Record<string, unknown>): void {
   const missing = origin === undefined && state === undefined;
   const empty = origin === null && state === null;
   if (missing || empty) return;
-  const compatible = origin === 'provider_validated' && state === 'validated'
+  // Mirrors the backend's shared orchestrationV2QualityPolicy: provider-authored
+  // units flagged by QA/semantic/evidence review are provider_validated/review_required.
+  const compatible = origin === 'provider_validated' && (state === 'validated' || state === 'review_required')
     || origin === 'structured_fallback' && (state === 'validated' || state === 'review_required')
     || origin === 'raw_source_fallback' && state === 'review_required';
   requireValid(['unit', 'component'].includes(String(value.kind))
