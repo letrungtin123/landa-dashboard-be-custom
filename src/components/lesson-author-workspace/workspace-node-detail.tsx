@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import DiagramPreviewInteractive from '../course-editor/editors/diagram/DiagramPreviewInteractive';
-import type { WorkspaceComponentType, WorkspaceDetail, WorkspaceLocale, WorkspaceNode } from '../../api/lesson-author-workspace.contract';
+import type { WorkspaceComponentType, WorkspaceDetail, WorkspaceLocale, WorkspaceNode, WorkspaceRunState } from '../../api/lesson-author-workspace.contract';
 
 // Optional during the additive READ rollout. Missing protected binding types
 // MUST NOT be inferred from payload shape, title, or validation_contract.
@@ -23,6 +23,7 @@ export const workspaceCopy = {
     detail: 'Content details', purpose: 'Purpose', notes: 'Implementation notes', content: 'Explain & show',
     unsupported: 'This content has no supported typed preview. It remains available for read-only review when the read contract supports it.',
     waiting: 'No committed content is available for this item yet.', loading: 'Reading committed content…',
+    notGenerated: 'Not generated', notGeneratedDetail: 'AI ID stopped before drafting this item, so it has no content. Run AI ID again to create it.',
     buildingMap: 'Building the course map', buildingMapNote: 'Content will appear and become interactive when ready.',
     stale: 'Showing the last committed snapshot. Refresh is pending; readiness may have changed.',
     detailStale: 'This detail is out of date. Waiting for the current revision before showing its content.',
@@ -76,6 +77,7 @@ export const workspaceCopy = {
     detail: 'Chi tiết nội dung', purpose: 'Mục đích', notes: 'Ghi chú triển khai', content: 'Nội dung giải thích',
     unsupported: 'Nội dung này chưa có bản xem trước theo kiểu được hỗ trợ. Chỉ có thể xem khi hợp đồng đọc hỗ trợ kiểu này.',
     waiting: 'Mục này chưa có nội dung đã ghi nhận.', loading: 'Đang đọc nội dung đã ghi nhận…',
+    notGenerated: 'Chưa được tạo', notGeneratedDetail: 'AI ID đã dừng trước khi soạn tới mục này nên mục này chưa có nội dung. Hãy chạy lại AI ID để tạo mục này.',
     buildingMap: 'Đang dựng sơ đồ khóa học', buildingMapNote: 'Nội dung sẽ hiển thị và có thể tương tác khi sẵn sàng.',
     stale: 'Đang hiển thị bản đã ghi nhận gần nhất. Chờ cập nhật; trạng thái nội dung có thể đã thay đổi.',
     detailStale: 'Chi tiết này đã cũ. Đang chờ phiên bản hiện tại trước khi hiển thị nội dung.',
@@ -356,10 +358,10 @@ const inertComponents = Object.fromEntries(inertTags.map(tag => [tag,
   ({ children }: { children?: ReactNode }) => createElement(tag === 'a' ? 'span' : tag, null, children),
 ])) as Components;
 
-export function WorkspaceNodeStatus({ node, locale }: { node: Pick<WorkspaceNode, 'content_state' | 'user_modified'>; locale: WorkspaceLocale }) {
+export function WorkspaceNodeStatus({ node, locale, notGenerated = false }: { node: Pick<WorkspaceNode, 'content_state' | 'user_modified'>; locale: WorkspaceLocale; notGenerated?: boolean }) {
   const c = workspaceCopy[locale];
   return <span className="flex flex-wrap gap-2 text-xs">
-    <span className="rounded border px-2 py-1">{c[node.content_state]}</span>
+    <span className="rounded border px-2 py-1">{notGenerated ? c.notGenerated : c[node.content_state]}</span>
     {node.user_modified && <span className="rounded border border-yellow-500 bg-yellow-100 px-2 py-1 text-yellow-950">✎ {c.modified}</span>}
   </span>;
 }
@@ -498,11 +500,33 @@ export interface WorkspaceNodeDetailProps {
   detail: WorkspaceTypedDetail | null;
   locale: WorkspaceLocale;
   stale?: boolean;
+  /** The run has ended: nodes without committed content will not be drafted any more. */
+  runEnded?: boolean;
   onClose: () => void;
 }
 export function workspaceDetailMatches(node: WorkspaceNode, detail: WorkspaceTypedDetail | null): detail is WorkspaceTypedDetail {
   return !!detail && detail.node_id === node.node_id && detail.parent_id === node.parent_id && detail.kind === node.kind
     && detail.current_revision === node.current_revision && detail.content_state === node.content_state;
+}
+
+/** A run that has ended will never fill a node that is still planned/generating.
+ * Unknown status keeps the in-progress presentation. */
+export function workspaceRunEnded(status: WorkspaceRunState | null | undefined): boolean {
+  return status === 'ready' || status === 'needs_action' || status === 'failed' || status === 'canceled';
+}
+
+/** True when a node has no committed content and the run that would draft it has ended. */
+export function workspaceNodeNotGenerated(node: Pick<WorkspaceNode, 'current_revision' | 'content_state'>, runEnded: boolean): boolean {
+  return runEnded && (node.current_revision === null || node.content_state === 'planned' || node.content_state === 'generating');
+}
+
+export function WorkspaceNotGeneratedNotice({ locale }: { locale: WorkspaceLocale }) {
+  const c = workspaceCopy[locale];
+  return <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 text-sm">
+    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+    <div className="min-w-0"><p className="font-semibold text-foreground">{c.notGenerated}</p>
+      <p className="mt-1 leading-6 text-muted-foreground">{c.notGeneratedDetail}</p></div>
+  </div>;
 }
 
 function DetailSkeleton({ label }: { label: string }) {
@@ -512,7 +536,7 @@ function DetailSkeleton({ label }: { label: string }) {
   </div>;
 }
 
-export function WorkspaceNodeDetail({ node, detail, locale, stale = false, onClose }: WorkspaceNodeDetailProps) {
+export function WorkspaceNodeDetail({ node, detail, locale, stale = false, runEnded = false, onClose }: WorkspaceNodeDetailProps) {
   const c = workspaceCopy[locale];
   const closeButton = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -527,9 +551,10 @@ export function WorkspaceNodeDetail({ node, detail, locale, stale = false, onClo
           <DialogDescription>{c.review}</DialogDescription></div>
         <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
       </div>
-      {node && <WorkspaceNodeStatus node={node} locale={locale} />}
+      {node && <WorkspaceNodeStatus node={node} locale={locale} notGenerated={workspaceNodeNotGenerated(node, runEnded)} />}
       <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
         {current ? <WorkspaceDetailContent detail={current} locale={locale} />
+          : node && workspaceNodeNotGenerated(node, runEnded) ? <WorkspaceNotGeneratedNotice locale={locale} />
           : <DetailSkeleton label={stale && detail ? c.detailStale : node?.current_revision === null ? c.waiting : c.loading} />}
       </div>
     </DialogContent>

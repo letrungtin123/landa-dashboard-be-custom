@@ -13,7 +13,7 @@ import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { workspaceReadMessage, type WorkspaceArchitecturePreview, type WorkspaceArchitecturePreviewState, type WorkspaceFailureStage, type WorkspaceGraph, type WorkspaceLocale, type WorkspaceNode, type WorkspaceStatus } from '../../api/lesson-author-workspace.contract';
 import type { WorkspaceReadState } from './workspace-read-state';
-import { WorkspaceAggregateContent, WorkspaceCourseOverviewSkeleton, WorkspaceNodeDetail, workspaceCopy, workspaceDetailMatches, workspaceLearningOutcomeLabel, type WorkspaceTypedDetail } from './workspace-node-detail';
+import { WorkspaceAggregateContent, WorkspaceCourseOverviewSkeleton, WorkspaceNodeDetail, workspaceCopy, workspaceRunEnded, workspaceDetailMatches, workspaceLearningOutcomeLabel, type WorkspaceTypedDetail } from './workspace-node-detail';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 
 type Expansion = Readonly<Record<string, boolean>>;
@@ -208,6 +208,8 @@ export function workspaceOverviewCounts(graph: WorkspaceGraph | null) {
 
 type FlowData = Record<string, unknown> & WorkspaceProjectionNode & {
   locale: WorkspaceLocale; onExpand: (id: string, expanded: boolean) => void;
+  /** The run has ended: planned/generating nodes are no longer being built. */
+  runEnded?: boolean;
 };
 type FlowNode = Node<FlowData, 'workspace'>;
 type WorkspaceBuildEdgeData = Record<string, unknown> & {
@@ -222,8 +224,9 @@ const maxAnimatedWorkspaceEdges = 8;
 export function workspaceBuildingNodeIds(
   items: readonly Pick<WorkspaceProjectionNode, 'node' | 'preview' | 'previewState'>[],
   limit = maxAnimatedWorkspaceEdges,
+  runEnded = false,
 ): string[] {
-  if (limit <= 0) return [];
+  if (limit <= 0 || runEnded) return [];
   return items.filter(item => item.node.parent_id !== null && (item.preview
     ? item.previewState !== 'needs_action'
     : item.node.content_state === 'planned' || item.node.content_state === 'generating'))
@@ -363,7 +366,7 @@ function WorkspaceFlowBuildEdge({ id, sourceX, sourceY, sourcePosition, targetX,
 }
 
 export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
-  const { node, locale, childCount, expanded, onExpand, preview, previewState } = data;
+  const { node, locale, childCount, expanded, onExpand, preview, previewState, runEnded = false } = data;
   const c = workspaceCopy[locale];
   const status = workspaceMindmapStatus(node);
   const { Icon, key: iconKey, tone: iconTone } = getWorkspaceNodeVisual(node);
@@ -371,10 +374,12 @@ export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
   const previewLabel = previewState === 'ready' ? (locale === 'vi' ? 'Đang đồng bộ' : 'Syncing')
     : previewState === 'needs_action' ? (locale === 'vi' ? 'Cần kiểm tra' : 'Needs review')
       : previewState === 'planned' ? c.planned : c.generating;
-  const stateLabel = preview ? previewLabel : status === 'proposal' ? c.proposal : status === 'applied' ? c.appliedSuccessfully
-    : status === 'edited' ? c.editedPendingApply : node.content_state === 'content_ready' ? c.pendingApply : c[node.content_state];
-  const building = preview ? previewState !== 'needs_action'
+  const unfinished = preview ? previewState === 'planned' || previewState === 'generating'
     : node.content_state === 'planned' || node.content_state === 'generating';
+  const notGenerated = runEnded && unfinished;
+  const stateLabel = notGenerated ? c.notGenerated : preview ? previewLabel : status === 'proposal' ? c.proposal : status === 'applied' ? c.appliedSuccessfully
+    : status === 'edited' ? c.editedPendingApply : node.content_state === 'content_ready' ? c.pendingApply : c[node.content_state];
+  const building = !runEnded && (preview ? previewState !== 'needs_action' : unfinished);
   const buildStyle = building ? { '--workspace-build-accent': workspaceBuildAccent(node) } as CSSProperties : undefined;
   return <div className={`group relative h-[144px] w-[260px] animate-in overflow-hidden rounded-lg border shadow-md transition-shadow duration-200 ${nodeShellClassName[status]}
     ${building ? 'workspace-build-node' : ''}
@@ -392,7 +397,7 @@ export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
           <span className="min-w-0 flex-1"><span className="flex flex-wrap gap-1.5"><WorkspaceNodeTypePill node={node} locale={locale} />
             <Badge variant="secondary" className="h-5 gap-1 rounded-md bg-background/70 px-1.5 text-[10px]">
               {building && <WorkspaceBuildBeacon />}
-              {preview && previewState === 'needs_action' && <AlertTriangle className="h-3 w-3" aria-hidden />}{stateLabel}
+              {(notGenerated || (preview && previewState === 'needs_action')) && <AlertTriangle className="h-3 w-3" aria-hidden />}{stateLabel}
             </Badge></span>
             <span className="mt-2 block h-10 min-w-0 max-w-full overflow-hidden break-words text-sm font-semibold leading-5 text-foreground" title={node.title ?? undefined}
               style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, textOverflow: 'ellipsis' }}>{node.title ?? kindLabel}</span>
@@ -808,6 +813,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
   const runActive = state.status?.status === 'queued' || state.status?.status === 'designing' || state.status?.status === 'drafting';
   const terminal = state.status && ['ready', 'needs_action', 'failed', 'canceled'].includes(state.status.status)
     ? state.status : null;
+  const runEnded = workspaceRunEnded(state.status?.status);
   const overviewLoading = canRead && runActive && !graph?.overview_ready;
   // Skeletons describe absence, never partially committed course data. As soon
   // as one complete graph snapshot contains nodes, render the real interactive
@@ -893,12 +899,12 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
     setFitRequest(value => value + 1);
   }, [allExpanded, expandableNodeIds, presentationNodes]);
   const nodes = useMemo<FlowNode[]>(() => projection.map(p => ({ id: p.node.node_id, type: 'workspace', position: nodePositions[p.node.node_id] ?? p.position,
-    data: { ...p, locale, onExpand }, draggable: !p.preview, connectable: false, selectable: !p.preview,
+    data: { ...p, locale, onExpand, runEnded }, draggable: !p.preview, connectable: false, selectable: !p.preview,
     ariaLabel: p.preview ? `${p.node.title ?? c[p.node.kind]}: ${locale === 'vi' ? 'đang tạo' : 'generating'}` : `${c.inspect}: ${p.node.title ?? c[p.node.kind]}`,
-  })), [projection, locale, nodePositions, onExpand, c]);
+  })), [projection, locale, nodePositions, onExpand, c, runEnded]);
   const edges = useMemo<WorkspaceBuildEdge[]>(() => {
     const visible = new Set(nodes.map(n => n.id));
-    const building = new Set(workspaceBuildingNodeIds(projection));
+    const building = new Set(workspaceBuildingNodeIds(projection, undefined, runEnded));
     let animatedIndex = 0;
     return nodes.flatMap(n => n.data.node.parent_id && visible.has(n.data.node.parent_id)
       ? (() => {
@@ -910,7 +916,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
           style: { stroke: color, strokeWidth: workspaceMindmapStatus(n.data.node) === 'applied' ? 1.6 : active ? 2.5 : 2 } } satisfies WorkspaceBuildEdge];
       })() : []);
-  }, [nodes, projection]);
+  }, [nodes, projection, runEnded]);
   /** Keep the same controlled Flow lifecycle as the established Blueprint map:
    * React Flow owns the in-progress drag, while the browser-local cache makes
    * its final position survive a realtime graph repaint. */
@@ -1025,7 +1031,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
         </TabsContent>
       </Tabs>
       <footer className="shrink-0 border-t bg-card px-4 py-2 text-xs text-muted-foreground sm:px-5">{c.available}</footer>
-      {renderNodeDetail ? renderNodeDetail(open ? selected : null) : <WorkspaceNodeDetail node={open ? selected : null} detail={detail} locale={locale} stale={state.detailStale}
+      {renderNodeDetail ? renderNodeDetail(open ? selected : null) : <WorkspaceNodeDetail node={open ? selected : null} detail={detail} locale={locale} stale={state.detailStale} runEnded={runEnded}
         onClose={() => onSelectNode(null)} />}
   </div>;
 }

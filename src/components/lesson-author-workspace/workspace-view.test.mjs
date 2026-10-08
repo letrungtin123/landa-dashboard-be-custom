@@ -491,6 +491,23 @@ test('live build edge motion covers all unfinished child nodes, excludes termina
   )));
   assert.equal(active.length, 8, 'GPU motion is capped even for large course graphs');
   assert.deepEqual(active, Array.from({ length: 8 }, (_, index) => `building-${index}`));
+  assert.deepEqual(workspaceBuildingNodeIds(states, 20, true), [], 'an ended run animates nothing');
+});
+
+test('planned nodes of an ended run show "not generated" instead of a building animation', () => {
+  const plannedUnit = { ...node('planned-unit', 'unit'), content_state: 'planned', current_revision: null };
+  const render = (locale, runEnded) => renderToStaticMarkup(h(WorkspaceGraphNode, {
+    data: { node: plannedUnit, locale, childCount: 0, expanded: false, onExpand: () => undefined, preview: false, previewState: null, runEnded },
+    selected: false,
+  }));
+  const active = render('vi', false);
+  assert.match(active, /data-workspace-building="true"/);
+  assert.match(active, new RegExp(workspaceCopy.vi.planned));
+  for (const locale of ['vi', 'en']) {
+    const ended = render(locale, true);
+    assert.doesNotMatch(ended, /data-workspace-building/);
+    assert.match(ended, new RegExp(workspaceCopy[locale].notGenerated));
+  }
 });
 
 test('stale detail, mismatched revision/identity and local drafts are never shown as committed content', () => {

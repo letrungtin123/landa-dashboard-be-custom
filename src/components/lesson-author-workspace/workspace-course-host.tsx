@@ -24,7 +24,7 @@ import { storageUrl } from '../../utils/storage-url';
 import { workspaceReadMessage, type WorkspaceContent, type WorkspaceGraph, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 import { createWorkspaceSession } from './workspace-session';
 import { WorkspaceDialogBody, WorkspaceNodeTypePill } from './workspace-dialog';
-import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, workspaceDetailStats } from './workspace-node-detail';
+import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, WorkspaceNotGeneratedNotice, workspaceDetailStats, workspaceNodeNotGenerated, workspaceRunEnded } from './workspace-node-detail';
 import { WorkspaceNodeEditor, updateWorkspaceEditorField } from './workspace-node-editor';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey,
@@ -473,6 +473,8 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     if (!node) return null;
     const editor = session.editorProps(node.node_id), write = workspace.writes[node.node_id];
     const detail = editor.access === 'allowed' ? editor.detail : null;
+    // A planned node of a finished run will never be drafted: say so instead of a loading skeleton.
+    const notGenerated = !detail && workspaceNodeNotGenerated(node, workspaceRunEnded(workspace.read.status?.status));
     const stats = presentationRead?.graph ? workspaceDetailStats(node, presentationRead.graph.nodes) : undefined;
     const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind)
       && detail.content_state === 'content_ready' && detail.current_revision !== null;
@@ -507,7 +509,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     const readOnlyDetail = !!detail && !workspaceNodeSupportsEditor(detail.kind);
     const DetailIcon = detail?.component_type === 'la_diagram' ? Network : readOnlyDetail ? Eye : BookOpenCheck;
     const editingTitle = hierarchyTitle && editingTitleNodeId === node.node_id && !appliedReadOnly && !!editor.draft;
-    const visibleTitle = hierarchyTitle && editor.draft?.title ? editor.draft.title : detail?.content?.title ?? c.detail;
+    const visibleTitle = hierarchyTitle && editor.draft?.title ? editor.draft.title : detail?.content?.title ?? node.title ?? c.detail;
     return <Dialog open onOpenChange={open => { if (!open) { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); } }}>
       <DialogContent showCloseButton={false} overlayClassName="z-[10060]"
         onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}
@@ -533,7 +535,8 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
             onClick={() => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); }}><X className="h-4 w-4" /><span className="sr-only">{c.close}</span></Button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {!detail && <div className="min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-muted/30 to-background px-4 py-5 sm:px-6" role="status" aria-label={c.waiting}>
+          {notGenerated && <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-5 sm:px-6"><div className="mx-auto max-w-5xl"><WorkspaceNotGeneratedNotice locale={locale} /></div></div>}
+          {!detail && !notGenerated && <div className="min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-muted/30 to-background px-4 py-5 sm:px-6" role="status" aria-label={c.waiting}>
             <div className="mx-auto max-w-5xl animate-pulse space-y-4" aria-hidden>
               <div className="grid gap-3 md:grid-cols-2"><div className="h-28 rounded-2xl border border-border/60 bg-card/80" /><div className="h-28 rounded-2xl border border-border/60 bg-card/80" /></div>
               <div className="h-48 rounded-2xl border border-border/60 bg-card/80 p-5"><div className="h-3 w-1/4 rounded bg-muted" /><div className="mt-5 h-3 w-full rounded bg-muted/80" /><div className="mt-3 h-3 w-11/12 rounded bg-muted/70" /><div className="mt-3 h-3 w-3/4 rounded bg-muted/60" /></div>
