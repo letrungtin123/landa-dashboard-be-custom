@@ -605,6 +605,18 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   if (status.failure_code === 'AI_PROVIDER_AUTH_REJECTED') return {
     stage, message: vi ? 'Nhà cung cấp AI từ chối thông tin xác thực. Hãy kiểm tra API key của doanh nghiệp.' : 'The AI provider rejected the credentials. Check the organization API key.', note: null,
   };
+  if (status.failure_code === 'AI_PROVIDER_QUOTA_EXHAUSTED') return {
+    stage, message: vi ? 'API key đã hết hạn mức/tiền — vui lòng nạp thêm hoặc đổi key.' : 'The AI provider key has run out of quota or credit. Top it up or change the key.',
+    note: vi ? 'Hệ thống đã dừng thay vì tạo nội dung dự phòng cho các bước còn lại.' : 'The run stopped instead of filling the remaining steps with fallback content.',
+  };
+  if (status.failure_code === 'AI_PROVIDER_RATE_LIMITED') return {
+    stage, message: vi ? 'Nhà cung cấp AI đang giới hạn tần suất gọi của API key này. Vui lòng thử lại sau ít phút hoặc nâng hạn mức.' : 'The AI provider is rate limiting this API key. Try again in a few minutes or raise the rate limit.',
+    note: null,
+  };
+  if (status.failure_code === 'IDM_UNITS_MOSTLY_FALLBACK') return {
+    stage, message: vi ? 'Phần lớn bài học là bản dự phòng dựng từ tài liệu nguồn, chưa được AI soạn. Cần biên tập trước khi dùng hoặc tạo lại khi AI sẵn sàng.' : 'Most lessons are fallback drafts rebuilt from the source, not written by the AI. Edit them before use or regenerate when the AI is available.',
+    note: vi ? 'Bạn vẫn có thể xem, sửa và áp dụng các nội dung đã tạo.' : 'You can still review, edit and apply the generated content.',
+  };
   if (status.failure_code === 'PROVIDER_OUTCOME_UNKNOWN') return {
     stage, message: vi ? 'Yêu cầu đã được gửi đến AI nhưng hệ thống chưa xác nhận được kết quả.' : 'The request reached the AI provider, but its result could not be confirmed.',
     note: vi ? 'Hệ thống không tự gọi lại mù quáng để tránh tạo nội dung hoặc chi phí trùng.' : 'The system did not blindly replay the request, preventing duplicate content or charges.',
