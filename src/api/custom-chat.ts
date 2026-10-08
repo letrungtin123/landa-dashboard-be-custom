@@ -232,7 +232,12 @@ export interface ReportSnapshotV2 {
     in_progress_enrollments: number;
     completion_rate: number;
   };
-  availability: { state: 'available' | 'empty' | 'no_accessible_scope'; limitations: string[] };
+  availability: {
+    state: 'available' | 'empty' | 'no_accessible_scope';
+    limitations: string[];
+    /** Empty periods only: the closest calendar month that has enrollments in the same scope. */
+    nearest_data_period?: { date_from: string; date_to: string; direction: 'before' | 'after' };
+  };
 }
 
 export interface ReportNarrative {
@@ -240,6 +245,49 @@ export interface ReportNarrative {
   interpretation: string[];
   recommended_actions: Array<{ signal_id: string | null; priority: 'high' | 'medium' | 'low'; action: string }>;
   limitations: string[];
+}
+
+export type ReportUnitLevel = 'group' | 'subgroup' | 'team';
+
+/** How the backend understood the question (`report_request` on a report_analysis message). */
+export interface ReportRequestContext {
+  period_source: 'parser' | 'model' | 'agreed' | 'default' | 'filters' | 'correction';
+  clamped_to_today?: boolean;
+  granularity?: 'day' | 'week' | 'month' | 'quarter';
+  compare?: boolean;
+  course_hint?: string;
+  unit_source?: 'question' | 'model' | 'filters' | 'own_scope';
+}
+
+export type ReportClarificationReason =
+  | 'date_conflict'
+  | 'date_invalid'
+  | 'date_reversed'
+  | 'date_too_long'
+  | 'date_multiple'
+  | 'date_future'
+  | 'date_open'
+  | 'unit_ambiguous'
+  | 'unit_not_found'
+  | 'unit_forbidden'
+  | 'unit_multiple'
+  | 'scope_required';
+
+export interface ReportClarificationOption {
+  id: string;
+  /** Complete filter sent as `report_filters` when the chip is chosen. */
+  filter: ReportChatFilter;
+  period?: { date_from: string; date_to: string };
+  unit?: { id: string; level: ReportUnitLevel; name: string; path: string[] };
+  all_scope?: true;
+}
+
+/** `report_clarification` on a report_clarification message. */
+export interface ReportClarification {
+  version: 1;
+  reasons: ReportClarificationReason[];
+  params: { mention?: string; unit_name?: string; max_days?: number };
+  options: ReportClarificationOption[];
 }
 
 export type ReportStreamStatus = 'collecting' | 'analyzing';
@@ -702,6 +750,10 @@ function normalizeStreamErrorPayload(payload: unknown, fallbackKey: string): str
   if (data?.code === AI_TOKEN_LIMIT_REACHED_CODE) return streamText('chatWidget.aiTokenLimitReached');
   if (data?.code === AI_RAG_KB_NOT_ASSIGNED_CODE) return streamText('chatWidget.aiRagKbNotAssigned');
   const rawMessage = data?.message ?? data?.error;
+  // Report errors are already localized by the backend in the request locale (`[status, vi, en]`).
+  if (typeof data?.code === 'string' && data.code.startsWith('REPORT_') && typeof rawMessage === 'string' && rawMessage.trim()) {
+    return rawMessage;
+  }
   if (useLocaleStore.getState().locale === 'vi' && typeof rawMessage === 'string' && rawMessage.trim()) {
     return rawMessage;
   }

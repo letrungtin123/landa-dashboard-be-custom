@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { enUS, vi } from 'date-fns/locale';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Building2, CalendarDays, Check, ChevronDown, Download, FileText, Filter, Loader2, ShieldCheck, Sparkles, Users, UsersRound } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, BookOpen, Building2, CalendarDays, Check, ChevronDown, Download, FileText, Filter, Loader2, MessageCircleQuestion, ShieldCheck, Sparkles, Users, UsersRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -19,7 +19,6 @@ import type {
   ReportAnalyticsSignal,
   ReportChatFilter,
   ReportMetricFact,
-  ReportNarrative,
   ReportPdfExportJob,
   ReportPdfExportPhase,
   ReportSnapshotV2,
@@ -33,116 +32,18 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ReportDetailModal, type ReportDetailView } from './report-detail-modal';
 import { ReportMetricTrendModal } from '@/components/reports/report-metric-trend-modal';
+import {
+  buildReportAppliedChips,
+  getReportEmptyState,
+  getReportNarrativeView,
+  type ReportChatAttachment,
+} from './report-chat-card.logic';
+import { ReportAppliedFilterChips } from './report-chat-applied-filters';
+import { ReportClarificationPanel } from './report-chat-clarification';
+import { ReportEmptyStatePanel } from './report-chat-empty-state';
+import { ReportNarrativePanel } from './report-chat-narrative';
 
-type ReportChatAttachment =
-  | {
-    kind: 'filter';
-    question: string;
-    suggestedFilter: ReportChatFilter;
-  }
-  | {
-    kind: 'analysis';
-    question: string;
-    filter: ReportChatFilter;
-    generatedAt: string | null;
-    hasData: boolean;
-    snapshot: ReportSnapshotV2 | null;
-    courseDetail: ReportSnapshotV2['course_detail'] | null;
-    narrative: ReportNarrative | null;
-  };
-
-type RecordValue = Record<string, unknown>;
-
-function asRecord(value: unknown): RecordValue | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as RecordValue : null;
-}
-
-function readFilter(value: unknown): ReportChatFilter {
-  const record = asRecord(value);
-  if (!record) return {};
-  return {
-    ...(typeof record.date_from === 'string' ? { date_from: record.date_from } : {}),
-    ...(typeof record.date_to === 'string' ? { date_to: record.date_to } : {}),
-    ...(typeof record.group_id === 'string' ? { group_id: record.group_id } : {}),
-    ...(typeof record.subgroup_id === 'string' ? { subgroup_id: record.subgroup_id } : {}),
-    ...(typeof record.team_id === 'string' ? { team_id: record.team_id } : {}),
-  };
-}
-
-function readReportHasData(value: unknown): boolean {
-  const snapshot = asRecord(value);
-  const summary = asRecord(snapshot?.summary);
-  const overview = asRecord(summary?.overview);
-  if (!overview) return true;
-
-  return ['total_learners', 'active_learners', 'completion_rate', 'total_enrollments']
-    .some((key) => Number(overview[key] ?? 0) > 0);
-}
-
-function isReportSnapshotV2(value: unknown): value is ReportSnapshotV2 {
-  const snapshot = asRecord(value);
-  return snapshot?.version === 2
-    && Array.isArray(snapshot.factual_metrics)
-    && Array.isArray(snapshot.signals)
-    && asRecord(snapshot.availability) !== null;
-}
-
-function readReportNarrative(value: unknown): ReportNarrative | null {
-  const narrative = asRecord(value);
-  if (!narrative || !Array.isArray(narrative.recommended_actions)) return null;
-  const actions = narrative.recommended_actions.flatMap((item) => {
-    const action = asRecord(item);
-    if (!action || typeof action.action !== 'string') return [];
-    const priority: 'high' | 'medium' | 'low' = action.priority === 'high' || action.priority === 'medium' || action.priority === 'low'
-      ? action.priority
-      : 'medium';
-    return [{
-      signal_id: typeof action.signal_id === 'string' ? action.signal_id : null,
-      priority,
-      action: action.action,
-    }];
-  });
-  return {
-    selected_signal_ids: Array.isArray(narrative.selected_signal_ids)
-      ? narrative.selected_signal_ids.filter((id): id is string => typeof id === 'string')
-      : [],
-    interpretation: Array.isArray(narrative.interpretation)
-      ? narrative.interpretation.filter((item): item is string => typeof item === 'string')
-      : [],
-    recommended_actions: actions,
-    limitations: Array.isArray(narrative.limitations)
-      ? narrative.limitations.filter((item): item is string => typeof item === 'string')
-      : [],
-  };
-}
-
-export function getReportChatAttachment(metadata: Record<string, unknown>): ReportChatAttachment | null {
-  if (metadata.kind === 'report_filter_request') {
-    const question = typeof metadata.report_question === 'string' ? metadata.report_question : '';
-    return question ? { kind: 'filter', question, suggestedFilter: readFilter(metadata.report_suggested_filter) } : null;
-  }
-  if (metadata.kind === 'report_analysis') {
-    const question = typeof metadata.report_question === 'string' ? metadata.report_question : '';
-    return question
-      ? {
-        kind: 'analysis',
-        question,
-        filter: readFilter(metadata.report_filter),
-        generatedAt: typeof metadata.report_generated_at === 'string' ? metadata.report_generated_at : null,
-        hasData: readReportHasData(metadata.report_snapshot),
-        snapshot: isReportSnapshotV2(metadata.report_snapshot) ? metadata.report_snapshot : null,
-        courseDetail: isReportSnapshotV2(metadata.report_snapshot) ? metadata.report_snapshot.course_detail ?? null : null,
-        narrative: readReportNarrative(metadata.report_narrative),
-      }
-      : null;
-  }
-  return null;
-}
-
-export function getReportChatAppliedFilter(metadata: Record<string, unknown>): ReportChatFilter | null {
-  const filter = readFilter(metadata.report_filters);
-  return filter.date_from && filter.date_to ? filter : null;
-}
+export { getReportChatAppliedFilter, getReportChatAttachment } from './report-chat-card.logic';
 
 function getCurrentMonthRange(): { from: string; to: string } {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -662,17 +563,6 @@ function courseReference(course: string, t: TFunction): string {
   return t('chatWidget.report.courseReference', { course });
 }
 
-function scopeSummary(snapshot: ReportSnapshotV2, t: TFunction): string {
-  const labels = [
-    snapshot.scope_display?.group_name,
-    snapshot.scope_display?.subgroup_name,
-    snapshot.scope_display?.team_name,
-  ].filter((value): value is string => Boolean(value));
-  return labels.length > 0
-    ? labels.join(' / ')
-    : t('chatWidget.report.allAccessibleScope');
-}
-
 function CourseDetailSummary({ course }: { course: NonNullable<ReportSnapshotV2['course_detail']> }) {
   const locale = useLocaleStore((state) => state.locale);
   const { t } = useTranslation();
@@ -907,9 +797,14 @@ export function ReportChatCard({
   const dateLabel = attachment.kind === 'analysis' && attachment.filter.date_from && attachment.filter.date_to
     ? `${formatDateLabel(attachment.filter.date_from, isEnglish)} — ${formatDateLabel(attachment.filter.date_to, isEnglish)}`
     : null;
-  const scopeLabel = snapshot ? scopeSummary(snapshot, t) : null;
   const isLearnerPlus = user?.role === 'learner_plus';
   const exportGroupLabels = getGroupLabelSet(groupLabels);
+  const appliedChips = attachment.kind === 'analysis' ? buildReportAppliedChips(attachment, isEnglish) : [];
+  const emptyState = attachment.kind === 'analysis' ? getReportEmptyState(attachment, isEnglish) : null;
+  const narrativeView = attachment.kind === 'analysis' && snapshot?.availability.state === 'available'
+    ? getReportNarrativeView(attachment.narrative)
+    : null;
+  const openFilterEditor = () => setEditingFilter(true);
   const canExportExcel = attachment.kind === 'analysis'
     && hasReportData
     && Boolean(attachment.filter.date_from && attachment.filter.date_to);
@@ -939,38 +834,59 @@ export function ReportChatCard({
       <div className="border-b border-primary/10 bg-primary/[0.045] px-3 py-2.5">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
-            {attachment.kind === 'analysis' ? <BarChart3 className="h-4 w-4" /> : <Filter className="h-4 w-4" />}
+            {attachment.kind === 'analysis'
+              ? <BarChart3 className="h-4 w-4" />
+              : attachment.kind === 'clarification'
+                ? <MessageCircleQuestion className="h-4 w-4" />
+                : <Filter className="h-4 w-4" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="truncate text-xs font-semibold text-foreground">
                 {attachment.kind === 'analysis'
                   ? t('chatWidget.report.learningAnalysis')
-                  : t('chatWidget.report.filterTitle')}
+                  : attachment.kind === 'clarification'
+                    ? t('chatWidget.report.clarification.title')
+                    : t('chatWidget.report.filterTitle')}
               </p>
             </div>
-            {dateLabel && <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{dateLabel}</p>}
-            {scopeLabel && <p className="mt-0.5 truncate text-[10px] text-muted-foreground/80">{scopeLabel}</p>}
+            <ReportAppliedFilterChips chips={appliedChips} unitLabels={exportGroupLabels} onEdit={openFilterEditor} />
           </div>
         </div>
       </div>
-      {snapshot ? (
+      {attachment.kind === 'clarification' ? (
+        <div className="px-3 py-3">
+          <ReportClarificationPanel
+            clarification={attachment.clarification}
+            fallback={children}
+            isEnglish={isEnglish}
+            unitLabels={exportGroupLabels}
+            applying={applying}
+            onChoose={(filter) => onApply(attachment.question, filter)}
+            onOpenFilters={openFilterEditor}
+          />
+        </div>
+      ) : snapshot ? (
         <div className="px-3 py-3">
           {snapshot.availability.state === 'available' ? (
-            courseDetail
-              ? <CourseDetailSummary course={courseDetail} />
-              : <>
-                  <SnapshotKpiGrid snapshot={snapshot} onSelectMetric={setSelectedKpiMetric} />
-                  <SnapshotInsights snapshot={snapshot} />
-                  {expanded && <SnapshotDetails snapshot={snapshot} />}
-                </>
-          ) : (
-            <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-3 text-[11px] leading-5 text-muted-foreground dark:bg-white/[0.02]">
-              {snapshot.availability.state === 'no_accessible_scope'
-                ? t('chatWidget.report.noAccessibleScope')
-                : t('chatWidget.report.noData')}
-            </div>
-          )}
+            <>
+              {courseDetail
+                ? <CourseDetailSummary course={courseDetail} />
+                : <>
+                    <SnapshotKpiGrid snapshot={snapshot} onSelectMetric={setSelectedKpiMetric} />
+                    <SnapshotInsights snapshot={snapshot} />
+                    {expanded && <SnapshotDetails snapshot={snapshot} />}
+                  </>}
+              {narrativeView && <ReportNarrativePanel view={narrativeView} />}
+            </>
+          ) : emptyState ? (
+            <ReportEmptyStatePanel
+              view={emptyState}
+              applying={applying}
+              onUseNearest={(filter) => onApply(attachment.question, filter)}
+              onChangeRange={openFilterEditor}
+            />
+          ) : null}
         </div>
       ) : (
         <div className="px-3 py-2.5 text-sm leading-6 text-foreground">{children}</div>
@@ -979,6 +895,14 @@ export function ReportChatCard({
         <div className="px-3 pb-3">
           <ReportFilterEditor question={attachment.question} suggestedFilter={attachment.suggestedFilter} applying={applying} onApply={onApply} />
         </div>
+      ) : attachment.kind === 'clarification' ? (
+        <AnimatePresence initial={false}>
+          {editingFilter && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden px-3 pb-3">
+              <ReportFilterEditor question={attachment.question} suggestedFilter={attachment.suggestedFilter} applying={applying} onApply={onApply} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       ) : (
         <div className="border-t border-border/70 px-3 py-2.5">
           <div className={`grid gap-2 ${hasReportData ? 'grid-cols-2' : 'grid-cols-1'}`}>
