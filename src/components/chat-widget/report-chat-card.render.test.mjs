@@ -174,3 +174,20 @@ test('the report card wires chips, narrative, empty state and clarification with
   assert.match(card, /onChoose=\{\(filter\) => onApply\(attachment\.question, filter\)\}/);
   assert.match(card, /function ReportPdfExportProgress/);
 });
+
+test('the PDF export button sits next to Excel for analysis cards and requests the UI language', () => {
+  const card = read('./report-chat-card.tsx');
+  const exportBlock = card.slice(card.indexOf('{!isLearnerPlus && ('), card.indexOf('<AnimatePresence initial={false}>', card.indexOf('{!isLearnerPlus && (')));
+  assert.match(exportBlock, /handleExportExcel/);
+  assert.match(exportBlock, /!pdfExportJob && attachment\.kind === 'analysis' && \(\s*<ReportPdfExportProgress/);
+  assert.match(exportBlock, /onStart=\{\(\) => onStartPdfExport\(messageId\)\}/);
+  assert.match(exportBlock, /job=\{pdfExportJob\}/);
+  const api = read('../../api/custom-chat.ts');
+  assert.match(api, /'X-UI-Locale': useLocaleStore\.getState\(\)\.locale/);
+  assert.match(api, /assistant_message_id: assistantMessageId, locale: useLocaleStore\.getState\(\)\.locale/);
+  for (const dictionary of [vi, en]) {
+    for (const key of ['exportPdf', 'downloadPdf', 'exportBusy', 'exportFailed']) {
+      assert.equal(typeof dictionary.chatWidget.report[key], 'string', key);
+    }
+  }
+});

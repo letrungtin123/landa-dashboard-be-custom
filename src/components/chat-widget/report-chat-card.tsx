@@ -932,17 +932,37 @@ export function ReportChatCard({
             )}
           </div>
           {!isLearnerPlus && (
-            <div className="mt-2">
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 w-full justify-center gap-1.5 text-center text-[10px]"
-                disabled={!canExportExcel || exportingExcel}
-                onClick={handleExportExcel}
-              >
-                {exportingExcel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {exportingExcel ? t('chatWidget.report.exportingExcel') : t('chatWidget.report.exportExcel')}
-              </Button>
+            <div className="mt-2 space-y-2">
+              <div className={`grid gap-2 ${!pdfExportJob && attachment.kind === 'analysis' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-full justify-center gap-1.5 text-center text-[10px]"
+                  disabled={!canExportExcel || exportingExcel}
+                  onClick={handleExportExcel}
+                >
+                  {exportingExcel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  {exportingExcel ? t('chatWidget.report.exportingExcel') : t('chatWidget.report.exportExcel')}
+                </Button>
+                {!pdfExportJob && attachment.kind === 'analysis' && (
+                  <ReportPdfExportProgress
+                    starting={starting}
+                    downloading={downloading}
+                    unavailable={!hasReportData}
+                    onStart={() => onStartPdfExport(messageId)}
+                    onDownload={() => onDownloadPdfExport(messageId)}
+                  />
+                )}
+              </div>
+              {pdfExportJob && (
+                <ReportPdfExportProgress
+                  job={pdfExportJob}
+                  downloading={downloading}
+                  onStart={() => onStartPdfExport(messageId)}
+                  onDownload={() => onDownloadPdfExport(messageId)}
+                />
+              )}
             </div>
           )}
           <AnimatePresence initial={false}>

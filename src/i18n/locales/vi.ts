@@ -366,6 +366,7 @@ export const vi = {
       "course.mentor_section.updated": "đã cập nhật khu vực người phụ trách",
       "course.modal.updated": "đã cập nhật hộp thoại khóa học",
       "report.summary.refreshed": "đã làm mới báo cáo tổng hợp",
+      "report.pdf.exported": "đã xuất báo cáo PDF",
     },
     actionVerbs: {
       create: "đã tạo",

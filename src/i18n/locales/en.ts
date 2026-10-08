@@ -369,6 +369,7 @@ export const en: TranslationSchema<typeof vi> = {
       "course.mentor_section.updated": "updated the course-owner section",
       "course.modal.updated": "updated course dialogs",
       "report.summary.refreshed": "refreshed the summary report",
+      "report.pdf.exported": "exported a PDF report",
     },
     actionVerbs: {
       create: "created",

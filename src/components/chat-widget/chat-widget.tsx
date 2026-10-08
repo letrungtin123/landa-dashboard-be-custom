@@ -375,12 +375,19 @@ function clearStoredReportPdfExport(conversationId: string | null | undefined, m
 
 function getReportPdfExportErrorText(error: unknown, t: TFunction): string {
   const code = error instanceof ReportPdfExportApiError ? error.code : null;
-  if (code === 'REPORT_PDF_SCOPE_DENIED' || code === 'REPORT_PDF_PERMISSION_DENIED') return t('chatWidget.report.permissionDenied');
-  if (code === 'REPORT_PDF_NOT_READY') return t('chatWidget.report.notReady');
+  if (code === 'REPORT_PDF_SCOPE_DENIED' || code === 'REPORT_PDF_PERMISSION_DENIED' || code === 'REPORT_PDF_DEMO_SESSION') {
+    return t('chatWidget.report.permissionDenied');
+  }
+  if (code === 'REPORT_PDF_NOT_READY' || code === 'REPORT_PDF_SNAPSHOT_UNAVAILABLE') return t('chatWidget.report.notReady');
   if (code === 'REPORT_PDF_JOB_NOT_FOUND' || code === 'REPORT_PDF_EXPORT_EXPIRED') {
     return t('chatWidget.report.exportExpired');
   }
-  if (code === 'REPORT_PDF_QUEUE_FULL') return t('chatWidget.report.exportBusy');
+  if (code === 'REPORT_PDF_QUEUE_FULL' || code === 'REPORT_PDF_RATE_LIMITED' || code === 'REPORT_PDF_RENDER_BUSY') {
+    return t('chatWidget.report.exportBusy');
+  }
+  // Other REPORT_PDF_* codes (renderer unavailable, timeout, audit) carry a message already localized by
+  // the backend from X-UI-Locale.
+  if (error instanceof ReportPdfExportApiError && code?.startsWith('REPORT_PDF_') && error.message.trim()) return error.message;
   return t('chatWidget.report.exportFailed');
 }
 

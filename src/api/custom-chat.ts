@@ -980,7 +980,8 @@ export async function downloadReportChatPdf(conversationId: string, assistantMes
 
 function getReportPdfHeaders(includeContentType = false): Record<string, string> {
   const { accessToken, user } = useAuthStore.getState();
-  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+  // X-UI-Locale picks the PDF language when the body has none, and the language of error messages.
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}`, 'X-UI-Locale': useLocaleStore.getState().locale };
   if (includeContentType) headers['Content-Type'] = 'application/json';
   if (user?.role === 'superadmin') {
     const { activeTenantId } = useTenantStore.getState();
@@ -1025,7 +1026,7 @@ export async function startReportPdfExportJob(
     {
       method: 'POST',
       headers: getReportPdfHeaders(true),
-      body: JSON.stringify({ assistant_message_id: assistantMessageId }),
+      body: JSON.stringify({ assistant_message_id: assistantMessageId, locale: useLocaleStore.getState().locale }),
     },
   );
   if (!response.ok) return throwReportPdfApiError(response);
