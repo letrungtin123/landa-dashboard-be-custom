@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import {
-  Activity, Blocks, BookOpenCheck, CheckCircle2, ClipboardCheck, FileText, Image as ImageIcon,
-  Lightbulb, ListChecks, ListTree, Sparkles, Target, Users, Video,
+  Activity, Blocks, BookMarked, BookOpenCheck, CheckCircle2, ClipboardCheck, FileText, Image as ImageIcon,
+  Lightbulb, ListChecks, ListTree, Sparkles, Target, TriangleAlert, Users, Video,
   type LucideIcon,
 } from 'lucide-react';
 import DiagramPreviewInteractive from '../course-editor/editors/diagram/DiagramPreviewInteractive';
@@ -63,6 +63,12 @@ export const workspaceCopy = {
     reviewBehavior: 'Learner behavior / navigation', notAvailable: 'N/A', outcomes: 'Expected outcomes',
     sectionsInScope: 'Sections', lessonsInScope: 'Lessons', interactionsInScope: 'Interactive content',
     interactionTypes: 'Interactive content types', learnerAchievement: 'What learners will achieve',
+    holdPanel: 'Needs SME input (Hold)',
+    holdHint: 'These source blocks are not in the lessons yet: the criteria to teach or assess them are missing. Send the questions to the subject-matter expert.',
+    holdReason: 'Why it is on hold', holdQuestion: 'Question for the SME', holdBlocked: 'Must Do not taught yet',
+    pendingObjectives: 'Objectives waiting for the SME (not shown as course outcomes)',
+    niceToKnowPanel: 'Reference content left out (Nice to know)',
+    niceToKnowHint: 'Left out of the lessons on purpose: useful, but not needed to perform a Must Do. Add one back by hand if your learners need it.',
   },
   vi: {
     title: 'Bản thiết kế khoá học', overview: 'Tổng quan', mindmap: 'Mindmap toàn khóa', close: 'Đóng',
@@ -110,6 +116,12 @@ export const workspaceCopy = {
     reviewBehavior: 'Hành vi / Điều hướng của người học', notAvailable: 'N/A', outcomes: 'Kết quả đầu ra',
     sectionsInScope: 'Số mục', lessonsInScope: 'Số bài học', interactionsInScope: 'Số nội dung tương tác',
     interactionTypes: 'Các loại nội dung tương tác', learnerAchievement: 'Giúp học viên đạt được gì',
+    holdPanel: 'Cần chuyên gia bổ sung (Hold)',
+    holdHint: 'Các khối nội dung dưới đây chưa được đưa vào bài học vì thiếu tiêu chí để dạy hoặc đánh giá. Hãy gửi câu hỏi cho chuyên gia (SME).',
+    holdReason: 'Lý do tạm giữ', holdQuestion: 'Câu hỏi cho SME', holdBlocked: 'Must Do chưa dạy được',
+    pendingObjectives: 'Mục tiêu chờ SME (chưa hiển thị là kết quả đầu ra của khoá học)',
+    niceToKnowPanel: 'Nội dung tham khảo đã lược (Nice to know)',
+    niceToKnowHint: 'Được lược khỏi bài học theo phương pháp: hữu ích nhưng không cần để thực hiện Must Do. Tác giả có thể bổ sung thủ công nếu người học cần.',
   },
 } as const;
 
@@ -390,6 +402,35 @@ function ComponentContent({ preview, locale }: { preview: Preview; locale: Works
   }
 }
 
+/** IDM runs only (course node): what the methodology kept out of the lessons and why. */
+export function WorkspaceIdmGuidanceCards({ detail, locale }: { detail: WorkspaceTypedDetail; locale: WorkspaceLocale }) {
+  const guidance = detail.kind === 'course' ? detail.idm_guidance : null;
+  if (!guidance) return null;
+  const c = workspaceCopy[locale];
+  const holds = guidance.hold_items.length > 0 || guidance.pending_objectives.length > 0;
+  return <>
+    {holds && <ReviewCard label={c.holdPanel} icon={TriangleAlert} tone="amber" className="md:col-span-2">
+      <p className="mb-3 text-muted-foreground">{c.holdHint}</p>
+      {guidance.hold_items.length > 0 && <ol className="space-y-3">{guidance.hold_items.map((item, index) =>
+        <li key={index} className="rounded-xl border border-amber-500/20 bg-background/70 p-3">
+          <p className="font-semibold">{index + 1}. {item.name}</p>
+          {item.reason && <p className="mt-1"><span className="font-medium text-foreground/70">{c.holdReason}: </span>{item.reason}</p>}
+          {item.sme_question && <p className="mt-1"><span className="font-medium text-foreground/70">{c.holdQuestion}: </span>{item.sme_question}</p>}
+          {item.blocked_must_dos.length > 0 && <div className="mt-2"><p className="font-medium text-foreground/70">{c.holdBlocked}:</p>
+            <Lines values={item.blocked_must_dos} tone="amber" /></div>}
+        </li>)}</ol>}
+      {guidance.pending_objectives.length > 0 && <div className="mt-3"><p className="mb-2 font-medium text-foreground/70">{c.pendingObjectives}:</p>
+        <Lines values={guidance.pending_objectives} tone="amber" /></div>}
+    </ReviewCard>}
+    {guidance.nice_to_know.length > 0 && <ReviewCard label={c.niceToKnowPanel} icon={BookMarked} tone="slate" className="md:col-span-2">
+      <p className="mb-3 text-muted-foreground">{c.niceToKnowHint}</p>
+      <ul className="space-y-2.5">{guidance.nice_to_know.map((item, index) => <li key={index}>
+        <span className="font-semibold">{item.name}</span>{item.summary && <span className="text-muted-foreground"> — {item.summary}</span>}
+      </li>)}</ul>
+    </ReviewCard>}
+  </>;
+}
+
 /** Only known aggregate fields are exposed; no raw JSON/provenance IDs. */
 export function WorkspaceAggregateContent({ detail, locale }: { detail: WorkspaceTypedDetail; locale: WorkspaceLocale }) {
   const c = workspaceCopy[locale];
@@ -404,6 +445,7 @@ export function WorkspaceAggregateContent({ detail, locale }: { detail: Workspac
         <ReviewCard label={c.audience} icon={Users} tone="violet">{p.data.target_audience}</ReviewCard>
         {p.data.assessment_strategy && <ReviewCard label={c.strategy} icon={ClipboardCheck} tone="emerald">{p.data.assessment_strategy}</ReviewCard>}
         {!!p.data.prerequisites.length && <ReviewCard label={c.prerequisites} icon={ListChecks} tone="amber" className="md:col-span-2"><Lines values={p.data.prerequisites} tone="amber" /></ReviewCard>}
+        <WorkspaceIdmGuidanceCards detail={detail} locale={locale} />
       </div>;
     }
     case 'chapter': case 'lesson': {

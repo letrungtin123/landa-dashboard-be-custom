@@ -262,3 +262,26 @@ test('typed HTTP errors retain only safe code/request ID and localize every code
   assert.equal(failed.code, 'WORKSPACE_READ_UNAVAILABLE');
   assert.equal(contract.workspaceReadFailure({ response: { status: 403 } }).code, 'WORKSPACE_READ_FORBIDDEN');
 });
+
+test('detail accepts the optional IDM guidance of the course node only and rejects a malformed one', () => {
+  const guidance = {
+    hold_items: [{ name: 'Bộ lọc Tam Hóa', reason: null, sme_question: 'Ngưỡng nào là đạt?', blocked_must_dos: ['Đánh giá đề xuất'] }],
+    pending_objectives: ['Lãnh đạo có thể đánh giá đề xuất'],
+    nice_to_know: [{ name: 'Ngôi nhà Business Excellence', summary: '' }],
+  };
+  assert.deepEqual(contract.readWorkspaceDetail({ ...ready, idm_guidance: guidance }).idm_guidance, guidance);
+  assert.equal(contract.readWorkspaceDetail({ ...ready, idm_guidance: null }).idm_guidance, null);
+  assert.equal(contract.readWorkspaceDetail(ready).idm_guidance, undefined);
+  const hold = guidance.hold_items[0];
+  for (const bad of [
+    { ...ready, kind: 'chapter', parent_id: id(40), idm_guidance: guidance },
+    { ...ready, idm_guidance: [] },
+    { ...ready, idm_guidance: { ...guidance, extra: [] } },
+    { ...ready, idm_guidance: { ...guidance, hold_items: [{ ...hold, name: ' ' }] } },
+    { ...ready, idm_guidance: { ...guidance, hold_items: [{ ...hold, reason: 'x'.repeat(301) }] } },
+    { ...ready, idm_guidance: { ...guidance, hold_items: [{ ...hold, blocked_must_dos: [1] }] } },
+    { ...ready, idm_guidance: { ...guidance, hold_items: [{ ...hold, secret: 'x' }] } },
+    { ...ready, idm_guidance: { ...guidance, pending_objectives: Array(9).fill('Mục tiêu') } },
+    { ...ready, idm_guidance: { ...guidance, nice_to_know: [{ name: 'Khối' }] } },
+  ]) assert.throws(() => contract.readWorkspaceDetail(bad), /CONTRACT_INVALID/);
+});

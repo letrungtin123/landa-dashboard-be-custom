@@ -131,6 +131,15 @@ export interface WorkspaceDetail extends WorkspaceView {
     visual_asset: string | null;
     user_behavior_navigation: string | null;
   } | null;
+  /** Optional, course node of an IDM run only: what the methodology left out of the lessons. */
+  idm_guidance?: WorkspaceIdmGuidance | null;
+}
+/** Hold blocks (with the SME question and the Must Dos they block), objectives waiting for the SME
+ * (not shown as course outcomes) and Nice to Know blocks the author may add back by hand. */
+export interface WorkspaceIdmGuidance {
+  hold_items: Array<{ name: string; reason: string | null; sme_question: string | null; blocked_must_dos: string[] }>;
+  pending_objectives: string[];
+  nice_to_know: Array<{ name: string; summary: string }>;
 }
 
 // Safe client copy by code: never expose arbitrary transport/server exception text.
@@ -386,5 +395,34 @@ export function readWorkspaceDetail(value: unknown): WorkspaceDetail {
       && Object.values(review).every(value => value === null
         || typeof value === 'string' && !!value.trim() && value.length <= 2000));
   }
+  if (v.idm_guidance !== undefined && v.idm_guidance !== null) {
+    requireValid(v.kind === 'course');
+    idmGuidance(v.idm_guidance);
+  }
   return v as unknown as WorkspaceDetail;
+}
+
+// Bounds of the backend projection (Python IDM contract limits, counted in code points).
+const textOf = (value: unknown, maximum: number, blank = false): boolean => typeof value === 'string'
+  && (blank || !!value.trim()) && Array.from(value).length <= maximum;
+const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
+  Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
+function idmGuidance(value: unknown): void {
+  const guidance = object(value);
+  requireValid(exactKeys(guidance, ['hold_items', 'pending_objectives', 'nice_to_know'])
+    && Array.isArray(guidance.hold_items) && guidance.hold_items.length <= 200
+    && Array.isArray(guidance.pending_objectives) && guidance.pending_objectives.length <= 8
+    && guidance.pending_objectives.every(item => textOf(item, 500))
+    && Array.isArray(guidance.nice_to_know) && guidance.nice_to_know.length <= 400);
+  for (const raw of guidance.hold_items as unknown[]) {
+    const item = object(raw);
+    requireValid(exactKeys(item, ['name', 'reason', 'sme_question', 'blocked_must_dos']) && textOf(item.name, 180)
+      && (item.reason === null || textOf(item.reason, 300)) && (item.sme_question === null || textOf(item.sme_question, 400))
+      && Array.isArray(item.blocked_must_dos) && item.blocked_must_dos.length <= 40
+      && item.blocked_must_dos.every(entry => textOf(entry, 280)));
+  }
+  for (const raw of guidance.nice_to_know as unknown[]) {
+    const item = object(raw);
+    requireValid(exactKeys(item, ['name', 'summary']) && textOf(item.name, 180) && textOf(item.summary, 300, true));
+  }
 }
