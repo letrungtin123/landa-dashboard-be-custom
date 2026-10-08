@@ -103,6 +103,7 @@ import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
 import { resolveDiagramData } from './editors/diagram/diagram-data';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { AiAuthorNotesUnitPanel } from './AiAuthorNotes';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
@@ -468,6 +469,8 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-20">
+      {/* AI ID notes for authors: read-only, editors only, never in the learner view. */}
+      {courseId && <AiAuthorNotesUnitPanel courseId={courseId} unitId={unitId} />}
       {children.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
           <div className="w-16 h-16 rounded-full bg-muted/40 flex items-center justify-center">

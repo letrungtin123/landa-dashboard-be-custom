@@ -17,6 +17,8 @@ import { Check, X, Pencil, BookOpen } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import { useCourseWorkspaceHost } from '@/components/lesson-author-workspace/workspace-course-host';
+import { AiAuthorNotesCourseButton } from '@/components/course-editor/AiAuthorNotes';
+import { courseAuthorNotesQueryKey } from '@/api/course-author-notes';
 import type { WorkspaceLaunchResolver } from '@/components/lesson-author-workspace/workspace-host.logic';
 import {
   publishLessonAuthorEditorContext,
@@ -225,6 +227,8 @@ export default function CourseEditorPage({ workspaceLaunch }: { workspaceLaunch?
   const handleStructureChange = useCallback(async () => {
     if (!courseId) return;
     const outlineKey = ['course-outline-index', courseId] as const;
+    // AI ID Apply also writes author notes; refresh them with the outline.
+    void queryClient.invalidateQueries({ queryKey: courseAuthorNotesQueryKey(courseId), exact: true });
     await queryClient.invalidateQueries({ queryKey: outlineKey, exact: true });
     await queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' });
   }, [courseId, queryClient]);
@@ -396,6 +400,8 @@ export default function CourseEditorPage({ workspaceLaunch }: { workspaceLaunch?
             onStructureChange={handleStructureChange}
           />
               <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate opacity-60">{courseId}</p>
+              <AiAuthorNotesCourseButton courseId={courseId as string} rootBlockId={courseStructure.id}
+                currentName={courseStructure.display_name} onCourseChanged={handleStructureChange} />
             </div>
             <div className="p-3 flex-1 overflow-y-auto">
               <OutlineTree
@@ -434,6 +440,8 @@ export default function CourseEditorPage({ workspaceLaunch }: { workspaceLaunch?
             {courseId}
           </p>
           {workspaceHost.trigger}
+          <AiAuthorNotesCourseButton courseId={courseId as string} rootBlockId={courseStructure.id}
+            currentName={courseStructure.display_name} onCourseChanged={handleStructureChange} />
         </div>
         <div className="p-3 flex-1 overflow-y-auto">
           <OutlineTree
