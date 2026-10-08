@@ -96,14 +96,18 @@ function getPdfExportPhaseIndex(phase: ReportPdfExportPhase): number {
   return 0;
 }
 
-function getDisplayedPdfExportPhase(job: ReportPdfExportDisplayJob | null | undefined, now: number): ReportPdfExportPhase | null {
-  if (!job || job.phase !== 'ready' || !job.presentationStartedAt) return job?.phase ?? null;
-
-  const elapsed = Math.max(0, now - job.presentationStartedAt);
+/** Step shown for a ready job: a fast export still plays the three steps, a slow one is ready at once. */
+export function getReadyPdfExportPresentationPhase(presentationStartedAt: number, now: number): ReportPdfExportPhase {
+  const elapsed = Math.max(0, now - presentationStartedAt);
   if (elapsed < PDF_EXPORT_PRESENTATION_STEP_MS[0]) return 'validating';
   if (elapsed < PDF_EXPORT_PRESENTATION_STEP_MS[0] + PDF_EXPORT_PRESENTATION_STEP_MS[1]) return 'narrative';
   if (elapsed < PDF_EXPORT_PRESENTATION_TOTAL_MS) return 'rendering';
   return 'ready';
+}
+
+function getDisplayedPdfExportPhase(job: ReportPdfExportDisplayJob | null | undefined, now: number): ReportPdfExportPhase | null {
+  if (!job || job.phase !== 'ready' || !job.presentationStartedAt) return job?.phase ?? null;
+  return getReadyPdfExportPresentationPhase(job.presentationStartedAt, now);
 }
 
 function ReportPdfExportProgress({
@@ -130,9 +134,19 @@ function ReportPdfExportProgress({
   const activeIndex = displayedPhase ? getPdfExportPhaseIndex(displayedPhase) : -1;
 
   useEffect(() => {
-    if (job?.phase !== 'ready' || !job.presentationStartedAt) return;
+    const startedAt = job?.presentationStartedAt;
+    if (job?.phase !== 'ready' || !startedAt) return;
 
-    const elapsed = Math.max(0, Date.now() - job.presentationStartedAt);
+    const now = Date.now();
+    // presentationNow is captured when this panel mounts, i.e. when the export starts. A job
+    // that took longer than the step presentation must show "ready" at once, not replay step 1
+    // with a clock that no timer would ever advance again.
+    if (getReadyPdfExportPresentationPhase(startedAt, presentationNow) !== getReadyPdfExportPresentationPhase(startedAt, now)) {
+      setPresentationNow(now);
+      return;
+    }
+
+    const elapsed = Math.max(0, now - startedAt);
     const nextBoundary = elapsed < PDF_EXPORT_PRESENTATION_STEP_MS[0]
       ? PDF_EXPORT_PRESENTATION_STEP_MS[0]
       : elapsed < PDF_EXPORT_PRESENTATION_STEP_MS[0] + PDF_EXPORT_PRESENTATION_STEP_MS[1]

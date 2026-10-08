@@ -191,3 +191,20 @@ test('the PDF export button sits next to Excel for analysis cards and requests t
     }
   }
 });
+
+test('a PDF job that finishes after the step presentation shows ready at once, not step 1', () => {
+  const card = read('./report-chat-card.tsx');
+  const effect = card.slice(card.indexOf('const startedAt = job?.presentationStartedAt;'), card.indexOf('const visibleStepIndex'));
+  // The mount-time clock is caught up before any timer logic, otherwise a slow export stays on step 1.
+  assert.match(effect, /getReadyPdfExportPresentationPhase\(startedAt, presentationNow\) !== getReadyPdfExportPresentationPhase\(startedAt, now\)\) \{\s*setPresentationNow\(now\);\s*return;/);
+  const helper = card.slice(card.indexOf('export function getReadyPdfExportPresentationPhase'), card.indexOf('function getDisplayedPdfExportPhase'));
+  const steps = card.match(/const PDF_EXPORT_PRESENTATION_STEP_MS = \[([^\]]+)\]/)[1].split(',').map((value) => Number(value.replace(/_/g, '').trim()));
+  const source = ts.transpileModule(`const PDF_EXPORT_PRESENTATION_STEP_MS = ${JSON.stringify(steps)}; const PDF_EXPORT_PRESENTATION_TOTAL_MS = ${steps.reduce((a, b) => a + b, 0)};\n${helper.replace('export ', '')}\nresult = getReadyPdfExportPresentationPhase;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const context = { result: null };
+  runInNewContext(source, context);
+  const phase = context.result;
+  assert.equal(phase(0, 100), 'validating');
+  assert.equal(phase(0, steps[0] + 1), 'narrative');
+  assert.equal(phase(0, steps[0] + steps[1] + 1), 'rendering');
+  assert.equal(phase(0, 10_000), 'ready');
+});
