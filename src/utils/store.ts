@@ -17,6 +17,7 @@ import {
   type CustomLoginResponse,
 } from '@/api/custom-auth';
 import { config } from '@/config/env';
+import { classifyStorageChange, decideRefresh, readStoredSession, withCrossTabLock } from '@/api/cross-tab-session.logic';
 import { normalizeGroupLabels, type GroupLabelMap } from '@/utils/group-labels';
 import { normalizeRoleLabels, type RoleLabelMap } from '@/utils/role-labels';
 import {
@@ -48,7 +49,7 @@ function deobfuscate(encoded: string): string {
   } catch { return ''; }
 }
 
-const encryptedStorage = createJSONStorage(() => ({
+const rawEncryptedStorage = {
   getItem(key: string): string | null {
     const raw = localStorage.getItem(key);
     return raw ? (deobfuscate(raw) || null) : null;
@@ -59,7 +60,15 @@ const encryptedStorage = createJSONStorage(() => ({
   removeItem(key: string): void {
     localStorage.removeItem(key);
   },
-}));
+};
+
+const encryptedStorage = createJSONStorage(() => rawEncryptedStorage);
+
+// ── Cross-tab refresh (api/cross-tab-session.logic.ts) ──
+// Tabs share the stored session; the server rotates the refresh token and
+// treats a reused one as theft, so one tab refreshes at a time and the others
+// adopt the stored result.
+const REFRESH_LOCK_NAME = 'landa-admin-auth-refresh';
 
 // ── Types ──
 export type UserRole = 'superadmin' | 'superuser' | 'staff' | 'learner_plus' | 'learner';
@@ -324,17 +333,24 @@ export const useAuthStore = create<AuthState>()(
           return true;
         }
 
-        const { refreshToken: currentRefreshToken } = get();
-        if (!currentRefreshToken) return false;
+        if (!get().refreshToken) return false;
 
-        refreshMutex = (async () => {
+        // One tab refreshes at a time; inside the lock the stored session is
+        // re-read so a token another tab already rotated is never replayed.
+        refreshMutex = withCrossTabLock(REFRESH_LOCK_NAME, async () => {
+          const decision = decideRefresh(get().refreshToken, readStoredSession(rawEncryptedStorage.getItem(STORAGE_KEY)), Date.now());
+          if (decision.action === 'adopt') {
+            adoptStoredSession();
+            return true;
+          }
+          if (decision.action === 'none') return false;
           try {
             let activeTenantId: string | null = null;
             try {
               const { useTenantStore } = await import('@/utils/tenant-store');
               activeTenantId = useTenantStore.getState().activeTenantId;
             } catch { /* ignore */ }
-            const data = await customRefreshApi(currentRefreshToken, activeTenantId);
+            const data = await customRefreshApi(decision.refreshToken, activeTenantId);
             set(mapLoginResponseToState(data));
             lastRefreshSuccessAt = Date.now();
             get().scheduleTokenRefresh();
@@ -342,7 +358,7 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             return false;
           }
-        })().finally(() => { refreshMutex = null; });
+        }).finally(() => { refreshMutex = null; });
 
         return refreshMutex;
       },
@@ -396,6 +412,42 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+/** Takes over the session another tab stored (after its refresh or login). */
+function adoptStoredSession(): void {
+  let stored: Partial<AuthState> | null = null;
+  try {
+    const raw = rawEncryptedStorage.getItem(STORAGE_KEY);
+    stored = raw ? (JSON.parse(raw) as { state?: Partial<AuthState> }).state ?? null : null;
+  } catch { stored = null; }
+  if (!stored?.isAuthenticated || !stored.refreshToken) return;
+  useAuthStore.setState({
+    isAuthenticated: true,
+    accessToken: stored.accessToken ?? null,
+    refreshToken: stored.refreshToken,
+    tokenExpiresAt: stored.tokenExpiresAt ?? null,
+    user: stored.user ?? null,
+    permissions: stored.permissions ?? {},
+    tenantModules: stored.tenantModules ?? [],
+    managedTenants: stored.managedTenants ?? [],
+    roleLabels: stored.roleLabels ?? {},
+    groupLabels: stored.groupLabels ?? {},
+  });
+  lastRefreshSuccessAt = Date.now();
+  useAuthStore.getState().scheduleTokenRefresh();
+}
+
+// Follow session changes written by other tabs: new tokens are adopted (so
+// this tab never replays a rotated refresh token) and a sign-out elsewhere
+// signs this tab out too.
+window.addEventListener('storage', (event) => {
+  if (event.storageArea !== localStorage || (event.key !== STORAGE_KEY && event.key !== null)) return;
+  const state = useAuthStore.getState();
+  if (state.isLoggingOut) return;
+  const change = classifyStorageChange(state.refreshToken, readStoredSession(rawEncryptedStorage.getItem(STORAGE_KEY)));
+  if (change === 'adopt') adoptStoredSession();
+  else if (change === 'signed_out') void state.logout();
+});
 
 // ── Wake-up refresh: khi user quay lại tab sau sleep/hibernate ──
 // setTimeout bị đóng băng khi máy sleep → token hết hạn mà không được refresh.
