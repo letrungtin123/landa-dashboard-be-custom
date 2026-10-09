@@ -3,18 +3,10 @@
 // App CRASH ngay nếu thiếu biến — không fallback, không đoán
 // ============================================================
 
-function requireEnv(key: string): string {
-  const value = import.meta.env[key];
-  if (!value || value.trim() === "") {
-    throw new Error(
-      `[ENV] Thiếu biến môi trường: ${key}. Kiểm tra file .env.local.`
-    );
-  }
-  return value.trim();
-}
-
-function requireEnvNumber(key: string, fallback?: number): number {
-  const raw = import.meta.env[key];
+// Values are passed in as static `import.meta.env.VITE_X` reads: a dynamic
+// `import.meta.env[key]` makes Vite embed EVERY VITE_* key in the bundle,
+// including server-only ones such as VITE_ALLOWED_HOSTS.
+function requireEnvNumber(key: string, raw: string | undefined, fallback?: number): number {
   if (!raw && fallback !== undefined) return fallback;
   const num = Number(raw);
   if (isNaN(num) || num <= 0) {
@@ -23,8 +15,8 @@ function requireEnvNumber(key: string, fallback?: number): number {
   return num;
 }
 
-function requireUrl(key: string, allowEmpty = false): string {
-  const url = import.meta.env[key] || "";
+function requireUrl(key: string, value: string | undefined, allowEmpty = false): string {
+  const url = value || "";
   if (allowEmpty && url.trim() === "") return "";
   
   if (!url || url.trim() === "") {
@@ -137,7 +129,7 @@ function resolveCustomApiUrl(): string {
     throw new Error("[ENV] VITE_CUSTOM_API_URL uses same-origin, but runtime origin is unavailable.");
   }
 
-  const configuredUrl = requireUrl("VITE_CUSTOM_API_URL");
+  const configuredUrl = requireUrl("VITE_CUSTOM_API_URL", import.meta.env.VITE_CUSTOM_API_URL);
   const parsed = parseUrl(configuredUrl);
 
   if (
@@ -157,7 +149,7 @@ function resolveCourseAssetUploadOrigin(): string {
   const raw = (import.meta.env.VITE_COURSE_ASSET_UPLOAD_ORIGIN || "").trim();
   if (!raw || isSameOriginToken(raw)) return "";
 
-  const configuredUrl = requireUrl("VITE_COURSE_ASSET_UPLOAD_ORIGIN");
+  const configuredUrl = requireUrl("VITE_COURSE_ASSET_UPLOAD_ORIGIN", import.meta.env.VITE_COURSE_ASSET_UPLOAD_ORIGIN);
   const parsed = parseUrl(configuredUrl);
   if (!parsed || parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash || isPrivateLiteralHost(parsed.hostname)) {
     throw new Error("[ENV] VITE_COURSE_ASSET_UPLOAD_ORIGIN must be a public HTTPS origin without a path, credentials, query, or fragment.");
@@ -166,17 +158,8 @@ function resolveCourseAssetUploadOrigin(): string {
 }
 
 export const config = {
-  // Cho phép lấy từ env nếu có, nếu không thì fallback về origin hiện tại
-  get lmsBaseUrl(): string {
-    return requireUrl("VITE_OPENEDX_LMS_URL", true) || window.location.origin;
-  },
-  get cmsBaseUrl(): string {
-    return requireUrl("VITE_OPENEDX_CMS_URL", true) || window.location.origin;
-  },
-  /** OpenEdX Client ID — tùy chọn (đang chuyển sang custom backend) */
-  clientId: (import.meta.env.VITE_OPENEDX_CLIENT_ID || "").trim(),
-  tokenRefreshBufferMs: requireEnvNumber("VITE_TOKEN_REFRESH_BUFFER_MS", 300_000),
-  apiTimeoutMs: requireEnvNumber("VITE_API_TIMEOUT_MS", 30_000),
+  tokenRefreshBufferMs: requireEnvNumber("VITE_TOKEN_REFRESH_BUFFER_MS", import.meta.env.VITE_TOKEN_REFRESH_BUFFER_MS, 300_000),
+  apiTimeoutMs: requireEnvNumber("VITE_API_TIMEOUT_MS", import.meta.env.VITE_API_TIMEOUT_MS, 30_000),
   googleClientId: (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim(),
   microsoftClientId: (import.meta.env.VITE_MICROSOFT_CLIENT_ID || "").trim(),
   microsoftAuthority: (
@@ -206,9 +189,5 @@ export const config = {
    */
   get courseAssetUploadOrigin(): string {
     return resolveCourseAssetUploadOrigin();
-  },
-
-  get apiBaseUrl(): string {
-    return "";
   },
 } as const;
