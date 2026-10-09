@@ -460,7 +460,11 @@ test('workspace progress animations do not inherit the browser reduced-motion pr
   assert.doesNotMatch(source, /workspace-build-scan-line|animateMotion|workspace-build-edge-particle/);
   assert.match(source, /workspace-build-edge-flow/);
   assert.match(source, /--workspace-build-accent/);
-  assert.match(styles, /@property --workspace-build-angle/);
+  // Building cards/nodes: a static gradient ring that breathes; nothing orbits or runs along edges.
+  assert.match(styles, /@keyframes workspace-build-breathe/);
+  assert.match(styles, /animation: workspace-build-breathe /);
+  assert.match(styles, /animation: workspace-build-edge-breathe /);
+  assert.doesNotMatch(styles, /workspace-build-orbit|--workspace-build-angle|stroke-dashoffset/);
   assert.match(styles, /conic-gradient/);
   assert.match(styles, /mask-composite: exclude/);
   assert.doesNotMatch(styles, /workspace-build-scan|workspace-build-edge-particle/);

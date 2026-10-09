@@ -200,14 +200,10 @@
   100% { background-position: 200% 0; }
 }
 
-@property --workspace-build-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes workspace-build-orbit {
-  to { --workspace-build-angle: 360deg; }
+/* Building state: the gradient border breathes in place (no orbiting line). */
+@keyframes workspace-build-breathe {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 1; }
 }
 
 @keyframes workspace-build-signal {
@@ -215,8 +211,9 @@
   50% { opacity: 1; transform: scaleY(1); }
 }
 
-@keyframes workspace-build-edge-flow {
-  to { stroke-dashoffset: -104; }
+@keyframes workspace-build-edge-breathe {
+  0%, 100% { opacity: 0.32; }
+  50% { opacity: 0.95; }
 }
 
 @keyframes workspace-build-shimmer {
@@ -1209,21 +1206,22 @@
     inset: 0;
     z-index: 3;
     pointer-events: none;
-    padding: 1.5px;
+    padding: 1.75px;
     border-radius: inherit;
+    /* A full, static gradient ring around the card; only its brightness pulses. */
     background: conic-gradient(
-      from var(--workspace-build-angle),
-      transparent 0deg 216deg,
-      color-mix(in srgb, var(--workspace-build-accent) 18%, transparent) 248deg,
-      var(--workspace-build-accent) 286deg,
-      color-mix(in srgb, var(--workspace-build-accent) 24%, white) 304deg,
-      var(--workspace-build-accent) 320deg,
-      transparent 348deg 360deg
+      from 210deg,
+      var(--workspace-build-accent),
+      color-mix(in srgb, var(--workspace-build-accent) 42%, white),
+      color-mix(in srgb, var(--workspace-build-accent) 72%, #8b5cf6),
+      color-mix(in srgb, var(--workspace-build-accent) 42%, white),
+      var(--workspace-build-accent)
     );
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    animation: workspace-build-orbit 2.9s linear infinite;
+    animation: workspace-build-breathe 2.6s ease-in-out infinite;
+    will-change: opacity;
   }
 
   .workspace-build-beacon {
@@ -1290,10 +1288,9 @@
   .workspace-build-edge-flow {
     pointer-events: none;
     opacity: 0.9;
-    stroke-dasharray: 14 90;
-    stroke-dashoffset: 0;
     filter: drop-shadow(0 0 3px rgb(59 130 246 / 0.42));
-    animation: workspace-build-edge-flow 1.65s linear infinite;
+    animation: workspace-build-edge-breathe 2.6s ease-in-out infinite;
+    will-change: opacity;
   }
 
   .animate-shimmer {
