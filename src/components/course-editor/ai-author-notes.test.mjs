@@ -149,3 +149,75 @@ test('Studio mounts both panels, refreshes notes after Apply and keeps every key
   }
   assert.deepEqual(Object.keys(locales.vi.aiAuthorNotes), Object.keys(locales.en.aiAuthorNotes));
 });
+
+// --- QLT-3 (QC run 8de1c76b): open obligations and the complete SME list -----------------------
+const SME = Array.from({ length: 22 }, (_, index) => `Câu hỏi SME số ${index + 1}?`);
+const obligation = (n, unitNode, overrides = {}) => ({ obligation_id: id(200 + n), unit_node_id: unitNode,
+  unit_path: 'chapter_1.lesson_1.unit_1', unit_title: 'Ma trận 4 trục', component_index: 2, required_kind: 'single_choice',
+  learning_objective_refs: ['lo_1'], learning_objectives: ['Đánh giá hiện trạng hệ điều hành tư duy theo 4 trục'],
+  unresolved_reason: 'ASSESSMENT_SOURCE_CHECK_REQUIRED', evidence_fact_count: 9, ...overrides });
+function qlt3View() {
+  const truncatedNote = ['[Thiết kế theo quy trình ID — idm-1]', '• Câu hỏi khác cho SME:', ...SME.slice(0, 10).map(question => `  - ${question}`),
+    '  và 12 mục khác', '• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.'].join('\n');
+  const reviews = [obligation(1, id(81)), obligation(2, id(82), { unit_path: 'chapter_4.lesson_2.unit_1', unit_title: 'Bản cam kết hành động',
+    learning_objectives: [], learning_objective_refs: ['lo_1'], unresolved_reason: 'SOME_FUTURE_CODE', evidence_fact_count: 13 })];
+  return logicModule.exports.readCourseAuthorNotesView({ course_id: courseId,
+    course: { display_name: 'QC check 4', description: null, root_block_id: id(10) }, blocks: [
+      { block_id: id(10), parent_id: null, block_type: 'course', display_name: 'QC check 4', notes: notes('course', {
+        implementation_notes: truncatedNote, assessment_reviews: reviews,
+        idm_guidance: { hold_items: [], pending_objectives: [], nice_to_know: [], sme_questions: SME } }) },
+      { block_id: id(11), parent_id: id(10), block_type: 'chapter', display_name: 'Chương 1', notes: notes('chapter', { purpose: 'Định vị' }) },
+      { block_id: id(12), parent_id: id(11), block_type: 'sequential', display_name: 'Mục 1', notes: notes('lesson', { purpose: 'Thói quen cũ' }) },
+      // Unit applied before QLT-3 (no own list): the current root list still reaches it.
+      { block_id: id(13), parent_id: id(12), block_type: 'vertical', display_name: 'Bài 1 đã đổi tên', notes: notes('unit', {
+        node_id: id(81), purpose: 'Người học đối chiếu 4 trục' }) },
+    ] }, courseId);
+}
+
+test('unit panel: open obligations are a visible "needs your review" block with a plain explanation (EN/VI)', () => {
+  const original = env.data; env.data = qlt3View();
+  try {
+    for (const [locale, title, slot, why, action, count] of [
+      ['en', 'Needs your review', 'Content slot 2 in this lesson', 'could not write a question it could reliably verify against the source',
+        'against the 9 source passages of this lesson', '1 to review'],
+      ['vi', 'Cần bạn kiểm tra', 'Vị trí nội dung thứ 2 trong bài', 'chưa tạo được câu hỏi có thể đối chiếu chắc chắn với tài liệu nguồn',
+        'với 9 đoạn trích trong tài liệu nguồn của bài này', '1 mục cần kiểm tra'],
+    ]) {
+      env.locale = locale;
+      const html = render(h(AiAuthorNotesUnitPanel, { courseId, unitId: id(13) }));
+      for (const text of [title, slot, why, action, count, 'Đánh giá hiện trạng hệ điều hành tư duy theo 4 trục', 'data-testid="ai-author-notes-reviews"']) {
+        assert.ok(html.includes(text), `${locale}: ${text}`);
+      }
+      assert.equal(html.includes('ASSESSMENT_SOURCE_CHECK_REQUIRED'), false, 'known codes are explained, not shown');
+      assert.equal(html.includes('Bản cam kết hành động'), false, 'another unit\'s obligation never shows here');
+      assert.equal(html.includes('aiAuthorNotes.'), false);
+      assert.ok(html.indexOf('data-testid="ai-author-notes-reviews"') < html.indexOf(locale === 'en' ? 'This lesson' : 'Bài học này'),
+        'shown before the collapsible read-only notes');
+    }
+  } finally { env.data = original; }
+});
+
+test('course dialog: every obligation located, the complete SME list (collapsible) and no truncated copy (EN/VI)', () => {
+  const original = env.data; env.data = qlt3View();
+  try {
+    for (const [locale, title, count, sme, showAll, notApplied, unknown, below] of [
+      ['en', 'Needs your review', '2 to review', 'Other questions for the SME', 'Show all (22)',
+        'Chapter 4 · Section 2 · Lesson 1 · not applied to the course yet',
+        'Needs an author check before publishing (code SOME_FUTURE_CODE).', 'listed in full in the sections below'],
+      ['vi', 'Cần bạn kiểm tra', '2 mục cần kiểm tra', 'Câu hỏi khác cho SME', 'Hiện tất cả (22)',
+        'Chương 4 · Mục 2 · Bài 1 · chưa áp dụng vào khoá học',
+        'Cần tác giả kiểm tra trước khi xuất bản (mã SOME_FUTURE_CODE).', 'được liệt kê đầy đủ ở các phần bên dưới'],
+    ]) {
+      env.locale = locale;
+      const html = render(h(AiAuthorNotesCourseButton, { courseId, rootBlockId: id(10), currentName: 'QC check 4', onCourseChanged: () => {} }));
+      for (const text of [title, count, sme, showAll, notApplied, unknown, below, 'Chương 1 › Mục 1 › Bài 1 đã đổi tên',
+        'Bản cam kết hành động', ...SME]) {
+        assert.ok(html.includes(text), `${locale}: ${text}`);
+      }
+      assert.equal(html.includes('mục khác'), false, 'the truncated SME list of the course note is not shown');
+      assert.equal(html.includes('[Thiết kế theo quy trình ID — idm-1]'), true, 'the rest of the course note stays');
+      assert.equal(html.includes('aiAuthorNotes.'), false);
+    }
+    assert.deepEqual(network, { renamed: [], described: [] });
+  } finally { env.data = original; }
+});

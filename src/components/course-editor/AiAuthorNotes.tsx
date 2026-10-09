@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  BookMarked, ChevronDown, ClipboardCheck, Image as ImageIcon, Lightbulb, ListChecks, Lock, NotebookPen,
-  Sparkles, Target, TriangleAlert, Users, Video, type LucideIcon,
+  BookMarked, ChevronDown, ClipboardCheck, Image as ImageIcon, Lightbulb, ListChecks, Lock, MessageCircleQuestion,
+  NotebookPen, Sparkles, Target, TriangleAlert, Users, Video, type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +20,10 @@ import { renameBlock } from '@/api/custom-course-authoring';
 import { updateCourse } from '@/api/custom-courses';
 import { courseAuthorNotesQueryKey, getCourseAuthorNotes } from '@/api/course-author-notes';
 import {
-  authorNotesOutcomeLabel, courseInfoProposal, courseLevelAuthorNotes, storyboardList, storyboardText, unitAuthorNotes,
-  type AuthorNotes, type AuthorNotesBlock, type AuthorNotesMediaBrief,
+  assessmentReviewKind, assessmentReviewPosition, assessmentReviewReason, authorNotesListSplit, authorNotesOutcomeLabel,
+  courseAssessmentReviews, courseInfoProposal, courseLevelAuthorNotes, courseNoteWithoutGuidanceLists, storyboardList,
+  storyboardText, unitAuthorNotes,
+  type AuthorNotes, type AuthorNotesAssessmentReview, type AuthorNotesBlock, type AuthorNotesMediaBrief, type CourseAssessmentReviewEntry,
 } from '@/api/course-author-notes.logic';
 
 /**
@@ -57,6 +59,78 @@ function NoteList({ values, ordered = false }: { values: string[]; ordered?: boo
   </Tag>;
 }
 
+/** A long author list shows a preview and keeps the rest one click away;
+ * every item stays available (no "and N more" truncation). */
+function LongList<T>({ values, ordered = false, className, render }: {
+  values: readonly T[]; ordered?: boolean; className: string; render: (value: T, index: number) => ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const { shown, more } = authorNotesListSplit(values);
+  const Tag = ordered ? 'ol' : 'ul';
+  if (!more.length) return <Tag className={className}>{shown.map(render)}</Tag>;
+  return <Collapsible open={open} onOpenChange={setOpen} className="space-y-2">
+    <Tag className={className}>{shown.map(render)}</Tag>
+    <CollapsibleContent>
+      <Tag className={className} start={ordered ? shown.length + 1 : undefined}>{more.map((value, index) => render(value, shown.length + index))}</Tag>
+    </CollapsibleContent>
+    <CollapsibleTrigger className="inline-flex items-center gap-1 rounded-md px-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {open ? t('aiAuthorNotes.showLess') : t('aiAuthorNotes.showAll', { count: values.length })}
+      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+    </CollapsibleTrigger>
+  </Collapsible>;
+}
+
+/** One open assessment obligation in plain words: where, what is missing, why and what to do. */
+function AssessmentReviewItem({ review, location, path }: { review: AuthorNotesAssessmentReview; location?: string; path?: string }) {
+  const { t } = useTranslation();
+  const sourceCheck = assessmentReviewReason(review.unresolved_reason) === 'source_check';
+  const refs = review.learning_objective_refs.map(ref => ref.replace(/^lo_/, '')).join(', ');
+  return <li className="space-y-1.5 rounded-lg border border-rose-500/25 bg-background/90 p-3 text-sm" data-testid="ai-author-notes-review">
+    {location && <p className="font-semibold break-words">{location}</p>}
+    {path && <p className="text-[11px] text-muted-foreground break-words">{path}</p>}
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <Badge variant="outline" size="sm" className="border-rose-500/40 text-rose-700 dark:text-rose-400">{t('aiAuthorNotes.reviewBadge')}</Badge>
+      <span>{t('aiAuthorNotes.reviewSlot', { index: review.component_index })}</span>
+      <span className="text-muted-foreground">·</span>
+      <span>{assessmentReviewKind(review.required_kind) === 'single_choice' ? t('aiAuthorNotes.kindSingleChoice')
+        : t('aiAuthorNotes.kindOther', { kind: review.required_kind })}</span>
+    </p>
+    <div className="break-words"><span className="font-medium text-muted-foreground">{t('aiAuthorNotes.reviewObjective')}: </span>
+      {review.learning_objectives.length > 1 ? <NoteList values={review.learning_objectives} />
+        : review.learning_objectives[0] ?? t('aiAuthorNotes.reviewObjectiveRefs', { refs })}</div>
+    <p className="break-words"><span className="font-medium text-muted-foreground">{t('aiAuthorNotes.reviewWhy')}: </span>
+      {sourceCheck ? t('aiAuthorNotes.reasonSourceCheck') : t('aiAuthorNotes.reasonUnknown', { code: review.unresolved_reason })}</p>
+    <p className="break-words"><span className="font-medium text-muted-foreground">{t('aiAuthorNotes.reviewAction')}: </span>
+      {sourceCheck ? t('aiAuthorNotes.actionSourceCheck', { facts: review.evidence_fact_count }) : t('aiAuthorNotes.actionUnknown')}</p>
+  </li>;
+}
+
+/** "Needs your review": deliberately distinct from the read-only notes around it. */
+function AssessmentReviewSection({ count, lang, children }: { count: number; lang?: string; children: ReactNode }) {
+  const { t } = useTranslation();
+  return <section className="space-y-2 rounded-xl border border-rose-500/35 bg-rose-500/[0.05] p-4" data-testid="ai-author-notes-reviews" lang={lang}>
+    <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+      <ClipboardCheck className="h-4 w-4 text-rose-600 dark:text-rose-400" aria-hidden />{t('aiAuthorNotes.reviewTitle')}
+      <Badge variant="outline" size="sm" className="border-rose-500/40 text-rose-700 dark:text-rose-400">{t('aiAuthorNotes.reviewCount', { count })}</Badge>
+    </h3>
+    <p className="text-xs text-muted-foreground">{t('aiAuthorNotes.reviewHint')}</p>
+    <ol className="space-y-2">{children}</ol>
+  </section>;
+}
+
+function useReviewLocation() {
+  const { t } = useTranslation();
+  return (entry: CourseAssessmentReviewEntry): { location: string; path: string } => {
+    const position = assessmentReviewPosition(entry.review.unit_path);
+    const path = position ? t('aiAuthorNotes.reviewPath', position) : entry.review.unit_path;
+    if (entry.unit) {
+      return { location: [entry.chapter?.display_name, entry.lesson?.display_name, entry.unit.display_name].filter(Boolean).join(' › '), path };
+    }
+    return { location: entry.review.unit_title ?? path, path: `${path} · ${t('aiAuthorNotes.reviewNotApplied')}` };
+  };
+}
+
 function MediaBriefCard({ brief, context }: { brief: AuthorNotesMediaBrief; context?: string }) {
   const { t } = useTranslation();
   const Icon = brief.media_type === 'static_infographic' ? ImageIcon : Video;
@@ -82,6 +156,11 @@ function NotesBody({ notes, showBriefs = true }: { notes: AuthorNotes; showBrief
   const story = notes.storyboard;
   const objectives = [...storyboardList(story, 'learning_outcomes'), ...storyboardList(story, 'learning_objectives')];
   const review = notes.author_review;
+  // The course note truncates Hold/SME/nice-to-know lists ("và N mục khác");
+  // the dialog shows those lists in full from the structured guidance instead.
+  const note = notes.implementation_notes && notes.node_kind === 'course'
+    ? courseNoteWithoutGuidanceLists(notes.implementation_notes, notes.idm_guidance)
+    : { text: notes.implementation_notes, removed: false };
   return <div className="space-y-2.5" lang={notes.content_locale}>
     {notes.purpose && <NoteField label={notes.node_kind === 'unit' ? t('aiAuthorNotes.learnerAchievement') : t('aiAuthorNotes.purpose')} icon={Target}>{notes.purpose}</NoteField>}
     {storyboardText(story, 'summary') && <NoteField label={t('aiAuthorNotes.summary')} icon={Sparkles}>{storyboardText(story, 'summary')}</NoteField>}
@@ -97,7 +176,10 @@ function NotesBody({ notes, showBriefs = true }: { notes: AuthorNotes; showBrief
     {review?.example_scenario && <NoteField label={t('aiAuthorNotes.reviewExample')} icon={Lightbulb}>{review.example_scenario}</NoteField>}
     {review?.visual_asset && <NoteField label={t('aiAuthorNotes.reviewVisual')} icon={ImageIcon}>{review.visual_asset}</NoteField>}
     {review?.user_behavior_navigation && <NoteField label={t('aiAuthorNotes.reviewBehavior')} icon={Users}>{review.user_behavior_navigation}</NoteField>}
-    {notes.implementation_notes && <NoteField label={t('aiAuthorNotes.notes')} icon={NotebookPen}>{notes.implementation_notes}</NoteField>}
+    {note.text && <NoteField label={t('aiAuthorNotes.notes')} icon={NotebookPen}>
+      {note.text}
+      {note.removed && <span className="mt-2 block text-xs text-muted-foreground">{t('aiAuthorNotes.notesFullListsBelow')}</span>}
+    </NoteField>}
     {showBriefs && notes.media_briefs.length > 0 && <div className="space-y-2">
       <p className="text-xs font-semibold text-muted-foreground">{t('aiAuthorNotes.mediaSection')} — {t('aiAuthorNotes.mediaHint')}</p>
       {notes.media_briefs.map(brief => <MediaBriefCard key={brief.node_id} brief={brief} />)}
@@ -138,7 +220,8 @@ export function AiAuthorNotesUnitPanel({ courseId, unitId }: { courseId: string;
     </div>;
   }
   const unit = unitAuthorNotes(notes.data, unitId);
-  if (!unit.unit && !unit.lesson && !unit.chapter && !unit.components.length) return null;
+  if (!unit.unit && !unit.lesson && !unit.chapter && !unit.components.length && !unit.reviews.length) return null;
+  const reviewLang = unit.unit?.notes.content_locale ?? courseLevelAuthorNotes(notes.data).root?.notes.content_locale;
   return <section aria-label={t('aiAuthorNotes.title')} data-testid="ai-author-notes-unit"
     className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] shadow-sm">
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -147,12 +230,22 @@ export function AiAuthorNotesUnitPanel({ courseId, unitId }: { courseId: string;
           <NotebookPen className="h-4 w-4" aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">{t('aiAuthorNotes.title')}<AuthorOnlyBadge /></span>
+          <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">{t('aiAuthorNotes.title')}<AuthorOnlyBadge />
+            {unit.reviews.length > 0 && <Badge variant="outline" size="sm" className="gap-1 border-rose-500/40 text-rose-700 dark:text-rose-400">
+              <ClipboardCheck className="h-3 w-3" aria-hidden />{t('aiAuthorNotes.reviewCount', { count: unit.reviews.length })}
+            </Badge>}
+          </span>
           <span className="block text-xs text-muted-foreground">{t('aiAuthorNotes.summaryCounts', { notes: unit.noteCount, briefs: unit.briefCount })}</span>
         </span>
         <span className="sr-only">{open ? t('aiAuthorNotes.collapse') : t('aiAuthorNotes.expand')}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </CollapsibleTrigger>
+      {/* Actionable, so it stays visible while the read-only notes are collapsed. */}
+      {unit.reviews.length > 0 && <div className="border-t border-amber-500/20 px-4 py-3">
+        <AssessmentReviewSection count={unit.reviews.length} lang={reviewLang}>
+          {unit.reviews.map(review => <AssessmentReviewItem key={review.obligation_id} review={review} />)}
+        </AssessmentReviewSection>
+      </div>}
       <CollapsibleContent className="space-y-5 border-t border-amber-500/20 px-4 py-4">
         <p className="text-xs text-muted-foreground">{t('aiAuthorNotes.authorOnlyHint')}</p>
         {unit.unit && <NotesSection heading={t('aiAuthorNotes.unitSection')} block={unit.unit} />}
@@ -172,9 +265,10 @@ export function AiAuthorNotesUnitPanel({ courseId, unitId }: { courseId: string;
 
 type PendingCourseChange = { kind: 'name'; value: string } | { kind: 'description'; value: string };
 
-/** Sidebar entry + dialog for course-level notes (summary, audience, Hold,
- * SME questions, nice-to-know, every media brief) and the explicit opt-in to
- * use the AI title/summary as learner-visible course name/description. */
+/** Sidebar entry + dialog for course-level notes (open assessment
+ * obligations, summary, audience, Hold, the complete SME question list,
+ * nice-to-know, every media brief) and the explicit opt-in to use the AI
+ * title/summary as learner-visible course name/description. */
 export function AiAuthorNotesCourseButton({ courseId, rootBlockId, currentName, onCourseChanged }: {
   courseId: string; rootBlockId: string; currentName: string; onCourseChanged: () => void | Promise<void>;
 }) {
@@ -199,9 +293,12 @@ export function AiAuthorNotesCourseButton({ courseId, rootBlockId, currentName, 
     },
     onError: (error: unknown) => toast.error(getLocalizedApiError(error, t('aiAuthorNotes.applyFailed'))),
   });
+  const reviews = courseAssessmentReviews(notes.data);
+  const reviewLocation = useReviewLocation();
   if (!notes.canEdit || !level.hasAny) return null;
   const root = level.root;
   const guidance = root?.notes.idm_guidance;
+  const smeQuestions = guidance?.sme_questions ?? [];
   return <>
     <Button type="button" variant="outline" size="sm" className="mt-2 gap-2" onClick={() => setOpen(true)} data-testid="ai-author-notes-course-open">
       <NotebookPen className="h-4 w-4" aria-hidden />{t('aiAuthorNotes.open')}
@@ -239,26 +336,34 @@ export function AiAuthorNotesCourseButton({ courseId, rootBlockId, currentName, 
               </div>
             </div>}
           </section>}
+          {reviews.length > 0 && <AssessmentReviewSection count={reviews.length} lang={root?.notes.content_locale}>
+            {reviews.map(entry => <AssessmentReviewItem key={entry.review.obligation_id} review={entry.review} {...reviewLocation(entry)} />)}
+          </AssessmentReviewSection>}
           {root && <NotesSection heading={t('aiAuthorNotes.courseSection')} block={root}>
             <NotesBody notes={root.notes} showBriefs={false} />
           </NotesSection>}
-          {guidance && (guidance.hold_items.length > 0 || guidance.pending_objectives.length > 0) && <section className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.05] p-4">
+          {guidance && (guidance.hold_items.length > 0 || guidance.pending_objectives.length > 0) && <section className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.05] p-4" lang={root?.notes.content_locale}>
             <h3 className="flex items-center gap-2 text-sm font-semibold"><TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden />{t('aiAuthorNotes.holdTitle')}</h3>
             <p className="text-xs text-muted-foreground">{t('aiAuthorNotes.holdHint')}</p>
-            <ol className="space-y-2">{guidance.hold_items.map((item, index) => <li key={index} className="rounded-lg border border-amber-500/20 bg-background/80 p-3 text-sm">
+            <LongList values={guidance.hold_items} ordered className="space-y-2" render={(item, index) => <li key={index} className="rounded-lg border border-amber-500/20 bg-background/80 p-3 text-sm">
               <p className="font-semibold break-words">{index + 1}. {item.name}</p>
               {item.reason && <p className="mt-1 break-words"><span className="font-medium text-muted-foreground">{t('aiAuthorNotes.holdReason')}: </span>{item.reason}</p>}
               {item.sme_question && <p className="mt-1 break-words"><span className="font-medium text-muted-foreground">{t('aiAuthorNotes.holdQuestion')}: </span>{item.sme_question}</p>}
               {item.blocked_must_dos.length > 0 && <div className="mt-1"><p className="font-medium text-muted-foreground">{t('aiAuthorNotes.holdBlocked')}:</p><NoteList values={item.blocked_must_dos} /></div>}
-            </li>)}</ol>
+            </li>} />
             {guidance.pending_objectives.length > 0 && <NoteField label={t('aiAuthorNotes.pendingObjectives')} icon={Target}><NoteList values={guidance.pending_objectives} /></NoteField>}
           </section>}
-          {guidance && guidance.nice_to_know.length > 0 && <section className="space-y-2 rounded-xl border border-border/70 bg-card/60 p-4">
+          {smeQuestions.length > 0 && <section className="space-y-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-4" lang={root?.notes.content_locale}>
+            <h3 className="flex items-center gap-2 text-sm font-semibold"><MessageCircleQuestion className="h-4 w-4 text-sky-600 dark:text-sky-400" aria-hidden />{t('aiAuthorNotes.smeTitle')}</h3>
+            <p className="text-xs text-muted-foreground">{t('aiAuthorNotes.smeHint', { count: smeQuestions.length })}</p>
+            <LongList values={smeQuestions} ordered className="list-decimal space-y-1 pl-5 text-sm" render={(question, index) => <li key={index} className="break-words">{question}</li>} />
+          </section>}
+          {guidance && guidance.nice_to_know.length > 0 && <section className="space-y-2 rounded-xl border border-border/70 bg-card/60 p-4" lang={root?.notes.content_locale}>
             <h3 className="flex items-center gap-2 text-sm font-semibold"><BookMarked className="h-4 w-4 text-muted-foreground" aria-hidden />{t('aiAuthorNotes.niceToKnow')}</h3>
             <p className="text-xs text-muted-foreground">{t('aiAuthorNotes.niceToKnowHint')}</p>
-            <ul className="space-y-1.5 text-sm">{guidance.nice_to_know.map((item, index) => <li key={index} className="break-words">
+            <LongList values={guidance.nice_to_know} className="space-y-1.5 text-sm" render={(item, index) => <li key={index} className="break-words">
               <span className="font-semibold">{item.name}</span>{item.summary && <span className="text-muted-foreground"> — {item.summary}</span>}
-            </li>)}</ul>
+            </li>} />
           </section>}
           {level.mediaBriefs.length > 0 && <section className="space-y-2">
             <h3 className="text-sm font-semibold">{t('aiAuthorNotes.courseMedia')}</h3>
