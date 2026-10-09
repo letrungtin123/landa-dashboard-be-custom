@@ -418,6 +418,21 @@ export const vi = {
     deactivate: "Vô hiệu hóa",
     permanentDelete: "Xóa vĩnh viễn",
     accounts: "tài khoản",
+    ownAccount: "Đây là tài khoản của bạn",
+    authorityErrors: {
+      SELF_ROLE_CHANGE: "Bạn không thể tự thay đổi vai trò của chính mình.",
+      SELF_STATUS_CHANGE: "Bạn không thể tự khóa hoặc kích hoạt tài khoản của chính mình.",
+      SELF_PASSWORD_CHANGE: "Hãy đổi mật khẩu của bạn trong trang Hồ sơ cá nhân.",
+      SELF_DELETE: "Bạn không thể xóa tài khoản của chính mình.",
+      SELF_PERMISSION_GROUP_CHANGE: "Bạn không thể tự thay đổi nhóm quyền của chính mình.",
+      SUPERADMIN_ONLY: "Chỉ Super Admin mới được quản lý tài khoản Super Admin.",
+      ROLE_NOT_ASSIGNABLE: "Bạn không có quyền gán vai trò này.",
+      TARGET_NOT_MANAGEABLE: "Bạn không có quyền quản lý tài khoản này.",
+      CROSS_TENANT: "Bạn chỉ được quản lý tài khoản trong doanh nghiệp của mình.",
+      TENANT_REQUIRED: "Không xác định được doanh nghiệp đang thao tác.",
+      LAST_SUPERADMIN: "Không thể khóa, hạ quyền hoặc xóa Super Admin cuối cùng đang hoạt động.",
+      TARGET_CHANGED: "Tài khoản vừa được người khác thay đổi. Vui lòng tải lại và thử lại.",
+    },
   },
   userForm: {
     validation: {
@@ -462,6 +477,8 @@ export const vi = {
     creating: "Đang tạo...",
     saveChanges: "Lưu thay đổi",
     createAccount: "Tạo tài khoản",
+    ownAccountNotice: "Đây là tài khoản của bạn: không thể tự đổi vai trò, trạng thái hoặc mật khẩu tại đây. Hãy đổi mật khẩu trong trang Hồ sơ cá nhân.",
+    ownPasswordHint: "— đổi trong trang Hồ sơ cá nhân",
   },
   permissionsDialog: {
     loadFailed: "Failed to load permissions",

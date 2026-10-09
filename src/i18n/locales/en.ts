@@ -421,6 +421,21 @@ export const en: TranslationSchema<typeof vi> = {
     deactivate: "Disable",
     permanentDelete: "Permanently delete",
     accounts: "accounts",
+    ownAccount: "This is your account",
+    authorityErrors: {
+      SELF_ROLE_CHANGE: "You cannot change the role of your own account.",
+      SELF_STATUS_CHANGE: "You cannot disable or activate your own account.",
+      SELF_PASSWORD_CHANGE: "Change your own password from your profile page.",
+      SELF_DELETE: "You cannot delete your own account.",
+      SELF_PERMISSION_GROUP_CHANGE: "You cannot change your own permission group.",
+      SUPERADMIN_ONLY: "Only a Super Admin can manage Super Admin accounts.",
+      ROLE_NOT_ASSIGNABLE: "You are not allowed to assign this role.",
+      TARGET_NOT_MANAGEABLE: "You are not allowed to manage this account.",
+      CROSS_TENANT: "You can only manage accounts in your own organization.",
+      TENANT_REQUIRED: "The active organization could not be determined.",
+      LAST_SUPERADMIN: "The last active Super Admin cannot be disabled, demoted or deleted.",
+      TARGET_CHANGED: "This account was just changed by someone else. Reload and try again.",
+    },
   },
   userForm: {
     validation: {
@@ -465,6 +480,8 @@ export const en: TranslationSchema<typeof vi> = {
     creating: "Creating...",
     saveChanges: "Save changes",
     createAccount: "Create account",
+    ownAccountNotice: "This is your account: its role, status and password cannot be changed here. Change your password from your profile page.",
+    ownPasswordHint: "— change it from your profile page",
   },
   permissionsDialog: {
     loadFailed: "Could not load permissions",
