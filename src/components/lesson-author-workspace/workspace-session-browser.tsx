@@ -26,6 +26,7 @@ const copy = {
     deleteTitle: 'Xóa bản thiết kế khoá học này?', deleteLead: 'Bản thiết kế khoá học và nội dung chưa áp dụng sẽ bị xóa vĩnh viễn.',
     kept: 'Nội dung đã áp dụng vào khóa học vẫn được giữ nguyên.', total: 'Tổng node', applied: 'Đã áp dụng', unapplied: 'Chưa áp dụng',
     deleting: 'Đang gửi yêu cầu xóa…', active: 'Phiên đang tạo nội dung nên chưa thể xóa. Hãy chờ hoàn tất rồi thử lại.',
+    hasApplied: 'Phiên này đã đưa nội dung vào khoá học nên không thể xoá. Nội dung đã đưa vào khoá vẫn được giữ nguyên.',
     queued: 'Đã tiếp nhận yêu cầu xóa. Danh sách sẽ được cập nhật tự động.', close: 'Đóng', untitled: 'Bản thiết kế khoá học',
   },
   en: {
@@ -36,6 +37,7 @@ const copy = {
     deleteTitle: 'Delete this draft?', deleteLead: 'The draft and unapplied content will be permanently deleted.',
     kept: 'Content already applied to the course will remain unchanged.', total: 'Total nodes', applied: 'Applied', unapplied: 'Unapplied',
     deleting: 'Submitting deletion…', active: 'This session is still generating content. Wait for it to finish, then try again.',
+    hasApplied: 'This session has already added content to the course, so it cannot be deleted. The added content stays in the course.',
     queued: 'Deletion was accepted. The list will update automatically.', close: 'Close', untitled: 'Course draft',
   },
 } as const;
@@ -88,6 +90,7 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
   const confirmDelete = async () => {
     if (!deleting || !impact || deleteBusy) return;
     if (impact.active) { setNotice(c.active); setDeleting(null); return; }
+    if (impact.applied_nodes > 0) { setNotice(c.hasApplied); setDeleting(null); return; }
     setDeleteBusy(true); setNotice(null);
     try {
       await deleteLessonAuthorSession(courseId, deleting.conversation_id, locale);
@@ -136,8 +139,9 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
         <div className="space-y-4 px-6 py-5"><p className="text-sm">{c.deleteLead}</p><p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">{c.kept}</p>
           {!impact ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{c.loading}</p> : <div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.total_nodes}</strong><span className="text-xs text-muted-foreground">{c.total}</span></div><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.applied_nodes}</strong><span className="text-xs text-muted-foreground">{c.applied}</span></div><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.unapplied_nodes}</strong><span className="text-xs text-muted-foreground">{c.unapplied}</span></div></div>}
           {impact?.active && <p className="text-sm text-amber-600 dark:text-amber-400">{c.active}</p>}
+          {!!impact && impact.applied_nodes > 0 && <p className="text-sm text-amber-600 dark:text-amber-400">{c.hasApplied}</p>}
         </div>
-        <div className="flex justify-end gap-2 border-t px-6 py-4"><Button variant="outline" disabled={deleteBusy} onClick={() => { setDeleting(null); setImpact(null); }}>{c.cancel}</Button><Button variant="destructive" disabled={!impact || impact.active || deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{deleteBusy ? c.deleting : c.remove}</Button></div>
+        <div className="flex justify-end gap-2 border-t px-6 py-4"><Button variant="outline" disabled={deleteBusy} onClick={() => { setDeleting(null); setImpact(null); }}>{c.cancel}</Button><Button variant="destructive" disabled={!impact || impact.active || impact.applied_nodes > 0 || deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{deleteBusy ? c.deleting : c.remove}</Button></div>
       </DialogContent>
     </Dialog>
   </div>;

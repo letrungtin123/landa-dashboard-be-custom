@@ -181,3 +181,10 @@ test('audit log shows "applied someone else\'s session" in both languages', () =
   }
   assert.match(vi, /"lesson_author\.workspace\.applied_shared": "đã đưa nội dung từ phiên thiết kế của người khác vào khoá học"/);
 });
+test('a session that already added content to the course cannot be deleted from the dialog', () => {
+  const browser = readFileSync(new URL('./workspace-session-browser.tsx', import.meta.url), 'utf8');
+  assert.match(browser, /disabled=\{!impact \|\| impact\.active \|\| impact\.applied_nodes > 0 \|\| deleteBusy\}/);
+  assert.match(browser, /if \(impact\.applied_nodes > 0\) \{ setNotice\(c\.hasApplied\)/);
+  assert.match(browser, /hasApplied: 'Phiên này đã đưa nội dung vào khoá học nên không thể xoá\./);
+  assert.match(browser, /hasApplied: 'This session has already added content to the course, so it cannot be deleted\./);
+});
