@@ -14,9 +14,14 @@ import { createLessonAuthorUploadAttemptId } from '../../api/lesson-author-video
 import { createWorkspaceSourceState } from './workspace-source-state';
 import { WorkspaceSourcePanel } from './workspace-source-panel';
 import { WorkspaceSessionBrowser } from './workspace-session-browser';
-import { listLessonAuthorSessions } from '../../api/workspace-sessions';
+import { listLessonAuthorSessions, type LessonAuthorActiveRun } from '../../api/workspace-sessions';
+import { useLessonAuthorActiveRuns } from '@/hooks/queries/use-lesson-author-sessions';
+import { WorkspaceActiveRunNotice } from './workspace-active-run-banner';
+import { WorkspaceApplyConflictDialog } from './workspace-apply-conflict-dialog';
+import { workspaceActiveRunNotice, workspaceReadOnlyNotice } from './workspace-sharing';
 import { createWorkspaceWriteClient, WorkspaceWriteError, workspaceWriteMessage } from '../../api/workspace-write';
-import { createWorkspaceApplyClient, workspaceApplyMessage, WorkspaceApplyError, type WorkspaceApplyCode } from '../../api/workspace-apply';
+import { createWorkspaceApplyClient, workspaceApplyMessage, WorkspaceApplyError, type WorkspaceApplyCode,
+  type WorkspaceApplyConflict } from '../../api/workspace-apply';
 import { createWorkspaceStreamClient, type WorkspaceStreamState } from '../../api/workspace-stream';
 import { createWorkspaceSourceStreamClient } from '../../api/workspace-source-stream';
 import { fetchLessonAuthorChatSettings } from '../../api/custom-chat';
@@ -298,16 +303,17 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
   return {
     trigger: current ? <Button type="button" variant="outline" size="sm" className="mt-2 gap-2" aria-label={copy[locale].open}
       onClick={() => { void current.launch(); }}><Sparkles className="h-4 w-4" aria-hidden />{copy[locale].label}</Button> : null,
-    overlay: current ? <WorkspaceCourseHostOverlayMount host={current} courseId={courseId!} locale={locale} sources={sources}
+    overlay: current ? <WorkspaceCourseHostOverlayMount host={current} courseId={courseId!} tenantId={tenantId ?? null} locale={locale} sources={sources}
       onCourseApplied={() => onCourseAppliedRef.current?.()} /> : null,
   };
 }
 
-function WorkspaceCourseHostOverlayMount({ host, courseId, locale, sources, onCourseApplied }: { host: Host; courseId: string; locale: WorkspaceLocale;
+function WorkspaceCourseHostOverlayMount({ host, courseId, tenantId, locale, sources, onCourseApplied }: { host: Host; courseId: string; tenantId: string | null; locale: WorkspaceLocale;
   sources: ReturnType<typeof createWorkspaceSourceState> | null; onCourseApplied?: () => Promise<void> | void }) {
   const state = useSyncExternalStore(host.subscribe, host.getState, emptySnapshot);
+  const activeRuns = useLessonAuthorActiveRuns({ tenantId, courseId, locale, enabled: !!state?.open });
   return state ? <WorkspaceCourseHostOverlay host={host} courseId={courseId} state={state} locale={locale} sources={sources}
-    onCourseApplied={onCourseApplied} /> : null;
+    activeRuns={activeRuns.data} onCourseApplied={onCourseApplied} /> : null;
 }
 
 /** Exactly one Fetch/SSE connection for the open authorized workspace. The
@@ -347,8 +353,8 @@ function WorkspaceModalShell({ host, children }: { host: Host; children: ReactNo
   </Dialog>;
 }
 
-export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, onCourseApplied }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
-  sources?: ReturnType<typeof createWorkspaceSourceState> | null; onCourseApplied?: () => Promise<void> | void }) {
+export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, activeRuns, onCourseApplied }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
+  sources?: ReturnType<typeof createWorkspaceSourceState> | null; activeRuns?: readonly LessonAuthorActiveRun[]; onCourseApplied?: () => Promise<void> | void }) {
   const c = copy[locale], session = host.getSession(), workspace = state.workspace;
   const [actionError, setActionError] = useState(false);
   // Normal product entry has no selected launch and therefore starts at the
@@ -360,7 +366,9 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   const [editingTitleNodeId, setEditingTitleNodeId] = useState<string | null>(null);
   const [appliedOverlay, setAppliedOverlay] = useState<WorkspaceAppliedRevisionOverlay | null>(null);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState<string | null>(null);
-  const [activeConversation, setActiveConversation] = useState<{ id: string; title: string } | null>(null);
+  const [activeConversation, setActiveConversation] = useState<{ id: string; title: string; ownerName?: string; mine?: boolean } | null>(null);
+  const [applyConflict, setApplyConflict] = useState<{ nodeId: string; code: WorkspaceApplyCode; conflict: WorkspaceApplyConflict } | null>(null);
+  const runNotice = workspaceActiveRunNotice(activeRuns ?? [], view === 'workspace' ? state.launch?.conversation_id ?? null : null, locale);
   const titleLookupRef = useRef<string | null>(null);
   const overviewAttemptRef = useRef<string | null>(null);
   const sourceState = useSyncExternalStore(sources?.subscribe ?? emptySubscribe, sources?.getState ?? emptySnapshot, emptySnapshot);
@@ -383,7 +391,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   useEffect(() => { if (state.launch && view === 'source') setView('workspace'); }, [state.launch, view]);
   useEffect(() => {
     const conversation = sourceState?.conversation;
-    if (conversation?.id && conversation.title?.trim()) setActiveConversation({ id: conversation.id, title: conversation.title.trim() });
+    if (conversation?.id && conversation.title?.trim()) setActiveConversation({ id: conversation.id, title: conversation.title.trim(), mine: true });
   }, [sourceState?.conversation]);
   useEffect(() => {
     const conversationId = state.launch?.conversation_id;
@@ -392,7 +400,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     const abort = new AbortController();
     void listLessonAuthorSessions(courseId, locale, abort.signal).then(result => {
       const match = result.items.find(item => item.conversation_id === conversationId);
-      if (match) setActiveConversation({ id: conversationId, title: match.title });
+      if (match) setActiveConversation({ id: conversationId, title: match.title, ownerName: match.owner.display_name, mine: match.is_mine });
     }).catch(() => undefined).finally(() => { if (titleLookupRef.current === conversationId) titleLookupRef.current = null; });
     return () => abort.abort();
   }, [activeConversation?.id, courseId, locale, state.launch?.conversation_id, state.open]);
@@ -437,13 +445,13 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   }, [authoritativeRead, appliedOverlay]);
   if (!state.open) return null;
   if (!state.loading && view === 'sessions') return <WorkspaceModalShell host={host}><WorkspaceSessionBrowser
-    courseId={courseId} locale={locale} assistantAvatarSrc={assistantAvatarSrc}
+    courseId={courseId} locale={locale} assistantAvatarSrc={assistantAvatarSrc} banner={<WorkspaceActiveRunNotice text={runNotice} />}
     onClose={() => host.close()}
-    onOpen={async (launch, title) => { setActionError(false); setActiveConversation({ id: launch.conversation_id, title }); try { await host.acceptCreated(launch); setView('workspace'); } catch { setActionError(true); } }}
+    onOpen={async (launch, item) => { setActionError(false); setActiveConversation({ id: launch.conversation_id, title: item.title, ownerName: item.owner.display_name, mine: item.is_mine }); try { await host.acceptCreated(launch); setView('workspace'); } catch { setActionError(true); } }}
     onSource={(conversationId, title) => {
       setActionError(false);
       if (!sources || !host.clearSelection()) { setActionError(true); return; }
-      setActiveConversation(conversationId && title ? { id: conversationId, title } : null);
+      setActiveConversation(conversationId && title ? { id: conversationId, title, mine: true } : null);
       if (conversationId) sources.resumeSession(conversationId); else sources.beginNewSession();
       setView('source');
     }} /></WorkspaceModalShell>;
@@ -465,9 +473,12 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   const presentableFailure = failure?.code === 'WORKSPACE_EVENT_RESNAPSHOT_REQUIRED' ? null : failure;
   const message = presentableFailure ? presentableFailure instanceof WorkspaceWriteError
     ? workspaceWriteMessage(presentableFailure.code, locale) : workspaceReadMessage(presentableFailure.code, locale) : null;
-  const toolbar = (!state.launch?.can_edit || message || actionError) ? <div className="space-y-2 text-sm">
+  // Someone else's shared session opens read-only: view and Apply, no editing or continuing.
+  const otherOwner = !!state.launch && activeConversation?.id === state.launch.conversation_id && activeConversation.mine === false;
+  const toolbar = (!state.launch?.can_edit || message || actionError || runNotice) ? <div className="space-y-2 text-sm">
+    <WorkspaceActiveRunNotice text={runNotice} />
     {(message || actionError) && <Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button>}
-    {!state.launch?.can_edit && <p role="status">{c.readOnly}</p>}
+    {!state.launch?.can_edit && <p role="status">{otherOwner ? workspaceReadOnlyNotice(activeConversation?.ownerName ?? null, locale) : c.readOnly}</p>}
     {message && <p role="alert">{message}</p>}{actionError && <p role="alert">{c.error}</p>}
   </div> : undefined;
   const renderDetail = (node: WorkspaceNode | null) => {
@@ -484,16 +495,16 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     // closes the write window immediately, before the background read catches up.
     const appliedReadOnly = node.applied || applyState === 'done';
     const applyScope = workspaceApplyScope(presentationRead?.graph?.nodes ?? [], node.node_id);
-    const canApply = host.canWrite() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
+    const canApply = host.canApply() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
       && !appliedReadOnly && !!state.launch && !!workspace.read.status && !workspace.read.stale && !workspace.writeBusy;
-    const apply = async (draft?: NonNullable<typeof editor.draft>, expectedRevision?: number, changed = false) => {
+    const apply = async (draft?: NonNullable<typeof editor.draft>, expectedRevision?: number, changed = false, overwriteConfirmation?: string) => {
       if (!canApply || !state.launch || !workspace.read.status || !applyScope) return;
       setActionError(false); setApplyError(null); setApplyState('busy');
       try {
         const client = createWorkspaceApplyClient({ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id });
         const confirmedScope = await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
-          assertCanWrite: () => host.assertCanWrite(),
-          apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, crypto.randomUUID(), sequence, locale); } });
+          assertCanWrite: () => host.assertCanApply(),
+          apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, crypto.randomUUID(), sequence, locale, overwriteConfirmation); } });
         const confirmedGraph = session.getState().read.graph;
         const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
         completeWorkspaceApplyUi({ markApplied: () => {
@@ -503,7 +514,9 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
         },
           refreshWorkspace: () => session.refreshForApply(), refreshCourse: onCourseApplied });
       } catch (error) {
-        if (error instanceof WorkspaceApplyError) { setApplyError(error.code); setApplyState('failed'); }
+        // Edited/moved course parts: list them in a dialog (replace only after confirmation).
+        if (error instanceof WorkspaceApplyError && error.conflict) { setApplyConflict({ nodeId: node.node_id, code: error.code, conflict: error.conflict }); setApplyState('idle'); }
+        else if (error instanceof WorkspaceApplyError) { setApplyError(error.code); setApplyState('failed'); }
         else { setActionError(true); setApplyState('failed'); }
       }
     };
@@ -574,6 +587,11 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
           {(message || actionError) && <div className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p role="alert">{message ?? c.error}</p><Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button></div>}
         </div>
       </DialogContent>
+      {applyConflict?.nodeId === node.node_id && <WorkspaceApplyConflictDialog code={applyConflict.code} conflict={applyConflict.conflict} locale={locale}
+        busy={applyState === 'busy'} onClose={() => setApplyConflict(null)} onConfirm={() => {
+          const token = applyConflict.conflict.overwrite_confirmation; setApplyConflict(null);
+          if (token) void apply(undefined, undefined, false, token);
+        }} />}
     </Dialog>;
   };
   return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={presentationRead!} locale={locale}

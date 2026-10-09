@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Clock3, FilePlus2, Loader2, Pencil, RefreshCw, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { FilePlus2, Loader2, RefreshCw, Users, X } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import {
@@ -10,10 +9,13 @@ import {
   listLessonAuthorSessions,
   renameLessonAuthorSession,
   type LessonAuthorSessionDeleteImpact,
+  type LessonAuthorSessionScope,
   type LessonAuthorSessionSummary,
 } from '../../api/workspace-sessions';
 import type { WorkspaceLaunchContext } from './workspace-host.logic';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
+import { WorkspaceSessionCard, WorkspaceSessionScopeFilter } from './workspace-session-card';
+import { workspaceSharingCopy } from './workspace-sharing';
 
 const copy = {
   vi: {
@@ -38,15 +40,18 @@ const copy = {
   },
 } as const;
 
-export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, onOpen, onSource, onClose }: {
+export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, banner, onOpen, onSource, onClose }: {
   courseId: string;
   locale: WorkspaceLocale;
   assistantAvatarSrc?: string | null;
-  onOpen: (launch: WorkspaceLaunchContext, title: string) => void | Promise<void>;
+  /** Running sessions of other people on this course (presentational). */
+  banner?: ReactNode;
+  onOpen: (launch: WorkspaceLaunchContext, item: LessonAuthorSessionSummary) => void | Promise<void>;
   onSource: (conversationId: string | null, title: string | null) => void;
   onClose: () => void;
 }) {
-  const c = copy[locale];
+  const c = copy[locale], s = workspaceSharingCopy[locale];
+  const [scope, setScope] = useState<LessonAuthorSessionScope>('all');
   const [items, setItems] = useState<readonly LessonAuthorSessionSummary[]>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(false);
   const [editing, setEditing] = useState<string | null>(null), [title, setTitle] = useState(''), [renaming, setRenaming] = useState(false);
@@ -56,10 +61,10 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError(false);
-    try { const result = await listLessonAuthorSessions(courseId, locale, signal); setItems(result.items); }
+    try { const result = await listLessonAuthorSessions(courseId, locale, signal, scope); setItems(result.items); }
     catch { if (!signal?.aborted) setError(true); }
     finally { if (!signal?.aborted) setLoading(false); }
-  }, [courseId, locale]);
+  }, [courseId, locale, scope]);
   useEffect(() => { const abort = new AbortController(); void load(abort.signal); return () => abort.abort(); }, [load]);
 
   const startRename = (item: LessonAuthorSessionSummary) => { setEditing(item.conversation_id); setTitle(item.title); setNotice(null); };
@@ -92,7 +97,11 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
     finally { setDeleteBusy(false); }
   };
   const format = (value: string) => new Intl.DateTimeFormat(locale === 'vi' ? 'vi-VN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-  const openItem = (item: LessonAuthorSessionSummary) => item.workspace ? void onOpen(item.workspace, item.title) : onSource(item.conversation_id, item.title);
+  // Own sessions open or continue; other people's sessions open read-only, and only when there is a workspace to view.
+  const openItem = (item: LessonAuthorSessionSummary) => {
+    if (item.workspace) void onOpen(item.workspace, item);
+    else if (item.permissions.can_continue) onSource(item.conversation_id, item.title);
+  };
 
   return <div className="flex min-h-0 flex-1 flex-col">
     <header className="flex shrink-0 items-start justify-between gap-4 border-b bg-card px-5 py-4 sm:px-7 sm:py-5">
@@ -102,34 +111,23 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-5 py-5 sm:px-7">
       <div className="mx-auto max-w-5xl space-y-4">
+        {banner}
         <button type="button" onClick={() => onSource(null, null)} className="group flex w-full items-center gap-4 rounded-2xl border border-primary/30 bg-primary/[0.055] p-4 text-left shadow-sm transition hover:border-primary/55 hover:bg-primary/[0.09] hover:shadow-lg hover:shadow-primary/10">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform group-hover:scale-105"><FilePlus2 className="h-5 w-5" /></span>
           <span><span className="block font-semibold">{c.newSession}</span><span className="mt-1 block text-sm text-muted-foreground">{c.description}</span></span>
         </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-xs text-muted-foreground sm:max-w-2xl"><Users className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />{s.sharedNote}</p>
+          <WorkspaceSessionScopeFilter scope={scope} locale={locale} disabled={loading} onChange={value => { setEditing(null); setScope(value); }} />
+        </div>
         {notice && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">{notice}</p>}
         {loading && <div className="space-y-3" role="status"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{c.loading}</p>{[0,1,2].map(value => <div key={value} className="h-24 animate-pulse rounded-2xl border bg-card" />)}</div>}
         {!loading && error && <div className="rounded-2xl border bg-card p-6 text-center"><p className="text-sm text-muted-foreground">{c.error}</p><Button className="mt-4" variant="outline" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" />{c.retry}</Button></div>}
-        {!loading && !error && items.length === 0 && <div className="rounded-2xl border border-dashed bg-card/60 p-10 text-center text-sm text-muted-foreground">{c.empty}</div>}
-        {!loading && !error && items.map(item => <article key={item.conversation_id} role="button" tabIndex={editing === item.conversation_id ? -1 : 0}
-          aria-label={`${item.workspace ? c.open : c.continue}: ${item.title || c.untitled}`}
-          onClick={() => { if (editing !== item.conversation_id) openItem(item); }}
-          onKeyDown={event => { if (editing !== item.conversation_id && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openItem(item); } }}
-          className="cursor-pointer rounded-2xl border bg-card p-4 shadow-sm outline-none transition hover:border-primary/35 hover:bg-primary/[0.025] hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0 flex-1">{editing === item.conversation_id ? <div className="flex max-w-xl gap-2" onClick={event => event.stopPropagation()}>
-              <Input autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)}
-                onKeyDown={event => { event.stopPropagation(); if (event.key === 'Enter') void commitRename(item); if (event.key === 'Escape') setEditing(null); }} />
-              <Button size="icon" aria-label={c.save} disabled={renaming || !title.trim()} onClick={event => { event.stopPropagation(); void commitRename(item); }}>
-                {renaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              </Button><Button variant="outline" size="icon" aria-label={c.cancel} onClick={event => { event.stopPropagation(); setEditing(null); }}><X className="h-4 w-4" /></Button>
-            </div> : <><div className="flex min-w-0 items-center gap-1.5"><h3 className="truncate font-semibold">{item.title || c.untitled}</h3>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-primary"
-                aria-label={c.rename} onClick={event => { event.stopPropagation(); startRename(item); }}><Pencil className="h-3.5 w-3.5" /></Button></div>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{format(item.updated_at)}</p></>}</div>
-            {editing !== item.conversation_id && <Button variant="outline" size="sm" className="shrink-0 text-destructive hover:text-destructive"
-              onClick={event => { event.stopPropagation(); void requestDelete(item); }}><Trash2 className="mr-1.5 h-3.5 w-3.5" />{c.remove}</Button>}
-          </div>
-        </article>)}
+        {!loading && !error && items.length === 0 && <div className="rounded-2xl border border-dashed bg-card/60 p-10 text-center text-sm text-muted-foreground">{scope === 'mine' ? s.emptyMine : c.empty}</div>}
+        {!loading && !error && items.map(item => <WorkspaceSessionCard key={item.conversation_id} item={item} locale={locale} labels={c}
+          editing={editing === item.conversation_id} title={title} renaming={renaming} updatedLabel={format(item.updated_at)}
+          onOpen={() => openItem(item)} onStartRename={() => startRename(item)} onTitleChange={setTitle}
+          onCommitRename={() => void commitRename(item)} onCancelRename={() => setEditing(null)} onDelete={() => void requestDelete(item)} />)}
       </div>
     </div>
     <Dialog open={!!deleting} onOpenChange={open => { if (!open && !deleteBusy) { setDeleting(null); setImpact(null); } }}>

@@ -41,6 +41,7 @@ function load(relative) {
     if (name === './workspace-ai-avatar') return { WorkspaceAiAvatar: () => h('span', null, 'AI') };
     if (name === '@/utils/store') return { useAuthStore: select => select({ user: null, isAuthenticated: false, hasPermission: () => false }) };
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };
+    if (name === '@/hooks/queries/use-lesson-author-sessions') return { useLessonAuthorActiveRuns: () => ({ data: undefined }) };
     if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' } }) };
     if (name.startsWith('../ui/')) return ui;
     if (name === './workspace-dialog') return {
@@ -316,7 +317,7 @@ test('revalidated server edit grant gates writes; locale update does not replace
     assert.equal(f.guard(), false); assert.throws(() => f.host.assertCanWrite()); assert.equal(f.created, 1);
   } finally { f.host.dispose(); }
 });
-const render = (f, locale = 'en') => { editorProps = null; dialogProps = null; return renderToStaticMarkup(h(WorkspaceCourseHostOverlay, { host: f.host, state: f.host.getState(), locale })); };
+const render = (f, locale = 'en', extra = {}) => { editorProps = null; dialogProps = null; return renderToStaticMarkup(h(WorkspaceCourseHostOverlay, { host: f.host, state: f.host.getState(), locale, ...extra })); };
 test('default-off hook produces no trigger or overlay', () => {
   function Probe() { const host = useCourseWorkspaceHost(scope.courseId, true); return h('div', null, host.trigger, host.overlay); }
   assert.equal(renderToStaticMarkup(h(Probe)), '<div></div>');
@@ -356,6 +357,38 @@ test('server read-only launch renders authorized preview without edit controls',
   try {
     await f.host.launch(); await f.host.getSession().selectNode(f.node.node_id);
     const html = render(f); assert.match(html, /currently read-only/); assert.match(html, /Saved title/); assert.equal(editorProps, null);
+  } finally { f.host.dispose(); }
+});
+test('someone else\'s shared session opens read-only: no editing, but Apply stays available', async () => {
+  const f = fixture({ resolve: async () => ({ ...launch, can_edit: false }) });
+  try {
+    await f.host.launch();
+    assert.equal(f.host.canWrite(), false, 'no composer, no edits');
+    assert.equal(f.host.canApply(), true, 'course editors may still Apply');
+    assert.doesNotThrow(() => f.host.assertCanApply());
+    assert.throws(() => f.host.assertCanWrite());
+    f.host.close();
+    assert.equal(f.host.canApply(), false, 'closed host never Applies');
+  } finally { f.host.dispose(); }
+  const source = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const canApply = host\.canApply\(\) && !!detail/);
+  assert.match(source, /assertCanWrite: \(\) => host\.assertCanApply\(\)/);
+  assert.match(source, /const editorCapable = host\.canWrite\(\)/, 'editing still needs the creator');
+  assert.match(source, /canUpload: \(\) => authorized\(\),/);
+  assert.doesNotMatch(source, /'ai_chatbot'/, 'AI course design never needs the chatbot configuration permission');
+});
+for (const locale of ['en', 'vi']) test(`${locale}: another person's running session shows a banner in the open workspace`, async () => {
+  const f = fixture();
+  try {
+    await f.host.launch();
+    const runs = [{ conversation_id: id(40), title: 'Khác', owner: { user_id: id(41), display_name: 'Trần Thị B' }, is_mine: false, started_at: '2026-10-09T01:00:00.000Z' },
+      { conversation_id: launch.conversation_id, title: 'Mở', owner: { user_id: id(42), display_name: 'Đang mở' }, is_mine: false, started_at: '2026-10-09T01:00:00.000Z' }];
+    const html = render(f, locale, { activeRuns: runs });
+    assert.match(html, /data-testid="workspace-active-run-notice"/);
+    assert.ok(html.includes('Trần Thị B'));
+    assert.ok(!html.includes('Đang mở'), 'the open session itself is not announced');
+    assert.ok(html.includes(locale === 'en' ? 'Wait for it to finish' : 'Bạn nên đợi phiên đó xong'));
+    assert.doesNotMatch(render(f, locale, { activeRuns: [] }), /workspace-active-run-notice/);
   } finally { f.host.dispose(); }
 });
 test('course editor mounts two responsive triggers but one host, without replacing legacy chat/upload layout', () => {

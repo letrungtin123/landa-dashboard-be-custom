@@ -66,6 +66,9 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
     for (const listener of listeners) { try { listener(); } catch { /* View errors cannot dispatch work. */ } }
   }
   function canWrite() { return !disposed && eligible && state.open && !state.loading && state.launch?.can_edit === true && !state.issue; }
+  /** Shared sessions: every course editor may Apply an opened workspace, also
+   * read-only (someone else's) ones. The server re-checks the permission. */
+  function canApply() { return !disposed && eligible && state.open && !state.loading && !!state.launch && !state.issue; }
   function releaseSession() {
     unsubscribe?.(); unsubscribe = null; session?.dispose(); session = null;
   }
@@ -106,6 +109,7 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
     getSession: () => disposed ? null : session,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     canWrite,
+    canApply,
     /** Accept only the validated response to an explicit Create. No fabricated
      * launch identifiers and no extra latest lookup between receipt and read. */
     async acceptCreated(value: WorkspaceLaunchContext) {
@@ -155,6 +159,7 @@ export function createWorkspaceCourseHost(scope: WorkspaceHostScope, dependencie
     setVisible(value: boolean) { visible = value; if (!disposed) session?.setVisible(value); },
     setUiLocale(value: WorkspaceLocale) { locale = value; if (!disposed) session?.setUiLocale(value); },
     assertCanWrite() { if (!canWrite()) throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN'); },
+    assertCanApply() { if (!canApply()) throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN'); },
     dispose() {
       if (disposed) return;
       close(); disposed = true; releaseSession(); listeners.clear();
