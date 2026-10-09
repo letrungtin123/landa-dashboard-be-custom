@@ -25,14 +25,18 @@ export default defineConfig(({ mode }) => {
   // Proxy config dùng chung cho cả server (dev) và preview (prod)
   // Chỉ dùng khi truy cập trực tiếp qua IP, KHÔNG cần khi qua Kong
   const proxyConfig = {
+    // xfwd appends the connecting client address to X-Forwarded-For (never
+    // replaces it); the backend trusts only its configured proxy hops.
     '/api': {
       target: backendProxyTarget,
       changeOrigin: true,
       cookieDomainRewrite: '',
+      xfwd: true,
     },
     '/uploads': {
       target: backendProxyTarget,
       changeOrigin: true,
+      xfwd: true,
     },
     '/cms-api': {
       target: cmsProxyTarget,
