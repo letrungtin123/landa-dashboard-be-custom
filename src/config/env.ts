@@ -175,8 +175,6 @@ export const config = {
   },
   /** OpenEdX Client ID — tùy chọn (đang chuyển sang custom backend) */
   clientId: (import.meta.env.VITE_OPENEDX_CLIENT_ID || "").trim(),
-  /** OpenEdX Client Secret — tùy chọn (đang chuyển sang custom backend) */
-  clientSecret: (import.meta.env.VITE_OPENEDX_CLIENT_SECRET || "").trim(),
   tokenRefreshBufferMs: requireEnvNumber("VITE_TOKEN_REFRESH_BUFFER_MS", 300_000),
   apiTimeoutMs: requireEnvNumber("VITE_API_TIMEOUT_MS", 30_000),
   googleClientId: (import.meta.env.VITE_GOOGLE_CLIENT_ID || "").trim(),
