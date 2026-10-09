@@ -1,5 +1,6 @@
 import { config } from '@/config/env';
 import { ensureTokenRefresh } from './refresh-manager';
+import { retryAfterUnauthorized } from './stream-auth-retry.logic';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
@@ -39,6 +40,7 @@ export function createWorkspaceSourceStreamClient(scope: SourceStreamScope, depe
 }): SourceStreamClient {
   if (!isWorkspaceId(scope.documentId)) throw new Error('SOURCE_STREAM_INPUT_INVALID');
   let controller: AbortController | null = null, running = false, terminal = false, failures = 0, failureStartedAt = 0;
+  let unauthorizedRetries = 0;
   const publish = (state: SourceStreamState) => { try { dependencies.onState(state); } catch { /* UI observer only. */ } };
   const dispatch = (event: string, raw: string) => {
     if (raw.length > MAX_EVENT_BYTES) throw new Error('SOURCE_STREAM_EVENT_TOO_LARGE');
@@ -96,10 +98,18 @@ export function createWorkspaceSourceStreamClient(scope: SourceStreamScope, depe
           Accept: 'text/event-stream', Authorization: `Bearer ${auth.accessToken}`, 'X-Tenant-Id': tenantId,
           'X-UI-Locale': scope.locale, 'Cache-Control': 'no-cache',
         } });
-        if (response.status === 401) { if (!await ensureTokenRefresh()) { publish('blocked'); return; } continue; }
+        if (response.status === 401) {
+          if (!await ensureTokenRefresh()) { publish('blocked'); return; }
+          // Reconnect at once only with a really new token; otherwise back off.
+          if (retryAfterUnauthorized(auth.accessToken, useAuthStore.getState().accessToken, unauthorizedRetries) === 'retry_now') {
+            unauthorizedRetries++;
+            continue;
+          }
+          throw new Error('SOURCE_STREAM_UNAUTHORIZED');
+        }
         if (response.status === 403 || response.status === 404) { publish('blocked'); return; }
         if (!response.ok || !response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) throw new Error('SOURCE_STREAM_UNAVAILABLE');
-        publish('live'); failures = 0; failureStartedAt = 0;
+        publish('live'); failures = 0; failureStartedAt = 0; unauthorizedRetries = 0;
         await consume(response, signal);
         if (signal.aborted || !running || !dependencies.active()) return;
         if (terminal) return;

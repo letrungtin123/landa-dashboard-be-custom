@@ -15,6 +15,14 @@ const require = name => {
     accessToken: 'test-token', user: { role: 'superadmin' } }) } };
   if (name === '@/utils/tenant-store') return { useTenantStore: { getState: () => ({ activeTenantId: id(2) }) } };
   if (name === './lesson-author-workspace.contract') return { isWorkspaceId: value => /^[0-9a-f-]{36}$/i.test(value) };
+  if (name === './stream-auth-retry.logic') {
+    const logic = { exports: {} };
+    const source = ts.transpileModule(readFileSync(new URL('./stream-auth-retry.logic.ts', import.meta.url), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    new Function('module', 'exports', source)(logic, logic.exports);
+    return logic.exports;
+  }
   throw new Error(`unexpected import ${name}`);
 };
 new Function('require', 'module', 'exports', output)(require, module, module.exports);

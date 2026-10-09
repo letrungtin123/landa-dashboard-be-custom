@@ -1,5 +1,6 @@
 import { config } from '@/config/env';
 import { ensureTokenRefresh } from './refresh-manager';
+import { retryAfterUnauthorized } from './stream-auth-retry.logic';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
@@ -46,6 +47,7 @@ export function createWorkspaceStreamClient(scope: WorkspaceStreamScope, depende
   let lastSequence = 0;
   let failureStartedAt = 0;
   let failures = 0;
+  let unauthorizedRetries = 0;
 
   const publish = (state: WorkspaceStreamState) => { try { dependencies.onState(state); } catch { /* UI observer only. */ } };
   const dispatch = (type: string, raw: string, id: string | null) => {
@@ -123,13 +125,18 @@ export function createWorkspaceStreamClient(scope: WorkspaceStreamScope, depende
         } });
         if (response.status === 401) {
           if (!await ensureTokenRefresh()) { publish('blocked'); return; }
-          continue;
+          // Reconnect at once only with a really new token; otherwise back off.
+          if (retryAfterUnauthorized(auth.accessToken, useAuthStore.getState().accessToken, unauthorizedRetries) === 'retry_now') {
+            unauthorizedRetries++;
+            continue;
+          }
+          throw new Error('WORKSPACE_STREAM_UNAUTHORIZED');
         }
         if (response.status === 403 || response.status === 404) { publish('blocked'); return; }
         if (!response.ok || !response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
           throw new Error('WORKSPACE_STREAM_UNAVAILABLE');
         }
-        publish('live'); failures = 0; failureStartedAt = 0;
+        publish('live'); failures = 0; failureStartedAt = 0; unauthorizedRetries = 0;
         await consume(response, signal);
         if (signal.aborted || !running) return;
         throw new Error('WORKSPACE_STREAM_EOF');
