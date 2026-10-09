@@ -129,12 +129,20 @@ export function createWorkspaceSession(identity: WorkspaceSessionIdentity, depen
     const r = reader.getState();
     return !disposed && r.opened && r.access === 'allowed' && !r.stale && !r.error && !!r.graph && !readFault;
   }
+  /** Every node commit briefly moves the status head ahead of the graph head (stale). Authority
+   * is intact, so the retained exact-revision course/chapter details stay on screen; the next
+   * graph reconciles them. Blanking them made the Overview tab flash on every node completion. */
+  function overviewPresentable() {
+    const r = reader.getState();
+    return readable() || (!disposed && r.opened && r.access === 'allowed' && r.stale && !r.error && !!r.graph && !readFault);
+  }
   function emit() {
+    const presentable = overviewPresentable();
     snapshot = freeze({ identity: bound, disposed, read: reader.getState(), writeBusy,
       writes: Object.fromEntries([...entries].map(([id, e]) => [id, e.store.getState()])),
       drafts: Object.fromEntries([...entries].filter(([, e]) => e.local).map(([id, e]) => [id, e.local!])),
-      overview: { head: overviewHead, details: readable() ? [...overview.values()] : [],
-        complete: readable() && overviewComplete, loading: !!overviewFlight }, delivery, error });
+      overview: { head: overviewHead, details: presentable ? [...overview.values()] : [],
+        complete: presentable && overviewComplete, loading: !!overviewFlight }, delivery, error });
     for (const listener of listeners) { try { listener(); } catch { /* Views cannot retry I/O. */ } }
   }
   function clearCaches() { details.clear(); overview.clear(); overviewHead = null; overviewComplete = false; }

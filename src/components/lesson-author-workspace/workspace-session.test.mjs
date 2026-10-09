@@ -366,3 +366,21 @@ test('editor callbacks match controlled props and locale switch cannot translate
   assert.equal(f.calls.filter(c => c[0] === 'reset').length, 1);
   assert.equal(f.session.editorProps(id(1)).detail.content.title, 'Node 0'); f.session.dispose();
 });
+
+test('a node commit keeps the Overview details on screen while the graph catches up (no flash)', async () => {
+  const f = fixture(4); await f.session.open();
+  await f.session.loadOverview(); await f.session.loadOverview();
+  assert.equal(f.session.getState().overview.details.length, 4);
+  const seen = [];
+  const unsubscribe = f.session.subscribe(() => seen.push(f.session.getState().overview.details.length));
+  const wait = deferred(); f.gate = wait;
+  f.advanceHead();
+  const committed = f.session.notifyCommittedEvent(2); await settle();
+  // While the newer graph read is pending, retained exact-revision details stay visible.
+  assert.equal(f.session.getState().overview.details.length, 4);
+  f.gate = null; wait.resolve(); await committed; await settle();
+  assert.equal(f.session.getState().overview.details.length, 4);
+  assert.ok(!seen.includes(0), `overview never blanks during a commit (saw ${seen.join(',')})`);
+  assert.equal(f.calls.filter(c => c[0] === 'detail').length, 4, 'unchanged course/chapter details are not fetched again');
+  unsubscribe(); f.session.dispose();
+});
