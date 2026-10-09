@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLocaleStore } from '@/utils/locale-store';
+import { readSsoRefusalMessage } from '@/api/auth-session.logic';
 
 interface LoginFormValues {
   email: string;
@@ -158,7 +159,9 @@ export default function LoginPage() {
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : '';
       if (!/hủy|cancel/i.test(rawMessage)) {
-        const message = locale === 'vi' && rawMessage ? rawMessage : t('auth.ssoLoginFailed');
+        // An account-policy refusal (e.g. not allowed to link) explains what to do next.
+        const message = readSsoRefusalMessage(err)
+          ?? (locale === 'vi' && rawMessage ? rawMessage : t('auth.ssoLoginFailed'));
         setAuthError(message);
         toast.error(message);
       }

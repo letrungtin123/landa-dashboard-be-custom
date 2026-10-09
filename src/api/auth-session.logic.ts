@@ -39,3 +39,13 @@ export function removeStorageKeysWithPrefixes(storage: KeyStorage, prefixes: rea
   for (const key of doomed) storage.removeItem(key);
   return doomed.length;
 }
+
+/**
+ * A refused external sign-in answers an SSO_LOGIN_* code with a plain message
+ * already in the request language (X-UI-Locale). Anything else returns null.
+ */
+export function readSsoRefusalMessage(error: unknown): string | null {
+  const data = (error as { response?: { data?: { code?: unknown; message?: unknown } } } | null)?.response?.data;
+  if (!data || typeof data.code !== 'string' || !data.code.startsWith('SSO_LOGIN_')) return null;
+  return typeof data.message === 'string' && data.message.trim() ? data.message.trim() : null;
+}

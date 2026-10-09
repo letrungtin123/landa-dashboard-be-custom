@@ -1,6 +1,7 @@
 import axios from "axios";
 import { customApiClient } from "./custom-client";
 import { config } from "@/config/env";
+import { useLocaleStore } from "@/utils/locale-store";
 import type { CustomLoginResponse } from "./custom-auth";
 
 interface ApiResponse<T> { success: boolean; data: T; message?: string; }
@@ -80,7 +81,8 @@ export async function exchangeSsoCode(
   const { data } = await axios.post<ApiResponse<CustomLoginResponse>>(
     `${config.customApiUrl}/api/sso/exchange/${provider}`,
     payload,
-    { headers: { "Content-Type": "application/json" }, timeout: 20_000 },
+    // X-UI-Locale: a refused sign-in answers in the user's language.
+    { headers: { "Content-Type": "application/json", "X-UI-Locale": useLocaleStore.getState().locale }, timeout: 20_000 },
   );
   return data.data;
 }
