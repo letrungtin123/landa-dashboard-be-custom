@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/utils/store';
 import { getRoleLabel } from '@/utils/role-labels';
 import { customApiClient } from '@/api/custom-client';
+import { changeOwnPasswordApi } from '@/api/custom-auth';
 import { storageUrl } from '@/utils/storage-url';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -252,10 +253,9 @@ export default function ProfilePage() {
 
     setIsSavingPw(true);
     try {
-      await customApiClient.post('/api/users/profile/change-password', {
-        current_password: pwForm.current,
-        new_password: pwForm.newPw,
-      });
+      // Other sessions end on the server; this device keeps the fresh session.
+      const fresh = await changeOwnPasswordApi(pwForm.current, pwForm.newPw);
+      if (fresh) useAuthStore.getState().adoptSessionTokens(fresh);
       setPwSuccess(true);
       setPwForm({ current: '', newPw: '', confirm: '' });
       setTimeout(() => { setShowPwModal(false); setPwSuccess(false); }, 1500);

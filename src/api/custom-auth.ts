@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { customApiClient } from "./custom-client";
+import { readFreshSessionTokens, type FreshSessionTokens } from './auth-session.logic';
 import type { GroupLabelMap } from "@/utils/group-labels";
 import type { RoleLabelMap } from "@/utils/role-labels";
 
@@ -104,6 +105,18 @@ export async function customGetMeApi(): Promise<CustomMeResponse> {
 /**
  * Đăng xuất — revoke refresh token.
  */
+/**
+ * Own password change. The server ends every other session and returns a
+ * fresh one for this device (null from an older server).
+ */
+export async function changeOwnPasswordApi(currentPassword: string, newPassword: string): Promise<FreshSessionTokens | null> {
+  const { data } = await customApiClient.post<{ data?: unknown }>('/api/users/profile/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+  return readFreshSessionTokens(data?.data);
+}
+
 export async function customLogoutApi(refreshToken: string): Promise<void> {
   await customApiClient.post("/api/auth/logout", { refresh_token: refreshToken });
 }

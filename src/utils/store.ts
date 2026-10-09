@@ -19,6 +19,11 @@ import {
 import { config } from '@/config/env';
 import { normalizeGroupLabels, type GroupLabelMap } from '@/utils/group-labels';
 import { normalizeRoleLabels, type RoleLabelMap } from '@/utils/role-labels';
+import {
+  LOGOUT_LOCAL_STORAGE_PREFIXES,
+  removeStorageKeysWithPrefixes,
+  type FreshSessionTokens,
+} from '@/api/auth-session.logic';
 
 // ── Encrypted storage (giữ nguyên logic cũ) ──
 const STORAGE_KEY = 'admin-auth-v2';
@@ -105,6 +110,8 @@ interface AuthState {
   login: (username: string, password: string) => Promise<void>;
   setSession: (data: CustomLoginResponse) => Promise<void>;
   logout: () => Promise<void>;
+  /** Uses the fresh session the server issued after a password change (other sessions ended). */
+  adoptSessionTokens: (session: FreshSessionTokens) => void;
   startLogout: () => void;
   performTokenRefresh: () => Promise<boolean>;
   scheduleTokenRefresh: () => void;
@@ -237,11 +244,26 @@ export const useAuthStore = create<AuthState>()(
           isLoggingOut: false,
         });
 
+        // Per-user AI course-design source choices must not outlive the session.
+        try {
+          removeStorageKeysWithPrefixes(localStorage, LOGOUT_LOCAL_STORAGE_PREFIXES);
+        } catch { /* storage unavailable */ }
+
         // Reset tenant store
         try {
           const { useTenantStore } = await import('@/utils/tenant-store');
           useTenantStore.getState().reset();
         } catch { /* ignore */ }
+      },
+
+      adoptSessionTokens: (session: FreshSessionTokens) => {
+        set({
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token,
+          tokenExpiresAt: Date.now() + session.expires_in * 1000,
+        });
+        lastRefreshSuccessAt = Date.now();
+        get().scheduleTokenRefresh();
       },
 
       updateUser: (data) => set((state) => ({
