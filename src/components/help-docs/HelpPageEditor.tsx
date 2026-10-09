@@ -18,6 +18,7 @@ import { htmlImageDisplaySrc, htmlImageStoragePath } from '@/utils/storage-url';
 import { formatLocaleDate } from '@/utils/locale-format';
 import { useLocaleStore } from '@/utils/locale-store';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { sanitizeRichHtml } from '@/utils/rich-html-sanitizer';
 import { toast } from 'sonner';
 import {
   Save, Eye, Pencil, Globe, EyeOff, ImagePlus,
@@ -451,7 +452,7 @@ export default function HelpPageEditor({ pageId, canManage }: HelpPageEditorProp
               className="prose prose-sm sm:prose-base dark:prose-invert max-w-none p-6 help-page-content"
               onClick={handleRenderedContentClick}
               onKeyDown={handleRenderedContentKeyDown}
-              dangerouslySetInnerHTML={{ __html: renderHelpPageContent(page.content, t('helpDocs.imageZoomHint')) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(renderHelpPageContent(page.content, t('helpDocs.imageZoomHint'))) }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">

@@ -104,13 +104,19 @@ import { useTranslation } from 'react-i18next';
 import { resolveDiagramData } from './editors/diagram/diagram-data';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import { AiAuthorNotesUnitPanel } from './AiAuthorNotes';
+import { sanitizeRichHtml } from '@/utils/rich-html-sanitizer';
 
 // Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
 const LMS_BASE = '';
 
+/**
+ * Stored component HTML (text blocks, quiz prompts/choices/hints/explanations,
+ * problem questions) is untrusted: it is sanitized on the way in and the
+ * rewritten markup again on the way out, before any dangerouslySetInnerHTML.
+ */
 function rewriteHtml(html: string): string {
   if (!html) return '';
-  const rewritten = html
+  const rewritten = sanitizeRichHtml(html)
     .replace(/src="(\/asset-v1:[^"]+)"/g, `src="${LMS_BASE}$1"`)
     .replace(/src="(\/c4x\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
     .replace(/src="(\/static\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
@@ -128,7 +134,7 @@ function rewriteHtml(html: string): string {
       }
       img.setAttribute('src', htmlImageDisplaySrc(src));
     });
-    return doc.body.innerHTML;
+    return sanitizeRichHtml(doc.body.innerHTML);
   } catch {
     return rewritten;
   }
@@ -1822,7 +1828,7 @@ function ComponentPreview({ blockType, blockData }: { blockType: string; blockDa
             )}
             {finalHtml.trim() && (
               <div
-                dangerouslySetInnerHTML={{ __html: finalHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(finalHtml) }}
                 className="lesson-html-content prose dark:prose-invert max-w-none text-sm max-h-[300px] overflow-y-auto relative custom-scrollbar
                   [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
                   [&_img]:max-h-48 [&_img]:object-contain [&_img]:rounded-lg [&_img]:shadow-sm [&_img]:border [&_img]:border-border [&_img]:my-2
