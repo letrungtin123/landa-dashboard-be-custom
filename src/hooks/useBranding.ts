@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { config } from '@/config/env';
 import { storageUrl } from '@/utils/storage-url';
+import { safeHttpUrl } from '@/utils/external-url.logic';
 
 // ── Static fallback imports ──
 import fallbackLogoDark from '@/assets/WhiteLogoLeftPanel.png';
@@ -62,7 +63,8 @@ async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
       sidebarLogoDark: resolve(data.images.header_logo_dark, DEFAULT_BRANDING.sidebarLogoDark),
       squareIcon: resolve(data.images.square_icon, DEFAULT_BRANDING.squareIcon),
       tenantName: data.tenant_name || null,
-      learnerUrl: data.domain_learner || null,
+      // Only an absolute http(s) address becomes the learner-site link.
+      learnerUrl: safeHttpUrl(data.domain_learner),
     };
   } catch {
     return DEFAULT_BRANDING;

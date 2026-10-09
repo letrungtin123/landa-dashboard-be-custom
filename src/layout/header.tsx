@@ -22,6 +22,7 @@ import { useTheme } from 'next-themes';
 import { ThemeColorToggle } from '@/components/theme-color-toggle';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { useBranding } from '@/hooks/useBranding';
+import { openInNewTab } from '@/utils/external-url.logic';
 import { customGenerateOttApi } from '@/api/custom-auth';
 import { fetchCurrentTenantDataQuota } from '@/api/custom-tenants';
 import { formatQuotaGigabytes } from '@/utils/locale-format';
@@ -331,10 +332,10 @@ export function Header() {
                     const { ott } = await customGenerateOttApi();
                     const learnerUrl = branding.learnerUrl!;
                     const separator = learnerUrl.includes('?') ? '&' : '?';
-                    window.open(`${learnerUrl}${separator}ott=${ott}`, '_blank');
+                    openInNewTab(`${learnerUrl}${separator}ott=${ott}`);
                   } catch {
                     // Fallback: mở learner mà không có OTT
-                    window.open(branding.learnerUrl!, '_blank');
+                    openInNewTab(branding.learnerUrl!);
                   }
                 }}
               >
