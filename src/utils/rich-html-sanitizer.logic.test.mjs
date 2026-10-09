@@ -1,4 +1,4 @@
-/* global URL, window, document, DOMPurify, RichLogic */
+/* global URL, process, setTimeout, MouseEvent, window, document, DOMPurify, RichLogic */
 // Offline browser test of the shared rich-HTML sanitizer: the real DOMPurify
 // build from node_modules runs in a headless browser with the app's config.
 // Needs playwright(-core): TEST_PLAYWRIGHT_MODULE may point at an installed
