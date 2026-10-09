@@ -216,7 +216,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
         return;
       }
       try {
-        const result = await dependencies.api.upload(settings!.active_kb!.kb_id, [file], { onProgress: progress });
+        const result = await dependencies.api.upload(file, { onProgress: progress });
         if (!allowed()) return;
         const d = result.results.find(r => r.success)?.data;
         if (!d || !isWorkspaceId(d.id) || d.kb_id !== settings!.active_kb!.kb_id) throw new Error('UPLOAD_UNCONFIRMED');

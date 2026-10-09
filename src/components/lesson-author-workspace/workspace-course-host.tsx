@@ -265,7 +265,8 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
     const sourceController = createWorkspaceSourceState(scope, {
       api: workspaceSourceApi, create: createWorkspaceCreateClient(scope), authorized,
       visible: () => controller.getState().open && controller.getState().issue === 'no_workspace' && !controller.getState().launch && !controller.getState().loading,
-      canUpload: () => authorized() && useAuthStore.getState().hasPermission('ai_chatbot', 'can_view') && useAuthStore.getState().hasPermission('ai_chatbot', 'can_add'),
+      // AI course design upload needs only course editing (never the chatbot configuration module).
+      canUpload: () => authorized(),
       operationId: createLessonAuthorUploadAttemptId, locale, onCreated: value => controller.acceptCreated(value),
       stream: createWorkspaceSourceStreamClient,
     });

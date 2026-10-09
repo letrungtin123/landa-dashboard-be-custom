@@ -161,7 +161,7 @@ interface PaginatedDocs {
   total: number;
 }
 
-interface UploadResult {
+export interface UploadResult {
   results: { file: string; success: boolean; data?: KbDocument; error?: string }[];
   uploaded: number;
   failed: number;
