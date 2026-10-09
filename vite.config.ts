@@ -1,6 +1,19 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { adminSecurityHeaders } from './security-headers.mjs';
+
+/** nosniff, referrer policy and same-site framing on every response (security-headers.mjs). */
+function securityHeadersPlugin(): Plugin {
+  const headers = adminSecurityHeaders();
+  const install = (server: ViteDevServer | PreviewServer) => {
+    server.middlewares.use((_req, res, next) => {
+      for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
+      next();
+    });
+  };
+  return { name: 'landa-admin-security-headers', configureServer: install, configurePreviewServer: install };
+}
 
 export default defineConfig(({ mode }) => {
   // loadEnv với prefix '' để đọc được cả PROXY_* (không có prefix VITE_)
@@ -53,7 +66,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: '/admin/',
 
-    plugins: [react()],
+    plugins: [react(), securityHeadersPlugin()],
 
     resolve: {
       alias: {
