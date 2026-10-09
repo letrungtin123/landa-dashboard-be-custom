@@ -27,6 +27,7 @@ import { getRoleLabel } from '@/utils/role-labels';
 import { formatLocaleDate } from '@/utils/locale-format';
 import { useLocaleStore } from '@/utils/locale-store';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { getUserRowAccess } from '@/components/users/user-authority.logic';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
@@ -63,7 +64,6 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
 
   const isSuperadmin = currentUser?.role === 'superadmin';
-  const isSuperuser = currentUser?.role === 'superuser';
   const hasPermission = useAuthStore(function getPerm(s) { return s.hasPermission; });
   const canAdd = hasPermission('account', 'can_add');
   const canEdit = hasPermission('account', 'can_edit');
@@ -251,21 +251,8 @@ export default function UsersPage() {
               ) : (
                 users.map(function renderRow(u) {
                   const statusKey = u.is_active ? 'active' : 'inactive';
-                  const demoIframeLocked = isDemoIframeLocked(u);
-
-                  // Role-based actions logic
-                  let canEditDelete = true;
-                  if (!isSuperadmin && !isSuperuser) {
-                    if (u.role === 'superuser' || u.role === 'superadmin' || u.role === 'staff') {
-                      canEditDelete = false;
-                    }
-                  }
-                  if (!isSuperadmin && u.role === 'superadmin') {
-                    canEditDelete = false;
-                  }
-                  if (demoIframeLocked) {
-                    canEditDelete = false;
-                  }
+                  // Same authority policy as the backend, AND the account permission matrix.
+                  const access = getUserRowAccess(currentUser, u, { canEdit, canDelete });
 
                   return (
                     <TableRow key={u.id} className="group hover:bg-muted/30 transition-colors border-border">
@@ -330,22 +317,41 @@ export default function UsersPage() {
                               <TooltipContent>{t('users.viewDetail')}</TooltipContent>
                             </Tooltip>
                           )}
-                          {!canEditDelete ? (
+                          {access.state === 'self' && access.canEdit && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md">
-                                  {demoIframeLocked ? (
+                                <Button variant="ghost" size="icon" onClick={function editSelf() { setSelectedUser(u); setIsDialogOpen(true); }}
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-md">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('common.edit')}</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {access.state !== 'manage' ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  data-row-lock={access.state}
+                                  aria-label={access.state === 'self' ? t('users.ownAccount') : access.state === 'demo-locked' ? t('users.demoLockedTooltip') : t('users.noPermission')}
+                                  className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md"
+                                >
+                                  {access.state === 'self' ? (
+                                    <LockKeyhole className="h-4 w-4 text-muted-foreground" />
+                                  ) : access.state === 'demo-locked' ? (
                                     <LockKeyhole className="h-4 w-4 text-amber-500" />
                                   ) : (
                                     <ShieldAlert className="h-4 w-4 text-muted-foreground/50" />
                                   )}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>{demoIframeLocked ? t('users.demoLockedTooltip') : t('users.noPermission')}</TooltipContent>
+                              <TooltipContent>
+                                {access.state === 'self' ? t('users.ownAccount') : access.state === 'demo-locked' ? t('users.demoLockedTooltip') : t('users.noPermission')}
+                              </TooltipContent>
                             </Tooltip>
                           ) : (
                             <>
-                              {!u.is_active && canEdit && (
+                              {access.canActivate && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button variant="ghost" size="icon" onClick={function approve() { activateMutation.mutate(u.id); }}
@@ -357,7 +363,7 @@ export default function UsersPage() {
                                   <TooltipContent>{t('users.activate')}</TooltipContent>
                                 </Tooltip>
                               )}
-                              {canEdit && (
+                              {access.canEdit && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button variant="ghost" size="icon" onClick={function edit() { setSelectedUser(u); setIsDialogOpen(true); }}
@@ -368,7 +374,7 @@ export default function UsersPage() {
                                   <TooltipContent>{t('common.edit')}</TooltipContent>
                                 </Tooltip>
                               )}
-                              {u.is_active && canDelete && (
+                              {access.canDeactivate && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button variant="ghost" size="icon" onClick={function deact() { handleDeactivate(u); }}
@@ -379,7 +385,7 @@ export default function UsersPage() {
                                   <TooltipContent>{t('users.deactivate')}</TooltipContent>
                                 </Tooltip>
                               )}
-                              {canDelete && (
+                              {access.canDelete && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button variant="ghost" size="icon" onClick={function del() { handleHardDelete(u); }}

@@ -17,7 +17,7 @@ import { Input, PasswordInput } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/utils/store';
 import { toast } from 'sonner';
-import { UserPlus, Pencil, Building2, AlertTriangle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserPlus, Pencil, Building2, AlertTriangle, Search, ChevronLeft, ChevronRight, LockKeyhole } from 'lucide-react';
 import { createUser, updateUser, type CustomUser } from '@/api/custom-users';
 import { fetchTenants, getUserTenants, setUserTenants, type Tenant } from '@/api/custom-tenants';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -25,6 +25,23 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { getRoleLabel } from '@/utils/role-labels';
 import { getGroupLabelSet } from '@/utils/group-labels';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { getUserFormAccess, type UserRole } from '@/components/users/user-authority.logic';
+
+const ROLE_DOT: Record<UserRole, string> = {
+  superadmin: 'bg-red-500',
+  superuser: 'bg-amber-500',
+  staff: 'bg-blue-500',
+  learner_plus: 'bg-teal-500',
+  learner: 'bg-emerald-500',
+};
+
+const ROLE_FALLBACK_LABEL: Record<UserRole, string> = {
+  superadmin: 'Super Admin',
+  superuser: 'Superuser',
+  staff: 'Staff',
+  learner_plus: 'Learner+',
+  learner: 'Learner',
+};
 
 function createUserSchema(t: (key: string) => string) {
   return z.object({
@@ -87,8 +104,10 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
   const roleLabels = useAuthStore(function getRoleLabels(s) { return s.roleLabels; });
   const groupLabels = useAuthStore(function getGroupLabels(s) { return s.groupLabels; });
   const isSuperadmin = currentUser?.role === 'superadmin';
-  const isSuperuser = currentUser?.role === 'superuser';
   const isEditing = !!user;
+  // Same authority policy as the backend: own role/status/password are locked,
+  // and the dropdown only offers roles the current user may assign.
+  const formAccess = useMemo(() => getUserFormAccess(currentUser, user), [currentUser, user]);
   const [isLoading, setIsLoading] = useState(false);
   const [managedTenantIds, setManagedTenantIds] = useState<string[]>([]);
   const [tenantSearch, setTenantSearch] = useState('');
@@ -178,6 +197,13 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
       // Bỏ tenant_id nếu không phải superadmin
       if (!isSuperadmin) {
         delete payload.tenant_id;
+      }
+
+      // Own account: role, status and password never travel through the admin form.
+      if (formAccess.isSelf) {
+        delete payload.role;
+        delete payload.is_active;
+        delete payload.password;
       }
 
       if (isEditing) {
@@ -296,11 +322,12 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                     <FormItem>
                       <FormLabel className="text-xs font-medium text-muted-foreground">
                         {isEditing ? t('userForm.newPassword') : t('userForm.password')}
-                        {isEditing && <span className="text-muted-foreground/40 ml-1 font-normal">{t('userForm.passwordHint')}</span>}
+                        {isEditing && <span className="text-muted-foreground/40 ml-1 font-normal">{formAccess.passwordLocked ? t('userForm.ownPasswordHint') : t('userForm.passwordHint')}</span>}
                       </FormLabel>
                       <FormControl>
                         <PasswordInput
                           {...field}
+                          disabled={formAccess.passwordLocked}
                           name={isEditing ? 'user-form-new-password' : 'user-form-create-password'}
                           autoComplete="new-password"
                           placeholder="••••••••"
@@ -321,47 +348,31 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
             <div className="px-6 pt-4 pb-5">
               <div className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-[0.12em] mb-3">{t('userForm.accessControl')}</div>
               <div className="space-y-4">
+                {formAccess.isSelf && (
+                  <div data-own-account-notice className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/40 border border-border">
+                    <LockKeyhole className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="text-xs text-muted-foreground leading-relaxed">{t('userForm.ownAccountNotice')}</div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <FormField control={form.control} name="role" render={function renderField({ field }) {
                     return (
                       <FormItem>
                         <FormLabel className="text-xs font-medium text-muted-foreground">{t('userForm.role')}</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={formAccess.roleLocked}>
                           <FormControl>
                             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t('userForm.selectRole')} /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {isSuperadmin && (
-                              <SelectItem value="superadmin">
-                                <span className="flex items-center gap-2">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {getRoleLabel('superadmin', roleLabels, 'Super Admin')}
-                                </span>
-                              </SelectItem>
-                            )}
-                            {(isSuperadmin || isSuperuser) && (
-                              <>
-                                <SelectItem value="superuser">
+                            {formAccess.roleOptions.map(function renderRole(role) {
+                              return (
+                                <SelectItem key={role} value={role}>
                                   <span className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {getRoleLabel('superuser', roleLabels, 'Superuser')}
+                                    <span className={`w-1.5 h-1.5 rounded-full ${ROLE_DOT[role]}`} /> {getRoleLabel(role, roleLabels, ROLE_FALLBACK_LABEL[role])}
                                   </span>
                                 </SelectItem>
-                                <SelectItem value="staff">
-                                  <span className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {getRoleLabel('staff', roleLabels, 'Staff')}
-                                  </span>
-                                </SelectItem>
-                              </>
-                            )}
-                            <SelectItem value="learner_plus">
-                              <span className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> {getRoleLabel('learner_plus', roleLabels, 'Learner+')}
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="learner">
-                              <span className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {getRoleLabel('learner', roleLabels, 'Learner')}
-                              </span>
-                            </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -372,7 +383,7 @@ export function UserFormDialog({ open, onOpenChange, user, onSuccess }: UserForm
                     return (
                       <FormItem>
                         <FormLabel className="text-xs font-medium text-muted-foreground">{t('userForm.status')}</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={formAccess.statusLocked}>
                           <FormControl>
                             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t('userForm.selectStatus')} /></SelectTrigger>
                           </FormControl>
