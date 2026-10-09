@@ -105,7 +105,7 @@ export function createWorkspaceSourceStreamClient(scope: SourceStreamScope, depe
         if (terminal) return;
         throw new Error('SOURCE_STREAM_EOF');
       } catch {
-        if (controller?.signal.aborted || !running) return;
+        if (controller?.signal.aborted || !running || terminal || !dependencies.active()) return;
         if (!failureStartedAt) failureStartedAt = Date.now(); failures++;
         if (failures >= MAX_RECONNECT_FAILURES || Date.now() - failureStartedAt >= RETRY_WINDOW_MS) { publish('unavailable'); return; }
         publish('reconnecting');

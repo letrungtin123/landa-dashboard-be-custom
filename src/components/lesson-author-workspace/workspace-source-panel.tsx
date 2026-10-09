@@ -5,22 +5,26 @@ import type { createWorkspaceSourceState } from './workspace-source-state';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 
 const copy = {
-  en: { title: 'Build a course from your source', source: 'Choose a ready Knowledge Base document', refresh: 'Reconnect source', upload: 'Upload source', create: 'Create learning content',
-    reading: 'Checking source access…', creating: 'Starting the workspace. Closing this modal will not cancel an accepted request.',
-    uploading: 'Uploading your source…', accepting: 'Source received. Waiting for acceptance…', watching: 'The source is indexing. This window will update automatically when it is ready.', ready: 'Ready', processing: 'Indexing', timed_out: 'Indexing is taking longer than expected. Check again to refresh its status.', unavailable: 'Sources are unavailable. Check course access and the assigned bot, persona and Knowledge Base.',
-    source_not_ready: 'Choose a ready document from the current Knowledge Base.', source_failed: 'This source could not be indexed. Upload a corrected file or choose another ready source.', invalid_file: 'Choose a nonempty MP4, PDF, DOC/DOCX, PPTX, TXT/MD or CSV file up to 50 MB.',
-    rejected: 'The operation was rejected. Refresh source access and try again.', unknown: 'The operation result is not confirmed. It will not be sent again; check the existing workspace first.',
-    empty: 'No source documents are ready yet. Upload one, then wait for indexing to finish.', sourceHint: 'Upload a supported file or select an indexed document below. AI Instructional Design only creates from the selected source.',
-    transcript: 'Video transcript', checkTranscript: 'Check status', commit: 'Add transcript to Knowledge Base', queued: 'Queued', running: 'Transcribing', succeeded: 'Transcript ready', failed: 'Transcription failed', expired: 'Transcript expired', committed: 'Added to Knowledge Base; waiting for indexing',
-    connecting: 'Connecting to live source status…', streamUnavailable: 'Live status is temporarily unavailable. Reconnect without uploading again.', failedStatus: 'Indexing failed' },
-  vi: { title: 'Tạo nội dung từ tài liệu nguồn', source: 'Chọn tài liệu đã sẵn sàng trong Kho tri thức', refresh: 'Kết nối lại nguồn', upload: 'Tải tài liệu nguồn', create: 'Tạo nội dung bài học',
-    reading: 'Đang kiểm tra quyền và tài liệu nguồn…', creating: 'Đang khởi tạo bản thiết kế khoá học. Đóng modal không hủy yêu cầu đã được tiếp nhận.',
-    uploading: 'Đang tải tài liệu nguồn…', accepting: 'Đã nhận tài liệu. Đang chờ máy chủ xác nhận…', watching: 'Tài liệu đang được lập chỉ mục. Cửa sổ này sẽ tự cập nhật khi sẵn sàng.', ready: 'Sẵn sàng', processing: 'Đang lập chỉ mục', timed_out: 'Lập chỉ mục mất lâu hơn dự kiến. Hãy kiểm tra lại để cập nhật trạng thái.', unavailable: 'Chưa truy cập được nguồn. Kiểm tra quyền khóa học và bot, persona, Kho tri thức được gán.',
-    source_not_ready: 'Hãy chọn tài liệu đã sẵn sàng trong Kho tri thức hiện tại.', source_failed: 'Không thể lập chỉ mục tài liệu này. Hãy tải file đã chỉnh sửa hoặc chọn nguồn khác đã sẵn sàng.', invalid_file: 'Chọn MP4, PDF, DOC/DOCX, PPTX, TXT/MD hoặc CSV không rỗng, tối đa 50 MB.',
-    rejected: 'Thao tác bị từ chối. Hãy tải lại quyền và nguồn trước khi thử lại.', unknown: 'Chưa xác định kết quả thao tác. Sẽ không tự gửi lại; hãy kiểm tra bản thiết kế khoá học hiện có trước.',
-    empty: 'Chưa có tài liệu nguồn sẵn sàng. Hãy tải lên và chờ lập chỉ mục hoàn tất.', sourceHint: 'Tải file hỗ trợ hoặc chọn tài liệu đã lập chỉ mục bên dưới. AI Instructional Design chỉ tạo từ tài liệu đang chọn.',
-    transcript: 'Bản chép lời video', checkTranscript: 'Kiểm tra trạng thái', commit: 'Thêm bản chép lời vào Kho tri thức', queued: 'Đang chờ', running: 'Đang chép lời', succeeded: 'Bản chép lời sẵn sàng', failed: 'Chép lời thất bại', expired: 'Bản chép lời hết hạn', committed: 'Đã thêm vào Kho tri thức; chờ lập chỉ mục',
-    connecting: 'Đang kết nối trạng thái nguồn trực tiếp…', streamUnavailable: 'Tạm mất kết nối trạng thái trực tiếp. Có thể kết nối lại mà không tải file lần nữa.', failedStatus: 'Lập chỉ mục thất bại' },
+  en: { title: 'Build a course from your document', source: 'Choose a ready document', refresh: 'Try again', upload: 'Upload document', create: 'Create learning content',
+    reading: 'Checking access and the document list…', creating: 'Starting the course draft. Closing this window does not cancel a request that was already accepted.',
+    uploading: 'Uploading your document…', accepting: 'File received. Waiting for the server to confirm…', watching: 'The document is being processed. This page updates automatically when it is done.', ready: 'Ready', processing: 'Processing', timed_out: 'Processing is taking longer than expected. Select Try again to check its status.',
+    unavailable: 'The document list could not be opened. Check that you can edit this course, or ask an administrator to check the AI assistant settings.',
+    connection: 'The server could not be reached for a moment. The page already retried a few times. Wait a few seconds, then select Try again.',
+    source_not_ready: 'Choose a document that is ready.', source_failed: 'This document could not be processed. Upload a corrected file or choose another ready document.', invalid_file: 'Choose a non-empty MP4, PDF, Word, PowerPoint, text or CSV file of up to 50 MB.',
+    rejected: 'The action was not accepted. Select Try again to reload the document list, then repeat the action.', unknown: 'It is not clear yet whether the last action succeeded, so it will not be sent again automatically. Reload the page and check the course draft list before trying again.',
+    empty: 'No documents are ready yet. Upload one and wait until processing finishes.', sourceHint: 'Upload a supported file or choose a ready document below. AI Instructional Design only creates content from the selected document.',
+    transcript: 'Video transcript', checkTranscript: 'Check status', commit: 'Add transcript to the Knowledge Base', queued: 'Waiting', running: 'Transcribing', succeeded: 'Transcript ready', failed: 'Transcription failed', expired: 'Transcript expired', committed: 'Added to the Knowledge Base; waiting for processing',
+    connecting: 'Connecting to follow the document status…', streamUnavailable: 'The processing status cannot be updated right now. Select Try again to check it. You do not need to upload the file again.', failedStatus: 'Processing failed' },
+  vi: { title: 'Tạo nội dung từ tài liệu nguồn', source: 'Chọn tài liệu đã sẵn sàng', refresh: 'Thử lại', upload: 'Tải tài liệu nguồn', create: 'Tạo nội dung bài học',
+    reading: 'Đang kiểm tra quyền và danh sách tài liệu…', creating: 'Đang khởi tạo bản thiết kế khoá học. Đóng cửa sổ này không huỷ yêu cầu đã được tiếp nhận.',
+    uploading: 'Đang tải tài liệu lên…', accepting: 'Đã nhận tài liệu. Đang chờ máy chủ xác nhận…', watching: 'Tài liệu đang được xử lý. Trang này sẽ tự cập nhật khi xong.', ready: 'Sẵn sàng', processing: 'Đang xử lý', timed_out: 'Việc xử lý tài liệu lâu hơn dự kiến. Hãy bấm Thử lại để xem trạng thái mới.',
+    unavailable: 'Chưa mở được danh sách tài liệu. Hãy kiểm tra bạn có quyền chỉnh sửa khoá học này, hoặc nhờ quản trị viên kiểm tra phần cài đặt trợ lý AI.',
+    connection: 'Tạm thời chưa kết nối được máy chủ. Trang đã tự thử lại vài lần. Hãy đợi vài giây rồi bấm Thử lại.',
+    source_not_ready: 'Hãy chọn một tài liệu đã sẵn sàng.', source_failed: 'Không xử lý được tài liệu này. Hãy tải lên file đã chỉnh sửa hoặc chọn tài liệu khác đã sẵn sàng.', invalid_file: 'Hãy chọn file MP4, PDF, Word, PowerPoint, văn bản hoặc CSV không rỗng, tối đa 50 MB.',
+    rejected: 'Thao tác chưa được chấp nhận. Hãy bấm Thử lại để tải lại danh sách tài liệu rồi làm lại.', unknown: 'Chưa rõ thao tác vừa rồi đã thành công hay chưa, nên hệ thống sẽ không tự gửi lại. Hãy tải lại trang và xem danh sách bản thiết kế khoá học trước khi làm lại.',
+    empty: 'Chưa có tài liệu nào sẵn sàng. Hãy tải lên một tài liệu và chờ xử lý xong.', sourceHint: 'Tải lên file được hỗ trợ hoặc chọn một tài liệu đã sẵn sàng bên dưới. AI Instructional Design chỉ tạo nội dung từ tài liệu đang chọn.',
+    transcript: 'Bản chép lời video', checkTranscript: 'Kiểm tra trạng thái', commit: 'Thêm bản chép lời vào Kho tri thức', queued: 'Đang chờ', running: 'Đang chép lời', succeeded: 'Bản chép lời sẵn sàng', failed: 'Chép lời thất bại', expired: 'Bản chép lời hết hạn', committed: 'Đã thêm vào Kho tri thức; đang chờ xử lý',
+    connecting: 'Đang kết nối để theo dõi trạng thái tài liệu…', streamUnavailable: 'Tạm thời chưa cập nhật được trạng thái xử lý. Hãy bấm Thử lại để xem trạng thái mới, không cần tải file lên lần nữa.', failedStatus: 'Xử lý thất bại' },
 } as const;
 
 function sourceIcon(name: string) {
@@ -48,7 +52,7 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
   return <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={c.title}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0"><h3 className="text-base font-semibold tracking-tight">{c.title}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{c.sourceHint}</p></div>
-      {(state.issue === 'unavailable' || state.sourceObservation === 'unavailable') && <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-full" disabled={state.busy} onClick={() => { void controller.refresh(); }}>
+      {(state.issue === 'unavailable' || state.issue === 'connection' || state.issue === 'rejected' || state.sourceObservation === 'unavailable') && <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-full" disabled={state.busy} onClick={() => { void controller.refresh(); }}>
         {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}{c.refresh}
       </Button>}
     </div>

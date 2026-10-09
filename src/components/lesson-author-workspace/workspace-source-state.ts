@@ -10,7 +10,7 @@ export interface WorkspaceSourceState {
   phase: 'idle' | 'reading' | 'uploading' | 'creating';
   ready: boolean;
   unknown: boolean;
-  issue: 'unavailable' | 'source_not_ready' | 'source_failed' | 'invalid_file' | 'rejected' | 'unknown' | null;
+  issue: 'unavailable' | 'connection' | 'source_not_ready' | 'source_failed' | 'invalid_file' | 'rejected' | 'unknown' | null;
   documents: readonly LessonAuthorSourceDocument[];
   selectedId: string | null;
   conversation: ChatConversation | null;
@@ -19,6 +19,20 @@ export interface WorkspaceSourceState {
   contentLocale: WorkspaceLocale;
   sourceObservation: 'idle' | 'connecting' | 'indexing' | 'failed' | 'unavailable';
   operation: Readonly<WorkspaceCreateRequest> | null;
+}
+
+/** GET retries only: a backend restart or proxy hiccup lasts a few seconds and
+ * must not leave the panel stuck until the page is reloaded. */
+const READ_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000] as const;
+const defaultWait = (ms: number) => new Promise<void>(resolve => { setTimeout(resolve, ms); });
+
+/** Network loss, timeout or a gateway/restart status: the request may simply
+ * be retried. Any other status is an authoritative answer. */
+export function isTransientReadFailure(error: unknown): boolean {
+  const failure = error as { response?: { status?: number }; code?: unknown; request?: unknown } | null;
+  if (!failure || typeof failure !== 'object') return false;
+  if (failure.response) return [502, 503, 504].includes(Number(failure.response.status));
+  return failure.code === 'ERR_NETWORK' || failure.code === 'ECONNABORTED' || failure.code === 'ETIMEDOUT' || failure.request !== undefined;
 }
 
 /** No timer, restoration, effect or read can dispatch Create. The upload
@@ -38,7 +52,9 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     onDocument: (document: SourceStreamDocument) => void;
     onState: (state: SourceStreamState) => void;
   }) => SourceStreamClient;
+  wait?: (ms: number) => Promise<void>;
 }) {
+  const wait = dependencies.wait ?? defaultWait;
   let disposed = false, panelVisible = true, locale = dependencies.locale, settings: LessonAuthorSettings | null = null;
   let preferredConversationId: string | null = null, forceNewConversation = false;
   let sourceStream: SourceStreamClient | null = null, sourceStreamDocumentId: string | null = null, sourceStreamSerial = 0;
@@ -102,25 +118,55 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
         } else emit({ ready: true, sourceObservation: 'indexing' });
       },
       onState: next => {
-        if (serial !== sourceStreamSerial) return;
+        // A terminal push already released the stream; late transport noise
+        // must not repaint a ready source as connecting.
+        if (serial !== sourceStreamSerial || sourceStreamDocumentId !== document.document_id) return;
         if (next === 'connecting' || next === 'reconnecting') emit({ sourceObservation: 'connecting' });
         else if (next === 'live') emit({ sourceObservation: 'indexing' });
-        else if (next === 'blocked' || next === 'unavailable') emit({ sourceObservation: 'unavailable' });
+        else if (next === 'blocked' || next === 'unavailable') {
+          // The client has stopped; a later refresh may open a fresh stream.
+          sourceStream = null; sourceStreamDocumentId = null;
+          emit({ sourceObservation: 'unavailable' });
+        }
       },
     });
     emit({ sourceObservation: 'connecting' });
     sourceStream.start();
   }
+  /** After a list read, the server list is authoritative: resume live status
+   * for a selected document that is still learning, and clear a stale
+   * "connection lost" note for one that has finished. */
+  function reconcileSourceObservation() {
+    const selected = state.documents.find(d => d.document_id === state.selectedId);
+    if (selected?.status === 'learning') {
+      if (sourceStreamDocumentId !== selected.document_id) observeUploadedSource(selected);
+      return;
+    }
+    const watched = sourceStreamDocumentId ? state.documents.find(d => d.document_id === sourceStreamDocumentId) : null;
+    if (watched?.status === 'learning') return;
+    if (sourceStream || state.sourceObservation !== 'idle' && state.sourceObservation !== 'failed') {
+      stopSourceObservation(selected?.status === 'error' ? 'failed' : 'idle');
+    }
+  }
+  async function read<T>(load: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try { return await load(); }
+      catch (error) {
+        if (attempt >= READ_RETRY_DELAYS_MS.length || !isTransientReadFailure(error)) throw error;
+        await wait(READ_RETRY_DELAYS_MS[attempt]); assertActive();
+      }
+    }
+  }
   async function readPrerequisites() {
-    assertActive(); const next = await dependencies.api.settings(); assertActive();
+    assertActive(); const next = await read(() => dependencies.api.settings()); assertActive();
     if (!validSettings(next)) throw new Error('UNAVAILABLE');
     const changed = settings && (settings.active_bot?.bot_id !== next.active_bot?.bot_id || settings.active_kb?.kb_id !== next.active_kb?.kb_id
       || settings.active_persona?.persona_id !== next.active_persona?.persona_id);
     settings = next;
     if (changed) { stopSourceObservation(); emit({ conversation: null, selectedId: null, transcript: null }); }
-    const docs = await dependencies.api.documents(); assertActive();
+    const docs = await read(() => dependencies.api.documents()); assertActive();
     const documents = normalizeDocuments(docs);
-    const convs = await dependencies.api.conversations(scope.courseId); assertActive();
+    const convs = await read(() => dependencies.api.conversations(scope.courseId)); assertActive();
     if (!Array.isArray(convs)) throw new Error('UNAVAILABLE');
     const retained = convs.find(c => c.id === state.conversation?.id && owned(c)) ?? null;
     const preferred = preferredConversationId ? convs.find(c => c.id === preferredConversationId && owned(c)) ?? null : null;
@@ -155,7 +201,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
       if (disposed) return;
       const failure = error instanceof WorkspaceCreateError ? error : null;
       const unknown = state.unknown || failure?.outcome === 'unknown';
-      emit({ ready: false, unknown, issue: unknown ? 'unknown' : failure ? 'rejected' : 'unavailable' });
+      emit({ ready: false, unknown, issue: unknown ? 'unknown' : failure ? 'rejected' : isTransientReadFailure(error) ? 'connection' : 'unavailable' });
     } finally { emit({ busy: false, phase: 'idle', progress: null }); }
   }
   const progress = (value: number | null) => { if (allowed()) emit({ progress: value === null || !Number.isFinite(value) ? null : Math.min(100, Math.max(0, value)) }); };
@@ -187,7 +233,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     select(documentId: string) {
       if (!state.busy && !state.unknown && allowed() && state.documents.some(d => d.document_id === documentId)) emit({ selectedId: documentId, issue: null });
     },
-    refresh: () => run('reading', readPrerequisites),
+    refresh: () => run('reading', async () => { await readPrerequisites(); reconcileSourceObservation(); }),
     create: () => run('creating', async () => {
       await readPrerequisites(); assertActive();
       const source = state.documents.find(d => d.document_id === state.selectedId && d.status === 'learned');
