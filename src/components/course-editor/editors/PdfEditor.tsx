@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { FileText, ExternalLink, Upload, Link2, Loader2, CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
-import { deleteCourseAsset, deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
+import { deleteCourseAssetByStoragePath, uploadCourseAsset } from '@/api/custom-course-authoring';
 import { toast } from 'sonner';
 import { cn } from '@/utils/utils';
 import { COURSE_ASSET_MAX_UPLOAD_BYTES, COURSE_ASSET_MAX_UPLOAD_LABEL } from '@/utils/course-asset-upload';
@@ -98,9 +98,6 @@ export default function PdfEditor({
     const previousPdfUrl = pdfUrl;
     const previousFileName = uploadedFileName;
     const storagePath = extractPdfStoragePath(pdfUrl);
-    const legacyAssetKey = !storagePath && (pdfUrl.includes('/asset-v1:') || pdfUrl.includes('/c4x/'))
-      ? getPdfFileName(pdfUrl, '')
-      : '';
 
     onPdfUrlChange('');
     setUploadedFileName('');
@@ -110,8 +107,6 @@ export default function PdfEditor({
         try {
           if (storagePath) {
             await deleteCourseAssetByStoragePath(courseId, storagePath);
-          } else if (legacyAssetKey) {
-            await deleteCourseAsset(courseId, legacyAssetKey);
           }
         } catch (err) {
           console.warn('Failed to delete course asset:', err);

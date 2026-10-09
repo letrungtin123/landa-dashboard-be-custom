@@ -1,7 +1,6 @@
 import { extractStoragePathFromProxyUrl, isStoragePath, storageUrl } from '@/utils/storage-url';
 
 const SUPABASE_PUBLIC_MARKER = '/object/public/landa-storage/';
-const LEGACY_ASSET_RE = /(?:\/asset-v1:|\/c4x\/)/i;
 const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 function normalizeStoragePath(path: string): string {
@@ -69,7 +68,7 @@ export function extractPdfStoragePath(value: string | null | undefined): string 
 
 export function isUploadedPdfAssetUrl(value: string | null | undefined): boolean {
   const trimmed = (value || '').trim();
-  return !!extractPdfStoragePath(trimmed) || LEGACY_ASSET_RE.test(trimmed);
+  return !!extractPdfStoragePath(trimmed);
 }
 
 export function getPdfFileName(value: string | null | undefined, fallback = 'file.pdf'): string {

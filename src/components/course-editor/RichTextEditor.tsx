@@ -38,27 +38,6 @@ import {
   TABLE_ROW_HEIGHT_LIMITS,
 } from './rich-text-table';
 
-// Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
-const LMS_BASE = '';
-
-// Rewrite relative Open edX asset URLs sang tuyệt đối để ảnh hiển thị được trong editor
-function rewriteContentUrls(html: string): string {
-  if (!html) return html;
-  return html
-    .replace(/src="(\/asset-v1:[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/c4x\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/static\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/assets\/[^"]+)"/g, `src="${LMS_BASE}$1"`);
-}
-
-// Khôi phục lại đường dẫn tương đối trước khi lưu
-function restoreContentUrls(html: string): string {
-  if (!html) return html;
-  if (!LMS_BASE) return html;
-  const regex = new RegExp(`src="${LMS_BASE}(/[^"]+)"`, 'g');
-  return html.replace(regex, 'src="$1"');
-}
-
 function transformImageSources(
   html: string,
   transform: (src: string) => string | null,
@@ -83,15 +62,14 @@ function transformImageSources(
 }
 
 function prepareContentForEditor(html: string): string {
-  return transformImageSources(rewriteContentUrls(html), (src) => {
+  return transformImageSources(html, (src) => {
     if (isTransientHtmlImageSrc(src)) return null;
     return htmlImageDisplaySrc(src);
   });
 }
 
 export function prepareContentForSave(html: string, preserveTransientImages = false): string {
-  const restored = restoreContentUrls(html);
-  return transformImageSources(restored, (src) => {
+  return transformImageSources(html, (src) => {
     if (isTransientHtmlImageSrc(src)) return preserveTransientImages ? src : null;
     return htmlImagePersistSrc(src);
   });

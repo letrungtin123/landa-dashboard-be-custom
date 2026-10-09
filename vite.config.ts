@@ -20,10 +20,7 @@ export default defineConfig(({ mode }) => {
   // PROXY_* không bị bake vào browser bundle vì không có prefix VITE_
   const env = loadEnv(mode, process.cwd(), '');
 
-  // Proxy targets — đọc từ env, fallback localhost
-  const lmsProxyTarget = env.PROXY_OPENEDX_LMS_URL || 'http://localhost:18000';
-  const cmsProxyTarget = env.PROXY_OPENEDX_CMS_URL || 'http://localhost:18010';
-
+  // Proxy target — đọc từ env, fallback localhost
   const backendProxyTarget = env.PROXY_BACKEND_URL || 'http://localhost:3001';
 
   // Allowed hosts — đọc hoàn toàn từ env, phân cách bằng dấu phẩy
@@ -51,16 +48,6 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       xfwd: true,
     },
-    '/cms-api': {
-      target: cmsProxyTarget,
-      changeOrigin: true,
-      rewrite: (requestPath: string) => requestPath.replace(/^\/cms-api/, ''),
-    },
-    // Vẫn giữ lại proxy cho các asset của edX cũ nếu frontend còn link cứng đến đó
-    '/asset-v1:': { target: lmsProxyTarget, changeOrigin: true },
-    '/c4x/':      { target: lmsProxyTarget, changeOrigin: true },
-    '/static':    { target: lmsProxyTarget, changeOrigin: true },
-    '/media':     { target: lmsProxyTarget, changeOrigin: true },
   };
 
   return {

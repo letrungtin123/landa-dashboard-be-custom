@@ -106,9 +106,6 @@ import { getLocalizedApiError } from '@/utils/localized-error';
 import { AiAuthorNotesUnitPanel } from './AiAuthorNotes';
 import { sanitizeRichHtml } from '@/utils/rich-html-sanitizer';
 
-// Luôn dùng relative URL để asset loading flexible trên mọi domain/IP
-const LMS_BASE = '';
-
 /**
  * Stored component HTML (text blocks, quiz prompts/choices/hints/explanations,
  * problem questions) is untrusted: it is sanitized on the way in and the
@@ -116,11 +113,7 @@ const LMS_BASE = '';
  */
 function rewriteHtml(html: string): string {
   if (!html) return '';
-  const rewritten = sanitizeRichHtml(html)
-    .replace(/src="(\/asset-v1:[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/c4x\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/static\/[^"]+)"/g, `src="${LMS_BASE}$1"`)
-    .replace(/src="(\/assets\/[^"]+)"/g, `src="${LMS_BASE}$1"`);
+  const rewritten = sanitizeRichHtml(html);
 
   if (typeof DOMParser === 'undefined') return rewritten;
 
