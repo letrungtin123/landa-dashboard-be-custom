@@ -285,3 +285,14 @@ test('detail accepts the optional IDM guidance of the course node only and rejec
     { ...ready, idm_guidance: { ...guidance, nice_to_know: [{ name: 'Khối' }] } },
   ]) assert.throws(() => contract.readWorkspaceDetail(bad), /CONTRACT_INVALID/);
 });
+test('detail applied_info is optional, exact and bounded', () => {
+  const applied = { ...ready, applied_info: { applied_at: '2026-10-09T06:45:24.690Z', applied_by_name: 'Nguyễn Văn A', applied_by_platform_admin: false } };
+  assert.deepEqual(contract.readWorkspaceDetail(applied).applied_info, applied.applied_info);
+  assert.equal(contract.readWorkspaceDetail({ ...ready, applied_info: null }).applied_info, null);
+  for (const bad of [{ applied_at: 'x', applied_by_name: null, applied_by_platform_admin: false },
+    { applied_at: '2026-10-09T06:45:24.690Z', applied_by_name: '', applied_by_platform_admin: false },
+    { applied_at: '2026-10-09T06:45:24.690Z', applied_by_name: null, applied_by_platform_admin: 'no' },
+    { applied_at: '2026-10-09T06:45:24.690Z', applied_by_name: null, applied_by_platform_admin: false, extra: 1 }]) {
+    assert.throws(() => contract.readWorkspaceDetail({ ...ready, applied_info: bad }), /CONTRACT_INVALID/);
+  }
+});

@@ -188,3 +188,15 @@ test('a session that already added content to the course cannot be deleted from 
   assert.match(browser, /hasApplied: 'Phiên này đã đưa nội dung vào khoá học nên không thể xoá\./);
   assert.match(browser, /hasApplied: 'This session has already added content to the course, so it cannot be deleted\./);
 });
+test('applied note names who added the content and when, never naming a platform admin of another organization', () => {
+  const at = '2026-10-09T06:45:24.690Z';
+  assert.equal(sharing.workspaceAppliedNote(null, 'vi'), null);
+  assert.match(sharing.workspaceAppliedNote({ applied_at: at, applied_by_name: 'Nguyễn Văn A', applied_by_platform_admin: false }, 'vi'),
+    /^Nguyễn Văn A đã đưa nội dung này vào khoá học lúc .+\.$/);
+  assert.match(sharing.workspaceAppliedNote({ applied_at: at, applied_by_name: null, applied_by_platform_admin: true }, 'vi'),
+    /^Quản trị viên hệ thống đã đưa nội dung này vào khoá học lúc /);
+  assert.match(sharing.workspaceAppliedNote({ applied_at: at, applied_by_name: null, applied_by_platform_admin: false }, 'en'),
+    /^This content was added to the course on .+\.$/);
+  assert.match(sharing.workspaceAppliedNote({ applied_at: at, applied_by_name: 'Jane', applied_by_platform_admin: false }, 'en'),
+    /^Jane added this content to the course on /);
+});

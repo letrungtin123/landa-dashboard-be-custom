@@ -18,7 +18,7 @@ import { listLessonAuthorSessions, type LessonAuthorActiveRun } from '../../api/
 import { useLessonAuthorActiveRuns } from '@/hooks/queries/use-lesson-author-sessions';
 import { WorkspaceActiveRunNotice } from './workspace-active-run-banner';
 import { WorkspaceApplyConflictDialog } from './workspace-apply-conflict-dialog';
-import { workspaceActiveRunNotice, workspaceReadOnlyNotice } from './workspace-sharing';
+import { workspaceActiveRunNotice, workspaceAppliedNote, workspaceReadOnlyNotice } from './workspace-sharing';
 import { createWorkspaceWriteClient, WorkspaceWriteError, workspaceWriteMessage } from '../../api/workspace-write';
 import { createWorkspaceApplyClient, workspaceApplyMessage, WorkspaceApplyError, type WorkspaceApplyCode,
   type WorkspaceApplyConflict } from '../../api/workspace-apply';
@@ -494,6 +494,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     // The graph marks an exact revision/hash as applied. The local done state
     // closes the write window immediately, before the background read catches up.
     const appliedReadOnly = node.applied || applyState === 'done';
+    const appliedNote = workspaceAppliedNote(detail?.applied_info, locale);
     const applyScope = workspaceApplyScope(presentationRead?.graph?.nodes ?? [], node.node_id);
     const canApply = host.canApply() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
       && !appliedReadOnly && !!state.launch && !!workspace.read.status && !workspace.read.stale && !workspace.writeBusy;
@@ -543,7 +544,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
                 className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-primary" aria-label={c.editTitle}
                 onClick={() => setEditingTitleNodeId(node.node_id)}><Pencil className="h-3.5 w-3.5" aria-hidden /></Button>}
               <WorkspaceNodeTypePill node={node} locale={locale} />
-            </div><DialogDescription className="mt-1.5 max-w-3xl text-xs leading-5 sm:text-sm">{appliedReadOnly ? c.appliedReview : readOnlyDetail ? c.readOnlyReview : c.review}</DialogDescription></div>
+            </div><DialogDescription className="mt-1.5 max-w-3xl text-xs leading-5 sm:text-sm">{appliedReadOnly ? c.appliedReview : readOnlyDetail ? c.readOnlyReview : c.review}{appliedReadOnly && appliedNote ? ` ${appliedNote}` : ''}</DialogDescription></div>
           </div>
           <Button type="button" variant="ghost" size="icon" className="relative h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-background/70 shadow-sm backdrop-blur transition-transform hover:scale-105" aria-label={c.close}
             onClick={() => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); }}><X className="h-4 w-4" /><span className="sr-only">{c.close}</span></Button>

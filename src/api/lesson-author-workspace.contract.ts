@@ -133,6 +133,13 @@ export interface WorkspaceDetail extends WorkspaceView {
   } | null;
   /** Optional, course node of an IDM run only: what the methodology left out of the lessons. */
   idm_guidance?: WorkspaceIdmGuidance | null;
+  /** Optional: when and by whom this node was added to the course (null when not applied). */
+  applied_info?: WorkspaceAppliedInfo | null;
+}
+export interface WorkspaceAppliedInfo {
+  applied_at: string;
+  applied_by_name: string | null;
+  applied_by_platform_admin: boolean;
 }
 /** Hold blocks (with the SME question and the Must Dos they block), objectives waiting for the SME
  * (not shown as course outcomes) and Nice to Know blocks the author may add back by hand. */
@@ -398,6 +405,13 @@ export function readWorkspaceDetail(value: unknown): WorkspaceDetail {
   if (v.idm_guidance !== undefined && v.idm_guidance !== null) {
     requireValid(v.kind === 'course');
     idmGuidance(v.idm_guidance);
+  }
+  if (v.applied_info !== undefined && v.applied_info !== null) {
+    const info = object(v.applied_info);
+    requireValid(exactKeys(info, ['applied_at', 'applied_by_name', 'applied_by_platform_admin'])
+      && typeof info.applied_at === 'string' && Number.isFinite(Date.parse(info.applied_at))
+      && (info.applied_by_name === null || textOf(info.applied_by_name, 200))
+      && typeof info.applied_by_platform_admin === 'boolean');
   }
   return v as unknown as WorkspaceDetail;
 }

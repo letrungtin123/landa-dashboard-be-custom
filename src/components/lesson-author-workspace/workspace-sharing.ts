@@ -1,4 +1,4 @@
-import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
+import type { WorkspaceAppliedInfo, WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import type { LessonAuthorActiveRun, LessonAuthorSessionSummary } from '../../api/workspace-sessions';
 import type { WorkspaceApplyConflictKind } from '../../api/workspace-apply';
 
@@ -18,6 +18,9 @@ export const workspaceSharingCopy = {
     openViewOnly: 'Xem bản thiết kế khoá học',
     nothingToView: 'Phiên này chưa có nội dung để xem.',
     emptyMine: 'Bạn chưa tạo bản thiết kế khoá học nào cho khoá này.',
+    appliedBy: '{name} đã đưa nội dung này vào khoá học lúc {time}.',
+    appliedAt: 'Nội dung này được đưa vào khoá học lúc {time}.',
+    platformAdmin: 'Quản trị viên hệ thống',
     readOnlyNotice: '{name} đã tạo phiên này. Bạn có thể xem và đưa nội dung vào khoá học, nhưng chỉ người tạo mới tiếp tục soạn được.',
     someone: 'Một người khác',
     activeRunOne: 'Khoá học này đang có phiên thiết kế của {name} đang chạy. Bạn nên đợi phiên đó xong rồi mới đưa nội dung vào khoá học.',
@@ -46,6 +49,9 @@ export const workspaceSharingCopy = {
     openViewOnly: 'View course design',
     nothingToView: 'This session has no content to view yet.',
     emptyMine: 'You have not started a course design for this course yet.',
+    appliedBy: '{name} added this content to the course on {time}.',
+    appliedAt: 'This content was added to the course on {time}.',
+    platformAdmin: 'A system administrator',
     readOnlyNotice: '{name} started this session. You can view it and add its content to the course, but only the person who started it can continue it.',
     someone: 'Someone else',
     activeRunOne: '{name} has a course design session running for this course. Wait for it to finish before adding content to the course.',
@@ -105,6 +111,16 @@ export function workspaceActiveRunNotice(runs: readonly LessonAuthorActiveRun[],
 export function workspaceReadOnlyNotice(ownerName: string | null, locale: WorkspaceLocale): string {
   const c = workspaceSharingCopy[locale];
   return fillWorkspaceCopy(c.readOnlyNotice, { name: ownerName?.trim() || c.someone });
+}
+
+/** Who pressed Apply and when (owner 2026-10-09, 6a). A platform admin from another
+ * organization is never named; an unknown person falls back to the time only. */
+export function workspaceAppliedNote(info: WorkspaceAppliedInfo | null | undefined, locale: WorkspaceLocale): string | null {
+  if (!info) return null;
+  const c = workspaceSharingCopy[locale];
+  const time = new Intl.DateTimeFormat(locale === 'vi' ? 'vi-VN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(info.applied_at));
+  const name = info.applied_by_name?.trim() || (info.applied_by_platform_admin ? c.platformAdmin : null);
+  return name ? fillWorkspaceCopy(c.appliedBy, { name, time }) : fillWorkspaceCopy(c.appliedAt, { time });
 }
 
 export function workspaceConflictItemLabel(kind: WorkspaceApplyConflictKind, title: string, locale: WorkspaceLocale): string {
