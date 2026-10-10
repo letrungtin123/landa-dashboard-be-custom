@@ -1,3 +1,4 @@
+/* global URL, Buffer */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -149,4 +150,44 @@ test('legacy messages keep working: filter requests and applied-filter bubbles',
     date_from: '2026-07-01', date_to: '2026-07-31', team_id: TEAM,
   });
   assert.equal(logic.getReportChatAppliedFilter({ report_filters: { date_from: '2026-07-01' } }), null);
+});
+
+function count(id, current, previous) {
+  const delta = previous === null ? null : current - previous;
+  return {
+    id,
+    unit: 'count',
+    current,
+    previous,
+    delta_absolute: delta,
+    delta_percent: previous ? Math.round((delta / previous) * 10_000) / 100 : null,
+    delta_percentage_points: null,
+  };
+}
+
+function rate(current, previous) {
+  const delta = previous === null ? null : Math.round((current - previous) * 100) / 100;
+  return { id: 'completion_rate', unit: 'percentage', current, previous, delta_absolute: delta, delta_percent: null, delta_percentage_points: delta };
+}
+
+test('a count keeps its absolute change and gets the note when the PDF would hide its percentage', () => {
+  assert.deepEqual(logic.REPORT_CHANGE_RULE, { percentMinimumBase: 10, percentMaximum: 300, rateMinimumEnrollments: 10 });
+  // 47 -> 421 is +795.7 %: above +300 %, so only "+374" and the note.
+  assert.deepEqual(logic.getReportMetricChange(count('total_enrollments', 421, 47), null), { difference: 374, note: 'smallBaseCount' });
+  assert.deepEqual(logic.getReportMetricChange(count('active_learners', 20, 9), null), { difference: 11, note: 'smallBaseCount' }, 'comparison value below 10');
+  assert.deepEqual(logic.getReportMetricChange(count('active_learners', 5, 0), null), { difference: 5, note: 'smallBaseCount' }, 'nothing to compare with');
+  assert.deepEqual(logic.getReportMetricChange(count('total_enrollments', 40, 10), null), { difference: 30, note: null }, 'exactly +300 %');
+  assert.deepEqual(logic.getReportMetricChange(count('total_enrollments', 41, 10), null), { difference: 31, note: 'smallBaseCount' }, '+310 %');
+  assert.deepEqual(logic.getReportMetricChange(count('total_learners', 120, 100), null), { difference: 20, note: null });
+  assert.deepEqual(logic.getReportMetricChange(count('total_learners', 50, 100), null), { difference: -50, note: null }, 'a drop is never above +300 %');
+  assert.deepEqual(logic.getReportMetricChange(count('active_learners', 4, 4), null), { difference: 0, note: null }, 'no change, no note');
+  assert.deepEqual(logic.getReportMetricChange(count('total_learners', 7, null), null), { difference: null, note: null }, 'no comparison period');
+});
+
+test('the completion rate is compared only when both periods have 10 enrollments', () => {
+  assert.deepEqual(logic.getReportMetricChange(rate(67.1, 58.2), count('total_enrollments', 421, 47)), { difference: 8.9, note: null });
+  assert.deepEqual(logic.getReportMetricChange(rate(67.1, 58.2), count('total_enrollments', 421, 9)), { difference: null, note: 'smallBaseRate' });
+  assert.deepEqual(logic.getReportMetricChange(rate(40, 80), count('total_enrollments', 9, 30)), { difference: null, note: 'smallBaseRate' });
+  assert.deepEqual(logic.getReportMetricChange(rate(40, 80), count('total_enrollments', 10, 10)), { difference: -40, note: null });
+  assert.deepEqual(logic.getReportMetricChange(rate(40, null), count('total_enrollments', 3, null)), { difference: null, note: null }, 'no comparison period');
 });

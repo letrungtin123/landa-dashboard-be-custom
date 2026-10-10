@@ -35,8 +35,10 @@ import { ReportMetricTrendModal } from '@/components/reports/report-metric-trend
 import {
   buildReportAppliedChips,
   getReportEmptyState,
+  getReportMetricChange,
   getReportNarrativeView,
   type ReportChatAttachment,
+  type ReportMetricChangeView,
 } from './report-chat-card.logic';
 import { ReportAppliedFilterChips } from './report-chat-applied-filters';
 import { ReportClarificationPanel } from './report-chat-clarification';
@@ -533,15 +535,16 @@ function comparisonDisplay(snapshot: ReportSnapshotV2, isEnglish: boolean): { ti
   };
 }
 
-function metricDifference(metric: ReportMetricFact): number | null {
-  return metric.unit === 'percentage' ? metric.delta_percentage_points : metric.delta_absolute;
+/** Change of a KPI tile under the PDF comparison rule (the completion rate needs 10 enrollments in both periods). */
+function metricChange(snapshot: ReportSnapshotV2, metric: ReportMetricFact): ReportMetricChangeView {
+  return getReportMetricChange(metric, getMetric(snapshot, 'total_enrollments'));
 }
 
-function metricDelta(metric: ReportMetricFact, isEnglish: boolean, t: TFunction, deltaSuffix: string): string {
+function metricDelta(metric: ReportMetricFact, change: ReportMetricChangeView, isEnglish: boolean, t: TFunction, deltaSuffix: string): string {
   if (metric.previous === null || metric.delta_absolute === null) {
     return t('chatWidget.report.noComparison');
   }
-  const difference = metricDifference(metric);
+  const difference = change.difference;
   if (difference === null || difference === 0) {
     return t('chatWidget.report.noChange', { suffix: deltaSuffix });
   }
@@ -616,8 +619,11 @@ function SnapshotKpiGrid({ snapshot, onSelectMetric }: { snapshot: ReportSnapsho
         const metric = getMetric(snapshot, id);
         if (!metric) return null;
         const tone = KPI_TONES[id];
-        const difference = metricDifference(metric);
+        const change = metricChange(snapshot, metric);
+        const difference = change.difference;
         const DeltaIcon = difference && difference > 0 ? ArrowUpRight : difference && difference < 0 ? ArrowDownRight : null;
+        // A completion rate from too few enrollments has no change at all, only the note.
+        const withheld = difference === null && change.note !== null;
         return (
           <button
             key={id}
@@ -629,10 +635,13 @@ function SnapshotKpiGrid({ snapshot, onSelectMetric }: { snapshot: ReportSnapsho
             <span className={`absolute inset-x-0 top-0 h-0.5 ${tone.accent}`} aria-hidden="true" />
             <p className={`min-h-8 text-[10px] font-medium leading-4 ${tone.label}`}>{metricTitle(id, t)}</p>
             <p className={`mt-1 text-xl font-semibold tabular-nums tracking-normal ${tone.value}`}>{formatMetricValue(metric, isEnglish)}</p>
-            <p className={`mt-1 inline-flex max-w-full items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-3 ${tone.delta}`}>
-              {DeltaIcon && <DeltaIcon className="h-3 w-3 shrink-0" aria-hidden="true" />}
-              <span className="truncate">{metricDelta(metric, isEnglish, t, comparison.deltaSuffix)}</span>
-            </p>
+            {!withheld && (
+              <p className={`mt-1 inline-flex max-w-full items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-3 ${tone.delta}`}>
+                {DeltaIcon && <DeltaIcon className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                <span className="truncate">{metricDelta(metric, change, isEnglish, t, comparison.deltaSuffix)}</span>
+              </p>
+            )}
+            {change.note && <p className="mt-1 text-[9px] leading-3 text-muted-foreground">{t(`chatWidget.report.${change.note}`)}</p>}
           </button>
         );
       })}
@@ -649,8 +658,9 @@ function executiveFindings(snapshot: ReportSnapshotV2, isEnglish: boolean, t: TF
   ];
   return findingKeys.flatMap(([metricId, key]) => {
     const metric = getMetric(snapshot, metricId);
-    return metric && metricDifference(metric) !== null && metricDifference(metric) !== 0
-      ? [t(`chatWidget.report.${key}`, { delta: metricDelta(metric, isEnglish, t, comparison.deltaSuffix) })]
+    const change = metric ? metricChange(snapshot, metric) : null;
+    return metric && change && change.difference !== null && change.difference !== 0
+      ? [t(`chatWidget.report.${key}`, { delta: metricDelta(metric, change, isEnglish, t, comparison.deltaSuffix) })]
       : [];
   }).slice(0, 3);
 }

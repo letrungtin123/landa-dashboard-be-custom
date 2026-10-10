@@ -6,6 +6,7 @@ import type {
   ReportClarification,
   ReportClarificationOption,
   ReportClarificationReason,
+  ReportMetricFact,
   ReportNarrative,
   ReportRequestContext,
   ReportSnapshotV2,
@@ -201,6 +202,44 @@ export function formatReportPeriod(period: { date_from: string; date_to: string 
   return period.date_from === period.date_to
     ? formatReportDay(period.date_from, isEnglish)
     : `${formatReportDay(period.date_from, isEnglish)} – ${formatReportDay(period.date_to, isEnglish)}`;
+}
+
+/**
+ * The comparison rule of the AI report PDF (backend REPORT_INSIGHT_THRESHOLDS),
+ * applied to the card's KPI tiles: a count's change is meaningful as a
+ * percentage only from a comparison value of 10 and up to +300 % (47 -> 421 is
+ * "+374", not "+795,7 %"); the completion rate is compared only when both
+ * periods have at least 10 enrollments.
+ */
+export const REPORT_CHANGE_RULE = {
+  percentMinimumBase: 10,
+  percentMaximum: 300,
+  rateMinimumEnrollments: 10,
+} as const;
+
+export type ReportMetricChangeNote = 'smallBaseCount' | 'smallBaseRate';
+
+export interface ReportMetricChangeView {
+  /** Absolute change (percentage points for the completion rate); null when there is no comparison or it is withheld. */
+  difference: number | null;
+  /** Plain note shown with the tile: the comparison period is too small for a percentage, or too few enrollments for a rate. */
+  note: ReportMetricChangeNote | null;
+}
+
+export function getReportMetricChange(metric: ReportMetricFact, enrollments: ReportMetricFact | null): ReportMetricChangeView {
+  const rule = REPORT_CHANGE_RULE;
+  if (metric.previous === null || metric.delta_absolute === null) return { difference: null, note: null };
+  if (metric.unit === 'percentage') {
+    const sample = enrollments && enrollments.previous !== null ? { current: enrollments.current, previous: enrollments.previous } : null;
+    if (sample && (sample.current < rule.rateMinimumEnrollments || sample.previous < rule.rateMinimumEnrollments)) {
+      return { difference: null, note: 'smallBaseRate' };
+    }
+    return { difference: metric.delta_percentage_points, note: null };
+  }
+  const difference = metric.delta_absolute;
+  const percent = metric.previous > 0 ? metric.delta_percent ?? Math.round((difference / metric.previous) * 10_000) / 100 : null;
+  const meaningful = percent !== null && metric.previous >= rule.percentMinimumBase && Math.abs(percent) <= rule.percentMaximum;
+  return { difference, note: difference !== 0 && !meaningful ? 'smallBaseCount' : null };
 }
 
 export type ReportAppliedChip =
