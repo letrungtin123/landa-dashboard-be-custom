@@ -214,7 +214,11 @@ test('a PDF job that finishes after the step presentation shows ready at once, n
   assert.equal(phase(0, 10_000), 'ready');
 });
 
-function reportCard(dictionary, locale) {
+/**
+ * The card with stubbed UI pieces. `auth` is the auth store state and
+ * `groupLabelsModule` the group-label helper (a stub by default).
+ */
+function reportCard(dictionary, locale, auth = { user: { role: 'admin' }, groupLabels: null }, groupLabelsModule = { getGroupLabelSet: () => unitLabels }) {
   const passthrough = ({ children }) => React.createElement(React.Fragment, null, children);
   const motionTag = (tag) => (props) => React.createElement(tag, omitProps(props, ['initial', 'animate', 'exit', 'transition']));
   const modules = {
@@ -226,8 +230,8 @@ function reportCard(dictionary, locale) {
     '@/components/ui/popover': { Popover: passthrough, PopoverContent: passthrough, PopoverTrigger: passthrough },
     '@/components/ui/calendar': { Calendar: () => null },
     '@/api/custom-reports': {},
-    '@/utils/store': { useAuthStore: (selector) => selector({ user: { role: 'admin' }, groupLabels: null }) },
-    '@/utils/group-labels': { getGroupLabelSet: () => unitLabels },
+    '@/utils/store': { useAuthStore: (selector) => selector(auth) },
+    '@/utils/group-labels': groupLabelsModule,
     '@/utils/export-report': { exportReportExcel: async () => undefined },
     '@/utils/locale-store': { useLocaleStore: (selector) => selector({ locale }) },
     './report-detail-modal': { ReportDetailModal: () => null },
@@ -308,4 +312,71 @@ test('the completion rate shows no change when a period has fewer than 10 enroll
   const enHtml = renderKpiCard(en, 'en', 9);
   assert.match(enHtml, /Too few enrollments for a comparison/);
   assert.doesNotMatch(enHtml, /percentage points/);
+});
+
+/** The real helper the rest of the UI uses (utils/group-labels.ts), with the test dictionary as i18n. */
+function realGroupLabels(dictionary) {
+  return loadCommonJs('../../utils/group-labels.ts', { '@/i18n': { __esModule: true, default: { t: translator(dictionary) } } });
+}
+
+const NESSO_GROUP_LABELS = { group: 'Khối/Khu vực', subgroup: 'Đơn vị', team: 'Bộ phận' };
+
+function renderScopedCard(dictionary, locale, groupLabels, metadata) {
+  const ReportChatCard = reportCard(dictionary, locale, { user: { role: 'staff' }, groupLabels }, realGroupLabels(dictionary));
+  return renderToStaticMarkup(React.createElement(ReportChatCard, {
+    attachment: logic.getReportChatAttachment(metadata), messageId: 'm1', onApply: noop, onStartPdfExport: noop, onDownloadPdfExport: noop, children: null,
+  }));
+}
+
+function scopedAnalysis() {
+  const filter = { date_from: '2026-07-01', date_to: '2026-07-31', group_id: 'g1', subgroup_id: 's1', team_id: 't1' };
+  return {
+    kind: 'report_analysis',
+    report_question: 'Báo cáo tháng 7 của Kho vận',
+    report_filter: filter,
+    report_snapshot: {
+      version: 2,
+      generated_at: '2026-08-01T03:00:00.000Z',
+      timezone: 'Asia/Ho_Chi_Minh',
+      filter,
+      comparison: { date_from: '2026-06-01', date_to: '2026-06-30', basis: 'calendar_month' },
+      scope_display: { group_name: 'Miền Nam', subgroup_name: 'Hồ Chí Minh', team_name: 'Kho vận' },
+      factual_metrics: [metricFact('total_learners', 'count', 12, 10), metricFact('active_learners', 'count', 9, 8), metricFact('completion_rate', 'percentage', 61.2, 58), metricFact('total_enrollments', 'count', 30, 25)],
+      signals: [],
+      signal_threshold_version: 'v1',
+      summary: { overview: { total_learners: 12, active_learners: 9, completion_rate: 61.2, total_enrollments: 30 } },
+      availability: { state: 'available', limitations: [] },
+    },
+  };
+}
+
+const filterRequest = { kind: 'report_filter_request', report_question: 'Xem báo cáo', report_suggested_filter: { date_from: '2026-07-01', date_to: '2026-07-31' } };
+
+test('the card names the organization levels with the tenant labels, as configured in both languages', () => {
+  for (const [dictionary, locale] of [[vi, 'vi'], [en, 'en']]) {
+    const analysis = renderScopedCard(dictionary, locale, NESSO_GROUP_LABELS, scopedAnalysis());
+    assertTranslated(analysis);
+    for (const chip of ['Khối/Khu vực: Miền Nam', 'Đơn vị: Hồ Chí Minh', 'Bộ phận: Kho vận']) assert.ok(analysis.includes(chip), `${locale} ${chip}`);
+    const editor = renderScopedCard(dictionary, locale, NESSO_GROUP_LABELS, filterRequest);
+    assertTranslated(editor);
+    for (const level of ['Khối/Khu vực', 'Đơn vị', 'Bộ phận']) assert.ok(editor.includes(level), `${locale} filter ${level}`);
+    for (const html of [analysis, editor]) {
+      assert.doesNotMatch(html, /Công ty|Chi nhánh|Phòng ban|Company|Branch|Department|learner_plus/, `${locale}: no default level name or role id`);
+    }
+  }
+});
+
+test('without tenant labels the card shows the localized default level names', () => {
+  assert.match(renderScopedCard(vi, 'vi', null, scopedAnalysis()), /Công ty: Miền Nam/);
+  const english = renderScopedCard(en, 'en', {}, scopedAnalysis());
+  assert.match(english, /Company: Miền Nam/);
+  assert.match(english, /Branch: Hồ Chí Minh/);
+  assert.match(english, /Department: Kho vận/);
+});
+
+test('the Excel export of the card sends the same tenant labels', () => {
+  const card = read('./report-chat-card.tsx');
+  assert.match(card, /const exportGroupLabels = getGroupLabelSet\(groupLabels\);/);
+  for (const level of ['group', 'subgroup', 'team']) assert.match(card, new RegExp(`${level}Label: exportGroupLabels\\.${level},`));
+  assert.match(card, /<ReportAppliedFilterChips chips=\{appliedChips\} unitLabels=\{exportGroupLabels\}/);
 });
