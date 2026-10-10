@@ -17,6 +17,13 @@ import { useTenantStore } from '@/utils/tenant-store';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { formatLocaleNumber } from '@/utils/locale-format';
 import { useLocaleStore } from '@/utils/locale-store';
+import {
+  describeReportChartBucket,
+  formatReportChartBucketTitle,
+  formatReportChartPartialNote,
+  reportChartBucketSizeKey,
+  type ReportChartRange,
+} from './report-chart-buckets.logic';
 
 type ReportChartRequest = Parameters<typeof getReportChart>[0];
 type ChartView = { start: number; end: number };
@@ -28,6 +35,7 @@ const META_KEYS = new Set(['month', 'month_label', 'bucket', 'bucket_label']);
 const WINDOW_LIMIT_BUCKETS = 72;
 const SERIES_LIMIT = 8;
 const EDGE_LOAD_THRESHOLD = 6;
+const PARTIAL_BUCKET_ALPHA = 0.45;
 const DEFAULT_COLORS = [
   '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444',
   '#06b6d4', '#ec4899', '#84cc16', '#6366f1', '#14b8a6',
@@ -39,7 +47,8 @@ function getBucketId(point: ReportChartPoint): string {
 
 function getPreferredVisibleBuckets(granularity?: ReportChartGranularity): number {
   if (granularity === 'month') return 10;
-  if (granularity === 'week') return 18;
+  // A 120-day range (the longest one shown by week) touches up to 19 ISO weeks.
+  if (granularity === 'week') return 20;
   return 32;
 }
 
@@ -139,14 +148,6 @@ function getSeriesValue(point: ReportChartPoint, key: string): number {
   return Math.max(0, Number(point[key]) || 0);
 }
 
-function formatBucketShort(bucket: string, granularity: ReportChartGranularity | undefined, locale: 'vi' | 'en'): string {
-  if (!bucket || bucket.length < 10) return bucket;
-  const [year, month, day] = bucket.split('-');
-  if (granularity === 'month') return `${locale === 'vi' ? 'T' : 'M'}${Number(month)}/${year.slice(2)}`;
-  if (granularity === 'week') return `${day}/${month}`;
-  return `${day}/${month}`;
-}
-
 function resolveCssColor(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -215,6 +216,7 @@ export function ReportWindowChart({
   const [points, setPoints] = useState<ReportChartPoint[]>([]);
   const [view, setView] = useState<ChartView | null>(null);
   const [granularity, setGranularity] = useState<ReportChartGranularity>('auto');
+  const [chartRange, setChartRange] = useState<ReportChartRange | null>(null);
   const [isGrouped, setIsGrouped] = useState(false);
   const [windowMeta, setWindowMeta] = useState<ReportChartWindowMeta | null>(null);
   const [seriesOverflow, setSeriesOverflow] = useState(false);
@@ -266,6 +268,11 @@ export function ReportWindowChart({
     if (!view) return [];
     return points.slice(view.start, view.end + 1);
   }, [points, view]);
+  // Axis and tooltip text of each bucket (day / week / month, partial edges); null for older year charts.
+  const bucketViews = useMemo(
+    () => points.map(point => describeReportChartBucket(getBucketId(point), granularity, chartRange, locale)),
+    [chartRange, granularity, locale, points],
+  );
 
   const applyResponse = useCallback((direction: ReportChartWindowDirection, response: ReportChartResponse) => {
     const incoming = response.data || [];
@@ -285,6 +292,7 @@ export function ReportWindowChart({
     metaRef.current = nextMeta;
     setPoints(merged);
     setGranularity(nextGranularity);
+    setChartRange(response.date_from && response.date_to ? { dateFrom: response.date_from, dateTo: response.date_to } : null);
     setIsGrouped(!!response.is_grouped);
     setSeriesOverflow(!!response.series_overflow);
     setWindowMeta(nextMeta);
@@ -472,6 +480,9 @@ export function ReportWindowChart({
     const step = plotWidth / Math.max(visiblePoints.length, 1);
     const barWidth = clamp(step * (isGrouped ? 0.68 : 0.56), 5, isGrouped ? 30 : 24);
     const xLabelEvery = Math.max(1, Math.ceil(visiblePoints.length / (size.width < 560 ? 5 : 8)));
+    const visibleBuckets = view ? bucketViews.slice(view.start, view.end + 1) : [];
+    // A week or month cut by the range holds fewer days: drawn lighter, explained in the tooltip.
+    const bucketAlpha = (index: number) => (visibleBuckets[index]?.partial ? PARTIAL_BUCKET_ALPHA : 1);
 
     if (variant === 'line') {
       seriesKeys.forEach((key, seriesIndex) => {
@@ -513,6 +524,7 @@ export function ReportWindowChart({
           ctx.fillStyle = background;
           ctx.strokeStyle = color;
           ctx.lineWidth = 2;
+          ctx.globalAlpha = bucketAlpha(index);
           ctx.beginPath();
           ctx.arc(xCenter, y, value > 0 ? 3.4 : 2.2, 0, Math.PI * 2);
           ctx.fill();
@@ -526,6 +538,7 @@ export function ReportWindowChart({
         const xCenter = plot.left + step * index + step / 2;
         const x = xCenter - barWidth / 2;
         let stackedTop = zeroY;
+        ctx.globalAlpha = bucketAlpha(index);
 
         if (isGrouped) {
           for (let seriesIndex = 0; seriesIndex < seriesKeys.length; seriesIndex += 1) {
@@ -553,6 +566,7 @@ export function ReportWindowChart({
           }
         }
       });
+      ctx.globalAlpha = 1;
     }
 
     visiblePoints.forEach((point, index) => {
@@ -562,7 +576,7 @@ export function ReportWindowChart({
         ctx.font = '700 10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(formatBucketShort(getBucketId(point), granularity, locale), xCenter, zeroY + 12);
+        ctx.fillText(visibleBuckets[index]?.tick ?? getBucketId(point), xCenter, zeroY + 12);
       }
     });
 
@@ -581,7 +595,7 @@ export function ReportWindowChart({
         ctx.restore();
       }
     }
-  }, [colors, granularity, isGrouped, locale, seriesKeys, size, themeVersion, tooltip, valueSuffix, variant, view, visiblePoints]);
+  }, [bucketViews, colors, isGrouped, seriesKeys, size, themeVersion, tooltip, valueSuffix, variant, view, visiblePoints]);
 
   const moveTooltip = useCallback((clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -638,6 +652,11 @@ export function ReportWindowChart({
       .map((key, index) => ({ key, color: colors[index % colors.length], value: getSeriesValue(tooltipPoint, key) }))
       .filter(row => row.value > 0 || !isGrouped)
     : [];
+  const translate = (key: string, params?: Record<string, string | number>) => t(key, params);
+  const tooltipBucket = tooltip ? bucketViews[tooltip.index] ?? null : null;
+  const tooltipTitle = tooltipBucket ? formatReportChartBucketTitle(tooltipBucket, translate) : tooltipPoint?.bucket_label || tooltipPoint?.month_label;
+  const tooltipPartialNote = tooltipBucket ? formatReportChartPartialNote(tooltipBucket, translate) : null;
+  const bucketSizeKey = reportChartBucketSizeKey(granularity);
 
   if (isInitialLoading) {
     return <Skeleton className={cn('w-full rounded-xl', className)} style={{ height }} />;
@@ -680,7 +699,7 @@ export function ReportWindowChart({
 
       <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-2.5 py-1 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur">
         <MoveHorizontal className="h-3.5 w-3.5" />
-        <span>{t('reportChart.selectedPeriod')}</span>
+        <span>{t('reportChart.selectedPeriod')}{bucketSizeKey ? ` · ${t(bucketSizeKey)}` : ''}</span>
       </div>
 
       <div className="pointer-events-none absolute right-3 top-3 flex flex-wrap justify-end gap-1.5 max-w-[70%]">
@@ -726,7 +745,8 @@ export function ReportWindowChart({
             top: clamp(tooltip!.y + 14, 8, Math.max(8, size.height - 132)),
           }}
         >
-          <div className="mb-2 font-bold text-foreground">{tooltipPoint.bucket_label || tooltipPoint.month_label}</div>
+          <div className={cn('font-bold text-foreground', tooltipPartialNote ? 'mb-0.5' : 'mb-2')}>{tooltipTitle}</div>
+          {tooltipPartialNote && <div className="mb-2 max-w-[220px] text-[10px] leading-4 text-muted-foreground">{tooltipPartialNote}</div>}
           <div className="space-y-1.5">
             {tooltipRows.slice(0, 8).map(row => (
               <div key={row.key} className="flex items-center justify-between gap-4">

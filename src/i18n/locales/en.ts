@@ -632,6 +632,13 @@ export const en: TranslationSchema<typeof vi> = {
     loadingMore: "Loading more...",
     other: "Other",
     loadMoreFailed: "Could not load more data",
+    byDay: "By day",
+    byWeek: "By week",
+    byMonth: "By month",
+    bucketWeek: "Week of {{date}}",
+    bucketMonth: "{{date}}",
+    partialWeek: "Partial week: {{days}} of 7 days are in the selected period",
+    partialMonth: "Partial month: {{days}} of {{length}} days are in the selected period",
   },
   groups: {
     title: "Group management",

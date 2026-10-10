@@ -629,6 +629,13 @@ export const vi = {
     loadingMore: "Đang tải thêm...",
     other: "Khác",
     loadMoreFailed: "Lỗi tải thêm",
+    byDay: "Theo ngày",
+    byWeek: "Theo tuần",
+    byMonth: "Theo tháng",
+    bucketWeek: "Tuần {{date}}",
+    bucketMonth: "Tháng {{date}}",
+    partialWeek: "Tuần không trọn: {{days}}/7 ngày nằm trong khoảng đã chọn",
+    partialMonth: "Tháng không trọn: {{days}}/{{length}} ngày nằm trong khoảng đã chọn",
   },
   groups: {
     title: "Quản lý nhóm",
