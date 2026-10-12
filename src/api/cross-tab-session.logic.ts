@@ -42,6 +42,36 @@ export function decideRefresh(memoryRefreshToken: string | null, stored: StoredS
   return token ? { action: "refresh", refreshToken: token } : { action: "none" };
 }
 
+/** Waits before a refresh the server could not answer is tried again inside the lock. */
+export const TRANSIENT_REFRESH_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000];
+
+/** While the server stays out of reach the session is kept and the refresh tried again this often. */
+export const TRANSIENT_REFRESH_RECHECK_MS = 30_000;
+
+/**
+ * A refresh the server did not refuse: no answer at all (offline, Wi-Fi drop,
+ * laptop waking up, timeout), a server error or a rate limit. The session is
+ * kept and the refresh tried again; only a refusal (400/401/403) ends it.
+ */
+export function isTransientRefreshError(error: unknown): boolean {
+  const failure = error as { isAxiosError?: unknown; response?: { status?: unknown } } | null;
+  if (!failure || failure.isAxiosError !== true) return false;
+  const status = failure.response?.status;
+  if (typeof status !== "number") return true;
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/**
+ * The server refused `sentToken` because another tab rotated it a moment
+ * before (two tabs refreshed at once): the stored session is newer and still
+ * valid, so this tab takes it instead of signing out.
+ */
+export function replacedByAnotherTab(sentToken: string, stored: StoredSessionTokens | null, now: number): boolean {
+  const storedToken = stored?.isAuthenticated ? stored.refreshToken : null;
+  return Boolean(storedToken) && storedToken !== sentToken
+    && typeof stored?.tokenExpiresAt === "number" && stored.tokenExpiresAt - now > ADOPT_MIN_VALIDITY_MS;
+}
+
 export type StorageChange = "adopt" | "signed_out" | "unchanged";
 
 /** How this tab follows a session change written by another tab. */

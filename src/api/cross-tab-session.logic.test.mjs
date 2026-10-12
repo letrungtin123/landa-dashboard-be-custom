@@ -7,7 +7,7 @@ import ts from 'typescript';
 // S2 T12: tabs never replay a refresh token another tab already rotated.
 const source = readFileSync(new URL('./cross-tab-session.logic.ts', import.meta.url), 'utf8');
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { decideRefresh, classifyStorageChange, readStoredSession, withCrossTabLock, ADOPT_MIN_VALIDITY_MS } =
+const { decideRefresh, classifyStorageChange, readStoredSession, withCrossTabLock, ADOPT_MIN_VALIDITY_MS, isTransientRefreshError, replacedByAnotherTab } =
   await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 
 const NOW = 1_000_000;
@@ -64,4 +64,22 @@ test('without Web Locks a storage lease makes the second tab wait, then releases
   ]);
   assert.deepEqual(order, ['start 1', 'end 1', 'start 2', 'end 2']);
   assert.equal(data.size, 0, 'lease released');
+});
+
+test('a refresh the server could not answer keeps the session; a refusal ends it', () => {
+  const axiosError = (status) => ({ isAxiosError: true, ...(status ? { response: { status } } : {}) });
+  for (const failure of [axiosError(), axiosError(502), axiosError(503), axiosError(504), axiosError(500), axiosError(429), axiosError(408)]) {
+    assert.equal(isTransientRefreshError(failure), true, JSON.stringify(failure));
+  }
+  for (const failure of [axiosError(400), axiosError(401), axiosError(403), new Error('mapping bug'), null, undefined]) {
+    assert.equal(isTransientRefreshError(failure), false, String(failure && JSON.stringify(failure)));
+  }
+});
+
+test('a token refused because another tab rotated it is replaced by the stored session', () => {
+  assert.equal(replacedByAnotherTab('sent', stored('newer'), NOW), true);
+  assert.equal(replacedByAnotherTab('sent', stored('sent'), NOW), false, 'same token: a real refusal');
+  assert.equal(replacedByAnotherTab('sent', stored('newer', ADOPT_MIN_VALIDITY_MS - 1), NOW), false, 'stored session about to expire');
+  assert.equal(replacedByAnotherTab('sent', stored(null, 0, false), NOW), false, 'signed out elsewhere');
+  assert.equal(replacedByAnotherTab('sent', null, NOW), false);
 });

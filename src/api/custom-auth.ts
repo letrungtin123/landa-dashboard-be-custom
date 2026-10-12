@@ -117,8 +117,11 @@ export async function changeOwnPasswordApi(currentPassword: string, newPassword:
   return readFreshSessionTokens(data?.data);
 }
 
-export async function customLogoutApi(refreshToken: string): Promise<void> {
-  await customApiClient.post("/api/auth/logout", { refresh_token: refreshToken });
+export async function customLogoutApi(refreshToken: string, accessToken?: string | null): Promise<void> {
+  // The store is already cleared when this runs: send the bearer explicitly
+  // so the server still records who signed out.
+  await customApiClient.post("/api/auth/logout", { refresh_token: refreshToken },
+    accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined);
 }
 
 /**

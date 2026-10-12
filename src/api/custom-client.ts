@@ -134,6 +134,13 @@ customApiClient.interceptors.response.use(
       return customApiClient(originalRequest);
     }
 
+    // Server out of reach (network, timeout, 5xx, 429): keep the session, fail this request only.
+    const { lastRefreshFailedTransiently, afterFailedRefresh } = await import('@/utils/store');
+    if (lastRefreshFailedTransiently()) {
+      afterFailedRefresh();
+      return Promise.reject(error);
+    }
+
     // Refresh thất bại → logout
     const store = await getAuthStore();
     store.getState().logout();

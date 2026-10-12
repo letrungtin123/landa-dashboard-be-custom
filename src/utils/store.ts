@@ -17,7 +17,16 @@ import {
   type CustomLoginResponse,
 } from '@/api/custom-auth';
 import { config } from '@/config/env';
-import { classifyStorageChange, decideRefresh, readStoredSession, withCrossTabLock } from '@/api/cross-tab-session.logic';
+import {
+  classifyStorageChange,
+  decideRefresh,
+  isTransientRefreshError,
+  readStoredSession,
+  replacedByAnotherTab,
+  TRANSIENT_REFRESH_RECHECK_MS,
+  TRANSIENT_REFRESH_RETRY_DELAYS_MS,
+  withCrossTabLock,
+} from '@/api/cross-tab-session.logic';
 import { normalizeGroupLabels, type GroupLabelMap } from '@/utils/group-labels';
 import { normalizeRoleLabels, type RoleLabelMap } from '@/utils/role-labels';
 import {
@@ -151,6 +160,35 @@ let refreshMutex: Promise<boolean> | null = null;
 let lastRefreshSuccessAt = 0;
 const REFRESH_COOLDOWN_MS = 5_000; // 5 giây
 
+// ── Server out of reach — keep the session ──
+// A refresh that got no answer (Wi-Fi drop, laptop waking up, timeout, 5xx,
+// 429) does not sign out: the session is kept and the refresh tried again
+// every TRANSIENT_REFRESH_RECHECK_MS. Only a refusal (400/401/403) signs out.
+let refreshFailedTransiently = false;
+let transientRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+function clearTransientRecheck(): void {
+  if (transientRecheckTimer !== null) { clearTimeout(transientRecheckTimer); transientRecheckTimer = null; }
+}
+
+/** True when the last failed refresh only failed to reach the server. */
+export function lastRefreshFailedTransiently(): boolean {
+  return refreshFailedTransiently;
+}
+
+/** After a failed refresh: sign out, unless the server could not be reached (then try again later). */
+export function afterFailedRefresh(): void {
+  if (!refreshFailedTransiently) { void useAuthStore.getState().logout(); return; }
+  if (transientRecheckTimer !== null) return;
+  transientRecheckTimer = setTimeout(() => {
+    transientRecheckTimer = null;
+    const state = useAuthStore.getState();
+    if (!state.isAuthenticated) return;
+    void state.performTokenRefresh().then((ok) => { if (!ok) afterFailedRefresh(); });
+  }, TRANSIENT_REFRESH_RECHECK_MS);
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Map response từ custom backend thành User state.
  */
@@ -232,13 +270,14 @@ export const useAuthStore = create<AuthState>()(
       // ── Logout — revoke refresh token ──
       logout: async () => {
         clearRefreshTimer();
-        set({ isLoggingOut: true });
+        clearTransientRecheck();
+        refreshFailedTransiently = false;
 
-        const { refreshToken } = get();
-        if (refreshToken) {
-          try { await customLogoutApi(refreshToken); } catch { /* ignore */ }
-        }
-
+        // The first write of a sign-out already clears the stored session.
+        // Writing this tab's tokens first (with isLoggingOut) let the other
+        // tabs adopt them again, so two admin tabs signed each other in and
+        // out without end.
+        const { refreshToken, accessToken } = get();
         set({
           isAuthenticated: false,
           accessToken: null,
@@ -250,8 +289,14 @@ export const useAuthStore = create<AuthState>()(
           managedTenants: [],
           roleLabels: {},
           groupLabels: {},
-          isLoggingOut: false,
+          isLoggingOut: true,
         });
+
+        if (refreshToken) {
+          try { await customLogoutApi(refreshToken, accessToken); } catch { /* ignore */ }
+        }
+
+        set({ isLoggingOut: false });
 
         // Per-user AI course-design source choices must not outlive the session.
         try {
@@ -338,25 +383,44 @@ export const useAuthStore = create<AuthState>()(
         // One tab refreshes at a time; inside the lock the stored session is
         // re-read so a token another tab already rotated is never replayed.
         refreshMutex = withCrossTabLock(REFRESH_LOCK_NAME, async () => {
-          const decision = decideRefresh(get().refreshToken, readStoredSession(rawEncryptedStorage.getItem(STORAGE_KEY)), Date.now());
-          if (decision.action === 'adopt') {
-            adoptStoredSession();
-            return true;
-          }
-          if (decision.action === 'none') return false;
-          try {
-            let activeTenantId: string | null = null;
+          for (let attempt = 0; ; attempt += 1) {
+            const decision = decideRefresh(get().refreshToken, readStoredSession(rawEncryptedStorage.getItem(STORAGE_KEY)), Date.now());
+            if (decision.action === 'adopt') {
+              refreshFailedTransiently = false;
+              adoptStoredSession();
+              return true;
+            }
+            if (decision.action === 'none') {
+              refreshFailedTransiently = false;
+              return false;
+            }
             try {
-              const { useTenantStore } = await import('@/utils/tenant-store');
-              activeTenantId = useTenantStore.getState().activeTenantId;
-            } catch { /* ignore */ }
-            const data = await customRefreshApi(decision.refreshToken, activeTenantId);
-            set(mapLoginResponseToState(data));
-            lastRefreshSuccessAt = Date.now();
-            get().scheduleTokenRefresh();
-            return true;
-          } catch {
-            return false;
+              let activeTenantId: string | null = null;
+              try {
+                const { useTenantStore } = await import('@/utils/tenant-store');
+                activeTenantId = useTenantStore.getState().activeTenantId;
+              } catch { /* ignore */ }
+              const data = await customRefreshApi(decision.refreshToken, activeTenantId);
+              set(mapLoginResponseToState(data));
+              lastRefreshSuccessAt = Date.now();
+              refreshFailedTransiently = false;
+              clearTransientRecheck();
+              get().scheduleTokenRefresh();
+              return true;
+            } catch (error) {
+              const transient = isTransientRefreshError(error);
+              // Refused because another tab rotated the token a moment ago: take its session.
+              if (!transient && replacedByAnotherTab(decision.refreshToken, readStoredSession(rawEncryptedStorage.getItem(STORAGE_KEY)), Date.now())) {
+                refreshFailedTransiently = false;
+                adoptStoredSession();
+                return true;
+              }
+              if (!transient || attempt >= TRANSIENT_REFRESH_RETRY_DELAYS_MS.length) {
+                refreshFailedTransiently = transient;
+                return false;
+              }
+              await sleep(TRANSIENT_REFRESH_RETRY_DELAYS_MS[attempt]);
+            }
           }
         }).finally(() => { refreshMutex = null; });
 
@@ -374,12 +438,12 @@ export const useAuthStore = create<AuthState>()(
 
         if (delay <= 0) {
           // Token sắp hết hoặc đã hết → refresh ngay
-          get().performTokenRefresh().then((ok) => { if (!ok) get().logout(); });
+          get().performTokenRefresh().then((ok) => { if (!ok) afterFailedRefresh(); });
           return;
         }
 
         refreshTimerId = setTimeout(() => {
-          get().performTokenRefresh().then((ok) => { if (!ok) get().logout(); });
+          get().performTokenRefresh().then((ok) => { if (!ok) afterFailedRefresh(); });
         }, delay);
       },
     }),
@@ -402,7 +466,7 @@ export const useAuthStore = create<AuthState>()(
         if (state?.isAuthenticated && state?.tokenExpiresAt) {
           if (Date.now() >= state.tokenExpiresAt) {
             // Token hết hạn → refresh ngay
-            state.performTokenRefresh().then((ok) => { if (!ok) state.logout(); });
+            state.performTokenRefresh().then((ok) => { if (!ok) afterFailedRefresh(); });
           } else {
             // Token còn hạn → schedule refresh
             state.scheduleTokenRefresh();
@@ -472,7 +536,7 @@ function handleWakeUp() {
     if (now >= state.tokenExpiresAt - buffer) {
       state.performTokenRefresh()
         .then((ok) => {
-          if (!ok) state.logout();
+          if (!ok) afterFailedRefresh();
         });
     } else {
       // Token còn hạn → re-schedule timer (timer cũ có thể đã bị kill)
