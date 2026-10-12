@@ -139,7 +139,8 @@ test('Studio mounts both panels, refreshes notes after Apply and keeps every key
   const page = readFileSync(path.join(src, 'pages/course-editor.tsx'), 'utf8');
   const panel = readFileSync(path.join(directory, 'AiAuthorNotes.tsx'), 'utf8');
   assert.match(unitEditor, /\{courseId && <AiAuthorNotesUnitPanel courseId=\{courseId\} unitId=\{unitId\} \/>\}/);
-  assert.equal((page.match(/<AiAuthorNotesCourseButton /g) ?? []).length, 2, 'desktop sidebar and mobile outline sheet');
+  // Hidden from the outline sidebar and the mobile outline sheet (owner, 2026-10-13); unit notes stay.
+  assert.equal((page.match(/<AiAuthorNotesCourseButton /g) ?? []).length, 0);
   assert.match(page, /invalidateQueries\(\{ queryKey: courseAuthorNotesQueryKey\(courseId\), exact: true \}\)/);
   assert.match(panel, /enabled: canEdit && !!courseId/);
   const keys = [...new Set([...panel.matchAll(/t\('(aiAuthorNotes\.[A-Za-z]+)'/g)].map(match => match[1]))];
