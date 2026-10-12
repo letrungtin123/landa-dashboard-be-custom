@@ -163,12 +163,13 @@ export function AppSidebar() {
       <SidebarHeader className="h-16 flex justify-center px-5 group-data-[collapsible=icon]:px-0 py-0 border-b border-sidebar-border/70">
         <Link to="/" className="flex items-center justify-center w-full overflow-hidden">
           {/* Full Logo - hidden when collapsed */}
-          <img src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
+          <img key={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} src={theme === 'dark' ? branding.sidebarLogoDark : branding.sidebarLogo} alt="Logo" className={`h-8 w-auto shrink-0 group-data-[collapsible=icon]:hidden transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
 
           {/* Square icon - visible only when collapsed */}
           <div className={`hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg sidebar-liquid-control shrink-0 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`}>
             {showCollapsedTenantIcon ? (
               <img
+                key={branding.squareIcon}
                 src={branding.squareIcon}
                 alt={branding.tenantName || user?.tenant_name || 'Tenant'}
                 className="h-full w-full rounded-lg object-contain"

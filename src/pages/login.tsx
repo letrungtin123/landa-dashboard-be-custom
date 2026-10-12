@@ -184,7 +184,7 @@ export default function LoginPage() {
           animate={{ scale: 1 }}
           transition={{ type: 'spring', delay: 0.2, stiffness: 200, damping: 15 }}
         >
-          <img src={branding.loginLogo} alt="Logo" className={`h-[2.5rem] w-auto drop-shadow-xl mb-3 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
+          <img key={branding.loginLogo} src={branding.loginLogo} alt="Logo" className={`h-[2.5rem] w-auto drop-shadow-xl mb-3 transition-opacity duration-300 ${brandingLoading ? 'opacity-0' : 'opacity-100'}`} />
         </motion.div>
       </div>
 

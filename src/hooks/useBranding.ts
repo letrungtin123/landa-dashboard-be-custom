@@ -43,19 +43,25 @@ const DEFAULT_BRANDING: AdminBranding = {
 
 // ── Shared fetch function ──
 
-async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
+/**
+ * The branding of a domain, or null when the server could not be reached
+ * (then the last known branding is kept instead of the default logo).
+ */
+async function fetchBrandingByDomain(domain: string): Promise<AdminBranding | null> {
   try {
     const baseUrl = config.customApiUrl;
     const response = await fetch(`${baseUrl}/api/branding/by-domain/${encodeURIComponent(domain)}`);
+    if (response.status >= 500) return null;
     if (!response.ok) return DEFAULT_BRANDING;
 
     const json = await response.json();
     const data = json.data;
     if (!data?.tenant_id) return DEFAULT_BRANDING;
 
-    const bustCache = `?t=${Date.now()}`;
+    // Each upload gets a new file name, so the address itself changes with
+    // the image and the browser may reuse it after F5 (no time stamp).
     const resolve = (path: string | null | undefined, fallback: string): string =>
-      path ? (storageUrl(path) + bustCache) || fallback : fallback;
+      path ? storageUrl(path) || fallback : fallback;
 
     return {
       loginLogo: resolve(data.images.white_logo, DEFAULT_BRANDING.loginLogo),
@@ -67,7 +73,7 @@ async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
       learnerUrl: safeHttpUrl(data.domain_learner),
     };
   } catch {
-    return DEFAULT_BRANDING;
+    return null;
   }
 }
 
@@ -75,18 +81,51 @@ async function fetchBrandingByDomain(domain: string): Promise<AdminBranding> {
 const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
 const BRANDING_QUERY_KEY = ['admin-branding', currentDomain];
 
+// ── Last known branding of this domain ──
+// After F5 the login page and the sidebar show the tenant's own logo at once
+// instead of the default logo until the branding request answers.
+const BRANDING_STORAGE_KEY = `admin-branding:v1:${currentDomain}`;
+
+function readStoredBranding(): AdminBranding | undefined {
+  try {
+    const raw = localStorage.getItem(BRANDING_STORAGE_KEY);
+    const value = raw ? JSON.parse(raw) as Partial<AdminBranding> : null;
+    if (!value || typeof value.loginLogo !== 'string' || typeof value.sidebarLogo !== 'string'
+      || typeof value.sidebarLogoDark !== 'string' || typeof value.squareIcon !== 'string') return undefined;
+    return {
+      loginLogo: value.loginLogo,
+      sidebarLogo: value.sidebarLogo,
+      sidebarLogoDark: value.sidebarLogoDark,
+      squareIcon: value.squareIcon,
+      tenantName: typeof value.tenantName === 'string' ? value.tenantName : null,
+      learnerUrl: safeHttpUrl(value.learnerUrl ?? null),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadBranding(): Promise<AdminBranding> {
+  const fresh = await fetchBrandingByDomain(currentDomain);
+  if (!fresh) return readStoredBranding() ?? DEFAULT_BRANDING;
+  try { localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(fresh)); } catch { /* Private-mode storage can be unavailable. */ }
+  return fresh;
+}
+
 /** Default title from index.html — dùng làm fallback */
 const DEFAULT_TITLE = 'Nesso';
 
 /**
- * Hook lấy branding cho sidebar (sau login).
- * Dùng public API — chia sẻ cache với useBrandingPublic().
- * Data đã được fetch sẵn ở login page → sidebar hiển thị logo ngay lập tức.
+ * One cache for the login page and the sidebar. The last known branding is
+ * shown at once and refreshed in the background; with none known yet,
+ * `isLoading` stays true until the server answers so no default logo shows.
  */
-export function useBranding() {
+function useDomainBranding() {
   const { data, isLoading } = useQuery({
     queryKey: BRANDING_QUERY_KEY,
-    queryFn: () => fetchBrandingByDomain(currentDomain),
+    queryFn: loadBranding,
+    initialData: readStoredBranding,
+    initialDataUpdatedAt: 0,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: 1,
@@ -113,8 +152,16 @@ export function useBranding() {
 
   return {
     branding: data || DEFAULT_BRANDING,
-    isLoading,
+    isLoading: isLoading || !data,
   };
+}
+
+/**
+ * Hook lấy branding cho sidebar (sau login).
+ * Dùng public API — chia sẻ cache với useBrandingPublic().
+ */
+export function useBranding() {
+  return useDomainBranding();
 }
 
 /**
@@ -122,37 +169,7 @@ export function useBranding() {
  * Chia sẻ cùng cache key với useBranding() → logo không flash khi navigate.
  */
 export function useBrandingPublic() {
-  const { data, isLoading } = useQuery({
-    queryKey: BRANDING_QUERY_KEY,
-    queryFn: () => fetchBrandingByDomain(currentDomain),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    retry: 1,
-    refetchOnWindowFocus: false,
-  });
-
-  // Cập nhật document.title + favicon trên trang login + cache vào sessionStorage
-  useEffect(() => {
-    const title = data?.tenantName ? `${data.tenantName} | Admin` : '';
-    if (title) document.title = title;
-
-    const faviconUrl = data?.squareIcon && data.squareIcon !== fallbackSquareIcon
-      ? data.squareIcon : '';
-    const link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
-    if (link && faviconUrl) {
-      link.type = 'image/png';
-      link.href = faviconUrl;
-    }
-
-    if (title || faviconUrl) {
-      try { sessionStorage.setItem('__branding', JSON.stringify({ t: title, f: faviconUrl })); } catch { /* Private-mode storage can be unavailable. */ }
-    }
-  }, [data?.tenantName, data?.squareIcon]);
-
-  return {
-    branding: data || DEFAULT_BRANDING,
-    isLoading,
-  };
+  return useDomainBranding();
 }
 
 export { DEFAULT_BRANDING };
