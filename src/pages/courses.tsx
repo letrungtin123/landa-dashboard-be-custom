@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { CourseFilesModal } from '@/components/course-editor/CourseFilesModal';
+import { CourseAiIdDescriptionHint } from '@/components/course-editor/CourseAiIdDescriptionHint';
+import { useLessonAuthorAvailable } from '@/hooks/queries/use-lesson-author-availability';
 import { Switch } from '@/components/ui/switch';
 import FacebookIcon from '@/assets/SocialIcon/facebook.png';
 import InstagramIcon from '@/assets/SocialIcon/instagram.png';
@@ -115,6 +117,7 @@ export default function CoursesPage() {
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const canSubmitCreateCourse = Boolean(newName.trim() && newDescription.trim() && newNumber.trim() && newOrg.trim() && newRun.trim());
+  const createAiIdAvailable = useLessonAuthorAvailable(showCreate);
 
   const createMut = useMutation({
     mutationFn: () => createCourse({
@@ -293,7 +296,7 @@ export default function CoursesPage() {
       />
       {/* Dialog tạo course */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl">{t('courses.createTitle')}</DialogTitle>
           </DialogHeader>
@@ -304,12 +307,13 @@ export default function CoursesPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">{t('courses.descriptionLabel')} <span className="text-red-500">*</span></label>
+              <CourseAiIdDescriptionHint show={createAiIdAvailable} />
               <textarea
                 className="flex min-h-[96px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={newDescription}
                 onChange={e => setNewDescription(e.target.value)}
                 maxLength={5000}
-                placeholder={t('courses.descriptionPlaceholder')}
+                placeholder={t(createAiIdAvailable ? 'courses.aiIdDescriptionPlaceholder' : 'courses.descriptionPlaceholder')}
               />
               {!newDescription.trim() && (
                 <p className="text-xs text-red-500">{t('courses.descriptionRequired')}</p>
@@ -898,10 +902,11 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
   });
 
   const canSave = Boolean(displayName.trim() && description.trim()) && !saveMut.isPending;
+  const aiIdAvailable = useLessonAuthorAvailable(open);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t('courses.courseInfoTitle')}</DialogTitle>
         </DialogHeader>
@@ -923,12 +928,13 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
 
           <div className="space-y-1.5">
             <Label>{t('courses.descriptionLabel')} <span className="text-red-500">*</span></Label>
+            <CourseAiIdDescriptionHint show={aiIdAvailable} />
             <textarea
               className="flex min-h-[132px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={5000}
-              placeholder={t('courses.descriptionInputPlaceholder')}
+              placeholder={t(aiIdAvailable ? 'courses.aiIdDescriptionPlaceholder' : 'courses.descriptionInputPlaceholder')}
             />
             <div className="flex items-center justify-between gap-3">
               {!description.trim() ? (
