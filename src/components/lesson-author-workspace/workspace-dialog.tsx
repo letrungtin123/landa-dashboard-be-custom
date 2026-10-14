@@ -426,6 +426,8 @@ export interface WorkspaceDialogProps {
    * Current READ v1 has no batch overview. Never pass a Blueprint fallback. */
   overviewDetails?: readonly WorkspaceTypedDetail[];
   toolbar?: ReactNode;
+  /** Presentation-only block above the Overview content (the launch brief). */
+  overviewHeader?: ReactNode;
   renderNodeDetail?: (node: WorkspaceNode | null) => ReactNode;
   assistantAvatarSrc?: string | null;
   /** Authorized conversation display name for this exact workspace. */
@@ -778,7 +780,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps) {
 /** Body deliberately has no Dialog/Portal boundary. The host keeps one modal
  * mounted from source selection through workspace delivery, so a status/graph
  * update cannot recreate focus, scroll lock, entry animation, or viewport. */
-export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
+export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, overviewHeader, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
   const c = workspaceCopy[locale];
   const [tab, setTab] = useState('overview');
   const [expansion, setExpansion] = useState<Expansion>({});
@@ -983,6 +985,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
           </TabsList>
         </div>
         <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {canRead && overviewHeader}
           {canRead ? <Overview graph={graph} preview={preview} details={details} locale={locale} loading={overviewLoading} terminal={terminal} onRefresh={onRefresh} /> : <p className="p-4">{state.access === 'blocked' ? c.unavailable : c.unknown}</p>}
         </TabsContent>
         <TabsContent value="mindmap" className="relative mt-0 min-h-0 flex-1 overflow-hidden bg-background">

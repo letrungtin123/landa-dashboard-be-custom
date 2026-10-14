@@ -18,6 +18,25 @@ export interface WorkspaceContent {
   data: WorkspaceJson;
   implementation_notes: string | null;
 }
+/** How the author asked AI ID to treat the source (chosen once, on the start screen). */
+export type WorkspaceDesignMode = 'instructional_design' | 'preserve_source';
+export const WORKSPACE_DESIGN_MODES: readonly WorkspaceDesignMode[] = ['instructional_design', 'preserve_source'];
+/** Bounds of the two launch brief texts (after trimming). Create sends at most
+ * this many UTF-16 units; reads accept at most this many code points. */
+export const WORKSPACE_LEARNER_AUDIENCE_MAX = 300;
+export const WORKSPACE_COURSE_PURPOSE_MAX = 500;
+/** Launch brief as read back: design mode carries both texts, keep-as-is neither. */
+export interface WorkspaceLaunchBrief {
+  design_mode: WorkspaceDesignMode;
+  learner_audience: string | null;
+  course_purpose: string | null;
+}
+/** Wire form of the brief (null texts may be omitted). Read it with readWorkspaceLaunchBrief. */
+export interface WorkspaceLaunchBriefWire {
+  design_mode: WorkspaceDesignMode;
+  learner_audience?: string | null;
+  course_purpose?: string | null;
+}
 export interface WorkspaceView {
   workspace_id: string;
   contract_version: 1;
@@ -26,6 +45,8 @@ export interface WorkspaceView {
   status: WorkspaceRunState;
   last_event_sequence: number;
   updated_at: string;
+  /** Optional: absent from older servers, null for sessions created before the launch brief existed. */
+  launch_brief?: WorkspaceLaunchBriefWire | null;
 }
 export interface WorkspaceStatus extends WorkspaceView {
   node_count: number;
@@ -212,7 +233,22 @@ function view(value: unknown): WorkspaceView {
     && (v.content_locale === 'en' || v.content_locale === 'vi') && timestamp(v.updated_at)
     && isWorkspaceSequence(v.last_event_sequence)
     && ['queued', 'designing', 'drafting', 'ready', 'needs_action', 'failed', 'canceled'].includes(v.status as string));
+  readWorkspaceLaunchBrief(v.launch_brief);
   return v as unknown as WorkspaceView;
+}
+/** Absent or null means no brief (older server or session). A present brief
+ * must be exact: design mode with both texts, keep-as-is with neither. */
+export function readWorkspaceLaunchBrief(value: unknown): WorkspaceLaunchBrief | null {
+  if (value === undefined || value === null) return null;
+  const brief = object(value);
+  requireValid(Object.keys(brief).every(key => ['design_mode', 'learner_audience', 'course_purpose'].includes(key)));
+  const audience = brief.learner_audience ?? null, purpose = brief.course_purpose ?? null;
+  if (brief.design_mode === 'instructional_design') {
+    requireValid(textOf(audience, WORKSPACE_LEARNER_AUDIENCE_MAX) && textOf(purpose, WORKSPACE_COURSE_PURPOSE_MAX));
+    return { design_mode: 'instructional_design', learner_audience: audience as string, course_purpose: purpose as string };
+  }
+  requireValid(brief.design_mode === 'preserve_source' && audience === null && purpose === null);
+  return { design_mode: 'preserve_source', learner_audience: null, course_purpose: null };
 }
 function node(value: unknown): void {
   const v = object(value);

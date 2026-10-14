@@ -1,8 +1,10 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, Check, FileText, Loader2, Plus, RefreshCw, Sparkles, Upload, Video } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { createWorkspaceSourceState } from './workspace-source-state';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
+import { workspaceCreateBlock, workspaceCreateBlockCopy, workspaceLaunchBriefErrorKey } from './workspace-launch-brief.logic';
 
 const copy = {
   en: { title: 'Build a course from your document', source: 'Choose a ready document', refresh: 'Try again', upload: 'Upload document', create: 'Create learning content',
@@ -36,6 +38,8 @@ function sourceIcon(name: string) {
 export function WorkspaceSourcePanel({ controller, locale }: { controller: ReturnType<typeof createWorkspaceSourceState>; locale: WorkspaceLocale }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
   const inputRef = useRef<HTMLInputElement>(null);
+  const reasonId = useId();
+  const { t } = useTranslation();
   const c = copy[locale];
   useEffect(() => {
     controller.setVisible(true);
@@ -45,6 +49,12 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
   const source = state.documents.find(d => d.document_id === state.selectedId);
   const locked = state.busy || state.unknown;
   const loading = state.phase === 'reading' && state.busy;
+  // Document plus the launch brief (right column); the reason is shown only
+  // when nothing else (loading, upload, unknown outcome) explains the lock.
+  const block = workspaceCreateBlock({ draft: state.brief,
+    document: source?.status === 'learned' ? 'ready' : source?.status === 'learning' ? 'processing' : 'none' });
+  const blockCopy = block && !locked && state.ready ? workspaceCreateBlockCopy(block) : null;
+  const reason = blockCopy ? t(blockCopy.key, { max: blockCopy.max, items: blockCopy.itemKeys?.map(key => t(key)).join(', ') }) : null;
   const status = state.phase === 'uploading'
     ? state.progress === 100 ? c.accepting : `${c.uploading}${state.progress === null ? '' : ` ${state.progress}%`}`
     : state.phase === 'creating' ? c.creating : c.reading;
@@ -82,17 +92,20 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
       </div>
     </div>
 
-    <div className="flex flex-col gap-3 rounded-2xl border bg-muted/25 p-3 sm:flex-row sm:items-center sm:justify-end">
-      <Button type="button" size="lg" className="min-w-52 rounded-xl shadow-lg shadow-primary/20" disabled={locked || !state.ready || source?.status !== 'learned'} onClick={() => { void controller.create(); }}>
+    <div className="flex flex-col gap-2 rounded-2xl border bg-muted/25 p-3 sm:items-end">
+      <Button type="button" size="lg" className="min-w-52 rounded-xl shadow-lg shadow-primary/20" disabled={locked || !state.ready || !!block}
+        aria-describedby={reason ? reasonId : undefined} onClick={() => { void controller.create(); }}>
         {state.phase === 'creating' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{c.create}
       </Button>
+      {reason && <p id={reasonId} className="text-xs leading-5 text-muted-foreground sm:text-right">{reason}</p>}
     </div>
 
     {state.busy && <div className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-2 text-xs text-muted-foreground" role="status">{status}</div>}
     {!state.busy && state.sourceObservation !== 'idle' && state.sourceObservation !== 'failed' && <div className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-2 text-xs text-muted-foreground" role="status">
       {state.sourceObservation === 'unavailable' ? c.streamUnavailable : <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />{state.sourceObservation === 'connecting' ? c.connecting : c.watching}</>}
     </div>}
-    {state.issue && <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">{c[state.issue]}</p>}
+    {state.issue && <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
+      {state.issue === 'brief_rejected' ? state.briefError ? t(workspaceLaunchBriefErrorKey(state.briefError)) : c.rejected : c[state.issue]}</p>}
     {state.transcript && <div className="rounded-xl border bg-card p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-medium">{c.transcript}</span><span className="text-xs text-muted-foreground">{c[state.transcript.status]}</span></div><p className="mt-1 truncate text-xs text-muted-foreground">{state.transcript.original_file_name}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={state.busy} onClick={() => { void controller.refreshTranscript(); }}>{c.checkTranscript}</Button><Button type="button" size="sm" disabled={locked || !state.transcript.can_add_to_kb || state.transcript.status !== 'succeeded'} onClick={() => { void controller.commitTranscript(); }}>{c.commit}</Button></div></div>}
   </section>;
 }

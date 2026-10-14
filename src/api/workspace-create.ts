@@ -3,8 +3,13 @@ import { customApiClient } from './custom-client';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
 import { readWorkspaceLaunchResult } from './workspace-launch';
 import type { WorkspaceHostScope } from '../components/lesson-author-workspace/workspace-host.logic';
+import { isWorkspaceLaunchBriefErrorCode, isWorkspaceLaunchBriefFields,
+  type WorkspaceLaunchBriefFields } from '../components/lesson-author-workspace/workspace-launch-brief.logic';
 
-export interface WorkspaceCreateRequest { operation_id: string; source_document_ids: string[]; content_locale: WorkspaceLocale }
+/** design_mode is always sent; learner_audience/course_purpose only for instructional_design. */
+export type WorkspaceCreateRequest = { operation_id: string; source_document_ids: string[]; content_locale: WorkspaceLocale }
+  & WorkspaceLaunchBriefFields;
+const CREATE_SOURCE_KEYS = ['content_locale', 'operation_id', 'source_document_ids'];
 export class WorkspaceCreateError extends Error {
   constructor(readonly outcome: 'rejected' | 'unknown', readonly code: string) { super(code); }
 }
@@ -15,16 +20,19 @@ export function workspaceCreateFailure(error: unknown): WorkspaceCreateError {
   const response = (error as { response?: { status?: number; data?: { code?: unknown } } })?.response;
   const raw = response?.data?.code;
   const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,99}$/.test(raw) ? raw : 'WORKSPACE_CREATE_UNCONFIRMED';
+  // Launch brief codes come from request validation, before anything is created.
   const rejected = response?.status === 400 || response?.status === 401 || response?.status === 403 || response?.status === 409
-    || code === 'WORKSPACE_EXECUTION_DISABLED';
+    || code === 'WORKSPACE_EXECUTION_DISABLED' || isWorkspaceLaunchBriefErrorCode(code);
   return new WorkspaceCreateError(rejected ? 'rejected' : 'unknown', code);
 }
 export function createWorkspaceCreateClient(scope: WorkspaceHostScope, transport: Pick<typeof customApiClient, 'post'> = customApiClient) {
   return async (conversationId: string, request: WorkspaceCreateRequest, uiLocale: WorkspaceLocale) => {
+    // Every other key is the launch brief, checked exactly (no extra key passes).
+    const brief = Object.fromEntries(Object.entries(request).filter(([key]) => !CREATE_SOURCE_KEYS.includes(key)));
     if (![scope.actorId, scope.tenantId, conversationId, request.operation_id].every(isWorkspaceId)
       || !scope.courseId.trim() || scope.courseId.length > 255 || Array.from(scope.courseId).some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127) || ['.', '..'].includes(scope.courseId)
       || !['en', 'vi'].includes(uiLocale) || !['en', 'vi'].includes(request.content_locale)
-      || Object.keys(request).sort().join(',') !== 'content_locale,operation_id,source_document_ids'
+      || !CREATE_SOURCE_KEYS.every(key => Object.prototype.hasOwnProperty.call(request, key)) || !isWorkspaceLaunchBriefFields(brief)
       || !Array.isArray(request.source_document_ids) || request.source_document_ids.length < 1 || request.source_document_ids.length > 5
       || !request.source_document_ids.every(isWorkspaceId) || new Set(request.source_document_ids.map(id => id.toLowerCase())).size !== request.source_document_ids.length) {
       throw new WorkspaceCreateError('rejected', 'WORKSPACE_CREATE_INPUT_INVALID');

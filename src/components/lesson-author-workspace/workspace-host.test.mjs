@@ -38,6 +38,8 @@ function load(relative) {
     if (name.endsWith('/custom-chat')) return { fetchLessonAuthorChatSettings: async () => ({ active_bot: null, active_kb: null, active_persona: null }) };
     if (name.endsWith('/storage-url')) return { storageUrl: value => value || '' };
     if (name === './workspace-source-panel') return { WorkspaceSourcePanel: () => h('div', null, 'Sources') };
+    if (name === './workspace-launch-brief-panel') return { WorkspaceLaunchBriefPanel: () => h('div', null, 'Launch brief'),
+      WorkspaceLaunchBriefSummary: ({ brief }) => brief ? h('p', null, brief.design_mode) : null };
     if (name === './workspace-ai-avatar') return { WorkspaceAiAvatar: () => h('span', null, 'AI') };
     if (name === '@/utils/store') return { useAuthStore: select => select({ user: null, isAuthenticated: false, hasPermission: () => false }) };
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };

@@ -13,6 +13,8 @@ import { workspaceSourceApi } from '../../api/workspace-sources';
 import { createLessonAuthorUploadAttemptId } from '../../api/lesson-author-video-upload.logic';
 import { createWorkspaceSourceState } from './workspace-source-state';
 import { WorkspaceSourcePanel } from './workspace-source-panel';
+import { WorkspaceLaunchBriefPanel, WorkspaceLaunchBriefSummary } from './workspace-launch-brief-panel';
+import { workspaceSessionLaunchBrief } from './workspace-launch-brief.logic';
 import { WorkspaceSessionBrowser } from './workspace-session-browser';
 import { listLessonAuthorSessions, type LessonAuthorActiveRun } from '../../api/workspace-sessions';
 import { useLessonAuthorActiveRuns } from '@/hooks/queries/use-lesson-author-sessions';
@@ -462,7 +464,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
           <div className="flex shrink-0 gap-2">{view === 'source' && <Button type="button" variant="outline" size="sm" onClick={() => setView('sessions')}>{c.sessions}</Button>}<Button type="button" variant="outline" size="sm" onClick={() => host.close()}>{c.close}</Button></div>
         </header>
         {state.loading && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-hidden px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]" role="status"><div className="animate-pulse space-y-4 rounded-lg border border-border/70 bg-card p-5"><div className="h-5 w-2/5 rounded bg-muted" /><div className="h-16 rounded-lg bg-muted" /><div className="space-y-2"><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /></div></div><div className="hidden animate-pulse rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><div className="h-4 w-1/2 rounded bg-muted" /><div className="mt-4 h-24 rounded-lg bg-muted" /></div></div>}
-        {!state.loading && state.issue === 'no_workspace' && !state.launch && sources && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><WorkspaceSourcePanel controller={sources} locale={locale} /><aside className="hidden rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">AI Instructional Design</p><h3 className="mt-3 text-lg font-semibold">{locale === 'vi' ? 'Bản thiết kế khoá học có kiểm soát' : 'A controlled course draft'}</h3><ol className="mt-6 space-y-4 text-sm text-muted-foreground"><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">1</span>{locale === 'vi' ? 'Chọn đúng một tài liệu nguồn đã sẵn sàng.' : 'Choose one ready source document.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">2</span>{locale === 'vi' ? 'Tạo bản thiết kế khoá học và theo dõi tiến độ trong Tổng quan, Mindmap.' : 'Create the draft and follow its Overview and Mindmap progress.'}</li><li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">3</span>{locale === 'vi' ? 'Duyệt, sửa và Áp dụng theo phạm vi khi nội dung sẵn sàng.' : 'Review, edit and apply only ready scopes.'}</li></ol></aside></div>}
+        {!state.loading && state.issue === 'no_workspace' && !state.launch && sources && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><WorkspaceSourcePanel controller={sources} locale={locale} /><WorkspaceLaunchBriefPanel controller={sources} courseId={courseId} /></div>}
         {!state.loading && state.issue !== 'no_workspace' && <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 text-center"><p role="status" className="max-w-lg text-sm text-muted-foreground">{c[state.issue ?? 'launch_failed']}</p><Button type="button" disabled={sourceState?.busy} onClick={() => { void host.launch(); }}>{c.retry}</Button></div>}
       </motion.div>
   </WorkspaceModalShell>;
@@ -597,6 +599,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   };
   return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={presentationRead!} locale={locale}
     onSelectNode={nodeId => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(nodeId)); }} overviewDetails={workspace.overview.details} toolbar={toolbar} renderNodeDetail={renderDetail}
+    overviewHeader={<WorkspaceLaunchBriefSummary brief={workspaceSessionLaunchBrief(presentationRead)} />}
     assistantAvatarSrc={assistantAvatarSrc}
     draftTitle={state.launch && activeConversation?.id === state.launch.conversation_id ? activeConversation.title : null}
     onRefresh={() => act(refreshWorkspace)} /></WorkspaceModalShell>;

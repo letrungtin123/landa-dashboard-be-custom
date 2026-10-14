@@ -1,3 +1,4 @@
+/* global URL */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -31,13 +32,16 @@ function fixture(){
     operationId:()=>id(9),locale:'vi',wait:async()=>{state.waits++;},onCreated:r=>results.push(r),stream:(scope,deps)=>{const item={scope,deps,started:0,closed:0};streams.push(item);return{start(){item.started++;},close(){item.closed++;}};},create:async(...args)=>{state.creates++;requests.push(args);
       if(state.unknown)throw new WorkspaceCreateError('unknown','UNCONFIRMED');
       return{workspace_id:id(10),conversation_id:id(6),course_id:scope.courseId,content_locale:args[1].content_locale,correlation_id:id(11)};}});
+  // A complete design brief, so Create is gated only by what each test changes.
+  controller.setBrief({learner_audience:' Nhân viên mới ',course_purpose:'Hiểu quy trình bán hàng'});
   return{scope,controller,state,settings,docs,conversations,results,requests,streams,api};
 }
 test('source reads never generate and Create uses only learned source + global ENVI locale',async()=>{
   const f=fixture();await f.controller.refresh();assert.equal(f.state.creates,0);assert.equal(f.controller.getState().ready,true);
   f.controller.select(id(7));f.controller.setUiLocale('en');await f.controller.create();
   assert.equal(f.state.creates,1);assert.equal(f.state.conversations,0);assert.equal(f.results.length,1);
-  assert.deepEqual(f.requests[0],[id(6),{operation_id:id(9),source_document_ids:[id(7)],content_locale:'en'},'en']);
+  assert.deepEqual(f.requests[0],[id(6),{operation_id:id(9),source_document_ids:[id(7)],content_locale:'en',design_mode:'instructional_design',
+    learner_audience:'Nhân viên mới',course_purpose:'Hiểu quy trình bán hàng'},'en']);
 });
 test('session choice is exact: new creates once and missing resume never falls back to another draft',async()=>{
   const fresh=fixture();await fresh.controller.refresh();fresh.controller.beginNewSession();fresh.controller.select(id(7));await fresh.controller.create();
@@ -91,7 +95,7 @@ test('terminal source error remains visible and never becomes source-ready',asyn
 test('create transport is one POST, disables auth replay and treats invalid readback as unknown',async()=>{
   const f=fixture(),calls=[];const create=createWorkspaceCreateClient(f.scope,{post:async(...args)=>{calls.push(args);return{data:{success:true,data:{
     workspace_id:id(10),conversation_id:id(6),correlation_id:id(11),content_locale:'en',status:'designing'}}};}});
-  const req={operation_id:id(9),source_document_ids:[id(7)],content_locale:'en'};
+  const req={operation_id:id(9),source_document_ids:[id(7)],content_locale:'en',design_mode:'preserve_source'};
   await create(id(6),req,'vi');assert.equal(calls.length,1);assert.equal(calls[0][2]._retried,true);assert.equal(calls[0][2].signal,undefined);
   await assert.rejects(create(id(6),{...req,content_locale:'vi'},'vi'),{outcome:'unknown'});assert.equal(calls.length,2);
   await assert.rejects(create(id(6),{...req,tenant_id:id(99)},'vi'),{outcome:'rejected'});assert.equal(calls.length,2);

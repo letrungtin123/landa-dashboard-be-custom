@@ -4,13 +4,20 @@ import type { SourceStreamClient, SourceStreamDocument, SourceStreamScope, Sourc
 import { WorkspaceCreateError, workspaceCreateFailure, type createWorkspaceCreateClient, type WorkspaceCreateRequest } from '../../api/workspace-create';
 import { isWorkspaceId, type WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import type { WorkspaceHostScope, WorkspaceLaunchContext } from './workspace-host.logic';
+import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, isWorkspaceLaunchBriefErrorCode, workspaceLaunchBriefFields,
+  type WorkspaceLaunchBriefDraft, type WorkspaceLaunchBriefErrorCode } from './workspace-launch-brief.logic';
 
 export interface WorkspaceSourceState {
   busy: boolean;
   phase: 'idle' | 'reading' | 'uploading' | 'creating';
   ready: boolean;
   unknown: boolean;
-  issue: 'unavailable' | 'connection' | 'source_not_ready' | 'source_failed' | 'invalid_file' | 'rejected' | 'unknown' | null;
+  issue: 'unavailable' | 'connection' | 'source_not_ready' | 'source_failed' | 'invalid_file' | 'rejected' | 'unknown'
+    | 'brief_rejected' | null;
+  /** Server reason when issue is 'brief_rejected' (the brief can be fixed and Create pressed again). */
+  briefError: WorkspaceLaunchBriefErrorCode | null;
+  /** Start-screen choice and texts; Create sends a trimmed copy taken when it is pressed. */
+  brief: Readonly<WorkspaceLaunchBriefDraft>;
   documents: readonly LessonAuthorSourceDocument[];
   selectedId: string | null;
   conversation: ChatConversation | null;
@@ -60,7 +67,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   let sourceStream: SourceStreamClient | null = null, sourceStreamDocumentId: string | null = null, sourceStreamSerial = 0;
   const listeners = new Set<() => void>();
   let state: Readonly<WorkspaceSourceState> = Object.freeze({ busy: false, phase: 'idle', ready: false, unknown: false, issue: null,
-    documents: [], selectedId: null, conversation: null, transcript: null, progress: null, contentLocale: locale,
+    briefError: null, brief: DEFAULT_WORKSPACE_LAUNCH_BRIEF, documents: [], selectedId: null, conversation: null, transcript: null, progress: null, contentLocale: locale,
     sourceObservation: 'idle', operation: null });
   const emit = (patch: Partial<WorkspaceSourceState>) => {
     if (disposed) return;
@@ -195,12 +202,17 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   async function run(phase: WorkspaceSourceState['phase'], work: () => Promise<void>, mutation = false) {
     if (state.busy || disposed || mutation && state.unknown) return;
     try { assertActive(); } catch { emit({ ready: false, issue: 'unavailable' }); return; }
-    emit({ busy: true, phase, issue: state.unknown ? 'unknown' : null, progress: null });
+    emit({ busy: true, phase, issue: state.unknown ? 'unknown' : null, briefError: null, progress: null });
     try { await work(); }
     catch (error) {
       if (disposed) return;
       const failure = error instanceof WorkspaceCreateError ? error : null;
       const unknown = state.unknown || failure?.outcome === 'unknown';
+      // A brief validation refusal is definite and leaves the fresh source
+      // state usable: the author fixes the text and presses Create again.
+      if (!unknown && failure?.outcome === 'rejected' && isWorkspaceLaunchBriefErrorCode(failure.code)) {
+        emit({ issue: 'brief_rejected', briefError: failure.code }); return;
+      }
       emit({ ready: false, unknown, issue: unknown ? 'unknown' : failure ? 'rejected' : isTransientReadFailure(error) ? 'connection' : 'unavailable' });
     } finally { emit({ busy: false, phase: 'idle', progress: null }); }
   }
@@ -230,16 +242,29 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
       stopSourceObservation(); preferredConversationId = conversationId; forceNewConversation = false;
       emit({ conversation: null, transcript: null, selectedId: null, issue: null, operation: null });
     },
+    /** Editing is closed only while Create is in flight or its outcome is unknown. */
+    setBrief(patch: Partial<WorkspaceLaunchBriefDraft>) {
+      if (state.phase === 'creating' || state.unknown || !allowed()) return;
+      const next = { ...state.brief };
+      if (patch.design_mode !== undefined && (patch.design_mode === null || isWorkspaceDesignMode(patch.design_mode))) next.design_mode = patch.design_mode;
+      if (typeof patch.learner_audience === 'string') next.learner_audience = patch.learner_audience;
+      if (typeof patch.course_purpose === 'string') next.course_purpose = patch.course_purpose;
+      emit({ brief: Object.freeze(next), ...(state.issue === 'brief_rejected' ? { issue: null, briefError: null } : {}) });
+    },
     select(documentId: string) {
       if (!state.busy && !state.unknown && allowed() && state.documents.some(d => d.document_id === documentId)) emit({ selectedId: documentId, issue: null });
     },
     refresh: () => run('reading', async () => { await readPrerequisites(); reconcileSourceObservation(); }),
     create: () => run('creating', async () => {
+      // The brief as shown when Create was pressed; an incomplete brief never dispatches.
+      const brief = workspaceLaunchBriefFields(state.brief);
+      if (!brief) return;
       await readPrerequisites(); assertActive();
       const source = state.documents.find(d => d.document_id === state.selectedId && d.status === 'learned');
       if (!source) { emit({ issue: 'source_not_ready' }); return; }
       const c = await conversation(); assertActive();
-      const request = Object.freeze({ operation_id: dependencies.operationId(), source_document_ids: [source.document_id], content_locale: state.contentLocale });
+      const request: Readonly<WorkspaceCreateRequest> = Object.freeze({ operation_id: dependencies.operationId(),
+        source_document_ids: [source.document_id], content_locale: state.contentLocale, ...brief });
       emit({ operation: request });
       let result: WorkspaceLaunchContext;
       try { result = await dependencies.create(c.id, request, locale); }
