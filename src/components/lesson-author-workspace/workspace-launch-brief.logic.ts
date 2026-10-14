@@ -103,6 +103,8 @@ export function workspaceCreateBlockCopy(block: WorkspaceCreateBlock): { key: st
 export const WORKSPACE_LAUNCH_BRIEF_ERROR_CODES = [
   'LESSON_AUTHOR_LAUNCH_MODE_INVALID', 'LESSON_AUTHOR_LAUNCH_AUDIENCE_REQUIRED', 'LESSON_AUTHOR_LAUNCH_PURPOSE_REQUIRED',
   'LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG', 'LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED',
+  // QLT-6: keeping the material as it is is not turned on for this organization (no IDM pipeline).
+  'LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE',
 ] as const;
 export type WorkspaceLaunchBriefErrorCode = typeof WORKSPACE_LAUNCH_BRIEF_ERROR_CODES[number];
 export function isWorkspaceLaunchBriefErrorCode(code: unknown): code is WorkspaceLaunchBriefErrorCode {
@@ -114,6 +116,7 @@ const ERROR_KEYS: Record<WorkspaceLaunchBriefErrorCode, string> = {
   LESSON_AUTHOR_LAUNCH_PURPOSE_REQUIRED: 'errorPurpose',
   LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG: 'errorTooLong',
   LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED: 'errorNotAllowed',
+  LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE: 'errorModeUnavailable',
 };
 /** i18n key (under aiIdLaunchBrief) of the plain message for a brief rejection. */
 export function workspaceLaunchBriefErrorKey(code: WorkspaceLaunchBriefErrorCode): string {

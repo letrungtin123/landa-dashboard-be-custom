@@ -2185,6 +2185,7 @@ export const vi = {
     errorPurpose: "Hãy nhập Mục đích khoá học rồi bấm Tạo nội dung bài học lần nữa.",
     errorTooLong: "Đối tượng học tối đa 300 ký tự, Mục đích khoá học tối đa 500 ký tự. Hãy rút gọn rồi bấm Tạo nội dung bài học lần nữa.",
     errorNotAllowed: "Cách Giữ nguyên nội dung tài liệu không dùng Đối tượng học và Mục đích khoá học. Hãy tải lại trang rồi làm lại.",
+    errorModeUnavailable: "Cách Giữ nguyên nội dung tài liệu chưa được bật cho đơn vị của bạn. Hãy chọn Thiết kế bài giảng từ tài liệu thô, hoặc nhờ quản trị viên bật cách làm này.",
     summaryTitle: "Lựa chọn khi tạo bản thiết kế",
     summaryMode: "Chế độ",
     summaryLearners: "Đối tượng học",

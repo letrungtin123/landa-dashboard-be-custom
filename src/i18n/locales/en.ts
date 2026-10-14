@@ -2188,6 +2188,7 @@ export const en: TranslationSchema<typeof vi> = {
     errorPurpose: "Fill in Course purpose, then select Create learning content again.",
     errorTooLong: "Learners can be at most 300 characters and Course purpose at most 500. Shorten them, then select Create learning content again.",
     errorNotAllowed: "Keep the material as it is does not use Learners or Course purpose. Reload the page and try again.",
+    errorModeUnavailable: "Keep the material as it is is not turned on for your organization yet. Choose Design lessons from raw material, or ask your administrator to turn it on.",
     summaryTitle: "Choices made when this draft was created",
     summaryMode: "Mode",
     summaryLearners: "Learners",

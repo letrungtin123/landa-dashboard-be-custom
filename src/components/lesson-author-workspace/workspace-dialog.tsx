@@ -15,6 +15,7 @@ import { workspaceReadMessage, type WorkspaceArchitecturePreview, type Workspace
 import type { WorkspaceReadState } from './workspace-read-state';
 import { WorkspaceAggregateContent, WorkspaceCourseOverviewSkeleton, WorkspaceNodeDetail, workspaceCopy, workspaceRunEnded, workspaceDetailMatches, workspaceLearningOutcomeLabel, type WorkspaceTypedDetail } from './workspace-node-detail';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
+import { workspacePreserveFailureCopy } from './workspace-preserve-failure.logic';
 
 type Expansion = Readonly<Record<string, boolean>>;
 export interface WorkspaceProjectionNode {
@@ -596,6 +597,8 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   };
   const chapter = status.failure_chapter_key?.match(/^chapter-(\d+)$/)?.[1];
   const stage = status.failure_stage ? `${stageNames[status.failure_stage][vi ? 0 : 1]}${chapter ? ` (${vi ? 'Chương' : 'Chapter'} ${chapter})` : ''}` : null;
+  const kept = workspacePreserveFailureCopy(status.failure_code, locale);
+  if (kept) return { stage, ...kept };
   if (status.failure_code === 'ASSESSMENT_REVIEW_REQUIRED') return {
     stage: vi ? 'kiểm tra chất lượng đánh giá' : 'reviewing assessment quality',
     message: vi
