@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getCourses, updateCourse, bulkCourseAction, deleteCourse, getCourseModalConfig, updateCourseModalConfig, sendCourseNotification, getCourseNotificationSmtpStatus, getCourseNotificationHistory, getCourseMentor, getCourseMentorCandidates, updateCourseMentor, getCourseMentorHistory, getCourseMentorSection, updateCourseMentorSection, uploadCourseMentorSectionLogo, deleteCourseMentorSectionLogo, type CustomCourse, type CourseMentor, type CourseModalConfig, type CourseNotificationHistoryItem } from '@/api/custom-courses';
 import { createCourse, uploadCourseAsset, updateXBlock } from '@/api/custom-course-authoring';
+import { courseAuthorNotesQueryKey } from '@/api/course-author-notes';
 import { useHeaderInfo } from '@/utils/header-store';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { getRoleLabel } from '@/utils/role-labels';
@@ -894,6 +895,9 @@ function CourseInfoDialog({ course, open, onClose }: { course: CustomCourse; ope
     onSuccess: () => {
       toast.success(t('courses.infoUpdated'));
       queryClient.invalidateQueries({ queryKey: ['landa-courses'] });
+      // The AI ID start screen and the editor read the name and description from these per-course caches.
+      queryClient.invalidateQueries({ queryKey: courseAuthorNotesQueryKey(course.id), exact: true });
+      queryClient.invalidateQueries({ queryKey: ['course-outline-index', course.id], exact: true });
       onClose();
     },
     onError: (err: unknown) => {

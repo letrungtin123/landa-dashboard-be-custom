@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(directory, '../..');
 const h = React.createElement;
-const env = { locale: 'vi', notes: null };
+const env = { locale: 'vi', notes: null, notesArgs: null };
 const locales = {};
 function t(key, values = {}) {
   const value = key.split('.').reduce((node, part) => node?.[part], locales[env.locale]);
@@ -26,7 +26,7 @@ function t(key, values = {}) {
 const mocks = {
   './custom-client': { customApiClient: {} },
   'react-i18next': { useTranslation: () => ({ t }) },
-  '@/components/course-editor/AiAuthorNotes': { useCourseAuthorNotes: () => env.notes },
+  '@/components/course-editor/AiAuthorNotes': { useCourseAuthorNotes: (...args) => { env.notesArgs = args; return env.notes; } },
   '../ui/button': { Button: ({ children, disabled, onClick, ...props }) => h('button', { disabled, onClick, ...props }, children) },
   '../ui/textarea': { Textarea: props => h('textarea', props) },
   'lucide-react': new Proxy({}, { get: () => () => h('i') }),
@@ -313,6 +313,9 @@ test('start screen right column: two radio choices with design selected, require
   assert.ok(html.includes('placeholder="Ví dụ: Nhân viên mới ở mọi phòng ban, chưa biết gì về công ty"'));
   assert.ok(html.includes('0/300 ký tự') && html.includes('0/500 ký tự'));
   assert.ok(html.includes('Bối cảnh (mô tả khoá học)') && html.includes('Khoá hội nhập cho nhân viên mới.'));
+  // Owner bug 2026-10-16: a description edited on the Courses page showed only after F5; the start screen reads it
+  // from the server each time it opens.
+  assert.deepEqual(env.notesArgs, ['course-v1:TEST+BRIEF+2026', { fresh: true }]);
   assert.doesNotMatch(html, /Xem thêm/, 'a short description is shown in full');
   assert.doesNotMatch(html, /<textarea[^>]*disabled/);
 

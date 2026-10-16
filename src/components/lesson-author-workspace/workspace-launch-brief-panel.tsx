@@ -71,10 +71,11 @@ function BriefText({ id, label, placeholder, value, max, disabled, onChange }: {
   </div>;
 }
 
-/** Read-only: the course description is edited on the Courses page. */
+/** Read-only: the course description is edited on the Courses page, so it is
+ * read again each time the start screen opens (never a cached copy). */
 function CourseContext({ courseId }: { courseId: string }) {
   const { t } = useTranslation();
-  const notes = useCourseAuthorNotes(courseId);
+  const notes = useCourseAuthorNotes(courseId, { fresh: true });
   const [expanded, setExpanded] = useState(false);
   const textId = useId();
   if (!notes.canEdit) return null;

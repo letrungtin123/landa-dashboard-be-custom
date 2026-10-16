@@ -159,3 +159,12 @@ test('create and edit course dialogs place the hint at the description field', (
   assert.match(page, /canSubmitCreateCourse = Boolean\(newName\.trim\(\) && newDescription\.trim\(\)/);
   assert.match(edit, /canSave = Boolean\(displayName\.trim\(\) && description\.trim\(\)\)/);
 });
+
+test('saving the course name and description refreshes what AI ID and the editor show', () => {
+  // Owner bug 2026-10-16: after editing the description here, the AI ID start screen showed the old one until F5.
+  const page = readFileSync(path.join(src, 'pages/courses.tsx'), 'utf8');
+  const edit = page.slice(page.indexOf('function CourseInfoDialog'), page.indexOf('function CourseMentorDialog'));
+  const saved = edit.slice(edit.indexOf('const saveMut'), edit.indexOf('onError'));
+  assert.match(saved, /invalidateQueries\(\{ queryKey: courseAuthorNotesQueryKey\(course\.id\), exact: true \}\)/);
+  assert.match(saved, /invalidateQueries\(\{ queryKey: \['course-outline-index', course\.id\], exact: true \}\)/);
+});
