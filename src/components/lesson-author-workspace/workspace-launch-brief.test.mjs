@@ -9,14 +9,14 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Real launch brief rules, contract parser, Create client, source controller
-// and start-screen components. Only i18n, the course-notes query, UI
-// primitives and the network are replaced. SSR proves markup and copy; it
+// and start-screen components. Only i18n, UI primitives and the network are
+// replaced. SSR proves markup and copy; it
 // does not claim browser layout, focus or live backend coverage.
 const require = createRequire(import.meta.url);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(directory, '../..');
 const h = React.createElement;
-const env = { locale: 'vi', notes: null, notesArgs: null };
+const env = { locale: 'vi', notesRead: false };
 const locales = {};
 function t(key, values = {}) {
   const value = key.split('.').reduce((node, part) => node?.[part], locales[env.locale]);
@@ -26,7 +26,7 @@ function t(key, values = {}) {
 const mocks = {
   './custom-client': { customApiClient: {} },
   'react-i18next': { useTranslation: () => ({ t }) },
-  '@/components/course-editor/AiAuthorNotes': { useCourseAuthorNotes: (...args) => { env.notesArgs = args; return env.notes; } },
+  '@/components/course-editor/AiAuthorNotes': { useCourseAuthorNotes: () => { env.notesRead = true; return null; } },
   '../ui/button': { Button: ({ children, disabled, onClick, ...props }) => h('button', { disabled, onClick, ...props }, children) },
   '../ui/textarea': { Textarea: props => h('textarea', props) },
   'lucide-react': new Proxy({}, { get: () => () => h('i') }),
@@ -281,7 +281,6 @@ test('VI and EN have the same launch brief keys, the owner wording and no codes 
   assert.equal(vi.purposeLabel, 'Mục đích khoá học'); assert.equal(en.purposeLabel, 'Course purpose');
   assert.equal(vi.learnersPlaceholder, 'Ví dụ: Nhân viên mới ở mọi phòng ban, chưa biết gì về công ty');
   assert.equal(en.purposePlaceholder, 'For example: help new staff understand the company, its products, its structure and how we work in their first week');
-  assert.equal(vi.contextLabel, 'Bối cảnh (mô tả khoá học)'); assert.equal(en.contextLabel, 'Context (course description)');
   assert.equal(vi.summaryMode, 'Chế độ');
   for (const text of [...Object.values(vi), ...Object.values(en)]) {
     assert.doesNotMatch(text, /LESSON_AUTHOR|design_mode|preserve_source|instructional_design|\bAPI\b|\bID\b|\bSME\b|\bKB\b|workspace|e\.g\.|VD:/i);
@@ -296,13 +295,12 @@ function panelFixture(overrides = {}) {
   if (overrides.brief) f.controller.setBrief(overrides.brief);
   return f;
 }
-const notes = description => ({ canEdit: true, isLoading: false, isError: false, refetch() {}, data: { course: { display_name: 'Khoá', description } } });
 
-test('start screen right column: two radio choices with design selected, required fields with counters, read-only context', () => {
+test('start screen right column: two radio choices with design selected, required fields with counters, no course description', () => {
   env.locale = 'vi';
-  env.notes = notes('Khoá hội nhập cho nhân viên mới.');
+  env.notesRead = false;
   const f = panelFixture();
-  const html = renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller, courseId: 'course-v1:TEST+BRIEF+2026' }));
+  const html = renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller }));
   assert.equal((html.match(/type="radio"/g) ?? []).length, 2);
   assert.match(html, /<fieldset[^>]*>\s*<legend/);
   assert.match(html, /<input type="radio"[^>]*checked=""[^>]*value="instructional_design"/);
@@ -312,25 +310,19 @@ test('start screen right column: two radio choices with design selected, require
   assert.equal((html.match(/aria-required="true"/g) ?? []).length, 2);
   assert.ok(html.includes('placeholder="Ví dụ: Nhân viên mới ở mọi phòng ban, chưa biết gì về công ty"'));
   assert.ok(html.includes('0/300 ký tự') && html.includes('0/500 ký tự'));
-  assert.ok(html.includes('Bối cảnh (mô tả khoá học)') && html.includes('Khoá hội nhập cho nhân viên mới.'));
-  // Owner bug 2026-10-16: a description edited on the Courses page showed only after F5; the start screen reads it
-  // from the server each time it opens.
-  assert.deepEqual(env.notesArgs, ['course-v1:TEST+BRIEF+2026', { fresh: true }]);
-  assert.doesNotMatch(html, /Xem thêm/, 'a short description is shown in full');
+  // Owner 2026-10-16: the course description is no longer AI ID context, so the start screen neither reads nor shows it.
+  assert.equal(env.notesRead, false);
+  assert.doesNotMatch(html, /Bối cảnh|mô tả khoá học/);
   assert.doesNotMatch(html, /<textarea[^>]*disabled/);
-
-  env.notes = notes('Dòng mô tả. '.repeat(40));
-  const long = renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller, courseId: 'c' }));
-  assert.match(long, /line-clamp-4/); assert.match(long, /aria-expanded="false"[^>]*>Xem thêm/);
-
-  env.notes = notes(null);
-  assert.ok(renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller, courseId: 'c' })).includes(locales.vi.aiIdLaunchBrief.contextEmpty));
+  for (const key of ['contextLabel', 'contextHint', 'contextEmpty', 'contextLoading', 'contextFailed', 'contextRetry', 'showMore', 'showLess']) {
+    for (const locale of ['vi', 'en']) assert.equal(locales[locale].aiIdLaunchBrief[key], undefined, `${locale} ${key}`);
+  }
 
   env.locale = 'en';
   f.controller.setBrief({ design_mode: 'preserve_source', learner_audience: 'Typed' });
-  const keep = renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller, courseId: 'c' }));
+  const keep = renderToStaticMarkup(h(WorkspaceLaunchBriefPanel, { controller: f.controller }));
   assert.match(keep, /<input[^>]*checked=""[^>]*value="preserve_source"/);
-  assert.doesNotMatch(keep, /<textarea/); assert.doesNotMatch(keep, /Context \(course description\)/);
+  assert.doesNotMatch(keep, /<textarea/); assert.doesNotMatch(keep, /course description/i);
   env.locale = 'vi';
 });
 
@@ -351,7 +343,7 @@ test('Create button stays in the left column, disabled with a one-line reason un
   await f.controller.create();
   assert.ok(render().includes(locales.vi.aiIdLaunchBrief.errorTooLong));
   const host = readFileSync(path.join(directory, 'workspace-course-host.tsx'), 'utf8');
-  assert.match(host, /<WorkspaceSourcePanel controller=\{sources\} locale=\{locale\} \/><WorkspaceLaunchBriefPanel controller=\{sources\} courseId=\{courseId\} \/>/);
+  assert.match(host, /<WorkspaceSourcePanel controller=\{sources\} locale=\{locale\} \/><WorkspaceLaunchBriefPanel controller=\{sources\} \/>/);
   assert.match(host, /grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-\[1\.45fr_0\.8fr\]/, 'columns stack on phones with 16px gutters');
   assert.doesNotMatch(host, /Bản thiết kế khoá học có kiểm soát/, 'the static steps card is replaced');
   assert.match(host, /overviewHeader=\{<WorkspaceLaunchBriefSummary brief=\{workspaceSessionLaunchBrief\(presentationRead\)\} \/>\}/);

@@ -30,19 +30,14 @@ import {
  * AI ID notes for authors (QC 364564, N6). Read-only, editors only: the
  * query is disabled without `courses.can_edit` and the backend endpoint
  * enforces the same permission. Nothing here is part of the learner view.
- *
- * `fresh`: read the server again every time the caller mounts (the AI ID
- * start screen shows the course description AI ID will use, which may have
- * just been edited on the Courses page).
  */
-export function useCourseAuthorNotes(courseId: string | undefined, { fresh = false }: { fresh?: boolean } = {}) {
+export function useCourseAuthorNotes(courseId: string | undefined) {
   const canEdit = useAuthStore(s => s.hasPermission('courses', 'can_edit'));
   const query = useQuery({
     queryKey: courseAuthorNotesQueryKey(courseId ?? ''),
     queryFn: () => getCourseAuthorNotes(courseId!),
     enabled: canEdit && !!courseId,
-    staleTime: fresh ? 0 : 30_000,
-    refetchOnMount: fresh ? 'always' : true,
+    staleTime: 30_000,
     retry: 1,
   });
   return { ...query, canEdit };

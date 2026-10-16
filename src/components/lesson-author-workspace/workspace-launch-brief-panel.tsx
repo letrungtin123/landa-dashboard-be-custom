@@ -1,13 +1,10 @@
-import { useId, useState, useSyncExternalStore } from 'react';
+import { useId, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Sparkles } from 'lucide-react';
-import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
-import { useCourseAuthorNotes } from '@/components/course-editor/AiAuthorNotes';
 import {
   WORKSPACE_COURSE_PURPOSE_MAX, WORKSPACE_LEARNER_AUDIENCE_MAX, type WorkspaceLaunchBrief,
 } from '../../api/lesson-author-workspace.contract';
-import { workspaceContextNeedsClamp } from './workspace-launch-brief.logic';
 import type { createWorkspaceSourceState } from './workspace-source-state';
 
 const MODES = [
@@ -18,8 +15,8 @@ const MODES = [
 /** Start screen, right column: how AI should treat the material and, for the
  * design mode, who the course is for and what it is for. The source controller
  * owns the values; "Create learning content" stays in the left column. */
-export function WorkspaceLaunchBriefPanel({ controller, courseId }: {
-  controller: ReturnType<typeof createWorkspaceSourceState>; courseId: string;
+export function WorkspaceLaunchBriefPanel({ controller }: {
+  controller: ReturnType<typeof createWorkspaceSourceState>;
 }) {
   const { t } = useTranslation();
   const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
@@ -53,7 +50,6 @@ export function WorkspaceLaunchBriefPanel({ controller, courseId }: {
       <BriefText id={`${id}-purpose`} label={t('aiIdLaunchBrief.purposeLabel')} placeholder={t('aiIdLaunchBrief.purposePlaceholder')}
         value={brief.course_purpose} max={WORKSPACE_COURSE_PURPOSE_MAX} disabled={locked}
         onChange={value => controller.setBrief({ course_purpose: value })} />
-      <CourseContext courseId={courseId} />
     </>}
   </section>;
 }
@@ -68,31 +64,6 @@ function BriefText({ id, label, placeholder, value, max, disabled, onChange }: {
     <Textarea id={id} rows={3} value={value} maxLength={max} disabled={disabled} placeholder={placeholder} aria-required="true"
       aria-describedby={`${id}-count`} className="resize-y bg-background" onChange={event => onChange(event.target.value)} />
     <p id={`${id}-count`} className="text-right text-[11px] tabular-nums text-muted-foreground">{t('aiIdLaunchBrief.counter', { length: value.length, max })}</p>
-  </div>;
-}
-
-/** Read-only: the course description is edited on the Courses page, so it is
- * read again each time the start screen opens (never a cached copy). */
-function CourseContext({ courseId }: { courseId: string }) {
-  const { t } = useTranslation();
-  const notes = useCourseAuthorNotes(courseId, { fresh: true });
-  const [expanded, setExpanded] = useState(false);
-  const textId = useId();
-  if (!notes.canEdit) return null;
-  const description = notes.data?.course.description?.trim() ?? '';
-  const clamp = workspaceContextNeedsClamp(description);
-  return <div className="min-w-0 space-y-1.5">
-    <p className="text-sm font-medium">{t('aiIdLaunchBrief.contextLabel')}</p>
-    <div className="min-w-0 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
-      {notes.isLoading ? <p role="status" className="text-muted-foreground">{t('aiIdLaunchBrief.contextLoading')}</p>
-        : notes.isError ? <div className="flex flex-wrap items-center gap-2"><p className="text-muted-foreground">{t('aiIdLaunchBrief.contextFailed')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => { void notes.refetch(); }}>{t('aiIdLaunchBrief.contextRetry')}</Button></div>
-          : !description ? <p className="text-amber-700 dark:text-amber-300">{t('aiIdLaunchBrief.contextEmpty')}</p>
-            : <><p id={textId} className={`whitespace-pre-wrap break-words leading-6 ${clamp && !expanded ? 'line-clamp-4' : ''}`}>{description}</p>
-              {clamp && <button type="button" aria-expanded={expanded} aria-controls={textId} className="mt-1 text-xs font-medium text-primary hover:underline"
-                onClick={() => setExpanded(value => !value)}>{expanded ? t('aiIdLaunchBrief.showLess') : t('aiIdLaunchBrief.showMore')}</button>}</>}
-    </div>
-    {!!description && <p className="text-xs text-muted-foreground">{t('aiIdLaunchBrief.contextHint')}</p>}
   </div>;
 }
 

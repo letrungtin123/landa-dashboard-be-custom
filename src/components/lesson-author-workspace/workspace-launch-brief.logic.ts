@@ -123,13 +123,6 @@ export function workspaceLaunchBriefErrorKey(code: WorkspaceLaunchBriefErrorCode
   return `aiIdLaunchBrief.${ERROR_KEYS[code]}`;
 }
 
-/** Long course descriptions start collapsed behind "Show more". */
-export const WORKSPACE_CONTEXT_PREVIEW_CHARS = 280;
-export const WORKSPACE_CONTEXT_PREVIEW_LINES = 4;
-export function workspaceContextNeedsClamp(text: string): boolean {
-  return text.length > WORKSPACE_CONTEXT_PREVIEW_CHARS || text.split(/\r?\n/).length > WORKSPACE_CONTEXT_PREVIEW_LINES;
-}
-
 /** The brief of an open session, from the status read (or the graph when only
  * it carries the field). Null for sessions created before the brief existed. */
 export function workspaceSessionLaunchBrief(read: { status: WorkspaceStatus | null; graph: WorkspaceGraph | null } | null): WorkspaceLaunchBrief | null {
