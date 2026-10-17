@@ -14,7 +14,7 @@ export function AiUsageScreen({ tenantScope, requestTenantId }: { tenantScope: s
   const query = useAiUsage({ tenantScope, requestTenantId, month });
   const summary = query.data;
   // Choosing the newest month goes back to "current" so the backend decides the month.
-  const changeMonth = (next: string) => setMonth(summary && next === summary.months[0] ? null : next);
+  const changeMonth = (next: string) => setMonth(summary && next === summary.available_months[0] ? null : next);
 
   return (
     <div className="relative isolate mx-auto w-full max-w-7xl space-y-6 p-4 pb-16 sm:p-6">

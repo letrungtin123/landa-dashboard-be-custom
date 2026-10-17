@@ -37,6 +37,8 @@ export const aiCreditKeys = {
   tenantUsageAll: () => [...aiCreditKeys.admin(), 'tenant-usage'] as const,
   tenantUsageOf: (tenantId: string) => [...aiCreditKeys.tenantUsageAll(), tenantId] as const,
   tenantUsage: (tenantId: string, month: string | null) => [...aiCreditKeys.tenantUsageOf(tenantId), month ?? 'current'] as const,
+  tenantPlanAll: () => [...aiCreditKeys.admin(), 'tenant-plan'] as const,
+  tenantPlan: (tenantId: string) => [...aiCreditKeys.tenantPlanAll(), tenantId] as const,
 };
 
 export const AI_CREDIT_STALE_TIME_MS = 30_000;
@@ -90,6 +92,17 @@ export function useAiCreditOverview(month: string | null) {
     queryKey: aiCreditKeys.overview(month),
     queryFn: () => api.overview(month),
     placeholderData: previous => previous,
+    ...queryDefaults,
+  });
+}
+
+/** The tenant's current plan only (tenant edit form): no month usage is read. */
+export function useAiTenantPlan(tenantId: string | null) {
+  const api = useAiCreditsApi();
+  return useQuery({
+    queryKey: aiCreditKeys.tenantPlan(tenantId ?? ''),
+    queryFn: () => api.tenantPlan(tenantId!),
+    enabled: Boolean(tenantId),
     ...queryDefaults,
   });
 }
@@ -175,7 +188,11 @@ export function useSetTenantAiPlan() {
       api.setTenantPlan(input.tenantId, input.planId),
     onSuccess: (_result, input) => {
       toast.success(t('aiCredits.admin.toasts.tenantPlanChanged', { tenant: input.tenantName, plan: input.planName }));
-      return Promise.all([invalidateTenant(queryClient, input.tenantId), queryClient.invalidateQueries({ queryKey: aiCreditKeys.plans() })]);
+      return Promise.all([
+        invalidateTenant(queryClient, input.tenantId),
+        queryClient.invalidateQueries({ queryKey: aiCreditKeys.plans() }),
+        queryClient.invalidateQueries({ queryKey: aiCreditKeys.tenantPlan(input.tenantId) }),
+      ]);
     },
     onError: error => onError(error, 'aiCredits.admin.toasts.tenantPlanFailed'),
   });

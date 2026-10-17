@@ -42,6 +42,20 @@ const FEATURE_WEIGHTS: Array<[string, number]> = [
   ['report_pdf_narrative', 0.07], ['document_indexing', 0.15], ['video_transcription', 0.06], ['image_alt_text', 0.02],
 ];
 
+/** Splits a total (one decimal) over weights so the parts add up exactly, like the backend (largest remainder in tenths). */
+function splitTenths(total: number, weights: number[]): number[] {
+  const units = Math.max(0, Math.round(total * 10));
+  const sum = weights.reduce((acc, weight) => acc + weight, 0);
+  if (weights.length === 0) return [];
+  if (sum <= 0) return weights.map((_, index) => (index === 0 ? units / 10 : 0));
+  const exact = weights.map(weight => (units * weight) / sum);
+  const parts = exact.map(value => Math.floor(value));
+  let rest = units - parts.reduce((acc, part) => acc + part, 0);
+  const order = exact.map((value, index) => ({ index, remainder: value - parts[index] })).sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let index = 0; rest > 0 && index < order.length; index += 1, rest -= 1) parts[order[index].index] += 1;
+  return parts.map(part => part / 10);
+}
+
 const SCENARIO_PERCENT: Partial<Record<AiCreditsPreviewScenario, number>> = { ok: 46.2, warning: 86.4, exhausted: 100, unlimited: 0, unvalued: 0 };
 
 /** Usage summary of one month for a scenario. */
@@ -50,17 +64,19 @@ export function previewUsageSummary(scenario: AiCreditsPreviewScenario, month: s
   const shown = month ?? current;
   const months = [0, 1, 2, 3, 4].map(offset => shiftMonth(current, -offset));
   const isCurrent = shown === current;
+  // Months older than two back predate AI points: no credit row, uses only.
+  const hasMonth = months.indexOf(shown) <= 2;
   const lastDay = isCurrent ? Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit' }).format(now)) : daysOfMonth(shown).length;
   const days = daysOfMonth(shown).slice(0, lastDay);
   const empty = scenario === 'empty';
-  const valued = scenario !== 'unvalued';
+  const valued = scenario !== 'unvalued' && hasMonth;
   const unlimited = scenario === 'unlimited';
   const planPoints = unlimited ? null : 20_000;
   const topup = scenario === 'warning' || scenario === 'exhausted' ? 5_000 : 0;
   const total = planPoints === null ? null : planPoints + topup;
   const percent = SCENARIO_PERCENT[scenario] ?? 0;
   // An unvalued month still has uses; only their point value is unknown.
-  const share = scenario === 'unvalued' ? 52 : percent;
+  const share = scenario === 'unvalued' || !hasMonth ? 52 : percent;
   const usedTarget = empty ? 0 : total !== null ? round1(total * (share / 100) * (isCurrent ? 1 : 0.8)) : 13_642.5;
   const rand = random(shown.split('-').reduce((sum, part) => sum + Number(part), 0) * 97 + scenario.length);
 
@@ -98,37 +114,38 @@ export function previewUsageSummary(scenario: AiCreditsPreviewScenario, month: s
   const people = empty ? [] : PEOPLE.map((person, index) => ({ person, index, points: round1(used * (shares[index] / shareSum)) }))
     .sort((a, b) => b.points - a.points);
   const users: AiUsageUser[] = people.map(({ person, index, points }) => {
-    const features: Record<string, number | null> = {};
-    for (const [feature, weight] of FEATURE_WEIGHTS) {
-      if (person.system ? feature !== 'document_indexing' && feature !== 'video_transcription' : rand() < 0.3) continue;
-      features[feature] = valued ? round1(points * weight * (0.5 + rand())) : null;
-    }
+    const used = FEATURE_WEIGHTS.filter(([feature]) => (person.system ? feature === 'document_indexing' || feature === 'video_transcription' : rand() >= 0.3));
+    const parts = splitTenths(points, used.map(([, weight]) => weight * (0.5 + rand())));
+    const features = Object.fromEntries(used.map(([feature], part) => [feature, valued ? parts[part] : null]));
     return { user_key: person.system ? 'system' : `user-${index + 1}`, ...person, points: valued ? points : null,
       calls: Math.max(1, Math.round(points / 14)), features };
   });
 
+  // A person's days add up exactly to the person's points (the backend guarantees the same).
   const userDaily: AiUsageSummary['user_daily'] = [];
   for (const { person, index, points } of people.slice(0, 8)) {
     const key = person.system ? 'system' : `user-${index + 1}`;
-    for (const date of days) {
-      if (rand() < 0.22) continue;
-      userDaily.push({ date, user_key: key, points: valued ? round1((points / Math.max(1, days.length)) * (0.3 + rand() * 1.4)) : null });
-    }
+    const active = days.filter(() => rand() >= 0.22);
+    const parts = splitTenths(points, active.map(() => 0.3 + rand() * 1.4));
+    active.forEach((date, part) => userDaily.push({ date, user_key: key, points: valued ? parts[part] : null }));
   }
 
-  const state: AiCreditState = scenario === 'empty' ? 'ok' : scenario === 'loading' || scenario === 'error' ? 'ok' : scenario;
+  const state: AiCreditState = !hasMonth ? 'unvalued' : scenario === 'empty' ? 'ok' : scenario === 'loading' || scenario === 'error' ? 'ok' : scenario;
   const reserved = scenario === 'ok' || scenario === 'warning' ? 184.5 : 0;
   return {
     month: shown,
     months,
+    available_months: months,
+    has_month: hasMonth,
     resets_on: `${shiftMonth(shown, 1)}-01`,
-    plan: unlimited ? { code: 'demo_unlimited', name: 'Dùng thử', is_unlimited: true } : { code: 'pro', name: 'Chuyên nghiệp', is_unlimited: false },
+    plan: !hasMonth ? { code: null, name: null, is_unlimited: false }
+      : unlimited ? { code: 'demo_unlimited', name: 'Dùng thử', is_unlimited: true } : { code: 'pro', name: 'Chuyên nghiệp', is_unlimited: false },
     state,
     percent: unlimited || !valued ? null : empty ? 0 : percent,
     points: {
-      plan: planPoints,
-      topup,
-      total,
+      plan: hasMonth ? planPoints : null,
+      topup: hasMonth ? topup : 0,
+      total: hasMonth ? total : null,
       used: valued ? (empty ? 0 : used) : null,
       reserved: valued ? reserved : null,
       remaining: unlimited || !valued || total === null ? null : Math.max(0, round1(total - used - reserved)),
@@ -168,10 +185,21 @@ const TENANTS: Array<{ id: string; name: string; plan: string; state: AiCreditSt
 ];
 
 function previewOverview(scenario: AiCreditsPreviewScenario, month: string | null, now: Date, topups: Map<string, number>,
-  tenantPlans: Map<string, string>): AiCreditOverview {
-  const shown = month ?? platformMonth(now);
-  const fx = scenario === 'unvalued' ? null : 26_150;
+  tenantPlans: Map<string, string>, rates: readonly AiFxRate[]): AiCreditOverview {
+  const current = platformMonth(now);
+  const shown = month ?? current;
+  // Credit rows exist for the last three months; the newest tenant joined this month.
+  const available = [0, 1, 2].map(offset => shiftMonth(current, -offset));
+  const rate = [...rates].sort((a, b) => b.month.localeCompare(a.month)).find(item => item.month <= shown) ?? null;
+  const fx = scenario === 'unvalued' || !rate ? null : Number(rate.vnd_per_usd);
   const tenants: AiCreditOverviewTenant[] = (scenario === 'empty' ? [] : TENANTS).map(tenant => {
+    if ((shown !== current && tenant.id === 't-6') || !available.includes(shown)) {
+      const costVnd = fx === null ? null : Math.round(tenant.usd * 0.4 * fx);
+      return { tenant_id: tenant.id, tenant_name: tenant.name, has_month: false, plan_id: null, current_plan_id: tenant.plan, plan_name: null,
+        is_unlimited: false, state: 'unvalued' as const, percent: null, points_total: null, points_used: null, topup_points: 0,
+        cost_usd: round1(tenant.usd * 0.4), fx_vnd_per_usd: fx, cost_vnd: costVnd, revenue_vnd: 0, margin_vnd: null, margin_percent: null,
+        reconciled_cost_vnd: null, reconciled_note: null, reconciled_diff_percent: null };
+    }
     const plan = PLANS.find(item => item.id === (tenantPlans.get(tenant.id) ?? tenant.plan)) ?? PLANS[0];
     const planPoints = plan.is_unlimited ? null : Number(plan.monthly_points);
     const topup = topups.get(tenant.id) ?? 0;
@@ -181,7 +209,7 @@ function previewOverview(scenario: AiCreditsPreviewScenario, month: string | nul
     const revenue = Number(plan.monthly_price_vnd) + (topup > 0 ? topup * 300 : 0);
     const pointsUsed = fx === null || total === null ? (plan.is_unlimited && fx !== null ? round1(tenant.usd * 110) : null) : round1(total * (tenant.percent ?? 0) / 100);
     return {
-      tenant_id: tenant.id, tenant_name: tenant.name, plan_id: plan.id, current_plan_id: plan.id, plan_name: plan.name,
+      tenant_id: tenant.id, tenant_name: tenant.name, has_month: true, plan_id: plan.id, current_plan_id: plan.id, plan_name: plan.name,
       is_unlimited: plan.is_unlimited, state, percent: state === 'unvalued' || state === 'unlimited' ? null : tenant.percent,
       points_total: total, points_used: pointsUsed, topup_points: topup, cost_usd: tenant.usd, fx_vnd_per_usd: fx, cost_vnd: costVnd,
       revenue_vnd: revenue, margin_vnd: costVnd === null ? null : revenue - costVnd,
@@ -190,7 +218,7 @@ function previewOverview(scenario: AiCreditsPreviewScenario, month: string | nul
       reconciled_diff_percent: tenant.reconciled === null || costVnd === null ? null : round1(((costVnd - tenant.reconciled) / tenant.reconciled) * 100),
     };
   });
-  return { month: shown, fx_vnd_per_usd: fx, tenants };
+  return { month: shown, available_months: available, fx_vnd_per_usd: fx, fx_rate_month: fx === null ? null : rate?.month ?? null, tenants };
 }
 
 const NEVER = () => new Promise<never>(() => undefined);
@@ -210,10 +238,20 @@ export function createAiCreditsPreviewApi(scenario: AiCreditsPreviewScenario, no
   const done = <T,>(value: T): Promise<T> => wait(value, 500);
   return {
     usage: month => answer(() => previewUsageSummary(scenario, month ?? null, now)),
-    tenantUsage: (_tenantId, month) => answer(() => previewUsageSummary(scenario === 'empty' ? 'empty' : 'ok', month ?? null, now)),
+    tenantUsage: (_tenantId, month) => answer(() => {
+      const summary = previewUsageSummary(scenario === 'empty' ? 'empty' : 'ok', month ?? null, now);
+      const rate = [...fx].sort((a, b) => b.month.localeCompare(a.month)).find(item => item.month <= summary.month) ?? null;
+      // The superadmin view carries the month's rate and the month it was set for.
+      return { ...summary, fx_vnd_per_usd: rate ? Number(rate.vnd_per_usd) : null, fx_rate_month: rate?.month ?? null };
+    }),
     listPlans: () => answer(() => plans),
     listFx: () => answer(() => fx),
-    overview: month => answer(() => previewOverview(scenario, month ?? null, now, topups, tenantPlans)),
+    overview: month => answer(() => previewOverview(scenario, month ?? null, now, topups, tenantPlans, fx)),
+    tenantPlan: tenantId => answer(() => {
+      const plan = PLANS.find(item => item.id === (tenantPlans.get(tenantId) ?? 'plan-pro')) ?? PLANS[0];
+      return { id: plan.id, code: plan.code, name: plan.name, is_unlimited: plan.is_unlimited, monthly_points: plan.monthly_points,
+        monthly_price_vnd: plan.monthly_price_vnd, assigned: true };
+    }),
     createPlan: input => {
       const id = `plan-${input.code}`;
       plans.push({ id, code: input.code, name: input.name, description: input.description ?? null, monthly_price_vnd: String(input.monthly_price_vnd),

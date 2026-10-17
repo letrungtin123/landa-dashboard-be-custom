@@ -74,6 +74,7 @@ const { AiUsageSkeleton, AiUsageError, AiUsageEmpty } = at('components/ai-credit
 const { AiCreditsKpis } = at('components/ai-credits/ai-credits-kpis.tsx');
 const { AiCreditsTenantTable } = at('components/ai-credits/ai-credits-tenant-table.tsx');
 const { ModuleGuard } = at('components/module-guard.tsx');
+const { AiFxNotice } = at('components/ai-credits/ai-fx-notice.tsx');
 const noop = () => undefined;
 
 function summary(state) {
@@ -85,6 +86,8 @@ function summary(state) {
   return {
     month: '2026-10',
     months: ['2026-10', '2026-09'],
+    available_months: ['2026-10', '2026-09', '2026-08'],
+    has_month: true,
     resets_on: '2026-11-01',
     plan: unlimited ? { code: 'demo_unlimited', name: 'Dùng thử', is_unlimited: true } : { code: 'pro', name: 'Chuyên nghiệp', is_unlimited: false },
     state: empty ? 'ok' : state,
@@ -235,7 +238,7 @@ test('route guard: AI usage opens for superadmin, superuser and staff; learner_p
 
 test('superadmin overview shows money: revenue, cost in VND and USD, margin, invoice check badges', () => {
   env.locale = 'vi';
-  const tenant = (overrides) => ({ tenant_id: 't', tenant_name: 'Nesso', plan_id: 'p', current_plan_id: 'p', plan_name: 'Chuyên nghiệp', is_unlimited: false,
+  const tenant = (overrides) => ({ tenant_id: 't', tenant_name: 'Nesso', has_month: true, plan_id: 'p', current_plan_id: 'p', plan_name: 'Chuyên nghiệp', is_unlimited: false,
     state: 'warning', percent: 86.4, points_total: 25000, points_used: 21600, topup_points: 5000, cost_usd: 92.4, fx_vnd_per_usd: 26150,
     cost_vnd: 2416260, revenue_vnd: 7500000, margin_vnd: 5083740, margin_percent: 67.8, reconciled_cost_vnd: 2310000, reconciled_note: null,
     reconciled_diff_percent: 4.6, ...overrides });
@@ -259,4 +262,42 @@ test('superadmin overview shows money: revenue, cost in VND and USD, margin, inv
   assert.match(table, /Chuyên nghiệp/);
   env.locale = 'en';
   assert.match(text(renderToStaticMarkup(h(AiCreditsTenantTable, { onOpen: noop, tenants: [tenant({})] }))), /Matches invoice/);
+  env.locale = 'vi';
+  const noMonth = text(renderToStaticMarkup(h(AiCreditsTenantTable, { onOpen: noop, tenants: [tenant({ has_month: false, plan_name: null,
+    state: 'unvalued', percent: null, points_total: null, points_used: null, revenue_vnd: 0, margin_vnd: null, margin_percent: null,
+    reconciled_cost_vnd: null, reconciled_diff_percent: null })] })));
+  assert.match(noMonth, /Chưa có dữ liệu tháng này/);
+  assert.match(noMonth, /Chưa gán gói/);
+  assert.match(noMonth, /Doanh thu — Lợi nhuận —/, 'no revenue or margin is shown for a month without data');
+});
+
+test('superadmin exchange-rate notices: none for an own rate, an earlier month in plain words, or no rate at all', () => {
+  env.locale = 'vi';
+  assert.equal(renderToStaticMarkup(h(AiFxNotice, { month: '2026-10', fxVndPerUsd: 26150, fxRateMonth: '2026-10', onSetFx: noop })), '');
+  const inherited = text(renderToStaticMarkup(h(AiFxNotice, { month: '2026-10', fxVndPerUsd: 26150, fxRateMonth: '2026-09', onSetFx: noop })));
+  assert.match(inherited, /Tháng 10\/2026 chưa có tỷ giá riêng, đang dùng tỷ giá tháng 9\/2026\./);
+  assert.match(inherited, /Nhập tỷ giá tháng này/);
+  const missing = text(renderToStaticMarkup(h(AiFxNotice, { month: '2026-10', fxVndPerUsd: null, fxRateMonth: null, onSetFx: noop })));
+  assert.match(missing, /Tháng này chưa có tỷ giá: chưa quy đổi được điểm và chưa chặn hạn mức\./);
+  env.locale = 'en';
+  assert.match(text(renderToStaticMarkup(h(AiFxNotice, { month: '2026-10', fxVndPerUsd: 26150, fxRateMonth: '2026-09' }))),
+    /October 2026 has no exchange rate of its own yet; the rate of September 2026 is used\./);
+});
+
+test('usage page: a past month without data shows its uses and says it had no points; the picker lists real months only', () => {
+  env.locale = 'vi';
+  const data = { ...summary('unvalued'), has_month: false, plan: { code: null, name: null, is_unlimited: false },
+    points: { plan: null, topup: 0, total: null, used: null, reserved: null, remaining: null }, month: '2026-08',
+    // Even if a superadmin payload carried a rate, the tenant view never shows it.
+    fx_vnd_per_usd: 26150, fx_rate_month: '2026-07' };
+  const html = renderToStaticMarkup(h('div', null, h(AiUsageHeader, { summary: data, month: '2026-08', onMonthChange: noop }), h(AiUsageView, { summary: data })));
+  const page = text(html);
+  assert.match(page, /Tháng này chưa tính điểm/);
+  assert.match(page, /Tháng này chưa áp dụng điểm AI nên không có số điểm\./);
+  assert.match(page, /Lượt dùng AI trong tháng/);
+  assert.doesNotMatch(page, /Quản trị viên hệ thống chưa hoàn tất cài đặt/);
+  assert.doesNotMatch(page, FORBIDDEN_FOR_TENANTS);
+  assert.doesNotMatch(page, /26\.150|tỷ giá/i);
+  const options = [...html.matchAll(/data-value="([0-9]{4}-[0-9]{2})"/g)].map(match => match[1]);
+  assert.deepEqual(options, ['2026-10', '2026-09', '2026-08'], 'months come from available_months');
 });

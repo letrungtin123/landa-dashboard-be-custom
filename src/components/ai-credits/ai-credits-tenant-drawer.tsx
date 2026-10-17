@@ -10,9 +10,10 @@ import { AiStateChip } from './ai-credits-ui';
 import { AiTenantPlanForm, AiTenantReconcileForm, AiTenantTopupForm } from './ai-credits-tenant-forms';
 import { AiUsageError, AiUsageSkeleton } from './ai-usage-states';
 import { AiUsageView } from './ai-usage-view';
+import { AiFxNotice } from './ai-fx-notice';
 
 /** Side panel of one tenant: plan change, extra points, invoice check and a compact view of its usage. */
-export function AiCreditsTenantDrawer({ tenant, month, currentMonth, plans, onClose }: {
+export function AiCreditsTenantDrawer({ tenant, month, currentMonth, plans, onClose, onSetFx }: {
   tenant: AiCreditOverviewTenant | null;
   /** Month selected in the overview (usage and invoice check). */
   month: string;
@@ -20,6 +21,7 @@ export function AiCreditsTenantDrawer({ tenant, month, currentMonth, plans, onCl
   currentMonth: string;
   plans: readonly AiCreditPlan[];
   onClose: () => void;
+  onSetFx?: (month: string) => void;
 }) {
   const { t } = useTranslation();
   const locale = useLocaleStore(state => state.locale);
@@ -58,6 +60,9 @@ export function AiCreditsTenantDrawer({ tenant, month, currentMonth, plans, onCl
                   <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden />
                   {t('aiCredits.admin.drawer.usageTitle', { month: formatMonthLabel(month, locale) })}
                 </h3>
+                {usage.data && 'fx_vnd_per_usd' in usage.data && (
+                  <AiFxNotice month={usage.data.month} fxVndPerUsd={usage.data.fx_vnd_per_usd} fxRateMonth={usage.data.fx_rate_month} onSetFx={onSetFx} compact />
+                )}
                 {usage.data ? <AiUsageView summary={usage.data} compact />
                   : usage.isError ? <AiUsageError onRetry={() => { void usage.refetch(); }} retrying={usage.isFetching} />
                     : <AiUsageSkeleton compact />}

@@ -41,6 +41,10 @@ export interface AiUsageSummary {
   month: string;
   /** Newest first; includes the current month. */
   months: string[];
+  /** Months that have usage or a credit row, newest first, always with the current month (the month picker). */
+  available_months: string[];
+  /** False for a past month without a credit row: its uses show, its points cannot be counted. */
+  has_month: boolean;
   resets_on: string;
   plan: { code: string | null; name: string | null; is_unlimited: boolean };
   state: AiCreditState;
@@ -58,8 +62,23 @@ export interface AiUsageSummary {
   daily: AiUsageDaily[];
   /** Sorted by points, at most 100. */
   users: AiUsageUser[];
-  /** Top 8 users only. */
+  /** Top 8 users only; a person's days add up to the person's points. */
   user_daily: AiUsageUserDaily[];
+  /** Superadmin view only (/admin/tenants/:id/usage): the month's rate and the month it was set for. */
+  fx_vnd_per_usd?: number | null;
+  fx_rate_month?: string | null;
+}
+
+/** The plan a tenant has now (its account, else the default plan). */
+export interface AiTenantPlan {
+  id: string;
+  code: string;
+  name: string;
+  is_unlimited: boolean;
+  monthly_points: string;
+  monthly_price_vnd: string;
+  /** False when the tenant has no plan of its own and uses the default one. */
+  assigned: boolean;
 }
 
 export interface AiCreditPlan {
@@ -104,6 +123,8 @@ export interface AiFxRate {
 export interface AiCreditOverviewTenant {
   tenant_id: string;
   tenant_name: string;
+  /** False when the tenant has no credit row that month (no plan, points or revenue; cost from the ledger). */
+  has_month: boolean;
   /** Plan of that month (snapshot). */
   plan_id: string | null;
   /** Plan the tenant has now. */
@@ -128,7 +149,11 @@ export interface AiCreditOverviewTenant {
 
 export interface AiCreditOverview {
   month: string;
+  /** Months with credit rows, newest first, always with the current month. */
+  available_months: string[];
   fx_vnd_per_usd: number | null;
+  /** Month the rate was set for: earlier than `month` when this month has no rate of its own. */
+  fx_rate_month: string | null;
   tenants: AiCreditOverviewTenant[];
 }
 
@@ -198,6 +223,12 @@ export const aiCreditsApi = {
     const response = await customApiClient.get<ApiResponse<AiUsageSummary>>(`${ADMIN}/tenants/${segment(tenantId)}/usage`, {
       params: monthParams(month),
     });
+    return response.data.data;
+  },
+
+  /** Light read for the tenant edit form; null when no plan exists at all. */
+  async tenantPlan(tenantId: string): Promise<AiTenantPlan | null> {
+    const response = await customApiClient.get<ApiResponse<AiTenantPlan | null>>(`${ADMIN}/tenants/${segment(tenantId)}/plan`);
     return response.data.data;
   },
 

@@ -19,13 +19,16 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
   const totalCalls = summary.features.reduce((sum, item) => sum + (item.calls || 0), 0);
   const unlimited = summary.state === 'unlimited';
   const unvalued = summary.state === 'unvalued';
+  // A past month without a credit row: its uses show, it never had points.
+  const noMonth = !summary.has_month;
+  const unvaluedTitle = noMonth ? t('aiCredits.usage.hero.noMonthTitle') : t('aiCredits.usage.hero.unvaluedTitle');
   // Without point values (no FX rate yet, or a free plan) the month is shown in uses.
   const byUses = unvalued || points.used === null;
   const fmtPoints = (value: number | null) => formatPoints(value, locale);
   const fmtPercent = (value: number | null) => formatPercent(value, locale);
   const fmtCount = (value: number | null) => formatCount(value, locale);
   const ringLabel = unlimited ? t('aiCredits.usage.hero.unlimitedTitle')
-    : unvalued ? t('aiCredits.usage.hero.unvaluedTitle')
+    : unvalued ? unvaluedTitle
       : `${fmtPercent(summary.percent)} ${t('aiCredits.usage.hero.percentCaption')}`;
 
   return (
@@ -51,7 +54,7 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
             ) : unvalued ? (
               <>
                 <Hourglass className={cn('h-8 w-8', tone.text)} aria-hidden />
-                <span className="mt-2 text-xs font-semibold leading-4 text-foreground">{t('aiCredits.usage.hero.unvaluedTitle')}</span>
+                <span className="mt-2 text-xs font-semibold leading-4 text-foreground">{unvaluedTitle}</span>
               </>
             ) : (
               <>
@@ -64,7 +67,7 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
 
         <div className="min-w-0 space-y-5">
           <div className="space-y-2">
-            <AiStateChip state={summary.state} />
+            <AiStateChip state={summary.state} label={noMonth ? unvaluedTitle : undefined} />
             <p className="pt-1 text-sm font-medium text-muted-foreground">
               {byUses ? t('aiCredits.usage.hero.usesThisMonth') : t('aiCredits.usage.hero.usedLabel')}
             </p>
@@ -78,7 +81,7 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
             </div>
             {(unlimited || unvalued) && (
               <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-                {unlimited ? t('aiCredits.usage.hero.unlimitedBody') : t('aiCredits.usage.hero.unvaluedBody')}
+                {unlimited ? t('aiCredits.usage.hero.unlimitedBody') : noMonth ? t('aiCredits.usage.hero.noMonthBody') : t('aiCredits.usage.hero.unvaluedBody')}
               </p>
             )}
           </div>

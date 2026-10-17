@@ -217,6 +217,14 @@ export function aiOverviewTotals(tenants: readonly AiCreditOverviewTenant[]): Ai
   };
 }
 
+export type AiFxNoticeKind = 'own' | 'inherited' | 'missing';
+
+/** missing = no rate at all; inherited = the rate of an earlier month is used; own = the month has its own rate. */
+export function aiFxNoticeKind(input: { month: string; fxVndPerUsd: number | null | undefined; fxRateMonth: string | null | undefined }): AiFxNoticeKind {
+  if (input.fxVndPerUsd === null || input.fxVndPerUsd === undefined || !(input.fxVndPerUsd > 0)) return 'missing';
+  return input.fxRateMonth && input.fxRateMonth < input.month ? 'inherited' : 'own';
+}
+
 /** Our estimate within 5% of the provider's invoice counts as matching. */
 export const AI_RECONCILIATION_TOLERANCE_PERCENT = 5;
 

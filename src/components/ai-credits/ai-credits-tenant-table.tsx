@@ -88,20 +88,30 @@ export function AiCreditsTenantTable({ tenants, onOpen }: { tenants: readonly Ai
                   <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/60 xl:hidden" aria-hidden />
                 </div>
                 <div className="col-span-2 min-w-0 space-y-1.5 md:col-span-4 xl:col-span-1">
-                  <div className="flex items-center gap-2">
-                    <AiUsageMeter state={tenant.state} percent={tenant.percent} className="flex-1" />
-                    <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-foreground">
-                      {tenant.state === 'unlimited' ? '∞' : formatPercent(tenant.percent, locale)}
+                  {tenant.has_month ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <AiUsageMeter state={tenant.state} percent={tenant.percent} className="flex-1" />
+                        <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-foreground">
+                          {tenant.state === 'unlimited' ? '∞' : formatPercent(tenant.percent, locale)}
+                        </span>
+                      </div>
+                      <AiStateChip state={tenant.state} />
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      <CircleDashed className="h-3 w-3 shrink-0" aria-hidden />{t('aiCredits.admin.overview.noMonth')}
                     </span>
-                  </div>
-                  <AiStateChip state={tenant.state} />
+                  )}
                 </div>
                 <div className="min-w-0 xl:text-right">
                   <MobileCaption>{t('aiCredits.admin.overview.columnPoints')}</MobileCaption>
-                  <p className="truncate text-sm tabular-nums text-foreground">
-                    {formatPoints(tenant.points_used, locale)}
-                    <span className="text-muted-foreground"> / {tenant.is_unlimited ? '∞' : formatPoints(tenant.points_total, locale)}</span>
-                  </p>
+                  {tenant.has_month ? (
+                    <p className="truncate text-sm tabular-nums text-foreground">
+                      {formatPoints(tenant.points_used, locale)}
+                      <span className="text-muted-foreground"> / {tenant.is_unlimited ? '∞' : formatPoints(tenant.points_total, locale)}</span>
+                    </p>
+                  ) : <p className="text-sm text-muted-foreground">—</p>}
                 </div>
                 <div className="min-w-0 xl:text-right">
                   <MobileCaption>{t('aiCredits.admin.overview.columnCost')}</MobileCaption>
@@ -110,7 +120,7 @@ export function AiCreditsTenantTable({ tenants, onOpen }: { tenants: readonly Ai
                 </div>
                 <div className="min-w-0 xl:text-right">
                   <MobileCaption>{t('aiCredits.admin.overview.columnRevenue')}</MobileCaption>
-                  <p className="truncate text-sm tabular-nums text-foreground">{formatVnd(tenant.revenue_vnd, locale)}</p>
+                  <p className="truncate text-sm tabular-nums text-foreground">{tenant.has_month ? formatVnd(tenant.revenue_vnd, locale) : '—'}</p>
                 </div>
                 <div className="min-w-0 xl:text-right">
                   <MobileCaption>{t('aiCredits.admin.overview.columnMargin')}</MobileCaption>

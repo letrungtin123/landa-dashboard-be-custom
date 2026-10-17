@@ -220,7 +220,9 @@ test('typed numbers are read per locale; months follow Vietnam time', () => {
   assert.equal(format.parseLocaleInteger('6.000.000', 'vi'), 6000000);
   assert.equal(format.decimalInputValue('500000.00', 'vi'), '500000');
   assert.equal(format.decimalInputValue('0.45', 'vi'), '0,45');
-  assert.deepEqual(format.recentMonths(new Date('2026-10-17T03:00:00Z'), 3), ['2026-10', '2026-09', '2026-08']);
+  assert.deepEqual(format.mergeMonths(['2026-11'], ['2026-10', '2026-08'], ['2026-08', 'bad', '2026-09']), ['2026-11', '2026-10', '2026-09', '2026-08']);
+  assert.equal(format.formatMonthShort('2026-09', 'vi'), '9/2026');
+  assert.equal(format.formatMonthShort('2026-10', 'en'), 'October 2026');
   assert.equal(format.platformMonth(new Date('2026-10-31T18:00:00Z')), '2026-11', '01:00 on 1 Nov in Vietnam');
   assert.equal(format.shiftMonth('2026-01', -1), '2025-12');
   assert.equal(format.shiftMonth('2026-12', 1), '2027-01');
@@ -291,6 +293,9 @@ test('overview: totals, near/over limit counts, missing FX keeps the cost in USD
   assert.equal(errors.aiCreditAdminErrorKey('AI_CREDIT_PLAN_CODE_TAKEN'), 'aiCredits.admin.apiErrors.planCodeTaken');
   assert.equal(t('vi', errors.aiCreditAdminErrorKey('AI_CREDIT_PLAN_CODE_TAKEN')), 'Mã gói này đã có. Hãy chọn mã khác.');
   assert.equal(errors.aiCreditAdminErrorKey('SOMETHING_ELSE'), null);
+  assert.equal(admin.aiFxNoticeKind({ month: '2026-10', fxVndPerUsd: null, fxRateMonth: null }), 'missing');
+  assert.equal(admin.aiFxNoticeKind({ month: '2026-10', fxVndPerUsd: 26150, fxRateMonth: '2026-09' }), 'inherited');
+  assert.equal(admin.aiFxNoticeKind({ month: '2026-10', fxVndPerUsd: 26150, fxRateMonth: '2026-10' }), 'own');
 });
 
 test('AI points refusals have the owner wording in Vietnamese and English', () => {
@@ -349,6 +354,7 @@ test('queries: keys carry the tenant and the month; only network and server fail
   assert.deepEqual(hooks.aiCreditKeys.usage('tenant-1', null), ['ai-credits', 'usage', 'tenant-1', 'current']);
   assert.deepEqual(hooks.aiCreditKeys.tenantUsage('tenant-2', '2026-10'), ['ai-credits', 'admin', 'tenant-usage', 'tenant-2', '2026-10']);
   assert.deepEqual(hooks.aiCreditKeys.overview(null), ['ai-credits', 'admin', 'overview', 'current']);
+  assert.deepEqual(hooks.aiCreditKeys.tenantPlan('tenant-3'), ['ai-credits', 'admin', 'tenant-plan', 'tenant-3']);
   assert.equal(hooks.AI_CREDIT_STALE_TIME_MS, 30_000);
   assert.equal(hooks.shouldRetryAiCreditQuery(0, { request: {} }), true, 'no answer');
   assert.equal(hooks.shouldRetryAiCreditQuery(1, { response: { status: 503 } }), true);

@@ -89,6 +89,14 @@ export function formatMonthLabel(month: string, locale: AppLocale): string {
   return capitalize(new Intl.DateTimeFormat(intlLocale(locale), { month: 'long', year: 'numeric' }).format(date));
 }
 
+/** Month inside a sentence: "2026-10" -> "10/2026" / "October 2026". */
+export function formatMonthShort(month: string, locale: AppLocale): string {
+  const match = MONTH.exec(month);
+  if (!match) return month;
+  if (locale === 'en') return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(Number(match[1]), Number(match[2]) - 1, 1));
+  return `${Number(match[2])}/${match[1]}`;
+}
+
 /** "2026-11-01" -> "01/11" / "Nov 1". */
 export function formatShortDate(iso: string, locale: AppLocale): string {
   const date = localDate(iso);
@@ -135,10 +143,9 @@ export function shiftMonth(month: string, delta: number): string {
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
 }
 
-/** The current platform month and the ones before it, newest first. */
-export function recentMonths(now: Date, count: number): string[] {
-  const current = platformMonth(now);
-  return Array.from({ length: Math.max(1, count) }, (_, index) => shiftMonth(current, -index));
+/** Distinct "YYYY-MM" values, newest first (month pickers). */
+export function mergeMonths(...lists: ReadonlyArray<readonly string[]>): string[] {
+  return [...new Set(lists.flat().filter(month => MONTH.test(month)))].sort().reverse();
 }
 
 /** Every day of a month as YYYY-MM-DD. */

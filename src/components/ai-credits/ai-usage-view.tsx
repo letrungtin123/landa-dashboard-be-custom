@@ -57,7 +57,7 @@ export function AiUsageHeader({ summary, month, onMonthChange, fetching = false 
             {t('aiCredits.usage.renewsOn', { date: formatShortDate(summary.resets_on, locale) })}
           </span>
         )}
-        <AiMonthSelect months={summary?.months ?? []} value={selected} onChange={onMonthChange} disabled={!summary} />
+        <AiMonthSelect months={summary?.available_months ?? []} value={selected} onChange={onMonthChange} disabled={!summary} />
       </div>
     </motion.header>
   );
@@ -71,7 +71,7 @@ export function AiUsageHeader({ summary, month, onMonthChange, fetching = false 
 export function AiUsageView({ summary, compact = false, now }: { summary: AiUsageSummary; compact?: boolean; now?: Date }) {
   const empty = isUsageEmpty(summary);
   // In the current month (the newest one) the top-user lines stop at today.
-  const until = summary.months[0] === summary.month ? platformDate(now ?? new Date()) : null;
+  const until = summary.available_months[0] === summary.month ? platformDate(now ?? new Date()) : null;
   return (
     <div className="space-y-5">
       <AiUsageBanner summary={summary} />

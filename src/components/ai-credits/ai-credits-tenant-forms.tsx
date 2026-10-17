@@ -143,6 +143,17 @@ export function AiTenantReconcileForm({ tenant, month }: { tenant: AiCreditOverv
     mutation.mutate({ tenantId: tenant.tenant_id, month, reconciliation: result.input });
   };
 
+  // A past month without data is never created to store an invoice check.
+  if (!tenant.has_month) {
+    return (
+      <FormCard icon={ReceiptText} title={t('aiCredits.admin.drawer.reconcileTitle')}>
+        <p className="rounded-xl border border-dashed border-border/80 px-3 py-3 text-xs leading-5 text-muted-foreground">
+          {t('aiCredits.admin.drawer.reconcileNoMonth')}
+        </p>
+      </FormCard>
+    );
+  }
+
   return (
     <FormCard icon={ReceiptText} title={t('aiCredits.admin.drawer.reconcileTitle')} hint={t('aiCredits.admin.drawer.reconcileHint', { month: formatMonthLabel(month, locale) })}>
       <form className="space-y-3" onSubmit={submit} noValidate>

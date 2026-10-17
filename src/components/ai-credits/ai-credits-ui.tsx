@@ -98,13 +98,13 @@ export function AiStatTile({ icon: Icon, label, value, hint, className }: {
 }
 
 /** State pill with a dot; color is never the only cue (the label says it). */
-export function AiStateChip({ state, className }: { state: AiCreditState; className?: string }) {
+export function AiStateChip({ state, label, className }: { state: AiCreditState; label?: string; className?: string }) {
   const { t } = useTranslation();
   const tone = aiStateTone(state);
   return (
     <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', tone.chip, className)}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: `linear-gradient(135deg, ${tone.from}, ${tone.to})` }} aria-hidden />
-      {t(tone.labelKey)}
+      {label ?? t(tone.labelKey)}
     </span>
   );
 }

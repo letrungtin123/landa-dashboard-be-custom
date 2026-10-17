@@ -104,7 +104,9 @@ export function AiCreditsFxTab({ months, onEdit }: { months: readonly string[]; 
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-2 text-sm leading-6 text-muted-foreground"><Info className="mt-1 h-4 w-4 shrink-0" aria-hidden />{t('aiCredits.admin.fx.hint')}</p>
-        <Button type="button" className="shrink-0 rounded-xl" onClick={() => onEdit(currentMonth)}><Plus aria-hidden />{t('aiCredits.admin.fx.set')}</Button>
+        <Button type="button" className="shrink-0 rounded-xl" disabled={!currentMonth} onClick={() => { if (currentMonth) onEdit(currentMonth); }}>
+          <Plus aria-hidden />{t('aiCredits.admin.fx.set')}
+        </Button>
       </div>
       {fx.data ? (
         fx.data.length === 0 ? (
