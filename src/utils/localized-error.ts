@@ -1,7 +1,7 @@
 import { useLocaleStore } from "@/utils/locale-store";
 import i18n from "@/i18n";
 import { userAuthorityErrorKey } from "@/components/users/user-authority.logic";
-import { aiCreditErrorKey } from "@/api/ai-credit-errors.logic";
+import { aiCreditErrorKey, aiCreditInvalidInputKeys } from "@/api/ai-credit-errors.logic";
 
 const TENANT_DATA_LIMIT_REACHED_CODE = "TENANT_DATA_LIMIT_REACHED";
 const TENANT_DATA_QUOTA_RECONCILING_CODE = "TENANT_DATA_QUOTA_RECONCILING";
@@ -57,7 +57,7 @@ const COURSE_PUBLISH_ERRORS: Record<string, { vi: string; en: string }> = {
  * so API responses cannot leave Vietnamese messages in the English interface.
  */
 export function getLocalizedApiError(error: unknown, fallback: string): string {
-  const response = (error as { response?: { data?: { code?: unknown; message?: unknown; error?: unknown } } })?.response;
+  const response = (error as { response?: { data?: { code?: unknown; message?: unknown; error?: unknown; field?: unknown } } })?.response;
   const locale = useLocaleStore.getState().locale;
   const publishError = typeof response?.data?.code === "string"
     ? COURSE_PUBLISH_ERRORS[response.data.code]
@@ -84,6 +84,11 @@ export function getLocalizedApiError(error: unknown, fallback: string): string {
   }
   const aiCreditKey = aiCreditErrorKey(response?.data?.code);
   if (aiCreditKey) return i18n.t(aiCreditKey, { lng: locale });
+  // A refused input of the AI points routes names its field: plain wording in both languages.
+  const invalidInput = aiCreditInvalidInputKeys(response?.data?.code, response?.data?.field);
+  if (invalidInput) {
+    return i18n.t(invalidInput.key, { lng: locale, field: invalidInput.fieldKey ? i18n.t(invalidInput.fieldKey, { lng: locale }) : "" });
+  }
   const userAuthorityKey = userAuthorityErrorKey(response?.data?.code);
   if (userAuthorityKey) return i18n.t(userAuthorityKey, { lng: locale });
   const rawMessage = response?.data?.message ?? response?.data?.error;

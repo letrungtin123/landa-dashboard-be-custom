@@ -29,7 +29,30 @@ export function aiCreditAdminErrorKey(code: unknown): string | null {
     case 'AI_CREDIT_PLAN_INACTIVE': return 'aiCredits.admin.apiErrors.planInactive';
     case 'AI_CREDIT_PLAN_NOT_FOUND': return 'aiCredits.admin.apiErrors.planNotFound';
     case 'AI_CREDIT_MONTH_INVALID': return 'aiCredits.admin.apiErrors.monthInvalid';
+    case 'AI_CREDIT_MONTH_NOT_FOUND': return 'aiCredits.admin.apiErrors.monthNotFound';
     case 'TENANT_NOT_FOUND': return 'aiCredits.admin.apiErrors.tenantNotFound';
     default: return null;
   }
+}
+
+/** A refused input of the AI points routes (400): the server names the field. */
+export const AI_CREDIT_INVALID_INPUT_CODE = 'AI_CREDIT_INVALID_INPUT';
+
+/** Fields the AI points routes can refuse, with a plain label each (under aiCredits.admin.apiErrors.fields). */
+export const AI_CREDIT_INPUT_FIELDS = [
+  'name', 'code', 'description', 'monthly_price_vnd', 'monthly_points', 'provider_cost_ratio', 'safety_buffer_ratio',
+  'is_unlimited', 'is_active', 'sort_order', 'plan_id', 'points', 'price_vnd', 'reason', 'vnd_per_usd', 'source_note',
+  'cost_vnd', 'note', 'month', 'tenantId', 'planId',
+] as const;
+
+/**
+ * Plain message of a refused input: `key` with `fieldKey` (the field's label)
+ * when the field is known, else a generic message. Null for any other code.
+ */
+export function aiCreditInvalidInputKeys(code: unknown, field: unknown): { key: string; fieldKey: string | null } | null {
+  if (code !== AI_CREDIT_INVALID_INPUT_CODE) return null;
+  const known = AI_CREDIT_INPUT_FIELDS.includes(field as typeof AI_CREDIT_INPUT_FIELDS[number]);
+  return known
+    ? { key: 'aiCredits.admin.apiErrors.invalidField', fieldKey: `aiCredits.admin.apiErrors.fields.${String(field)}` }
+    : { key: 'aiCredits.admin.apiErrors.invalidInput', fieldKey: null };
 }
