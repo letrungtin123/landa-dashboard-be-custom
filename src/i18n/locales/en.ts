@@ -51,7 +51,6 @@ export const en: TranslationSchema<typeof vi> = {
       permissionGroups: "Permission groups",
       auditLogs: "Activity logs",
       reportSummary: "Summary reports",
-      aiUsage: "AI usage",
       helpDocs: "Help documentation",
       tenantManagement: "Tenant management",
       aiCredits: "AI plans & points",

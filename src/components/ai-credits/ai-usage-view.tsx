@@ -38,7 +38,7 @@ export function AiUsageHeader({ summary, month, onMonthChange, fetching = false 
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t('aiCredits.usage.title')}</h1>
+            <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">{t('aiCredits.usage.title')}</h2>
             {summary && (
               <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-200">
                 <Crown className="h-3.5 w-3.5 shrink-0" aria-hidden />

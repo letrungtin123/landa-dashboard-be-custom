@@ -1,14 +1,26 @@
-// Who may open the AI points pages. The backend enforces the same rules
-// (/api/ai-credits/usage: staff, superuser, superadmin; /admin: superadmin).
+// Who may see the AI points data. The backend enforces the same rules
+// (/api/ai-credits/usage: ai_chatbot can_view, never learners; /admin: superadmin).
 
-/** Route/nav code of the tenant AI usage page; gated by role, not by a tenant module. */
-export const AI_USAGE_MODULE = 'ai_usage';
+/** The AI Chatbot module: its overview tab shows the tenant's AI usage. */
+export const AI_CHATBOT_MODULE = 'ai_chatbot';
 
-const AI_USAGE_ROLES = ['superadmin', 'superuser', 'staff'] as const;
+export interface AiUsageViewer {
+  role: string | null | undefined;
+  tenantModules: readonly string[];
+  hasPermission: (moduleCode: string, action: 'can_view') => boolean;
+}
 
-/** Tenant admins and the superadmin; never learner_plus or learners. */
-export function canViewAiUsage(role: string | null | undefined): boolean {
-  return AI_USAGE_ROLES.includes(role as typeof AI_USAGE_ROLES[number]);
+/**
+ * Owner rule (same as the AI Chatbot module pages): the superadmin always; a
+ * superuser when the tenant has the module; staff when the tenant has it and
+ * their permission group can view it. learner_plus and learner never, even
+ * with a module permission.
+ */
+export function canViewAiUsage(viewer: AiUsageViewer): boolean {
+  if (viewer.role === 'superadmin') return true;
+  if (viewer.role !== 'superuser' && viewer.role !== 'staff') return false;
+  if (!viewer.tenantModules.includes(AI_CHATBOT_MODULE)) return false;
+  return viewer.role === 'superuser' || viewer.hasPermission(AI_CHATBOT_MODULE, 'can_view');
 }
 
 /** Plans, FX rates, money overview, top-ups and reconciliation. */

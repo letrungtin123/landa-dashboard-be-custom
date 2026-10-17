@@ -50,7 +50,6 @@ import DevAiIdMindmapSkeletonPage, { AI_ID_MINDMAP_SKELETON_PREVIEW_PATH } from 
 import { Skeleton } from '@/components/ui/skeleton';
 
 // AI points pages are split out of the main chunk (charts and animations load with them).
-const AiUsagePage = lazy(() => import('@/pages/ai-usage'));
 const AiCreditsPage = lazy(() => import('@/pages/ai-credits'));
 // Development only: the dynamic import is removed from production builds with this branch.
 const DevAiCreditsPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-credits-preview')) : null;
@@ -91,7 +90,8 @@ function AppRoutes() {
           <Route path="/accounts" element={<ModuleGuard module="account"><UsersPage /></ModuleGuard>} />
           <Route path="/audit-logs" element={<ModuleGuard module="audit_log"><AuditLogsPage /></ModuleGuard>} />
           <Route path="/report-summary" element={<ModuleGuard module="report_summary"><ReportSummaryPage /></ModuleGuard>} />
-          <Route path="/ai-usage" element={<ModuleGuard module="ai_usage"><LazyPage><AiUsagePage /></LazyPage></ModuleGuard>} />
+          {/* AI usage now lives in AI Chatbot > overview (old links keep working). */}
+          <Route path="/ai-usage" element={<Navigate to="/ai-chatbot?tab=overview" replace />} />
           <Route path="/library" element={<ModuleGuard module="library"><LibraryPage /></ModuleGuard>} />
           <Route path="/courses" element={<ModuleGuard module="courses"><CoursesPage /></ModuleGuard>} />
           <Route path="/courses/:courseId/assignments" element={<ModuleGuard module="courses"><CourseAssignmentsPage /></ModuleGuard>} />

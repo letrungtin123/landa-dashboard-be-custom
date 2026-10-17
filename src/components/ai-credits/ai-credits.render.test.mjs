@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URLSearchParams } from 'node:url';
 import path from 'node:path';
 import ts from 'typescript';
 import React from 'react';
@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(directory, '../..');
 const h = React.createElement;
-const env = { locale: 'vi', user: null };
+const env = { locale: 'vi', user: null, tenantModules: [], grants: [], tab: 'kb' };
 const MOTION_PROPS = new Set(['initial', 'animate', 'exit', 'transition', 'layout', 'whileHover', 'whileTap', 'variants']);
 const clean = props => Object.fromEntries(Object.entries(props).filter(([name]) => !MOTION_PROPS.has(name)));
 const passthrough = tag => ({ children, ...props }) => h(tag, clean(props), children);
@@ -44,8 +44,25 @@ const mocks = {
     SelectContent: ({ children }) => h('div', null, children),
     SelectItem: ({ children, value }) => h('div', { 'data-value': value }, children),
   },
-  '@/utils/store': { useAuthStore: select => select({ user: env.user, tenantModules: [], hasPermission: () => false }) },
+  '@/utils/store': { useAuthStore: select => select({ user: env.user, tenantModules: env.tenantModules, permissions: env.grants,
+    hasPermission: (module, action) => action === 'can_view' && env.grants.includes(module) }) },
   '@/pages/not-found': { __esModule: true, default: () => h('p', null, 'NOT_FOUND') },
+  // AI Chatbot page: only the tab frame is real; the other tabs and the router are stand-ins.
+  'react-router-dom': { useSearchParams: () => [new URLSearchParams({ tab: env.tab }), () => undefined] },
+  '@/utils/tenant-store': { useTenantStore: select => select({ activeTenantId: 'tenant-1' }) },
+  '@/api/custom-ai-chatbot': { fetchKnowledgebase: async () => ({}) },
+  '@/components/ui/tabs': {
+    Tabs: ({ children, value }) => h('div', { 'data-active-tab': value }, children),
+    TabsList: ({ children, className }) => h('div', { role: 'tablist', className }, children),
+    TabsTrigger: ({ children, value }) => h('button', { type: 'button', 'data-tab': value }, children),
+    TabsContent: ({ children, value }) => h('section', { 'data-panel': value }, children),
+  },
+  '@/components/ai-chatbot/kb-tab': { KnowledgeBaseTab: () => h('p', null, 'KB_TAB') },
+  '@/components/ai-chatbot/doc-manager': { DocumentManager: () => null },
+  '@/components/ai-chatbot/bot-tab': { ChatbotTab: () => h('p', null, 'BOTS_TAB') },
+  '@/components/ai-chatbot/bot-detail': { BotDetail: () => null },
+  '@/components/ai-chatbot/deploy-section': { DeploySection: () => h('p', null, 'DEPLOY_TAB') },
+  '@/components/ai-credits/ai-usage-tab': { __esModule: true, default: () => h('p', null, 'AI_USAGE_TAB') },
 };
 const loaded = new Map();
 function load(file) {
@@ -74,6 +91,7 @@ const { AiUsageSkeleton, AiUsageError, AiUsageEmpty } = at('components/ai-credit
 const { AiCreditsKpis } = at('components/ai-credits/ai-credits-kpis.tsx');
 const { AiCreditsTenantTable } = at('components/ai-credits/ai-credits-tenant-table.tsx');
 const { ModuleGuard } = at('components/module-guard.tsx');
+const AiChatbotPage = at('pages/ai-chatbot.tsx').default;
 const { AiFxNotice } = at('components/ai-credits/ai-fx-notice.tsx');
 const noop = () => undefined;
 
@@ -239,17 +257,68 @@ test('loading, error and empty pieces: skeletons (no spinner), a retry button, p
   assert.match(renderToStaticMarkup(h(AiUsageError, { onRetry: noop })), /Try again/);
 });
 
-test('route guard: AI usage opens for superadmin, superuser and staff; learner_plus and learners get not found', () => {
-  for (const [role, allowed] of [['superadmin', true], ['superuser', true], ['staff', true], ['learner_plus', false], ['learner', false]]) {
+test('route guard: the AI plans page opens for superadmin only', () => {
+  for (const role of ['superadmin', 'superuser', 'staff', 'learner_plus', 'learner']) {
     env.user = { id: 'u', role };
-    const html = renderToStaticMarkup(h(ModuleGuard, { module: 'ai_usage' }, h('main', null, 'AI_USAGE_PAGE')));
-    assert.equal(html.includes('AI_USAGE_PAGE'), allowed, role);
-    assert.equal(html.includes('NOT_FOUND'), !allowed, role);
+    env.tenantModules = ['ai_chatbot'];
+    env.grants = ['ai_chatbot'];
     const plans = renderToStaticMarkup(h(ModuleGuard, { module: 'superadmin_only' }, h('main', null, 'AI_PLANS_PAGE')));
     assert.equal(plans.includes('AI_PLANS_PAGE'), role === 'superadmin', `${role} plans`);
+    assert.equal(plans.includes('NOT_FOUND'), role !== 'superadmin', `${role} plans`);
   }
   env.user = null;
-  assert.match(renderToStaticMarkup(h(ModuleGuard, { module: 'ai_usage' }, h('main', null, 'x'))), /NOT_FOUND/);
+  env.tenantModules = [];
+  env.grants = [];
+});
+
+test('AI Chatbot page: the overview tab (AI usage) shows only to superadmin, superuser and allowed staff; never to learners', () => {
+  env.locale = 'vi';
+  const cases = [
+    // [role, tenant modules, can_view grants, sees the overview tab]
+    ['superadmin', [], [], true],
+    ['superuser', ['ai_chatbot'], [], true],
+    ['superuser', ['library'], [], false],
+    ['staff', ['ai_chatbot'], ['ai_chatbot'], true],
+    ['staff', ['ai_chatbot'], ['library'], false],
+    ['staff', ['library'], ['ai_chatbot'], false],
+    ['learner_plus', ['ai_chatbot'], ['ai_chatbot'], false],
+    ['learner', ['ai_chatbot'], ['ai_chatbot'], false],
+  ];
+  for (const [role, tenantModules, grants, sees] of cases) {
+    Object.assign(env, { user: { id: 'u', role, tenant_id: 'tenant-1' }, tenantModules, grants, tab: 'overview' });
+    const html = renderToStaticMarkup(h(AiChatbotPage));
+    const label = `${role} with ${tenantModules.join(',')} / ${grants.join(',')}`;
+    assert.match(html, /Kho tri thức/, label);
+    assert.equal(html.includes('data-tab="overview"'), sees, `${label}: tab`);
+    assert.equal(html.includes('data-panel="overview"'), sees, `${label}: panel`);
+    // A deep link to the overview tab falls back to the first tab for people who may not see it.
+    assert.match(html, new RegExp(`data-active-tab="${sees ? 'overview' : 'kb'}"`), `${label}: active tab`);
+    assert.match(html, sees ? /sm:grid-cols-4/ : /sm:grid-cols-3/, `${label}: tab grid`);
+    if (sees) {
+      assert.match(html, /Báo cáo tổng quan/);
+      // The usage screen is its own lazy chunk; the first paint is a skeleton, not a spinner.
+      assert.match(html, /data-panel="overview"[^>]*><div class="space-y-4" aria-busy="true">/);
+      assert.doesNotMatch(html, /animate-spin/);
+    }
+    assert.doesNotMatch(html, /token|Lượt dùng/i, `${label}: no old token report`);
+  }
+  Object.assign(env, { user: null, tenantModules: [], grants: [], tab: 'kb' });
+  env.locale = 'en';
+  Object.assign(env, { user: { id: 'u', role: 'superuser', tenant_id: 'tenant-1' }, tenantModules: ['ai_chatbot'], tab: 'overview' });
+  assert.match(renderToStaticMarkup(h(AiChatbotPage)), /Overview report/);
+  Object.assign(env, { user: null, tenantModules: [], grants: [], tab: 'kb' });
+});
+
+test('old routes: /ai-usage sends people to AI Chatbot > overview; the separate usage page and the token report are gone', () => {
+  const app = readFileSync(path.join(src, 'App.tsx'), 'utf8');
+  assert.match(app, /path="\/ai-usage" element={<Navigate to="\/ai-chatbot\?tab=overview" replace \/>}/);
+  assert.doesNotMatch(app, /AiUsagePage|pages\/ai-usage/);
+  for (const gone of ['pages/ai-usage.tsx', 'components/ai-chatbot/ai-overview-tab.tsx']) {
+    assert.equal(statSync(path.join(src, gone), { throwIfNoEntry: false }), undefined, gone);
+  }
+  const page = readFileSync(path.join(src, 'pages/ai-chatbot.tsx'), 'utf8');
+  assert.match(page, /lazy\(\(\) => import\("@\/components\/ai-credits\/ai-usage-tab"\)\)/);
+  assert.doesNotMatch(page, /AiOverviewTab/);
 });
 
 test('superadmin overview shows money: revenue, cost in VND and USD, margin, invoice check badges', () => {

@@ -3,7 +3,7 @@
 // Persists state in URL search params so F5 doesn't lose context
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { BarChart3, Bot, Brain, Rocket } from "lucide-react";
@@ -15,13 +15,26 @@ import {
   type Knowledgebase, type Chatbot,
 } from "@/api/custom-ai-chatbot";
 import { useTenantStore } from "@/utils/tenant-store";
+import { useAuthStore } from "@/utils/store";
+import { canViewAiUsage } from "@/utils/ai-credit-access";
 
 import { KnowledgeBaseTab } from "@/components/ai-chatbot/kb-tab";
 import { DocumentManager } from "@/components/ai-chatbot/doc-manager";
 import { ChatbotTab } from "@/components/ai-chatbot/bot-tab";
 import { BotDetail } from "@/components/ai-chatbot/bot-detail";
 import { DeploySection } from "@/components/ai-chatbot/deploy-section";
-import { AiOverviewTab } from "@/components/ai-chatbot/ai-overview-tab";
+
+// The overview tab is the tenant's AI usage in points (charts load with it, out of the main chunk).
+const AiUsageTab = lazy(() => import("@/components/ai-credits/ai-usage-tab"));
+
+function AiUsageTabFallback() {
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <Skeleton className="h-12 w-72 max-w-full rounded-xl" />
+      <Skeleton className="h-64 rounded-3xl" />
+    </div>
+  );
+}
 
 export default function AiChatbotPage() {
   const { t } = useTranslation();
@@ -35,6 +48,13 @@ export default function AiChatbotPage() {
   const [selectedBotId, setSelectedBotId] = useState<string | null>(botIdParam);
   const [loadingRestore, setLoadingRestore] = useState(false);
   const activeTenantId = useTenantStore(s => s.activeTenantId);
+  const role = useAuthStore(s => s.user?.role);
+  const tenantModules = useAuthStore(s => s.tenantModules);
+  const hasPermission = useAuthStore(s => s.hasPermission);
+  useAuthStore(s => s.permissions); // re-render when the permission matrix changes (hasPermission reads it)
+  // Owner rule: AI usage follows the AI Chatbot module rule and is never shown to learners (the API refuses them too).
+  const showUsage = canViewAiUsage({ role, tenantModules, hasPermission });
+  const activeTab = tab === "overview" && !showUsage ? "kb" : tab;
 
   // Reset state when tenant changes
   useEffect(() => {
@@ -115,17 +135,21 @@ export default function AiChatbotPage() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader icon={Bot} title={t("aiChatbot.title")} description={t("aiChatbot.description")} />
-      <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className={`grid w-full max-w-3xl grid-cols-2 ${showUsage ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
           <TabsTrigger value="kb" className="gap-2"><Brain className="h-4 w-4" /> {t("aiChatbot.knowledgeBases")}</TabsTrigger>
           <TabsTrigger value="bots" className="gap-2"><Bot className="h-4 w-4" /> {t("aiChatbot.chatbots")}</TabsTrigger>
           <TabsTrigger value="deploy" className="gap-2"><Rocket className="h-4 w-4" /> {t("aiChatbot.deploy")}</TabsTrigger>
-          <TabsTrigger value="overview" className="gap-2"><BarChart3 className="h-4 w-4" /> {t("aiChatbot.overview")}</TabsTrigger>
+          {showUsage && <TabsTrigger value="overview" className="gap-2"><BarChart3 className="h-4 w-4" /> {t("aiChatbot.overview")}</TabsTrigger>}
         </TabsList>
         <TabsContent value="kb" className="mt-6"><KnowledgeBaseTab key={activeTenantId} onSelectKb={handleSelectKb} /></TabsContent>
         <TabsContent value="bots" className="mt-6"><ChatbotTab key={activeTenantId} onSelectBot={handleSelectBot} /></TabsContent>
         <TabsContent value="deploy" className="mt-6"><DeploySection key={activeTenantId} /></TabsContent>
-        <TabsContent value="overview" className="mt-6"><AiOverviewTab key={activeTenantId} /></TabsContent>
+        {showUsage && (
+          <TabsContent value="overview" className="mt-6">
+            <Suspense fallback={<AiUsageTabFallback />}><AiUsageTab key={activeTenantId} /></Suspense>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

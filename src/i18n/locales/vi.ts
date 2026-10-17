@@ -48,7 +48,6 @@ export const vi = {
       permissionGroups: "Nhóm quyền",
       auditLogs: "Nhật ký hoạt động",
       reportSummary: "Báo cáo tổng hợp",
-      aiUsage: "Mức dùng AI",
       helpDocs: "Tài liệu hướng dẫn",
       tenantManagement: "Quản lí doanh nghiệp",
       aiCredits: "Gói & điểm AI",

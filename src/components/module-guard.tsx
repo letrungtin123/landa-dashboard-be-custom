@@ -6,7 +6,6 @@
 // ============================================================
 
 import { useAuthStore } from '@/utils/store';
-import { AI_USAGE_MODULE, canViewAiUsage } from '@/utils/ai-credit-access';
 import NotFoundPage from '@/pages/not-found';
 
 interface ModuleGuardProps {
@@ -39,11 +38,6 @@ export function ModuleGuard({ module, children }: ModuleGuardProps) {
 
   if ((module === 'tenant_management' || module === 'superadmin_only') && user.role !== 'superadmin') {
     return <NotFoundPage />;
-  }
-
-  // AI usage is a role page, not a tenant module (the API refuses learner_plus too).
-  if (module === AI_USAGE_MODULE) {
-    return canViewAiUsage(user.role) ? <>{children}</> : <NotFoundPage />;
   }
 
   // superadmin bypasses all module restrictions

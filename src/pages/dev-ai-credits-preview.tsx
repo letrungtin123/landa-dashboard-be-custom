@@ -1,17 +1,39 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Coins, Moon, Sun } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { BarChart3, Bot, Brain, Coins, Moon, Rocket, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { PageHeader } from '@/components/shared/page-header';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AI_CREDITS_PREVIEW_SCENARIOS, createAiCreditsPreviewApi, type AiCreditsPreviewScenario,
 } from '@/components/ai-credits/ai-credits-preview.mock';
 import { AiCreditsApiProvider } from '@/hooks/queries/use-ai-credits';
 import { useLocaleStore } from '@/utils/locale-store';
 import { cn } from '@/utils/utils';
-import { AiUsageScreen } from '@/pages/ai-usage';
+import { AiUsageScreen } from '@/components/ai-credits/ai-usage-screen';
 import { AiCreditsScreen } from '@/pages/ai-credits';
 
-type PreviewView = 'both' | 'tenant' | 'admin';
+type PreviewView = 'both' | 'chatbot' | 'admin';
+
+/** The AI Chatbot page with its overview tab open, as tenant admins see it (other tabs are not part of the preview). */
+function ChatbotOverviewPreview() {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-6 p-6">
+      <PageHeader icon={Bot} title={t('aiChatbot.title')} description={t('aiChatbot.description')} />
+      <Tabs value="overview" className="w-full">
+        <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-4">
+          <TabsTrigger value="kb" className="gap-2" disabled><Brain className="h-4 w-4" /> {t('aiChatbot.knowledgeBases')}</TabsTrigger>
+          <TabsTrigger value="bots" className="gap-2" disabled><Bot className="h-4 w-4" /> {t('aiChatbot.chatbots')}</TabsTrigger>
+          <TabsTrigger value="deploy" className="gap-2" disabled><Rocket className="h-4 w-4" /> {t('aiChatbot.deploy')}</TabsTrigger>
+          <TabsTrigger value="overview" className="gap-2"><BarChart3 className="h-4 w-4" /> {t('aiChatbot.overview')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="mt-6"><AiUsageScreen tenantScope="preview-tenant" requestTenantId={null} /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
 
 /** Small segmented control of the visual QA bar (developer-only labels). */
 function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange: (value: T) => void }) {
@@ -38,9 +60,9 @@ function PreviewScope({ scenario, view }: { scenario: AiCreditsPreviewScenario; 
   return (
     <QueryClientProvider client={queryClient}>
       <AiCreditsApiProvider value={api}>
-        {view !== 'admin' && <AiUsageScreen tenantScope="preview-tenant" requestTenantId={null} />}
+        {view !== 'admin' && <ChatbotOverviewPreview />}
         {view === 'both' && <div className="mx-auto my-4 h-px max-w-7xl bg-border" aria-hidden />}
-        {view !== 'tenant' && <AiCreditsScreen />}
+        {view !== 'chatbot' && <AiCreditsScreen />}
       </AiCreditsApiProvider>
     </QueryClientProvider>
   );
@@ -72,7 +94,7 @@ export default function DevAiCreditsPreviewPage() {
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Segmented label="State" value={scenario} options={AI_CREDITS_PREVIEW_SCENARIOS} onChange={setScenario} />
-            <Segmented label="Page" value={view} options={['both', 'tenant', 'admin'] as const} onChange={setView} />
+            <Segmented label="Page" value={view} options={['both', 'chatbot', 'admin'] as const} onChange={setView} />
             <Segmented label="Lang" value={locale} options={['vi', 'en'] as const} onChange={setLocale} />
             <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-muted/45 px-3 text-xs font-medium">

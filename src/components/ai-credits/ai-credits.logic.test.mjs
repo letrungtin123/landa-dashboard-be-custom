@@ -323,33 +323,51 @@ test('AI points refusals have the owner wording in Vietnamese and English', () =
     'toasts use the same plain message in both languages');
 });
 
-test('access: AI usage for superadmin, superuser and staff only; AI plans for superadmin only (sidebar)', () => {
+test('access: AI usage (AI Chatbot > overview) follows the AI Chatbot module rule and is never shown to learners', () => {
+  assert.equal(access.AI_CHATBOT_MODULE, 'ai_chatbot');
+  const grant = (...modules) => (module, action) => action === 'can_view' && modules.includes(module);
+  const cases = [
+    // [role, tenant modules, permission check, sees usage]
+    ['superadmin', [], grant(), true],
+    ['superuser', ['ai_chatbot'], grant(), true],
+    ['superuser', ['library'], grant('ai_chatbot'), false],
+    ['staff', ['ai_chatbot'], grant('ai_chatbot'), true],
+    ['staff', ['ai_chatbot'], grant('library'), false],
+    ['staff', ['library'], grant('ai_chatbot'), false],
+    ['learner_plus', ['ai_chatbot'], grant('ai_chatbot'), false],
+    ['learner', ['ai_chatbot'], grant('ai_chatbot'), false],
+    [null, ['ai_chatbot'], grant('ai_chatbot'), false],
+    ['someone_else', ['ai_chatbot'], grant('ai_chatbot'), false],
+  ];
+  for (const [role, tenantModules, hasPermission, sees] of cases) {
+    assert.equal(access.canViewAiUsage({ role, tenantModules, hasPermission }), sees, `${role} with ${tenantModules.join(',')}`);
+  }
+  for (const role of ['superadmin', 'superuser', 'staff', 'learner_plus', 'learner', null]) assert.equal(access.canManageAiCredits(role), role === 'superadmin');
+});
+
+test('sidebar: no separate AI usage item any more; AI plans stay for superadmin only, next to tenant management', () => {
   const items = nav.NAV_GROUPS.flatMap(group => group.items);
-  const usageItem = items.find(item => item.url === '/ai-usage');
+  assert.equal(items.find(item => item.url === '/ai-usage'), undefined);
   const plansItem = items.find(item => item.url === '/ai-credits');
-  assert.equal(usageItem.module, access.AI_USAGE_MODULE);
   assert.equal(plansItem.module, 'superadmin_only');
   assert.ok(items.indexOf(plansItem) === items.findIndex(item => item.url === '/tenants') + 1, 'next to tenant management');
-  const cases = { superadmin: [true, true], superuser: [true, false], staff: [true, false], learner_plus: [false, false], learner: [false, false], '': [false, false] };
-  for (const [role, [seesUsage, seesPlans]] of Object.entries(cases)) {
-    // No tenant module and no permission: AI usage is a role page only.
-    const context = { role: role || null, tenantModules: [], hasPermission: () => false };
-    assert.equal(nav.canSeeNavItem(usageItem, context), seesUsage, `${role} usage`);
-    assert.equal(nav.canSeeNavItem(plansItem, context), seesPlans, `${role} plans`);
-    assert.equal(access.canViewAiUsage(role), seesUsage);
-    assert.equal(access.canManageAiCredits(role), seesPlans);
+  for (const role of ['superadmin', 'superuser', 'staff', 'learner_plus', 'learner', '']) {
+    const context = { role: role || null, tenantModules: ['ai_chatbot'], hasPermission: () => true };
+    assert.equal(nav.canSeeNavItem(plansItem, context), role === 'superadmin', `${role} plans`);
     const urls = nav.visibleNavGroups(context).flatMap(group => group.items.map(item => item.url));
-    assert.equal(urls.includes('/ai-usage'), seesUsage);
-    assert.equal(urls.includes('/ai-credits'), seesPlans);
+    assert.equal(urls.includes('/ai-usage'), false, `${role} has no AI usage item`);
+    assert.equal(urls.includes('/ai-credits'), role === 'superadmin');
   }
   // The rest of the rules are unchanged.
   const staff = { role: 'staff', tenantModules: ['library', 'courses'], hasPermission: module => module === 'library' };
-  assert.deepEqual(nav.visibleNavGroups(staff).flatMap(group => group.items.map(item => item.url)), ['/library', '/ai-usage']);
+  assert.deepEqual(nav.visibleNavGroups(staff).flatMap(group => group.items.map(item => item.url)), ['/library']);
   const superuser = { role: 'superuser', tenantModules: ['library', 'permission_groups', 'tenant_management'], hasPermission: () => false };
-  assert.deepEqual(nav.visibleNavGroups(superuser).flatMap(group => group.items.map(item => item.url)), ['/library', '/permission-groups', '/ai-usage']);
-  for (const key of ['nav.items.aiUsage', 'nav.items.aiCredits']) for (const locale of ['vi', 'en']) t(locale, key);
-  assert.equal(t('vi', 'nav.items.aiUsage'), 'Mức dùng AI');
+  assert.deepEqual(nav.visibleNavGroups(superuser).flatMap(group => group.items.map(item => item.url)), ['/library', '/permission-groups']);
+  assert.equal(lookup('vi', 'nav.items.aiUsage'), undefined);
+  assert.equal(lookup('en', 'nav.items.aiUsage'), undefined);
   assert.equal(t('en', 'nav.items.aiCredits'), 'AI plans & points');
+  assert.equal(t('vi', 'aiChatbot.overview'), 'Báo cáo tổng quan');
+  assert.equal(t('en', 'aiChatbot.overview'), 'Overview report');
 });
 
 test('queries: keys carry the tenant and the month; only network and server failures are retried', () => {
@@ -369,7 +387,7 @@ test('queries: keys carry the tenant and the month; only network and server fail
 test('every aiCredits key used by the pages exists in Vietnamese and English; tenant copy never mentions money, tokens or providers', () => {
   const files = [
     ...readdirSync(directory).filter(name => /\.tsx?$/.test(name) && !name.includes('.mock.')).map(name => path.join(directory, name)),
-    path.join(src, 'pages/ai-usage.tsx'), path.join(src, 'pages/ai-credits.tsx'), path.join(src, 'hooks/queries/use-ai-credits.ts'),
+    path.join(src, 'pages/ai-chatbot.tsx'), path.join(src, 'pages/ai-credits.tsx'), path.join(src, 'hooks/queries/use-ai-credits.ts'),
   ];
   const used = new Set();
   for (const file of files) {
