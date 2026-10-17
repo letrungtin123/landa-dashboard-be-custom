@@ -226,6 +226,39 @@ test('controller: a brief refusal keeps the screen usable and clears when the au
   assert.equal(unknown.controller.getState().brief.learner_audience, 'A', 'an unknown outcome freezes the brief that was sent');
 });
 
+test('AI points refusals (429) are definite: the start screen shows the plain points message and stays usable', async () => {
+  const copy = {
+    AI_CREDIT_INSUFFICIENT_FOR_RUN: {
+      vi: 'Không đủ điểm AI để tạo khoá học. Liên hệ quản trị viên để mua thêm điểm.',
+      en: 'Not enough AI points to create this course. Contact your administrator to buy more points.',
+    },
+    AI_CREDIT_LIMIT_REACHED: {
+      vi: 'Đã dùng hết điểm AI của tháng này. Liên hệ quản trị viên để mua thêm điểm.',
+      en: "This month's AI points are used up. Contact your administrator to buy more points.",
+    },
+  };
+  for (const [code, text] of Object.entries(copy)) {
+    assert.equal(logic.isWorkspaceLaunchBriefErrorCode(code), true);
+    const failure = workspaceCreateFailure({ response: { status: 429, data: { code } } });
+    assert.equal(failure.outcome, 'rejected'); assert.equal(failure.code, code);
+    for (const locale of ['vi', 'en']) { env.locale = locale; assert.equal(t(logic.workspaceLaunchBriefErrorKey(code)), text[locale]); }
+  }
+  env.locale = 'vi';
+  assert.equal(workspaceCreateFailure({ response: { status: 429, data: { code: 'AI_TOKEN_LIMIT_REACHED' } } }).outcome, 'unknown',
+    'other 429 answers keep the old handling');
+  const f = controllerFixture();
+  await f.controller.refresh(); f.controller.select(id(7));
+  f.controller.setBrief({ learner_audience: 'A', course_purpose: 'B' });
+  f.fail(Object.assign(Error('429'), { response: { status: 429, data: { code: 'AI_CREDIT_INSUFFICIENT_FOR_RUN' } } }));
+  await f.controller.create();
+  const state = f.controller.getState();
+  assert.equal(state.issue, 'brief_rejected'); assert.equal(state.briefError, 'AI_CREDIT_INSUFFICIENT_FOR_RUN');
+  assert.equal(state.ready, true); assert.equal(state.unknown, false); assert.equal(state.busy, false);
+  const html = renderToStaticMarkup(h(WorkspaceSourcePanel, { controller: f.controller, locale: 'vi' }));
+  assert.match(html, /role="alert">Không đủ điểm AI để tạo khoá học\. Liên hệ quản trị viên để mua thêm điểm\.<\/p>/);
+  assert.doesNotMatch(html, /AI_CREDIT/);
+});
+
 const view = { workspace_id: id(1), correlation_id: id(2), contract_version: 1, content_locale: 'vi', status: 'drafting',
   last_event_sequence: 0, updated_at: '2026-10-14T00:00:00.000Z' };
 const status = brief => ({ ...view, node_count: 0, unit_count: 0, ready_unit_count: 0, ...(brief === undefined ? {} : { launch_brief: brief }) });

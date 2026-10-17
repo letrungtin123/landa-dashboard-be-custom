@@ -72,6 +72,7 @@ import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { aiCreditErrorKey } from '@/api/ai-credit-errors.logic';
 import {
   readLessonAuthorEditorContext,
   isValidLessonAuthorCourseId,
@@ -375,6 +376,8 @@ function clearStoredReportPdfExport(conversationId: string | null | undefined, m
 
 function getReportPdfExportErrorText(error: unknown, t: TFunction): string {
   const code = error instanceof ReportPdfExportApiError ? error.code : null;
+  const creditKey = aiCreditErrorKey(code);
+  if (creditKey) return t(creditKey);
   if (code === 'REPORT_PDF_SCOPE_DENIED' || code === 'REPORT_PDF_PERMISSION_DENIED' || code === 'REPORT_PDF_DEMO_SESSION') {
     return t('chatWidget.report.permissionDenied');
   }

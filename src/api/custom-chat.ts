@@ -12,6 +12,7 @@ import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refres
 import type { LessonAuthorEditorContext } from "@/utils/lesson-author-editor-context";
 import { buildChatStreamUrl, isChatStreamNetworkError, consumeChatEventStream, readGenerationAdmissionRejection } from "./custom-chat-stream.logic";
 import { normalizeLessonAuthorVideoUploadProgress } from "./lesson-author-video-upload.logic";
+import { aiCreditErrorKey } from "./ai-credit-errors.logic";
 import { pollBlueprintGeneration, readBlueprintGenerationStatus, type BlueprintGenerationStatus } from './lesson-author-generation.logic';
 import { readChapterCheckpointStatus, type ChapterCheckpointStatus } from './lesson-author-chapter-checkpoint.logic';
 
@@ -749,6 +750,9 @@ function normalizeStreamErrorPayload(payload: unknown, fallbackKey: string): str
   const data = payload as { code?: unknown; message?: unknown; error?: unknown };
   if (data?.code === AI_TOKEN_LIMIT_REACHED_CODE) return streamText('chatWidget.aiTokenLimitReached');
   if (data?.code === AI_RAG_KB_NOT_ASSIGNED_CODE) return streamText('chatWidget.aiRagKbNotAssigned');
+  // AI points used up / not enough for the request: the same plain message everywhere.
+  const creditKey = aiCreditErrorKey(data?.code);
+  if (creditKey) return streamText(creditKey);
   const rawMessage = data?.message ?? data?.error;
   // Report errors are already localized by the backend in the request locale (`[status, vi, en]`).
   if (typeof data?.code === 'string' && data.code.startsWith('REPORT_') && typeof rawMessage === 'string' && rawMessage.trim()) {

@@ -2,6 +2,7 @@ import {
   readWorkspaceLaunchBrief, WORKSPACE_COURSE_PURPOSE_MAX, WORKSPACE_DESIGN_MODES, WORKSPACE_LEARNER_AUDIENCE_MAX,
   type WorkspaceDesignMode, type WorkspaceGraph, type WorkspaceLaunchBrief, type WorkspaceStatus,
 } from '../../api/lesson-author-workspace.contract';
+import { AI_CREDIT_ERROR_CODES, AI_CREDIT_ERROR_KEYS, isAiCreditErrorCode, type AiCreditErrorCode } from '../../api/ai-credit-errors.logic';
 
 /**
  * AI ID launch brief (QLT-6): the way of working chosen on the start screen
@@ -105,12 +106,15 @@ export const WORKSPACE_LAUNCH_BRIEF_ERROR_CODES = [
   'LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG', 'LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED',
   // QLT-6: keeping the material as it is is not turned on for this organization (no IDM pipeline).
   'LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE',
+  // AI points: the month's points are used up, or too few are left for a new run. Refused before
+  // anything is created; Create works again once points are added (no field to fix).
+  ...AI_CREDIT_ERROR_CODES,
 ] as const;
 export type WorkspaceLaunchBriefErrorCode = typeof WORKSPACE_LAUNCH_BRIEF_ERROR_CODES[number];
 export function isWorkspaceLaunchBriefErrorCode(code: unknown): code is WorkspaceLaunchBriefErrorCode {
   return WORKSPACE_LAUNCH_BRIEF_ERROR_CODES.includes(code as WorkspaceLaunchBriefErrorCode);
 }
-const ERROR_KEYS: Record<WorkspaceLaunchBriefErrorCode, string> = {
+const ERROR_KEYS: Record<Exclude<WorkspaceLaunchBriefErrorCode, AiCreditErrorCode>, string> = {
   LESSON_AUTHOR_LAUNCH_MODE_INVALID: 'errorMode',
   LESSON_AUTHOR_LAUNCH_AUDIENCE_REQUIRED: 'errorLearners',
   LESSON_AUTHOR_LAUNCH_PURPOSE_REQUIRED: 'errorPurpose',
@@ -118,9 +122,9 @@ const ERROR_KEYS: Record<WorkspaceLaunchBriefErrorCode, string> = {
   LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED: 'errorNotAllowed',
   LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE: 'errorModeUnavailable',
 };
-/** i18n key (under aiIdLaunchBrief) of the plain message for a brief rejection. */
+/** i18n key of the plain message for a brief rejection (under aiIdLaunchBrief; AI points refusals share aiCredits.errors). */
 export function workspaceLaunchBriefErrorKey(code: WorkspaceLaunchBriefErrorCode): string {
-  return `aiIdLaunchBrief.${ERROR_KEYS[code]}`;
+  return isAiCreditErrorCode(code) ? AI_CREDIT_ERROR_KEYS[code] : `aiIdLaunchBrief.${ERROR_KEYS[code]}`;
 }
 
 /** The brief of an open session, from the status read (or the graph when only

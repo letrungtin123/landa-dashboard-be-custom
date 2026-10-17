@@ -37,6 +37,22 @@ test('stream transport retains the bearer and superadmin tenant forwarding contr
   assert.match(customChatSource, /headers\['X-Tenant-Id'\] = activeTenantId/);
 });
 
+test('chat errors for spent AI points show the shared plain message before any server text', () => {
+  const errorsSource = readFileSync(new URL('./ai-credit-errors.logic.ts', import.meta.url), 'utf8');
+  assert.match(customChatSource, /import \{ aiCreditErrorKey \} from "\.\/ai-credit-errors\.logic";/);
+  const normalize = customChatSource.slice(customChatSource.indexOf('function normalizeStreamErrorPayload'));
+  const creditCheck = normalize.indexOf('const creditKey = aiCreditErrorKey(data?.code);');
+  assert.ok(creditCheck > 0, 'the stream error payload is checked for AI points codes');
+  assert.ok(creditCheck < normalize.indexOf('const rawMessage'), 'before the server message is used');
+  assert.match(normalize, /if \(creditKey\) return streamText\(creditKey\);/);
+  assert.match(errorsSource, /AI_CREDIT_LIMIT_REACHED: 'aiCredits\.errors\.limitReached'/);
+  assert.match(errorsSource, /AI_CREDIT_INSUFFICIENT_FOR_RUN: 'aiCredits\.errors\.insufficientForRun'/);
+  const widget = readFileSync(new URL('../components/chat-widget/chat-widget.tsx', import.meta.url), 'utf8');
+  const pdfErrors = widget.slice(widget.indexOf('function getReportPdfExportErrorText'));
+  assert.match(pdfErrors, /^function getReportPdfExportErrorText[^]*?const creditKey = aiCreditErrorKey\(code\);\s*if \(creditKey\) return t\(creditKey\);\s*if \(code === 'REPORT_PDF_SCOPE_DENIED'/,
+    'a PDF report refused for spent points shows the same message');
+});
+
 function body(parts) {
   return new ReadableStream({ start(controller) {
     for (const part of parts) controller.enqueue(new TextEncoder().encode(part));
