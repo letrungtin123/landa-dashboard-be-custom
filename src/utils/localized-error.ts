@@ -1,6 +1,7 @@
 import { useLocaleStore } from "@/utils/locale-store";
 import i18n from "@/i18n";
 import { userAuthorityErrorKey } from "@/components/users/user-authority.logic";
+import { aiCreditErrorKey } from "@/api/ai-credit-errors.logic";
 
 const TENANT_DATA_LIMIT_REACHED_CODE = "TENANT_DATA_LIMIT_REACHED";
 const TENANT_DATA_QUOTA_RECONCILING_CODE = "TENANT_DATA_QUOTA_RECONCILING";
@@ -81,6 +82,8 @@ export function getLocalizedApiError(error: unknown, fallback: string): string {
   if (response?.data?.code === COURSE_ASSET_STORAGE_SIZE_LIMIT_CODE) {
     return i18n.t("courseEditorForms.assetStorageLimitReached", { lng: locale });
   }
+  const aiCreditKey = aiCreditErrorKey(response?.data?.code);
+  if (aiCreditKey) return i18n.t(aiCreditKey, { lng: locale });
   const userAuthorityKey = userAuthorityErrorKey(response?.data?.code);
   if (userAuthorityKey) return i18n.t(userAuthorityKey, { lng: locale });
   const rawMessage = response?.data?.message ?? response?.data?.error;

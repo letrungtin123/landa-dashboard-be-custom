@@ -14,6 +14,7 @@ import { useHeaderInfo } from "@/utils/header-store";
 import { useLocaleStore } from "@/utils/locale-store";
 import { formatLocaleDate, formatQuotaGigabytes } from "@/utils/locale-format";
 import { getLocalizedApiError } from "@/utils/localized-error";
+import { TenantAiPlanField } from "@/components/ai-credits/tenant-ai-plan-field";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,7 +214,6 @@ export default function TenantManagementPage() {
   const [formDataLimitDirty, setFormDataLimitDirty] = useState(false);
   const [formGeminiApiKey, setFormGeminiApiKey] = useState("");
   const [formAiEngine, setFormAiEngine] = useState<TenantAiEngine>("gemini_file_search");
-  const [formAiTokenLimit, setFormAiTokenLimit] = useState("");
   const [formHasAiKey, setFormHasAiKey] = useState(false);
   const [formRoleLabels, setFormRoleLabels] = useState<RoleLabelMap>({});
   const [originalRoleLabels, setOriginalRoleLabels] = useState<RoleLabelMap>({});
@@ -269,10 +269,6 @@ export default function TenantManagementPage() {
       toast.error(t("tenantManagement.invalidStorageLimit"));
       return false;
     }
-    if (formAiTokenLimit.trim() && !/^\d+$/.test(formAiTokenLimit.trim())) {
-      toast.error(t("tenantManagement.invalidAiTokenLimit"));
-      return false;
-    }
 
     const dl = formDomainLearner.trim();
     if (dl && !validateDomain(dl, t("tenantManagement.learnerDomain"))) return false;
@@ -295,7 +291,6 @@ export default function TenantManagementPage() {
     setFormDataLimitDirty(false);
     setFormGeminiApiKey("");
     setFormAiEngine("gemini_file_search");
-    setFormAiTokenLimit("");
     setFormHasAiKey(false);
     setFormRoleLabels({});
     setOriginalRoleLabels({});
@@ -324,7 +319,6 @@ export default function TenantManagementPage() {
     setFormDataLimitDirty(false);
     setFormGeminiApiKey("");
     setFormAiEngine(tenant.ai_active_engine || "gemini_file_search");
-    setFormAiTokenLimit(tenant.ai_monthly_token_limit || "");
     setFormHasAiKey(false);
     setShowApiKey(false);
     setFormRoleLabels({});
@@ -346,7 +340,6 @@ export default function TenantManagementPage() {
       setFormGroupLabels(groupLabels);
       setOriginalGroupLabels(groupLabels);
       setFormAiEngine(aiSettings.activeEngine);
-      setFormAiTokenLimit(aiSettings.monthlyTokenLimit || "");
       setFormHasAiKey(aiSettings.hasGoogleAiStudioKey);
     } catch {
       toast.error(t("tenantManagement.labelsLoadFailed"));
@@ -367,9 +360,9 @@ export default function TenantManagementPage() {
         max_courses: formMaxCourses ? parseInt(formMaxCourses, 10) : null,
         data_limit_bytes: getDataLimitBytes(),
       });
+      // The monthly token limit is no longer edited here (AI limits are points by plan); it is not sent.
       await updateTenantAiSettings(tenant.id, {
         active_engine: formAiEngine,
-        monthly_token_limit: formAiTokenLimit.trim() || null,
         ...(formGeminiApiKey.trim() ? { google_ai_studio_api_key: formGeminiApiKey.trim() } : {}),
       });
       const labels = normalizeRoleLabels(formRoleLabels);
@@ -407,7 +400,6 @@ export default function TenantManagementPage() {
       });
       await updateTenantAiSettings(editTenant.id, {
         active_engine: formAiEngine,
-        monthly_token_limit: formAiTokenLimit.trim() || null,
         ...(formGeminiApiKey.trim() ? { google_ai_studio_api_key: formGeminiApiKey.trim() } : {}),
       });
       coreTenantUpdated = true;
@@ -901,16 +893,7 @@ export default function TenantManagementPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t("tenantManagement.aiTokenLimit")}</label>
-                  <Input
-                    inputMode="numeric"
-                    value={formAiTokenLimit}
-                    onChange={function onChange(e) { setFormAiTokenLimit(e.target.value); }}
-                    placeholder={t("tenantManagement.unlimited")}
-                    className="font-mono"
-                  />
-                </div>
+                <TenantAiPlanField tenantId={editTenant?.id ?? null} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-1.5">

@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Suspense } from 'react';
+import { Suspense, lazy, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const queryClient = new QueryClient();
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -47,6 +47,22 @@ import TenantBadgesPage from '@/pages/tenant-badges';
 import SsoManagementPage from '@/pages/sso-management';
 import DemoLoginSettingsPage from '@/pages/demo-login-settings';
 import DevAiIdMindmapSkeletonPage, { AI_ID_MINDMAP_SKELETON_PREVIEW_PATH } from '@/pages/dev-ai-id-mindmap-skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// AI points pages are split out of the main chunk (charts and animations load with them).
+const AiUsagePage = lazy(() => import('@/pages/ai-usage'));
+const AiCreditsPage = lazy(() => import('@/pages/ai-credits'));
+// Development only: the dynamic import is removed from production builds with this branch.
+const DevAiCreditsPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-credits-preview')) : null;
+const AI_CREDITS_PREVIEW_PATH = '/dev/ai-credits-preview';
+
+function LazyPage({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6" aria-busy="true"><Skeleton className="h-12 w-72 max-w-full rounded-xl" /><Skeleton className="h-64 rounded-3xl" /></div>}>
+      {children}
+    </Suspense>
+  );
+}
 
 
 function AppRoutes() {
@@ -55,6 +71,8 @@ function AppRoutes() {
       {/* Compile-time development harness: no auth, workspace or provider
           controller is mounted, and this route does not exist in production. */}
       {import.meta.env.DEV && <Route path={AI_ID_MINDMAP_SKELETON_PREVIEW_PATH} element={<DevAiIdMindmapSkeletonPage />} />}
+      {/* Development preview of the AI points pages with mock data: no auth, no backend. */}
+      {import.meta.env.DEV && DevAiCreditsPreviewPage && <Route path={AI_CREDITS_PREVIEW_PATH} element={<LazyPage><DevAiCreditsPreviewPage /></LazyPage>} />}
 
       {/* Public routes */}
       <Route element={<AuthGuard requireAuth={false} />}>
@@ -73,6 +91,7 @@ function AppRoutes() {
           <Route path="/accounts" element={<ModuleGuard module="account"><UsersPage /></ModuleGuard>} />
           <Route path="/audit-logs" element={<ModuleGuard module="audit_log"><AuditLogsPage /></ModuleGuard>} />
           <Route path="/report-summary" element={<ModuleGuard module="report_summary"><ReportSummaryPage /></ModuleGuard>} />
+          <Route path="/ai-usage" element={<ModuleGuard module="ai_usage"><LazyPage><AiUsagePage /></LazyPage></ModuleGuard>} />
           <Route path="/library" element={<ModuleGuard module="library"><LibraryPage /></ModuleGuard>} />
           <Route path="/courses" element={<ModuleGuard module="courses"><CoursesPage /></ModuleGuard>} />
           <Route path="/courses/:courseId/assignments" element={<ModuleGuard module="courses"><CourseAssignmentsPage /></ModuleGuard>} />
@@ -82,6 +101,7 @@ function AppRoutes() {
           <Route path="/help-docs" element={<ModuleGuard module="help_docs"><HelpDocsPage /></ModuleGuard>} />
           <Route path="/news" element={<ModuleGuard module="news"><NewsManagementPage /></ModuleGuard>} />
           <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
+          <Route path="/ai-credits" element={<ModuleGuard module="superadmin_only"><LazyPage><AiCreditsPage /></LazyPage></ModuleGuard>} />
           <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
           <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
           <Route path="/email-templates" element={<ModuleGuard module="email_templates"><EmailTemplatesPage /></ModuleGuard>} />
