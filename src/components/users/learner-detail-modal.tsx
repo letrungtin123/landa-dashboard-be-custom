@@ -572,8 +572,9 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                     {badgesData.badges.map((b) => {
                       const info = BADGE_IMAGE_MAP[b.badge_id];
                       if (!info) return null;
+                      const badgeName = b.name_override || t(info.nameKey);
                       return (
-                        <AppTooltip content={t('learnerDetail.earnedOn', { badge: t(info.nameKey), date: formatLocaleDate(b.earned_at, locale) })}><div
+                        <AppTooltip content={t('learnerDetail.earnedOn', { badge: badgeName, date: formatLocaleDate(b.earned_at, locale) })}><div
                           key={b.badge_id}
                           className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/20 border border-amber-200/50 dark:border-amber-700/30 text-[10px] sm:text-xs font-medium text-amber-800 dark:text-amber-300 shadow-sm"
 
@@ -583,7 +584,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                             whileHover={{ scale: 1.15 }}
                             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                           >
-                            <img src={info.src} alt={t(info.nameKey)} className="w-full h-full object-contain drop-shadow-sm" />
+                            <img src={info.src} alt={badgeName} className="w-full h-full object-contain drop-shadow-sm" />
                             <div
                               className="absolute inset-0 z-10 pointer-events-none"
                               style={{
@@ -604,7 +605,7 @@ export function LearnerDetailModal({ username, isOpen, onClose, groupId, subgrou
                               />
                             </div>
                           </motion.div>
-                          <span className="truncate max-w-[80px] sm:max-w-none">{t(info.nameKey)}</span>
+                          <span className="truncate max-w-[80px] sm:max-w-none">{badgeName}</span>
                         </div></AppTooltip>
                       );
                     })}

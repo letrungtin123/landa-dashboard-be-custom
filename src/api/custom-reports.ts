@@ -138,6 +138,8 @@ export interface LearnerDetailResponse {
 export interface AdminUserBadge {
   badge_id: string;
   earned_at: string;
+  /** The tenant's own display name for this badge, when it set one in badge management. */
+  name_override?: string | null;
 }
 
 export interface AdminUserBadgesResponse {
