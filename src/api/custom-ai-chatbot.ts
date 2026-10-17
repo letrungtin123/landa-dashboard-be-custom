@@ -10,39 +10,6 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-export interface AiOverviewReport {
-  periodStart: string;
-  tokenTimezone: string;
-  quota: {
-    monthlyLimit: string | null;
-    inputUsed: string;
-    outputUsed: string;
-    embeddingUsed: string;
-    totalUsed: string;
-    reserved: string;
-    remaining: string | null;
-  };
-  cost: {
-    currency: 'VND';
-    estimatedVnd: string;
-    hasUnpricedUsage: boolean;
-    unpricedEventCount: string;
-  };
-  breakdown: Array<{
-    operation: 'chat' | 'lesson_author' | 'indexing';
-    totalTokens: string;
-    estimatedVnd: string;
-    eventCount: string;
-    unpricedEventCount: string;
-  }>;
-  daily: Array<{
-    day: string;
-    totalTokens: string;
-    estimatedVnd: string;
-    eventCount: string;
-  }>;
-}
-
 // ── Types ──
 
 export interface Knowledgebase {
@@ -184,11 +151,6 @@ export interface FetchKbsParams {
 
 export async function fetchKnowledgebases(params?: FetchKbsParams) {
   const { data } = await customApiClient.get<ApiResponse<{ data: Knowledgebase[]; total: number }>>("/api/ai-chatbot/kb", { params });
-  return data.data;
-}
-
-export async function fetchAiOverviewReport(): Promise<AiOverviewReport> {
-  const { data } = await customApiClient.get<ApiResponse<AiOverviewReport>>('/api/ai-chatbot/reports/overview');
   return data.data;
 }
 

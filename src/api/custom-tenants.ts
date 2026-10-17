@@ -67,22 +67,6 @@ export interface TenantAiSettings {
   pendingEngine: TenantAiEngine | null;
 }
 
-export interface AiPricingRateCard {
-  id: string;
-  provider: 'google_ai_studio';
-  model: string;
-  inputVndPer1M: string;
-  outputVndPer1M: string;
-  embeddingVndPer1M: string;
-  effectiveFrom: string;
-  effectiveTo: string | null;
-  sourceUrl: string | null;
-  sourceNote: string | null;
-  status: 'active' | 'draft' | 'retired';
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface UpdateTenantAiSettingsInput {
   active_engine?: TenantAiEngine;
   monthly_token_limit?: string | null;
@@ -180,24 +164,6 @@ export async function updateTenantAiSettings(
   input: UpdateTenantAiSettingsInput,
 ): Promise<TenantAiSettings> {
   const { data } = await customApiClient.put<ApiResponse<TenantAiSettings>>(`/api/tenants/${tenantId}/ai-settings`, input);
-  return data.data;
-}
-
-export async function fetchAiPricingRateCards(): Promise<AiPricingRateCard[]> {
-  const { data } = await customApiClient.get<ApiResponse<AiPricingRateCard[]>>('/api/tenants/ai-pricing/rate-cards');
-  return data.data;
-}
-
-export async function createAiPricingRateCard(input: {
-  provider: 'google_ai_studio';
-  model: string;
-  input_vnd_per_1m: string;
-  output_vnd_per_1m: string;
-  embedding_vnd_per_1m: string;
-  source_url?: string;
-  source_note?: string;
-}): Promise<AiPricingRateCard> {
-  const { data } = await customApiClient.post<ApiResponse<AiPricingRateCard>>('/api/tenants/ai-pricing/rate-cards', input);
   return data.data;
 }
 
