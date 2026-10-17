@@ -181,9 +181,13 @@ function fold(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 }
 
-export type AiUserSort = 'points' | 'calls' | 'name';
+export type AiUserSort = 'points' | 'name';
 
-/** Client-side search (name or email, accents ignored) and sort of the at most 100 users. */
+/**
+ * Client-side search (name or email, accents ignored) and sort of the at most
+ * 100 users. "Most points" falls back to the number of uses (never shown)
+ * when points cannot be counted yet, so the busiest people still come first.
+ */
 export function filterAndSortUsers(users: readonly AiUsageUser[], query: string, sort: AiUserSort, labels: AiUserLabels): AiUsageUser[] {
   const needle = fold(query.trim());
   const filtered = needle
@@ -191,7 +195,6 @@ export function filterAndSortUsers(users: readonly AiUsageUser[], query: string,
     : [...users];
   return filtered.sort((a, b) => {
     if (sort === 'name') return aiUserDisplayName(a, labels).localeCompare(aiUserDisplayName(b, labels), 'vi');
-    if (sort === 'calls') return b.calls - a.calls || (b.points ?? 0) - (a.points ?? 0);
     return (b.points ?? -1) - (a.points ?? -1) || b.calls - a.calls;
   });
 }

@@ -74,7 +74,7 @@ function FeatureMiniBar({ user }: { user: AiUsageUser }) {
   );
 }
 
-/** Everyone who used AI this month: search by name or email, sort, avatar, points, uses, feature split. */
+/** Everyone who used AI this month: search by name or email, sort, avatar, points and feature split (never a count of uses). */
 export function AiUsageUserList({ users }: { users: readonly AiUsageUser[] }) {
   const { t } = useTranslation();
   const locale = useLocaleStore(state => state.locale);
@@ -117,7 +117,6 @@ export function AiUsageUserList({ users }: { users: readonly AiUsageUser[] }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="points">{t('aiCredits.usage.users.sortPoints')}</SelectItem>
-              <SelectItem value="calls">{t('aiCredits.usage.users.sortCalls')}</SelectItem>
               <SelectItem value="name">{t('aiCredits.usage.users.sortName')}</SelectItem>
             </SelectContent>
           </Select>
@@ -125,10 +124,9 @@ export function AiUsageUserList({ users }: { users: readonly AiUsageUser[] }) {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-border/60">
-        <div className="hidden grid-cols-[minmax(0,1.6fr)_110px_90px_minmax(140px,1fr)] gap-4 border-b border-border/60 bg-muted/40 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid">
+        <div className="hidden grid-cols-[minmax(0,1.6fr)_120px_minmax(160px,1fr)] gap-4 border-b border-border/60 bg-muted/40 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid">
           <span>{t('aiCredits.usage.users.columnUser')}</span>
           <span className="text-right">{t('aiCredits.usage.users.columnPoints')}</span>
-          <span className="text-right">{t('aiCredits.usage.users.columnUses')}</span>
           <span>{t('aiCredits.usage.users.columnFeatures')}</span>
         </div>
         {shown.length === 0 ? (
@@ -144,7 +142,7 @@ export function AiUsageUserList({ users }: { users: readonly AiUsageUser[] }) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.25, ease: AI_EASE }}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2.5 px-4 py-3 transition-colors hover:bg-muted/30 md:grid-cols-[minmax(0,1.6fr)_110px_90px_minmax(140px,1fr)] md:items-center md:gap-4"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2.5 px-4 py-3 transition-colors hover:bg-muted/30 md:grid-cols-[minmax(0,1.6fr)_120px_minmax(160px,1fr)] md:items-center md:gap-4"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <AiUserAvatar user={user} labels={labels} />
@@ -155,11 +153,7 @@ export function AiUsageUserList({ users }: { users: readonly AiUsageUser[] }) {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold tabular-nums text-foreground">{formatPoints(user.points, locale)}</p>
-                    <p className="text-[11px] text-muted-foreground md:hidden">{t('aiCredits.common.uses')}: {formatCount(user.calls, locale)}</p>
-                  </div>
-                  <p className="hidden text-right text-sm tabular-nums text-muted-foreground md:block">{formatCount(user.calls, locale)}</p>
+                  <p className="text-right text-sm font-semibold tabular-nums text-foreground">{formatPoints(user.points, locale)}</p>
                   <div className="col-span-2 md:col-span-1"><FeatureMiniBar user={user} /></div>
                 </motion.li>
               ))}

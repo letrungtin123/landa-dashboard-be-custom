@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Activity, Gift, Hourglass, Infinity as InfinityIcon, Info, Layers, PiggyBank, Timer } from 'lucide-react';
+import { CircleCheck, Gift, Hourglass, Infinity as InfinityIcon, Info, Layers, PiggyBank, Timer } from 'lucide-react';
 import type { AiUsageSummary } from '@/api/ai-credits';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useLocaleStore } from '@/utils/locale-store';
 import { cn } from '@/utils/utils';
 import { AiCreditRing } from './ai-credit-ring';
-import { formatCount, formatPercent, formatPoints } from './ai-credits-format.logic';
+import { formatPercent, formatPoints } from './ai-credits-format.logic';
 import { aiStateTone } from './ai-credits-usage.logic';
 import { AI_EASE, AiAnimatedNumber, AiStateChip, AiStatTile } from './ai-credits-ui';
 
@@ -16,17 +16,18 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
   const locale = useLocaleStore(state => state.locale);
   const tone = aiStateTone(summary.state);
   const { points } = summary;
-  const totalCalls = summary.features.reduce((sum, item) => sum + (item.calls || 0), 0);
   const unlimited = summary.state === 'unlimited';
   const unvalued = summary.state === 'unvalued';
-  // A past month without a credit row: its uses show, it never had points.
+  // A past month without a credit row: it never had points.
   const noMonth = !summary.has_month;
   const unvaluedTitle = noMonth ? t('aiCredits.usage.hero.noMonthTitle') : t('aiCredits.usage.hero.unvaluedTitle');
-  // Without point values (no FX rate yet, or a free plan) the month is shown in uses.
-  const byUses = unvalued || points.used === null;
+  // Without point values (no FX rate yet, or a free plan) only the state is shown: never a count of uses (owner).
+  const hasPoints = !unvalued && points.used !== null;
+  const showRemaining = hasPoints && !unlimited;
+  const showPlanPoints = !unlimited && points.plan !== null;
+  const showTopup = points.topup > 0;
   const fmtPoints = (value: number | null) => formatPoints(value, locale);
   const fmtPercent = (value: number | null) => formatPercent(value, locale);
-  const fmtCount = (value: number | null) => formatCount(value, locale);
   const ringLabel = unlimited ? t('aiCredits.usage.hero.unlimitedTitle')
     : unvalued ? unvaluedTitle
       : `${fmtPercent(summary.percent)} ${t('aiCredits.usage.hero.percentCaption')}`;
@@ -67,40 +68,47 @@ export function AiUsageHero({ summary }: { summary: AiUsageSummary }) {
 
         <div className="min-w-0 space-y-5">
           <div className="space-y-2">
-            <AiStateChip state={summary.state} label={noMonth ? unvaluedTitle : undefined} />
-            <p className="pt-1 text-sm font-medium text-muted-foreground">
-              {byUses ? t('aiCredits.usage.hero.usesThisMonth') : t('aiCredits.usage.hero.usedLabel')}
-            </p>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              {byUses
-                ? <AiAnimatedNumber value={totalCalls} format={fmtCount} className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl" />
-                : <AiAnimatedNumber value={points.used} format={fmtPoints} className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl" />}
-              {!unlimited && !unvalued && points.total !== null && (
-                <span className="text-base font-medium text-muted-foreground">{t('aiCredits.usage.hero.ofTotal', { total: fmtPoints(points.total) })}</span>
-              )}
-            </div>
+            {/* The heading already says "no limit" when there are no points to show. */}
+            {!(unlimited && !hasPoints) && <AiStateChip state={summary.state} label={noMonth ? unvaluedTitle : undefined} />}
+            {hasPoints ? (
+              <>
+                <p className="pt-1 text-sm font-medium text-muted-foreground">{t('aiCredits.usage.hero.usedLabel')}</p>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <AiAnimatedNumber value={points.used} format={fmtPoints} className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl" />
+                  {!unlimited && points.total !== null && (
+                    <span className="text-base font-medium text-muted-foreground">{t('aiCredits.usage.hero.ofTotal', { total: fmtPoints(points.total) })}</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <h2 className="pt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                {unlimited ? t('aiCredits.usage.hero.noPointsUnlimitedTitle') : unvaluedTitle}
+              </h2>
+            )}
             {(unlimited || unvalued) && (
               <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-                {unlimited ? t('aiCredits.usage.hero.unlimitedBody') : noMonth ? t('aiCredits.usage.hero.noMonthBody') : t('aiCredits.usage.hero.unvaluedBody')}
+                {unlimited
+                  ? hasPoints ? t('aiCredits.usage.hero.unlimitedBody') : t('aiCredits.usage.hero.noPointsUnlimitedBody')
+                  : noMonth ? t('aiCredits.usage.hero.noMonthBody') : t('aiCredits.usage.hero.unvaluedBody')}
+              </p>
+            )}
+            {!hasPoints && !noMonth && (
+              <p className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <CircleCheck className="h-3.5 w-3.5" aria-hidden />{t('aiCredits.usage.hero.aiWorks')}
               </p>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-            {!unlimited && !unvalued && (
-              <AiStatTile icon={PiggyBank} label={t('aiCredits.usage.hero.remaining')}
-                value={<AiAnimatedNumber value={points.remaining} format={fmtPoints} />} />
-            )}
-            {!unlimited && points.plan !== null && (
-              <AiStatTile icon={Layers} label={t('aiCredits.usage.hero.planPoints')} value={fmtPoints(points.plan)} />
-            )}
-            {points.topup > 0 && (
-              <AiStatTile icon={Gift} label={t('aiCredits.usage.hero.topup')} value={`+${fmtPoints(points.topup)}`} />
-            )}
-            {!byUses && (
-              <AiStatTile icon={Activity} label={t('aiCredits.usage.hero.usesThisMonth')} value={fmtCount(totalCalls)} />
-            )}
-          </div>
+          {(showRemaining || showPlanPoints || showTopup) && (
+            <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+              {showRemaining && (
+                <AiStatTile icon={PiggyBank} label={t('aiCredits.usage.hero.remaining')}
+                  value={<AiAnimatedNumber value={points.remaining} format={fmtPoints} />} />
+              )}
+              {showPlanPoints && <AiStatTile icon={Layers} label={t('aiCredits.usage.hero.planPoints')} value={fmtPoints(points.plan)} />}
+              {showTopup && <AiStatTile icon={Gift} label={t('aiCredits.usage.hero.topup')} value={`+${fmtPoints(points.topup)}`} />}
+            </div>
+          )}
 
           {points.reserved !== null && points.reserved > 0 && (
             <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

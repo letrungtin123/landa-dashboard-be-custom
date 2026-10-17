@@ -136,7 +136,10 @@ test('people: system and deleted names, initials, accent-free search and sorting
   assert.deepEqual(usage.filterAndSortUsers(users, 'nguyen van', 'points', labels).map(user => user.user_key), ['a']);
   assert.deepEqual(usage.filterAndSortUsers(users, 'do binh', 'points', labels).map(user => user.user_key), ['c']);
   assert.deepEqual(usage.filterAndSortUsers(users, '', 'points', labels).map(user => user.user_key), ['system', 'b', 'a', 'c']);
-  assert.deepEqual(usage.filterAndSortUsers(users, '', 'calls', labels).map(user => user.user_key), ['c', 'a', 'b', 'system']);
+  assert.deepEqual(usage.filterAndSortUsers(users, '', 'name', labels).map(user => user.user_key), ['c', 'system', 'a', 'b']);
+  // Before points can be counted, "most points" keeps the busiest people first (uses are never shown).
+  const unvalued = users.map(user => ({ ...user, points: null }));
+  assert.deepEqual(usage.filterAndSortUsers(unvalued, '', 'points', labels).map(user => user.user_key), ['c', 'a', 'b', 'system']);
   assert.deepEqual(usage.userFeatureSegments({ features: { report_chat_router: 1, report_chat_narrative: 3, ai_id: 4, chat: null } })
     .map(segment => [segment.group, segment.points, segment.share]), [['ai_id', 4, 50], ['report_chat', 4, 50]]);
 });

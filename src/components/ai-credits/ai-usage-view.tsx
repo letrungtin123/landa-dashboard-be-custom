@@ -72,6 +72,8 @@ export function AiUsageView({ summary, compact = false, now }: { summary: AiUsag
   const empty = isUsageEmpty(summary);
   // In the current month (the newest one) the top-user lines stop at today.
   const until = summary.available_months[0] === summary.month ? platformDate(now ?? new Date()) : null;
+  // Before points can be counted the day charts have nothing to draw: they are left out (no counts are shown instead).
+  const hasPointValues = summary.daily.some(item => typeof item.points === 'number');
   return (
     <div className="space-y-5">
       <AiUsageBanner summary={summary} />
@@ -79,9 +81,9 @@ export function AiUsageView({ summary, compact = false, now }: { summary: AiUsag
       {empty ? <AiUsageEmpty /> : (
         <>
           <AiReveal index={1} className="min-w-0"><AiUsageFeatures features={summary.features} /></AiReveal>
-          {!compact && <AiReveal index={2} className="min-w-0"><AiUsageDailyChart daily={summary.daily} month={summary.month} /></AiReveal>}
+          {!compact && hasPointValues && <AiReveal index={2} className="min-w-0"><AiUsageDailyChart daily={summary.daily} month={summary.month} /></AiReveal>}
           <AiReveal index={3}>
-            <AiUsageTopUsers users={summary.users} userDaily={summary.user_daily} month={summary.month} until={until} showChart={!compact} />
+            <AiUsageTopUsers users={summary.users} userDaily={summary.user_daily} month={summary.month} until={until} showChart={!compact && hasPointValues} />
           </AiReveal>
         </>
       )}

@@ -78,8 +78,10 @@ const { AiFxNotice } = at('components/ai-credits/ai-fx-notice.tsx');
 const noop = () => undefined;
 
 function summary(state) {
-  const valued = state !== 'unvalued';
-  const unlimited = state === 'unlimited';
+  // unlimited_no_rate: the unlimited demo plan without an exchange rate (what local tenants see today).
+  const noRate = state === 'unlimited_no_rate';
+  const valued = state !== 'unvalued' && !noRate;
+  const unlimited = state === 'unlimited' || noRate;
   const empty = state === 'empty';
   const points = value => (valued ? value : null);
   const topup = state === 'warning' ? 5000 : 0;
@@ -90,7 +92,7 @@ function summary(state) {
     has_month: true,
     resets_on: '2026-11-01',
     plan: unlimited ? { code: 'demo_unlimited', name: 'Dùng thử', is_unlimited: true } : { code: 'pro', name: 'Chuyên nghiệp', is_unlimited: false },
-    state: empty ? 'ok' : state,
+    state: empty ? 'ok' : noRate ? 'unlimited' : state,
     percent: { ok: 46.2, warning: 86.4, exhausted: 100 }[state] ?? (empty ? 0 : null),
     points: {
       plan: unlimited ? null : 20000,
@@ -101,20 +103,20 @@ function summary(state) {
       remaining: unlimited || !valued ? null : 18753,
     },
     features: empty ? [] : [
-      { feature: 'ai_id', points: points(800), calls: 4 },
-      { feature: 'report_chat_router', points: points(14.5), calls: 9 },
-      { feature: 'report_chat_narrative', points: points(20), calls: 11 },
-      { feature: 'document_indexing', points: points(400), calls: 12 },
+      { feature: 'ai_id', points: points(800), calls: 7714 },
+      { feature: 'report_chat_router', points: points(14.5), calls: 7715 },
+      { feature: 'report_chat_narrative', points: points(20), calls: 7716 },
+      { feature: 'document_indexing', points: points(400), calls: 7717 },
     ],
     daily: empty ? [] : [
       { date: '2026-10-01', feature: 'ai_id', points: points(500) },
       { date: '2026-10-02', feature: 'report_chat_narrative', points: points(20) },
     ],
     users: empty ? [] : [
-      { user_key: 'u1', name: 'Nguyễn Minh Anh', email: 'minhanh@example.vn', deleted: false, system: false, points: points(700), calls: 8, features: { ai_id: points(700) } },
-      { user_key: 'system', name: null, email: null, deleted: false, system: true, points: points(400), calls: 12, features: { document_indexing: points(400) } },
-      { user_key: 'u2', name: 'Phạm Đức Huy', email: 'duchuy@example.vn', deleted: true, system: false, points: points(100), calls: 3, features: { chat: points(100) } },
-      { user_key: 'u3', name: null, email: null, deleted: true, system: false, points: points(34.5), calls: 1, features: {} },
+      { user_key: 'u1', name: 'Nguyễn Minh Anh', email: 'minhanh@example.vn', deleted: false, system: false, points: points(700), calls: 7721, features: { ai_id: points(700) } },
+      { user_key: 'system', name: null, email: null, deleted: false, system: true, points: points(400), calls: 7722, features: { document_indexing: points(400) } },
+      { user_key: 'u2', name: 'Phạm Đức Huy', email: 'duchuy@example.vn', deleted: true, system: false, points: points(100), calls: 7723, features: { chat: points(100) } },
+      { user_key: 'u3', name: null, email: null, deleted: true, system: false, points: points(34.5), calls: 7724, features: {} },
     ],
     user_daily: empty ? [] : [{ date: '2026-10-01', user_key: 'u1', points: points(700) }],
   };
@@ -132,11 +134,13 @@ const FORBIDDEN_FOR_TENANTS = /USD|VND|₫|\$|token|Google|Gemini|OpenAI|provide
 const text = html => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 test('usage page: every state renders translated copy with no money, tokens or provider names (vi and en)', () => {
-  for (const state of ['ok', 'warning', 'exhausted', 'unlimited', 'unvalued', 'empty']) {
+  for (const state of ['ok', 'warning', 'exhausted', 'unlimited', 'unlimited_no_rate', 'unvalued', 'empty']) {
     for (const locale of ['vi', 'en']) {
       const html = renderUsage(state, locale);
       assert.doesNotMatch(html, /aiCredits\./, `${state}/${locale}: untranslated key`);
       assert.doesNotMatch(text(html), FORBIDDEN_FOR_TENANTS, `${state}/${locale}: tenants see points and % only`);
+      // Owner: no count of uses anywhere (the fixture's counts are 77xx).
+      assert.doesNotMatch(text(html), /Lượt dùng|\bUses\b|AI uses|Most uses|77[12]\d|7[.,]7[12]\d/, `${state}/${locale}: no use counts`);
     }
   }
 });
@@ -200,11 +204,23 @@ test('usage page (unlimited / unvalued / empty): no limit, setup not finished, a
   const unvalued = text(renderUsage('unvalued', 'vi'));
   assert.match(unvalued, /Chưa quy đổi được điểm/);
   assert.match(unvalued, /Quản trị viên hệ thống chưa hoàn tất cài đặt cho tháng này/);
-  assert.match(unvalued, /Lượt dùng AI trong tháng/);
-  assert.match(unvalued, /Tỷ lệ tính theo lượt dùng/);
-  assert.match(unvalued, /Chưa vẽ được biểu đồ/);
+  assert.match(unvalued, /Tỷ lệ giữa các tính năng trong tháng; điểm sẽ hiện khi đã quy đổi\./);
+  assert.match(unvalued, /Các tính năng AI vẫn dùng bình thường/);
+  assert.match(unvalued, /AI ID – tạo khoá học \d+(,\d)?% /, 'feature cards show the share only');
+  assert.doesNotMatch(unvalued, /Chưa vẽ được biểu đồ|Theo ngày/, 'no empty day charts before points are counted');
+  assert.match(unvalued, /Ai dùng nhiều nhất/, 'the people list stays (points "—")');
   const unvaluedEn = text(renderUsage('unvalued', 'en'));
   assert.match(unvaluedEn, /The system administrator has not finished the setup for this month/);
+  const noRate = text(renderUsage('unlimited_no_rate', 'vi'));
+  assert.match(noRate, /Không giới hạn điểm AI/);
+  assert.match(noRate, /Gói của đơn vị không giới hạn điểm AI\. Số điểm đã dùng sẽ hiện ở đây khi điểm của tháng được quy đổi\./);
+  assert.match(noRate, /Các tính năng AI vẫn dùng bình thường/);
+  assert.match(noRate, /Dùng thử/);
+  assert.doesNotMatch(noRate, /Đã dùng trong tháng|Còn lại|Điểm của gói|Quản trị viên hệ thống/);
+  assert.match(noRate, /Tỷ lệ giữa các tính năng trong tháng/);
+  assert.doesNotMatch(noRate, /Chưa vẽ được biểu đồ|Theo ngày|Đang dùng bình thường/);
+  assert.equal((noRate.match(/Không giới hạn/g) || []).length, 2, 'ring and heading only (no extra state chip)');
+  assert.match(text(renderUsage('unlimited_no_rate', 'en')), /No limit on AI points/);
   const empty = text(renderUsage('empty', 'vi'));
   assert.match(empty, /Tháng này chưa dùng AI/);
   assert.doesNotMatch(empty, /Theo ngày|Ai dùng nhiều nhất/);
@@ -294,7 +310,7 @@ test('usage page: a past month without data shows its uses and says it had no po
   const page = text(html);
   assert.match(page, /Tháng này chưa tính điểm/);
   assert.match(page, /Tháng này chưa áp dụng điểm AI nên không có số điểm\./);
-  assert.match(page, /Lượt dùng AI trong tháng/);
+  assert.doesNotMatch(page, /Lượt dùng|Các tính năng AI vẫn dùng bình thường/);
   assert.doesNotMatch(page, /Quản trị viên hệ thống chưa hoàn tất cài đặt/);
   assert.doesNotMatch(page, FORBIDDEN_FOR_TENANTS);
   assert.doesNotMatch(page, /26\.150|tỷ giá/i);

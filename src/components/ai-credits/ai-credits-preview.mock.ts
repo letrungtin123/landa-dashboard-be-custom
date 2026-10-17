@@ -6,7 +6,8 @@ import type {
 } from '@/api/ai-credits';
 import { daysOfMonth, platformMonth, shiftMonth } from './ai-credits-format.logic';
 
-export const AI_CREDITS_PREVIEW_SCENARIOS = ['ok', 'warning', 'exhausted', 'unlimited', 'unvalued', 'empty', 'loading', 'error'] as const;
+/** unlimited_no_rate = what local tenants see today: the unlimited demo plan and no exchange rate for the month. */
+export const AI_CREDITS_PREVIEW_SCENARIOS = ['ok', 'warning', 'exhausted', 'unlimited', 'unlimited_no_rate', 'unvalued', 'empty', 'loading', 'error'] as const;
 export type AiCreditsPreviewScenario = typeof AI_CREDITS_PREVIEW_SCENARIOS[number];
 
 /** Deterministic pseudo-random numbers so every reload looks the same. */
@@ -69,14 +70,15 @@ export function previewUsageSummary(scenario: AiCreditsPreviewScenario, month: s
   const lastDay = isCurrent ? Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit' }).format(now)) : daysOfMonth(shown).length;
   const days = daysOfMonth(shown).slice(0, lastDay);
   const empty = scenario === 'empty';
-  const valued = scenario !== 'unvalued' && hasMonth;
-  const unlimited = scenario === 'unlimited';
+  const noRate = scenario === 'unlimited_no_rate';
+  const valued = scenario !== 'unvalued' && !noRate && hasMonth;
+  const unlimited = scenario === 'unlimited' || noRate;
   const planPoints = unlimited ? null : 20_000;
   const topup = scenario === 'warning' || scenario === 'exhausted' ? 5_000 : 0;
   const total = planPoints === null ? null : planPoints + topup;
   const percent = SCENARIO_PERCENT[scenario] ?? 0;
   // An unvalued month still has uses; only their point value is unknown.
-  const share = scenario === 'unvalued' || !hasMonth ? 52 : percent;
+  const share = scenario === 'unvalued' || noRate || !hasMonth ? 52 : percent;
   const usedTarget = empty ? 0 : total !== null ? round1(total * (share / 100) * (isCurrent ? 1 : 0.8)) : 13_642.5;
   const rand = random(shown.split('-').reduce((sum, part) => sum + Number(part), 0) * 97 + scenario.length);
 
@@ -130,7 +132,8 @@ export function previewUsageSummary(scenario: AiCreditsPreviewScenario, month: s
     active.forEach((date, part) => userDaily.push({ date, user_key: key, points: valued ? parts[part] : null }));
   }
 
-  const state: AiCreditState = !hasMonth ? 'unvalued' : scenario === 'empty' ? 'ok' : scenario === 'loading' || scenario === 'error' ? 'ok' : scenario;
+  const state: AiCreditState = !hasMonth ? 'unvalued' : noRate ? 'unlimited'
+    : scenario === 'empty' ? 'ok' : scenario === 'loading' || scenario === 'error' ? 'ok' : scenario;
   const reserved = scenario === 'ok' || scenario === 'warning' ? 184.5 : 0;
   return {
     month: shown,
@@ -191,7 +194,8 @@ function previewOverview(scenario: AiCreditsPreviewScenario, month: string | nul
   // Credit rows exist for the last three months; the newest tenant joined this month.
   const available = [0, 1, 2].map(offset => shiftMonth(current, -offset));
   const rate = [...rates].sort((a, b) => b.month.localeCompare(a.month)).find(item => item.month <= shown) ?? null;
-  const fx = scenario === 'unvalued' || !rate ? null : Number(rate.vnd_per_usd);
+  const noRate = scenario === 'unlimited_no_rate';
+  const fx = scenario === 'unvalued' || noRate || !rate ? null : Number(rate.vnd_per_usd);
   const tenants: AiCreditOverviewTenant[] = (scenario === 'empty' ? [] : TENANTS).map(tenant => {
     if ((shown !== current && tenant.id === 't-6') || !available.includes(shown)) {
       const costVnd = fx === null ? null : Math.round(tenant.usd * 0.4 * fx);
@@ -200,11 +204,12 @@ function previewOverview(scenario: AiCreditsPreviewScenario, month: string | nul
         cost_usd: round1(tenant.usd * 0.4), fx_vnd_per_usd: fx, cost_vnd: costVnd, revenue_vnd: 0, margin_vnd: null, margin_percent: null,
         reconciled_cost_vnd: null, reconciled_note: null, reconciled_diff_percent: null };
     }
-    const plan = PLANS.find(item => item.id === (tenantPlans.get(tenant.id) ?? tenant.plan)) ?? PLANS[0];
+    // Without an exchange rate every tenant is on the unlimited demo plan (the local state today).
+    const plan = noRate ? PLANS[0] : PLANS.find(item => item.id === (tenantPlans.get(tenant.id) ?? tenant.plan)) ?? PLANS[0];
     const planPoints = plan.is_unlimited ? null : Number(plan.monthly_points);
     const topup = topups.get(tenant.id) ?? 0;
     const total = planPoints === null ? null : planPoints + topup;
-    const state: AiCreditState = scenario === 'unvalued' && tenant.state !== 'unlimited' ? 'unvalued' : tenant.state;
+    const state: AiCreditState = noRate ? 'unlimited' : scenario === 'unvalued' && tenant.state !== 'unlimited' ? 'unvalued' : tenant.state;
     const costVnd = fx === null ? null : Math.round(tenant.usd * fx);
     const revenue = Number(plan.monthly_price_vnd) + (topup > 0 ? topup * 300 : 0);
     const pointsUsed = fx === null || total === null ? (plan.is_unlimited && fx !== null ? round1(tenant.usd * 110) : null) : round1(total * (tenant.percent ?? 0) / 100);
@@ -227,7 +232,7 @@ const wait = <T,>(value: T, ms = 380) => new Promise<T>(resolve => { setTimeout(
 /** In-memory API for one scenario: loading never answers, error refuses, the rest answer with mock data. */
 export function createAiCreditsPreviewApi(scenario: AiCreditsPreviewScenario, now = new Date()): AiCreditsApi {
   const plans = scenario === 'empty' ? [] : PLANS.map(plan => ({ ...plan }));
-  const fx = scenario === 'empty' || scenario === 'unvalued' ? [] : previewFx(now);
+  const fx = scenario === 'empty' || scenario === 'unvalued' || scenario === 'unlimited_no_rate' ? [] : previewFx(now);
   const topups = new Map<string, number>();
   const tenantPlans = new Map(TENANTS.map(tenant => [tenant.id, tenant.plan]));
   const answer = <T,>(value: () => T): Promise<T> => {
@@ -239,7 +244,7 @@ export function createAiCreditsPreviewApi(scenario: AiCreditsPreviewScenario, no
   return {
     usage: month => answer(() => previewUsageSummary(scenario, month ?? null, now)),
     tenantUsage: (_tenantId, month) => answer(() => {
-      const summary = previewUsageSummary(scenario === 'empty' ? 'empty' : 'ok', month ?? null, now);
+      const summary = previewUsageSummary(scenario === 'empty' || scenario === 'unlimited_no_rate' ? scenario : 'ok', month ?? null, now);
       const rate = [...fx].sort((a, b) => b.month.localeCompare(a.month)).find(item => item.month <= summary.month) ?? null;
       // The superadmin view carries the month's rate and the month it was set for.
       return { ...summary, fx_vnd_per_usd: rate ? Number(rate.vnd_per_usd) : null, fx_rate_month: rate?.month ?? null };
