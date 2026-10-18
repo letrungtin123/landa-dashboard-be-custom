@@ -93,6 +93,7 @@ const { AiCreditsTenantTable } = at('components/ai-credits/ai-credits-tenant-tab
 const { ModuleGuard } = at('components/module-guard.tsx');
 const AiChatbotPage = at('pages/ai-chatbot.tsx').default;
 const { AiFxNotice } = at('components/ai-credits/ai-fx-notice.tsx');
+const { TenantAiPointsCell } = at('components/ai-credits/tenant-ai-points-cell.tsx');
 const noop = () => undefined;
 
 function summary(state) {
@@ -385,4 +386,53 @@ test('usage page: a past month without data shows its uses and says it had no po
   assert.doesNotMatch(page, /26\.150|tỷ giá/i);
   const options = [...html.matchAll(/data-value="([0-9]{4}-[0-9]{2})"/g)].map(match => match[1]);
   assert.deepEqual(options, ['2026-10', '2026-09', '2026-08'], 'months come from available_months');
+});
+
+test('tenants table "Điểm AI" cell: plan and % used in the state colors; unlimited and unvalued look intentional; never tokens', () => {
+  env.locale = 'vi';
+  const base = { tenant_id: 't', tenant_name: 'Nesso', has_month: true, plan_id: 'p', current_plan_id: 'p', plan_name: 'Chuyên nghiệp',
+    is_unlimited: false, state: 'ok', percent: 46.2, points_total: 20000, points_used: 9240, topup_points: 0, cost_usd: 1.2,
+    fx_vnd_per_usd: 26150, cost_vnd: 31380, revenue_vnd: 1000000, margin_vnd: 968620, margin_percent: 96.9,
+    reconciled_cost_vnd: null, reconciled_note: null, reconciled_diff_percent: null };
+  const cell = (tenant, status = {}) => renderToStaticMarkup(h(TenantAiPointsCell, { loading: false, failed: false, tenant, ...status }));
+  const rendered = [];
+  const show = (tenant, status) => { const html = cell(tenant, status); rendered.push(html); return html; };
+
+  const ok = show(base);
+  assert.match(ok, /Chuyên nghiệp/);
+  assert.match(ok, /46,2%/);
+  assert.match(ok, /text-emerald-600/);
+  assert.match(ok, /Đang dùng bình thường/, 'the state is said in words too, not only by color');
+  const warning = show({ ...base, state: 'warning', percent: 86.4 });
+  assert.match(warning, /86,4%/);
+  assert.match(warning, /text-amber-600/);
+  assert.match(warning, /Sắp hết điểm/);
+  const exhausted = show({ ...base, state: 'exhausted', percent: 100 });
+  assert.match(exhausted, /100%/);
+  assert.match(exhausted, /text-rose-600/);
+  assert.match(exhausted, /Đã hết điểm/);
+
+  const unlimited = show({ ...base, plan_name: 'Không giới hạn nội bộ', state: 'unlimited', is_unlimited: true, percent: null, points_total: null });
+  assert.match(unlimited, /Không giới hạn nội bộ/);
+  assert.match(unlimited, /border-violet-500\/30[^"]*">.*Không giới hạn<\/span>/);
+  assert.doesNotMatch(unlimited, /%/);
+  const unvalued = show({ ...base, state: 'unvalued', percent: null });
+  assert.match(unvalued, /Chuyên nghiệp/);
+  assert.match(unvalued, /text-muted-foreground"[^>]*>Chưa quy đổi<\/span>/);
+  assert.doesNotMatch(unvalued, /%/);
+
+  assert.match(show({ ...base, has_month: false, plan_name: null, state: 'unvalued', percent: null }), /Chưa có dữ liệu tháng này/);
+  assert.match(show(undefined), /Chưa có dữ liệu tháng này/, 'a tenant created after the overview was read');
+  const loading = show(undefined, { loading: true });
+  assert.match(loading, /data-slot="skeleton"/);
+  assert.doesNotMatch(loading, /animate-spin/);
+  const failed = show(undefined, { failed: true });
+  assert.match(failed, />—<span class="sr-only">Chưa xem được điểm AI\.<\/span>/);
+  for (const html of rendered) assert.doesNotMatch(html, /token|Lượt dùng/i);
+
+  env.locale = 'en';
+  assert.match(cell(base), /46\.2%/);
+  assert.match(cell({ ...base, state: 'unlimited', is_unlimited: true, percent: null }), />Unlimited</);
+  assert.match(cell({ ...base, state: 'unvalued', percent: null }), />Not converted yet</);
+  assert.match(cell(undefined, { failed: true }), /AI points could not be loaded/);
 });

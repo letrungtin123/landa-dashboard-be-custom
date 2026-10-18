@@ -405,3 +405,34 @@ test('every aiCredits key used by the pages exists in Vietnamese and English; te
     en.aiCredits.usage, en.aiCredits.features, en.aiCredits.states, en.aiCredits.errors, en.aiCredits.common]);
   assert.doesNotMatch(tenantCopy, /USD|VND|₫|\$|token|Google|Gemini|OpenAI|provider|nhà cung cấp/i);
 });
+
+test('tenants table: one AI points read for the whole table; the token column and the token-limit copy are gone', () => {
+  const page = readFileSync(path.join(src, 'pages/tenant-management.tsx'), 'utf8');
+  assert.equal(page.match(/useAiCreditOverviewByTenant\(\)/g)?.length, 1, 'one overview read for the table');
+  assert.doesNotMatch(page, /useAiTenantUsage|useAiCreditOverview\(/, 'never a call per row');
+  assert.match(page, /<TenantAiPointsCell loading={aiPoints\.loading} failed={aiPoints\.failed} tenant={aiPoints\.byTenant\.get\(tenant\.id\)} \/>/);
+  assert.match(page, /{t\("tenantManagement\.aiPoints"\)}<\/TableHead>/);
+  assert.doesNotMatch(page, /formatTokenCount|aiTokenMonth|aiTokenTooltip|ai_monthly_token_limit|ai_token_total_used|ai_token_reserved/);
+  // A new or removed tenant refreshes the cached overview.
+  assert.equal(page.match(/invalidateQueries\({ queryKey: aiCreditKeys\.overviewAll\(\) }\)/g)?.length, 2);
+  assert.equal(hooks.aiCreditKeys.overview(null).join('/'), 'ai-credits/admin/overview/current');
+
+  for (const locale of ['vi', 'en']) {
+    for (const key of ['tenantManagement.aiTokenMonth', 'tenantManagement.aiTokenLimit', 'tenantManagement.aiTokenTooltip',
+      'tenantManagement.invalidAiTokenLimit', 'chatWidget.aiTokenLimitReached']) {
+      assert.equal(lookup(locale, key), undefined, `${locale} ${key} removed`);
+    }
+    for (const key of ['aiPoints', 'aiPointsLoading', 'aiPointsUnavailable', 'aiPointsUnvalued', 'aiPointsUsed']) t(locale, `tenantManagement.${key}`);
+    // Still used by the user and course limit fields.
+    t(locale, 'tenantManagement.unlimited');
+    t(locale, 'tenantManagement.unlimitedHint');
+  }
+  assert.equal(t('vi', 'tenantManagement.aiPoints'), 'Điểm AI');
+  assert.equal(t('vi', 'tenantManagement.aiPointsUnvalued'), 'Chưa quy đổi');
+  assert.equal(t('vi', 'tenantManagement.aiPointsUsed', { used: '9.240', total: '20.000' }), 'Đã dùng 9.240 / 20.000 điểm trong tháng này');
+  assert.equal(t('en', 'tenantManagement.aiPoints'), 'AI points');
+  assert.doesNotMatch(JSON.stringify([vi.tenantManagement, en.tenantManagement]), /token/i);
+
+  assert.doesNotMatch(readFileSync(path.join(src, 'api/custom-chat.ts'), 'utf8'), /AI_TOKEN_LIMIT_REACHED/);
+  assert.doesNotMatch(readFileSync(path.join(src, 'api/custom-tenants.ts'), 'utf8'), /token_limit|monthlyTokenLimit|tokenRemaining/);
+});

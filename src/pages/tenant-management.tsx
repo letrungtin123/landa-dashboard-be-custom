@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,8 @@ import { useLocaleStore } from "@/utils/locale-store";
 import { formatLocaleDate, formatQuotaGigabytes } from "@/utils/locale-format";
 import { getLocalizedApiError } from "@/utils/localized-error";
 import { TenantAiPlanField } from "@/components/ai-credits/tenant-ai-plan-field";
+import { TenantAiPointsCell } from "@/components/ai-credits/tenant-ai-points-cell";
+import { aiCreditKeys, useAiCreditOverviewByTenant } from "@/hooks/queries/use-ai-credits";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -150,15 +153,6 @@ function parseGigabytesToBytes(value: string): string | undefined {
   }
 }
 
-function formatTokenCount(value: string | null | undefined, locale: string): string {
-  if (!value) return "0";
-  try {
-    return BigInt(value).toLocaleString(locale === "vi" ? "vi-VN" : "en-US");
-  } catch {
-    return value;
-  }
-}
-
 function getAiEngineLabel(t: TFunction, engine: TenantAiEngine | null | undefined): string {
   return engine === "self_built_rag"
     ? t("tenantManagement.aiEngineRag")
@@ -169,6 +163,9 @@ export default function TenantManagementPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
   useHeaderInfo(t("tenantManagement.title"));
+  const queryClient = useQueryClient();
+  // "Điểm AI" column: one overview read (this month) for the whole table.
+  const aiPoints = useAiCreditOverviewByTenant();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -377,6 +374,7 @@ export default function TenantManagementPage() {
       setShowCreate(false);
       resetForm();
       loadTenants();
+      void queryClient.invalidateQueries({ queryKey: aiCreditKeys.overviewAll() });
     } catch (err: unknown) {
       toast.error(getLocalizedApiError(err, t("tenantManagement.createFailed")));
     } finally { setSaving(false); }
@@ -451,6 +449,7 @@ export default function TenantManagementPage() {
     try {
       await deleteTenant(deletingId);
       toast.success(t("tenantManagement.deleted"));
+      void queryClient.invalidateQueries({ queryKey: aiCreditKeys.overviewAll() });
       setDeletingId(null);
       loadTenants();
     } catch { toast.error(t("tenantManagement.deleteFailed")); }
@@ -594,7 +593,7 @@ export default function TenantManagementPage() {
       {/* Table */}
       <TooltipProvider delayDuration={300}>
       <div className="app-data-table-shell rounded-lg border bg-card">
-        <Table className="min-w-[1640px]">
+        <Table className="min-w-[1656px]">
           <TableHeader className="bg-muted/10">
             <TableRow>
               <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.name")}</TableHead>
@@ -606,7 +605,7 @@ export default function TenantManagementPage() {
               <TableHead className="w-[172px] whitespace-nowrap text-center">{t("tenantManagement.storageUsed")}</TableHead>
               <TableHead className="w-[144px] whitespace-nowrap text-center">{t("tenantManagement.storageLimit")}</TableHead>
               <TableHead className="w-[150px] whitespace-nowrap text-center">{t("tenantManagement.aiEngine")}</TableHead>
-              <TableHead className="w-[160px] whitespace-nowrap text-center">{t("tenantManagement.aiTokenMonth")}</TableHead>
+              <TableHead className="w-[176px] whitespace-nowrap text-center">{t("tenantManagement.aiPoints")}</TableHead>
               <TableHead className="w-[118px] whitespace-nowrap text-center">{t("tenantManagement.status")}</TableHead>
               <TableHead className="w-[116px] whitespace-nowrap">{t("tenantManagement.createdAt")}</TableHead>
               <TableHead className="w-[158px] whitespace-nowrap text-right">{t("tenantManagement.actions")}</TableHead>
@@ -715,24 +714,8 @@ export default function TenantManagementPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="w-[160px] text-center">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex cursor-help items-center gap-1.5 whitespace-nowrap text-xs font-mono">
-                              <Key className="h-3 w-3 text-muted-foreground" />
-                              {formatTokenCount(tenant.ai_token_total_used, locale)}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {t("tenantManagement.aiTokenTooltip", {
-                              used: formatTokenCount(tenant.ai_token_total_used, locale),
-                              reserved: formatTokenCount(tenant.ai_token_reserved, locale),
-                              limit: tenant.ai_monthly_token_limit
-                                ? formatTokenCount(tenant.ai_monthly_token_limit, locale)
-                                : t("tenantManagement.unlimited"),
-                            })}
-                          </TooltipContent>
-                        </Tooltip>
+                      <TableCell className="w-[176px] text-center">
+                        <TenantAiPointsCell loading={aiPoints.loading} failed={aiPoints.failed} tenant={aiPoints.byTenant.get(tenant.id)} />
                       </TableCell>
                       <TableCell className="w-[118px] text-center">
                         <Badge variant={tenant.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={function click() { handleToggleActive(tenant); }}>

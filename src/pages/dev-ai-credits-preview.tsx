@@ -1,20 +1,60 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BarChart3, Bot, Brain, Coins, Moon, Rocket, Sun } from 'lucide-react';
+import { BarChart3, Bot, Brain, Building2, Coins, Moon, Rocket, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { PageHeader } from '@/components/shared/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { TenantAiPointsCell } from '@/components/ai-credits/tenant-ai-points-cell';
 import {
   AI_CREDITS_PREVIEW_SCENARIOS, createAiCreditsPreviewApi, type AiCreditsPreviewScenario,
 } from '@/components/ai-credits/ai-credits-preview.mock';
-import { AiCreditsApiProvider } from '@/hooks/queries/use-ai-credits';
+import { AiCreditsApiProvider, useAiCreditOverviewByTenant } from '@/hooks/queries/use-ai-credits';
 import { useLocaleStore } from '@/utils/locale-store';
 import { cn } from '@/utils/utils';
 import { AiUsageScreen } from '@/components/ai-credits/ai-usage-screen';
 import { AiCreditsScreen } from '@/pages/ai-credits';
 
-type PreviewView = 'both' | 'chatbot' | 'admin';
+type PreviewView = 'both' | 'chatbot' | 'admin' | 'tenants';
+
+/** Tenant management table, "Điểm AI" column only (the rest of that page is not part of the preview). */
+function TenantsColumnPreview() {
+  const { t } = useTranslation();
+  const aiPoints = useAiCreditOverviewByTenant();
+  const rows = aiPoints.loading || aiPoints.failed
+    ? [{ id: 'pending', name: 'Tenant' }]
+    : [...[...aiPoints.byTenant.values()].map(tenant => ({ id: tenant.tenant_id, name: tenant.tenant_name })),
+      { id: 'created-after-read', name: 'New tenant (not in the overview yet)' }];
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <PageHeader icon={Building2} title={t('tenantManagement.title')} />
+      <TooltipProvider delayDuration={300}>
+        <div className="app-data-table-shell rounded-lg border bg-card">
+          <Table>
+            <TableHeader className="bg-muted/10">
+              <TableRow>
+                <TableHead className="whitespace-nowrap">{t('tenantManagement.name')}</TableHead>
+                <TableHead className="w-[176px] whitespace-nowrap text-center">{t('tenantManagement.aiPoints')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(row => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell className="w-[176px] text-center">
+                    <TenantAiPointsCell loading={aiPoints.loading} failed={aiPoints.failed} tenant={aiPoints.byTenant.get(row.id)} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </TooltipProvider>
+    </div>
+  );
+}
 
 /** The AI Chatbot page with its overview tab open, as tenant admins see it (other tabs are not part of the preview). */
 function ChatbotOverviewPreview() {
@@ -60,9 +100,10 @@ function PreviewScope({ scenario, view }: { scenario: AiCreditsPreviewScenario; 
   return (
     <QueryClientProvider client={queryClient}>
       <AiCreditsApiProvider value={api}>
-        {view !== 'admin' && <ChatbotOverviewPreview />}
+        {(view === 'both' || view === 'chatbot') && <ChatbotOverviewPreview />}
         {view === 'both' && <div className="mx-auto my-4 h-px max-w-7xl bg-border" aria-hidden />}
-        {view !== 'chatbot' && <AiCreditsScreen />}
+        {(view === 'both' || view === 'admin') && <AiCreditsScreen />}
+        {view === 'tenants' && <TenantsColumnPreview />}
       </AiCreditsApiProvider>
     </QueryClientProvider>
   );
@@ -94,7 +135,7 @@ export default function DevAiCreditsPreviewPage() {
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Segmented label="State" value={scenario} options={AI_CREDITS_PREVIEW_SCENARIOS} onChange={setScenario} />
-            <Segmented label="Page" value={view} options={['both', 'chatbot', 'admin'] as const} onChange={setView} />
+            <Segmented label="Page" value={view} options={['both', 'chatbot', 'admin', 'tenants'] as const} onChange={setView} />
             <Segmented label="Lang" value={locale} options={['vi', 'en'] as const} onChange={setLocale} />
             <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-muted/45 px-3 text-xs font-medium">

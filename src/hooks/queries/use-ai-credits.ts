@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -94,6 +94,14 @@ export function useAiCreditOverview(month: string | null) {
     placeholderData: previous => previous,
     ...queryDefaults,
   });
+}
+
+/** Tenants table: this month's overview, read once for the whole table, by tenant id (never one call per row). */
+export function useAiCreditOverviewByTenant() {
+  const overview = useAiCreditOverview(null);
+  const data = overview.data;
+  const byTenant = useMemo(() => new Map((data?.tenants ?? []).map(tenant => [tenant.tenant_id, tenant])), [data]);
+  return { loading: overview.isPending, failed: overview.isError && !data, byTenant };
 }
 
 /** The tenant's current plan only (tenant edit form): no month usage is read. */
