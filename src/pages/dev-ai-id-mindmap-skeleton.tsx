@@ -2,9 +2,8 @@ import { Map as MapIcon, Moon, Sun, Target } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { WorkspacePendingSkeleton } from '@/components/lesson-author-workspace/workspace-dialog';
 
-export const AI_ID_MINDMAP_SKELETON_PREVIEW_PATH = '/__dev/ai-id-mindmap-skeleton';
-
-/** Development-only visual harness. It owns no workspace/session/source
+/** Development-only visual harness (route and path in App.tsx, loaded lazily so
+ * production never includes it). It owns no workspace/session/source
  * controller and therefore cannot launch generation or call a provider. */
 export default function DevAiIdMindmapSkeletonPage() {
   const { theme, setTheme } = useTheme();

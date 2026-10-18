@@ -115,7 +115,11 @@ test('development skeleton preview is compile-time gated and owns no generation 
   const app = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
   const preview = readFileSync(new URL('../../pages/dev-ai-id-mindmap-skeleton.tsx', import.meta.url), 'utf8');
   assert.match(app, /import\.meta\.env\.DEV.*AI_ID_MINDMAP_SKELETON_PREVIEW_PATH/);
-  assert.match(preview, /__dev\/ai-id-mindmap-skeleton/);
+  assert.match(app, /AI_ID_MINDMAP_SKELETON_PREVIEW_PATH = '\/__dev\/ai-id-mindmap-skeleton'/);
+  // Only a dev-gated dynamic import: a static one pulls the workspace dialog
+  // (React Flow, markdown) into the production main chunk.
+  assert.match(app, /import\.meta\.env\.DEV \? lazy\(\(\) => import\('@\/pages\/dev-ai-id-mindmap-skeleton'\)\) : null/);
+  assert.doesNotMatch(app, /from '@\/pages\/dev-ai-id-mindmap-skeleton'/);
   assert.match(preview, /WorkspacePendingSkeleton locale="vi" stage="mindmap"/);
   assert.match(preview, /useTheme\(\)/);
   assert.match(preview, /setTheme\('light'\)/);

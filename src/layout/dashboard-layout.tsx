@@ -1,9 +1,13 @@
+import { Suspense, lazy } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/layout/app-sidebar';
 import { Header } from '@/layout/header';
-import ChatWidget from '@/components/chat-widget/chat-widget';
+
+// The chat widget (markdown, reports, AI ID) is its own chunk, loaded after the
+// layout has rendered; its own boundary keeps the page visible meanwhile.
+const ChatWidget = lazy(() => import('@/components/chat-widget/chat-widget'));
 
 export default function DashboardLayout() {
   return (
@@ -26,7 +30,9 @@ export default function DashboardLayout() {
           </motion.div>
         </main>
       </div>
-      <ChatWidget />
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
     </SidebarProvider>
   );
 }

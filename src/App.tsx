@@ -21,39 +21,44 @@ import AuthLayout from '@/layout/auth-layout';
 import DashboardLayout from '@/layout/dashboard-layout';
 
 import LoginPage from '@/pages/login';
-import DashboardPage from '@/pages/dashboard';
-import ProfilePage from '@/pages/profile';
 import NotFoundPage from '@/pages/not-found';
-
-import UsersPage from '@/pages/users';
-import AuditLogsPage from '@/pages/audit-logs';
-import ReportSummaryPage from '@/pages/report-summary';
-import LibraryPage from '@/pages/library';
-import CoursesPage from '@/pages/courses';
-import CourseEditorPage from '@/pages/course-editor';
-import CourseAssignmentsPage from '@/pages/course-assignments';
-import GroupsPage from '@/pages/groups';
-import HelpDocsPage from '@/pages/help-docs';
-import NewsManagementPage from '@/pages/news';
-import CourseCategoriesPage from './pages/course-categories';
-import TenantManagementPage from '@/pages/tenant-management';
-import PermissionGroupsPage from '@/pages/permission-groups';
-import BrandingPage from '@/pages/branding';
-import EmailTemplatesPage from '@/pages/email-templates';
-import AiChatbotPage from '@/pages/ai-chatbot';
-import PromptTemplatesPage from '@/pages/prompt-templates';
-import BadgesPage from './pages/badges';
-import TenantBadgesPage from '@/pages/tenant-badges';
-import SsoManagementPage from '@/pages/sso-management';
-import DemoLoginSettingsPage from '@/pages/demo-login-settings';
-import DevAiIdMindmapSkeletonPage, { AI_ID_MINDMAP_SKELETON_PREVIEW_PATH } from '@/pages/dev-ai-id-mindmap-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// Every signed-in page is its own chunk: the sign-in page no longer downloads
+// the editors (TipTap, React Flow), charts and reports. Each lazy page is
+// rendered inside its own <LazyPage> boundary, never the shared root one.
+const DashboardPage = lazy(() => import('@/pages/dashboard'));
+const ProfilePage = lazy(() => import('@/pages/profile'));
+const UsersPage = lazy(() => import('@/pages/users'));
+const AuditLogsPage = lazy(() => import('@/pages/audit-logs'));
+const ReportSummaryPage = lazy(() => import('@/pages/report-summary'));
+const LibraryPage = lazy(() => import('@/pages/library'));
+const CoursesPage = lazy(() => import('@/pages/courses'));
+const CourseEditorPage = lazy(() => import('@/pages/course-editor'));
+const CourseAssignmentsPage = lazy(() => import('@/pages/course-assignments'));
+const GroupsPage = lazy(() => import('@/pages/groups'));
+const HelpDocsPage = lazy(() => import('@/pages/help-docs'));
+const NewsManagementPage = lazy(() => import('@/pages/news'));
+const CourseCategoriesPage = lazy(() => import('@/pages/course-categories'));
+const TenantManagementPage = lazy(() => import('@/pages/tenant-management'));
+const PermissionGroupsPage = lazy(() => import('@/pages/permission-groups'));
+const BrandingPage = lazy(() => import('@/pages/branding'));
+const EmailTemplatesPage = lazy(() => import('@/pages/email-templates'));
+const AiChatbotPage = lazy(() => import('@/pages/ai-chatbot'));
+const PromptTemplatesPage = lazy(() => import('@/pages/prompt-templates'));
+const BadgesPage = lazy(() => import('@/pages/badges'));
+const TenantBadgesPage = lazy(() => import('@/pages/tenant-badges'));
+const SsoManagementPage = lazy(() => import('@/pages/sso-management'));
+const DemoLoginSettingsPage = lazy(() => import('@/pages/demo-login-settings'));
 // AI points pages are split out of the main chunk (charts and animations load with them).
 const AiCreditsPage = lazy(() => import('@/pages/ai-credits'));
 // Development only: the dynamic import is removed from production builds with this branch.
 const DevAiCreditsPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-credits-preview')) : null;
 const AI_CREDITS_PREVIEW_PATH = '/dev/ai-credits-preview';
+// Development only, same pattern: a static import kept the workspace dialog
+// (React Flow, markdown, rehype-raw) in the production main chunk.
+const DevAiIdMindmapSkeletonPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-id-mindmap-skeleton')) : null;
+const AI_ID_MINDMAP_SKELETON_PREVIEW_PATH = '/__dev/ai-id-mindmap-skeleton';
 
 function LazyPage({ children }: { children: ReactNode }) {
   return (
@@ -69,7 +74,7 @@ function AppRoutes() {
     <Routes>
       {/* Compile-time development harness: no auth, workspace or provider
           controller is mounted, and this route does not exist in production. */}
-      {import.meta.env.DEV && <Route path={AI_ID_MINDMAP_SKELETON_PREVIEW_PATH} element={<DevAiIdMindmapSkeletonPage />} />}
+      {import.meta.env.DEV && DevAiIdMindmapSkeletonPage && <Route path={AI_ID_MINDMAP_SKELETON_PREVIEW_PATH} element={<LazyPage><DevAiIdMindmapSkeletonPage /></LazyPage>} />}
       {/* Development preview of the AI points pages with mock data: no auth, no backend. */}
       {import.meta.env.DEV && DevAiCreditsPreviewPage && <Route path={AI_CREDITS_PREVIEW_PATH} element={<LazyPage><DevAiCreditsPreviewPage /></LazyPage>} />}
 
@@ -83,34 +88,34 @@ function AppRoutes() {
       {/* Protected routes */}
       <Route element={<AuthGuard requireAuth={true} />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
+          <Route path="/profile" element={<LazyPage><ProfilePage /></LazyPage>} />
 
           {/* Module-guarded routes */}
-          <Route path="/accounts" element={<ModuleGuard module="account"><UsersPage /></ModuleGuard>} />
-          <Route path="/audit-logs" element={<ModuleGuard module="audit_log"><AuditLogsPage /></ModuleGuard>} />
-          <Route path="/report-summary" element={<ModuleGuard module="report_summary"><ReportSummaryPage /></ModuleGuard>} />
+          <Route path="/accounts" element={<ModuleGuard module="account"><LazyPage><UsersPage /></LazyPage></ModuleGuard>} />
+          <Route path="/audit-logs" element={<ModuleGuard module="audit_log"><LazyPage><AuditLogsPage /></LazyPage></ModuleGuard>} />
+          <Route path="/report-summary" element={<ModuleGuard module="report_summary"><LazyPage><ReportSummaryPage /></LazyPage></ModuleGuard>} />
           {/* AI usage now lives in AI Chatbot > overview (old links keep working). */}
           <Route path="/ai-usage" element={<Navigate to="/ai-chatbot?tab=overview" replace />} />
-          <Route path="/library" element={<ModuleGuard module="library"><LibraryPage /></ModuleGuard>} />
-          <Route path="/courses" element={<ModuleGuard module="courses"><CoursesPage /></ModuleGuard>} />
-          <Route path="/courses/:courseId/assignments" element={<ModuleGuard module="courses"><CourseAssignmentsPage /></ModuleGuard>} />
-          <Route path="/courses/:courseId/edit" element={<ModuleGuard module="courses"><CourseEditorPage /></ModuleGuard>} />
-          <Route path="/groups" element={<ModuleGuard module="groups"><GroupsPage /></ModuleGuard>} />
-          <Route path="/course-categories" element={<ModuleGuard module="course_categories"><CourseCategoriesPage /></ModuleGuard>} />
-          <Route path="/help-docs" element={<ModuleGuard module="help_docs"><HelpDocsPage /></ModuleGuard>} />
-          <Route path="/news" element={<ModuleGuard module="news"><NewsManagementPage /></ModuleGuard>} />
-          <Route path="/tenants" element={<ModuleGuard module="tenant_management"><TenantManagementPage /></ModuleGuard>} />
+          <Route path="/library" element={<ModuleGuard module="library"><LazyPage><LibraryPage /></LazyPage></ModuleGuard>} />
+          <Route path="/courses" element={<ModuleGuard module="courses"><LazyPage><CoursesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/courses/:courseId/assignments" element={<ModuleGuard module="courses"><LazyPage><CourseAssignmentsPage /></LazyPage></ModuleGuard>} />
+          <Route path="/courses/:courseId/edit" element={<ModuleGuard module="courses"><LazyPage><CourseEditorPage /></LazyPage></ModuleGuard>} />
+          <Route path="/groups" element={<ModuleGuard module="groups"><LazyPage><GroupsPage /></LazyPage></ModuleGuard>} />
+          <Route path="/course-categories" element={<ModuleGuard module="course_categories"><LazyPage><CourseCategoriesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/help-docs" element={<ModuleGuard module="help_docs"><LazyPage><HelpDocsPage /></LazyPage></ModuleGuard>} />
+          <Route path="/news" element={<ModuleGuard module="news"><LazyPage><NewsManagementPage /></LazyPage></ModuleGuard>} />
+          <Route path="/tenants" element={<ModuleGuard module="tenant_management"><LazyPage><TenantManagementPage /></LazyPage></ModuleGuard>} />
           <Route path="/ai-credits" element={<ModuleGuard module="superadmin_only"><LazyPage><AiCreditsPage /></LazyPage></ModuleGuard>} />
-          <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><PermissionGroupsPage /></ModuleGuard>} />
-          <Route path="/branding" element={<ModuleGuard module="branding"><BrandingPage /></ModuleGuard>} />
-          <Route path="/email-templates" element={<ModuleGuard module="email_templates"><EmailTemplatesPage /></ModuleGuard>} />
-          <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><AiChatbotPage /></ModuleGuard>} />
-          <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><PromptTemplatesPage /></ModuleGuard>} />
-          <Route path="/badge-management" element={<ModuleGuard module="badge_management"><TenantBadgesPage /></ModuleGuard>} />
-          <Route path="/badges" element={<ModuleGuard module="superadmin_only"><BadgesPage /></ModuleGuard>} />
-          <Route path="/sso-management" element={<ModuleGuard module="superadmin_only"><SsoManagementPage /></ModuleGuard>} />
-          <Route path="/demo-login-settings" element={<ModuleGuard module="superadmin_only"><DemoLoginSettingsPage /></ModuleGuard>} />
+          <Route path="/permission-groups" element={<ModuleGuard module="permission_groups"><LazyPage><PermissionGroupsPage /></LazyPage></ModuleGuard>} />
+          <Route path="/branding" element={<ModuleGuard module="branding"><LazyPage><BrandingPage /></LazyPage></ModuleGuard>} />
+          <Route path="/email-templates" element={<ModuleGuard module="email_templates"><LazyPage><EmailTemplatesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/ai-chatbot" element={<ModuleGuard module="ai_chatbot"><LazyPage><AiChatbotPage /></LazyPage></ModuleGuard>} />
+          <Route path="/prompt-templates" element={<ModuleGuard module="tenant_management"><LazyPage><PromptTemplatesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/badge-management" element={<ModuleGuard module="badge_management"><LazyPage><TenantBadgesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/badges" element={<ModuleGuard module="superadmin_only"><LazyPage><BadgesPage /></LazyPage></ModuleGuard>} />
+          <Route path="/sso-management" element={<ModuleGuard module="superadmin_only"><LazyPage><SsoManagementPage /></LazyPage></ModuleGuard>} />
+          <Route path="/demo-login-settings" element={<ModuleGuard module="superadmin_only"><LazyPage><DemoLoginSettingsPage /></LazyPage></ModuleGuard>} />
 
           {/* Legacy redirects */}
           <Route path="/user" element={<Navigate to="/accounts" replace />} />

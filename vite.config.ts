@@ -91,8 +91,9 @@ export default defineConfig(({ mode }) => {
                 id.includes('node_modules/@tanstack/react-query')) {
               return 'vendor';
             }
+            // Charts (recharts) are not grouped here: they load with the
+            // report pages that use them, not with the sign-in page.
             if (id.includes('node_modules/framer-motion') ||
-                id.includes('node_modules/recharts') ||
                 id.includes('node_modules/sonner')) {
               return 'ui';
             }

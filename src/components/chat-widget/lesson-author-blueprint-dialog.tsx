@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -38,7 +38,6 @@ import type {
   LessonAuthorProposalEvent,
 } from '@/api/custom-chat';
 import { resolveLessonAuthorContentLocale, type LessonAuthorContentLocale } from './lesson-author-locale';
-import { LessonAuthorMindmapPanel } from './lesson-author-mindmap-modal';
 import {
   buildBlueprintMediaPresentation,
   getBlueprintMediaReviewCopy,
@@ -58,6 +57,10 @@ interface LessonAuthorBlueprintDialogProps {
   disabled?: boolean;
   onDraftChapter?: (chapterIndex: number) => void;
 }
+
+// React Flow is loaded only when the mind map tab opens.
+const LessonAuthorMindmapPanel = lazy(() => import('./lesson-author-mindmap-modal')
+  .then((module) => ({ default: module.LessonAuthorMindmapPanel })));
 
 type BlueprintTab = 'overview' | 'chapters' | 'media' | 'mindmap';
 
@@ -776,14 +779,16 @@ export function LessonAuthorBlueprintDialog({
 
           <TabsContent value="mindmap" className="mt-0 min-h-0 flex-1 overflow-hidden">
             <div className="h-full min-h-0 overflow-hidden">
-              <LessonAuthorMindmapPanel
-                embedded
-                outline={outline}
-                proposalEvent={proposalEvent}
-                blueprintEvent={blueprintEvent}
-                loading={mindmapLoading}
-                error={mindmapError}
-              />
+              <Suspense fallback={<div className="flex h-full min-h-[240px] items-center justify-center" aria-busy="true"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+                <LessonAuthorMindmapPanel
+                  embedded
+                  outline={outline}
+                  proposalEvent={proposalEvent}
+                  blueprintEvent={blueprintEvent}
+                  loading={mindmapLoading}
+                  error={mindmapError}
+                />
+              </Suspense>
             </div>
           </TabsContent>
         </Tabs>
