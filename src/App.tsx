@@ -1,7 +1,17 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Suspense, lazy, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-const queryClient = new QueryClient();
+import { shouldRetryQuery } from '@/utils/query-retry.logic';
+// Switching back to the tab no longer refetches every mounted query (a query
+// that needs it sets refetchOnWindowFocus itself); 4xx answers are not retried.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: shouldRetryQuery,
+    },
+  },
+});
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { LocaleProvider } from '@/components/providers/locale-provider';
