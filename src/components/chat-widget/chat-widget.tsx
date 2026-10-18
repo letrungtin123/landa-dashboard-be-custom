@@ -4,7 +4,7 @@
 // Header has fullscreen toggle
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { isChatRecoveryExpired, hasRecoveredAssistant } from '@/api/custom-chat-stream.logic';
 import { chapterInterruptionVisible, chapterResumeRequest, type ChapterCheckpointStatus } from '@/api/lesson-author-chapter-checkpoint.logic';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -1117,7 +1117,12 @@ export default function ChatWidget() {
   const streamAccRef = useRef('');  // accumulate stream text without React state race
   const currentConvIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const streamScrollFrameRef = useRef<number | null>(null); // one follow-the-answer scroll per frame
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => () => {
+    if (streamScrollFrameRef.current !== null) window.cancelAnimationFrame(streamScrollFrameRef.current);
+  }, []);
 
   const refreshLessonAuthorMessages = useCallback(async (conversationId: string) => {
     const result = await fetchMessages(conversationId, undefined, 'lesson_author');
@@ -2454,11 +2459,16 @@ export default function ChatWidget() {
         if (currentConvIdRef.current !== conversationId) return;
         streamAccRef.current = streamAccumulator.value;
         setStreamText(streamAccumulator.value);
-        setTimeout(() => {
-          if (currentConvIdRef.current === conversationId) {
-            scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-          }
-        }, 10);
+        // Chunks can arrive many times per frame: follow the answer with at
+        // most one scroll per frame instead of one timer per chunk.
+        if (streamScrollFrameRef.current === null) {
+          streamScrollFrameRef.current = window.requestAnimationFrame(() => {
+            streamScrollFrameRef.current = null;
+            if (currentConvIdRef.current === conversationId) {
+              scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+            }
+          });
+        }
       },
       () => { void finishStream(streamAccumulator.value); },
       (message) => {
@@ -5291,7 +5301,7 @@ function LessonAuthorTranscriptCard({ attachment, committing, downloading, draft
   );
 }
 
-function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, courseAuthoringBusy, onApplyReportFilter, startingReport, downloadingReport, reportPdfExportJob, onStartReportPdfExport, onDownloadReportPdf }: {
+function MessageBubbleView({ message, onMentionClick, onSourceDocumentClick, committingTranscriptJobId, onCommitTranscript, downloadingTranscriptJobId, onDownloadTranscript, draftingTranscriptJobId, onDraftCourseFromTranscript, courseAuthoringBusy, onApplyReportFilter, startingReport, downloadingReport, reportPdfExportJob, onStartReportPdfExport, onDownloadReportPdf }: {
   message: ChatMessage;
   onMentionClick?: (mention: OutlineMention) => void;
   onSourceDocumentClick?: (doc: LessonAuthorSourceDocument) => void;
@@ -5391,3 +5401,8 @@ function MessageBubble({ message, onMentionClick, onSourceDocumentClick, committ
     </motion.div>
   );
 }
+
+// The chat view re-renders on every streamed chunk. Finished messages keep the
+// same props (message objects and useCallback handlers), so memo skips them and
+// only the streaming message is drawn again, not every bubble's markdown.
+const MessageBubble = memo(MessageBubbleView);
