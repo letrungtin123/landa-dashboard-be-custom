@@ -29,6 +29,7 @@ import {
   type CoursePublishPolicy,
 } from '@/api/course-publish-governance';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { secureRandomUuid } from '@/utils/random-uuid';
 import { useAuthStore } from '@/utils/store';
 
 const governanceKey = (courseId: string) => ['course-publish-governance', courseId] as const;
@@ -113,7 +114,7 @@ export function CoursePublishGovernanceDialog({
     mutationFn: () => createCoursePublishCandidate({
       courseId,
       targetBlockId: rootBlockId,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: secureRandomUuid(),
     }),
     onSuccess: async candidate => {
       setSelectedCandidateId(candidate.id);

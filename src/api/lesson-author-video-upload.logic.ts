@@ -1,3 +1,5 @@
+import { secureRandomUuidOrNull } from '../utils/random-uuid';
+
 export type LessonAuthorVideoUploadPhase = 'preparing' | 'uploading' | 'accepting';
 
 type SecureRandomSource = Pick<Crypto, 'getRandomValues'> & Partial<Pick<Crypto, 'randomUUID'>>;
@@ -20,16 +22,9 @@ export class LessonAuthorUploadPreparationError extends Error {
 export function createLessonAuthorUploadAttemptId(
   secureRandom: SecureRandomSource | null | undefined = globalThis.crypto,
 ): string {
-  if (typeof secureRandom?.randomUUID === 'function') return secureRandom.randomUUID();
-  if (typeof secureRandom?.getRandomValues !== 'function') {
-    throw new LessonAuthorUploadPreparationError();
-  }
-  const bytes = new Uint8Array(16);
-  secureRandom.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  const id = secureRandomUuidOrNull(secureRandom);
+  if (id === null) throw new LessonAuthorUploadPreparationError();
+  return id;
 }
 
 export function lessonAuthorUploadSafeErrorCode(error: unknown): string {

@@ -65,6 +65,7 @@ import { getSectionModalConfig, updateSectionModalConfig, type SectionModalConfi
 import { AppTooltip } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { secureRandomUuid } from '@/utils/random-uuid';
 import i18n from '@/i18n';
 import { useAuthStore } from '@/utils/store';
 import CourseOutlineTransferDialog from './CourseOutlineTransferDialog';
@@ -638,7 +639,7 @@ function NodeActions({ node, courseId, depth, onRename, onStructureChange }: {
         candidate = await createCoursePublishCandidate({
           courseId,
           targetBlockId: node.id,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: secureRandomUuid(),
         });
         eligibility = await getCoursePublishCandidateEligibility(candidate.id);
       }

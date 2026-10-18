@@ -1,6 +1,7 @@
 import { readWorkspaceDetail, isWorkspaceId, type WorkspaceContent, type WorkspaceDetail, type WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { WorkspaceWriteError, workspaceWriteFailure, validateWorkspaceChanges, readWorkspaceWriteReceipt,
   type WorkspaceWriteClient, type WorkspaceWriteReceipt, type WorkspaceSaveRequest, type WorkspaceResetRequest } from '../../api/workspace-write';
+import { secureRandomUuid } from '../../utils/random-uuid';
 
 interface Draft { baseRevision: number; content: WorkspaceContent; version: number; conflict: boolean }
 export type WorkspaceWriteOperation = {
@@ -37,7 +38,7 @@ export function createWorkspaceWriteState(client: WorkspaceWriteClient, identity
   let controller: AbortController | null = null;
   let uncertain = false;
   const usedIds = new Set<string>();
-  const newId = options.operationId ?? (() => globalThis.crypto.randomUUID());
+  const newId = options.operationId ?? (() => secureRandomUuid());
   let state: Readonly<WorkspaceWriteState> = freeze({ phase: 'idle', detail: null, draft: null,
     operation: null, receipt: null, error: null, readRequired: true });
   const listeners = new Set<() => void>();

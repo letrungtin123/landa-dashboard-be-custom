@@ -14,7 +14,8 @@ const load = (path, replacements = {}) => {
 const contract = load('../../api/lesson-author-workspace.contract.ts');
 const writeClient = load('../../api/workspace-write.ts', { './custom-client': compile('export const customApiClient = {};'), './lesson-author-workspace.contract': contract });
 const readState = load('./workspace-read-state.ts', { '../../api/lesson-author-workspace.contract': contract });
-const writeState = load('./workspace-write-state.ts', { '../../api/lesson-author-workspace.contract': contract, '../../api/workspace-write': writeClient });
+const writeState = load('./workspace-write-state.ts', { '../../api/lesson-author-workspace.contract': contract, '../../api/workspace-write': writeClient,
+  '../../utils/random-uuid': load('../../utils/random-uuid.ts') });
 const { WorkspaceReadError } = await import(contract);
 const { WorkspaceWriteError } = await import(writeClient);
 const { createWorkspaceSession } = await import(load('./workspace-session.ts', {

@@ -11,9 +11,11 @@ const inert = compile('export const customApiClient = {};');
 const writeUrl = compile(readFileSync(new URL('../../api/workspace-write.ts', import.meta.url), 'utf8')
   .replace("'./custom-client'", JSON.stringify(inert)).replace("'./lesson-author-workspace.contract'", JSON.stringify(contractUrl)));
 const { WorkspaceWriteError } = await import(writeUrl);
+const randomUuidUrl = compile(readFileSync(new URL('../../utils/random-uuid.ts', import.meta.url), 'utf8'));
 const { createWorkspaceWriteState } = await import(compile(readFileSync(new URL('./workspace-write-state.ts', import.meta.url), 'utf8')
   .replace("'../../api/lesson-author-workspace.contract'", JSON.stringify(contractUrl))
-  .replace("'../../api/workspace-write'", JSON.stringify(writeUrl))));
+  .replace("'../../api/workspace-write'", JSON.stringify(writeUrl))
+  .replace("'../../utils/random-uuid'", JSON.stringify(randomUuidUrl))));
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const identity = { workspaceId: id(1), nodeId: id(2), correlationId: id(3), contentLocale: 'vi' };
 const content = { title: 'Original', purpose: null, data: { html: '<p>Content</p>' }, implementation_notes: null };

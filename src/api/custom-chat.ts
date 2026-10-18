@@ -9,6 +9,7 @@ import { useLocaleStore } from "@/utils/locale-store";
 import { useAuthStore } from "@/utils/store";
 import { useTenantStore } from "@/utils/tenant-store";
 import { scheduleTenantDataQuotaRefresh } from "@/utils/tenant-data-quota-refresh";
+import { secureRandomUuid } from "@/utils/random-uuid";
 import type { LessonAuthorEditorContext } from "@/utils/lesson-author-editor-context";
 import { buildChatStreamUrl, isChatStreamNetworkError, consumeChatEventStream, readGenerationAdmissionRejection } from "./custom-chat-stream.logic";
 import { normalizeLessonAuthorVideoUploadProgress } from "./lesson-author-video-upload.logic";
@@ -802,8 +803,9 @@ export function sendMessageStream(
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
   };
-  if (options.target === 'lesson_author') headers['X-Lesson-Author-Job-Key'] = crypto.randomUUID();
-  if (options.target === 'lesson_author') headers['X-Lesson-Author-Chapter-Key'] = crypto.randomUUID();
+  // crypto.randomUUID throws on plain http addresses; secureRandomUuid falls back to getRandomValues.
+  if (options.target === 'lesson_author') headers['X-Lesson-Author-Job-Key'] = secureRandomUuid();
+  if (options.target === 'lesson_author') headers['X-Lesson-Author-Chapter-Key'] = secureRandomUuid();
   let quotaTenantId = user?.tenant_id ?? null;
   if (user?.role === 'superadmin') {
     const { activeTenantId } = useTenantStore.getState();

@@ -11,6 +11,7 @@ import { createWorkspaceReadClient } from '../../api/lesson-author-workspace';
 import { createWorkspaceCreateClient } from '../../api/workspace-create';
 import { workspaceSourceApi } from '../../api/workspace-sources';
 import { createLessonAuthorUploadAttemptId } from '../../api/lesson-author-video-upload.logic';
+import { secureRandomUuid } from '../../utils/random-uuid';
 import { createWorkspaceSourceState } from './workspace-source-state';
 import { WorkspaceSourcePanel } from './workspace-source-panel';
 import { WorkspaceLaunchBriefPanel, WorkspaceLaunchBriefSummary } from './workspace-launch-brief-panel';
@@ -262,7 +263,10 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
           if (!canWrite() || !auth.isAuthenticated || auth.isLoggingOut || auth.user?.id !== identity.actorId
             || tenant !== identity.tenantId || !auth.hasPermission('courses', 'can_edit')) throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN');
         };
+        // Save/reset operation ids: the write state's default (crypto.randomUUID)
+        // throws on plain http addresses.
         return createWorkspaceSession(identity, { uiLocale: locale, readClient: createWorkspaceReadClient(identity), eventDriven: realtimeEnabled,
+          operationId: secureRandomUuid,
           writeClient: {
             save: (...args) => { assertWriteScope(); return writes.save(...args); },
             reset: (...args) => { assertWriteScope(); return writes.reset(...args); },
@@ -507,7 +511,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
         const client = createWorkspaceApplyClient({ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id });
         const confirmedScope = await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
           assertCanWrite: () => host.assertCanApply(),
-          apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, crypto.randomUUID(), sequence, locale, overwriteConfirmation); } });
+          apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, secureRandomUuid(), sequence, locale, overwriteConfirmation); } });
         const confirmedGraph = session.getState().read.graph;
         const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
         completeWorkspaceApplyUi({ markApplied: () => {

@@ -45,6 +45,8 @@ test('UI wiring retains four-step definition and uses GET recovery only, EN/VI a
   assert.match(widget,/Tiếp tục hoàn thành chương/);assert.match(widget,/Continue completing the chapter/);
   const get=api.slice(api.indexOf('export async function fetchChapterCheckpointStatus'),api.indexOf('function blueprintJobStorageKey'));
   assert.match(get,/customApiClient.get/);assert.doesNotMatch(get,/\.post|sendMessageStream/);
-  assert.match(api,/headers\['X-Lesson-Author-Chapter-Key'\] = crypto.randomUUID\(\)/);
+  // A fresh key per send; crypto.randomUUID itself throws on plain http addresses.
+  assert.match(api,/headers\['X-Lesson-Author-Chapter-Key'\] = secureRandomUuid\(\)/);
+  assert.doesNotMatch(api,/crypto\.randomUUID\(\)/);
   assert.match(widget,/activeStreamConversationIdsRef.current.has\(currentConv.id\)/);
 });
