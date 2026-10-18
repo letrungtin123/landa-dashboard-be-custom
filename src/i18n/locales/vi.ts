@@ -2269,8 +2269,10 @@ export const vi = {
       users: {
         title: "Ai dùng nhiều nhất",
         description: "Điểm của những người dùng nhiều nhất trong tháng.",
-        modeCumulative: "Cộng dồn",
-        modeDaily: "Mỗi ngày",
+        modeCumulative: "Tổng từ đầu tháng",
+        modeDaily: "Theo từng ngày",
+        modeCumulativeHint: "Mỗi đường là tổng điểm một người đã dùng từ ngày 1 đến ngày đó. Điểm cuối đường là tổng cả tháng.",
+        modeDailyHint: "Mỗi điểm trên đường là số điểm người đó dùng riêng trong ngày đó.",
         listTitle: "Tất cả người dùng",
         listCount: "{{count}} người dùng",
         searchPlaceholder: "Tìm theo tên hoặc email",

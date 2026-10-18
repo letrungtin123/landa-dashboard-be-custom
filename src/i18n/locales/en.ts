@@ -2272,8 +2272,10 @@ export const en: TranslationSchema<typeof vi> = {
       users: {
         title: "Who uses the most",
         description: "Points of the people who used the most this month.",
-        modeCumulative: "Running total",
-        modeDaily: "Per day",
+        modeCumulative: "Since the 1st",
+        modeDaily: "Day by day",
+        modeCumulativeHint: "Each line is the points a person has used from the 1st of the month up to that day. The end of the line is the month's total.",
+        modeDailyHint: "Each point is the points that person used on that day only.",
         listTitle: "Everyone",
         listCount: "{{count}} people",
         searchPlaceholder: "Search by name or email",

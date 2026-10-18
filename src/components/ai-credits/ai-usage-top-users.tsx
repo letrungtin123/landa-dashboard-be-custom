@@ -14,7 +14,7 @@ import { AiUsageUserList, AiUserName } from './ai-usage-user-list';
 const AXIS_TICK = { fill: 'var(--muted-foreground)', fontSize: 11 };
 type LineMode = 'cumulative' | 'daily';
 
-/** Running total (default, easy to compare) or points of each day. */
+/** Total since the 1st (default, easy to compare) or points of each day. */
 function ModeToggle({ value, onChange }: { value: LineMode; onChange: (value: LineMode) => void }) {
   const { t } = useTranslation();
   const options: Array<[LineMode, string]> = [['cumulative', t('aiCredits.usage.users.modeCumulative')], ['daily', t('aiCredits.usage.users.modeDaily')]];
@@ -108,6 +108,9 @@ export function AiUsageTopUsers({ users, userDaily, month, until = null, showCha
               color: series.color,
               label: series.user ? <AiUserName user={series.user} labels={labels} /> : labels.deletedUser,
             }))} />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t(mode === 'cumulative' ? 'aiCredits.usage.users.modeCumulativeHint' : 'aiCredits.usage.users.modeDailyHint')}
+            </p>
           </div>
         ) : (
           <p className="rounded-xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">
