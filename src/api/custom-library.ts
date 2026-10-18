@@ -71,11 +71,6 @@ export async function getCategories(params?: { page?: number; page_size?: number
   return { categories: data.data.data, total: data.data.total, page: data.data.page, page_size: data.data.pageSize };
 }
 
-export async function getAllCategories() {
-  const { data } = await customApiClient.get<ApiResponse<PaginatedResponse<DocCategory>>>("/api/library/categories", { params: { page_size: 200 } });
-  return data.data.data;
-}
-
 export async function createCategory(name: string, tenant_id?: string) {
   const { data } = await customApiClient.post<ApiResponse<DocCategory>>("/api/library/categories", { name, tenant_id });
   return { success: true, id: data.data.id, slug: data.data.slug };

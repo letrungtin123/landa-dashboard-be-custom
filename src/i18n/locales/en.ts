@@ -18,6 +18,7 @@ export const en: TranslationSchema<typeof vi> = {
     sliderThumb: "Slider thumb",
     unknownError: "Something went wrong. Please try again.",
     sidebar: "Sidebar", sidebarDescription: "Displays the sidebar on mobile devices.", toggleSidebar: "Toggle sidebar",
+    loadMoreShown: "Load more (showing {{shown}} of {{total}})",
   },
   language: {
     change: "Change language",

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  getCategories, getAllCategories, createCategory, updateCategory, getCategoryPublicImpact, deleteCategory,
+  getCategories, createCategory, updateCategory, getCategoryPublicImpact, deleteCategory,
   bulkDeleteCategories, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';

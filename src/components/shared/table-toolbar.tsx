@@ -19,6 +19,8 @@ export interface FilterConfig {
   key: string;
   placeholder: string;
   options: FilterOption[];
+  /** Shown after the options, e.g. a "load more" row when options come in pages. */
+  footer?: React.ReactNode;
 }
 
 interface TableToolbarProps {
@@ -106,6 +108,7 @@ export function TableToolbar({
                     {opt.label}
                   </SelectItem>
                 ))}
+                {filter.footer}
               </SelectContent>
             </Select>
           );

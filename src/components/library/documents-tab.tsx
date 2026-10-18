@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  getDocuments, getAllCategories, uploadDocumentsBatch, updateDocument, deleteDocument,
+  getDocuments, uploadDocumentsBatch, updateDocument, deleteDocument,
   bulkDocumentAction, formatLibraryDocumentUploadSize, LIBRARY_DOCUMENT_MAX_UPLOAD_BYTES, LIBRARY_DOCUMENT_MAX_UPLOAD_LABEL, type Document, type DocCategory,
 } from '@/api/custom-library';
 import { useTenantStore } from '@/utils/tenant-store';
 import { storageUrl } from '@/utils/storage-url';
 import { useDebounce } from '@/hooks/use-debounce';
 import { TableToolbar } from '@/components/shared/table-toolbar';
+import { SelectLoadMore } from '@/components/shared/select-load-more';
+import { useLibraryCategoryOptions } from '@/hooks/queries/use-library-category-options';
 import { Pagination } from '@/components/shared/pagination';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -122,11 +124,17 @@ export default function DocumentsTab() {
     }),
   });
 
-  // Fetch categories for filter dropdown
-  const { data: categories } = useQuery({
-    queryKey: ['landa-categories-all', activeTenantId],
-    queryFn: getAllCategories,
-  });
+  // Categories for the filter and bulk-assign dropdowns, 100 per page with "load more".
+  const categoryOptions = useLibraryCategoryOptions(activeTenantId);
+  const categories = categoryOptions.categories;
+  const categoryLoadMore = categoryOptions.hasMore ? (
+    <SelectLoadMore
+      shown={categories.length}
+      total={categoryOptions.total}
+      loading={categoryOptions.loadingMore}
+      onLoadMore={categoryOptions.loadMore}
+    />
+  ) : undefined;
 
   const docs = data?.documents ?? [];
   const total = data?.total ?? 0;
@@ -249,7 +257,7 @@ export default function DocumentsTab() {
         onSearchChange={setSearch}
         searchPlaceholder={t('library.searchDocuments')}
         filters={[
-          { key: 'category', placeholder: t('library.categoryFilter'), options: catOptions },
+          { key: 'category', placeholder: t('library.categoryFilter'), options: catOptions, footer: categoryLoadMore },
           { key: 'extension', placeholder: t('library.fileTypeFilter'), options: extOptions },
         ]}
         filterValues={{ category: catFilter, extension: extFilter }}
@@ -315,6 +323,7 @@ export default function DocumentsTab() {
                 {(categories ?? []).map((c) => (
                   <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.name}</SelectItem>
                 ))}
+                {categoryLoadMore}
               </SelectContent>
             </Select>
             <Button

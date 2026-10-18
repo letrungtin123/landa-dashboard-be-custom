@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, ChevronRight, FolderOpen } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/utils/confirm-store';
 import { getGroupLabelSet, lowerGroupLabel } from '@/utils/group-labels';
 import { useAuthStore } from '@/utils/store';
+import { useTenantStore } from '@/utils/tenant-store';
+import { MAX_API_PAGE_SIZE, nextPageNumber } from '@/utils/paged-list.logic';
 import {
   getOrgGroups, createOrgGroup, updateOrgGroup, deleteOrgGroup,
   type OrgGroup,
@@ -37,9 +39,19 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['org-groups'],
-    queryFn: () => getOrgGroups({ page_size: 100 }),
+  // Pages of 100 (the backend maximum) with "load more": a tenant with more
+  // than 100 groups used to see only the first 100, without any notice.
+  const activeTenantId = useTenantStore((s) => s.activeTenantId);
+  const {
+    data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['org-groups', activeTenantId || 'current-tenant'],
+    queryFn: ({ pageParam }) => getOrgGroups({ page: pageParam, page_size: MAX_API_PAGE_SIZE }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, pages) => nextPageNumber(
+      pages.map((page) => ({ rows: page.groups.length })),
+      lastPage.total,
+    ),
   });
 
   const createMutation = useMutation({
@@ -73,7 +85,8 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
     onError: () => toast.error(t('groups.deleteFailed', { label: groupLabelLower })),
   });
 
-  const groups: OrgGroup[] = data?.groups ?? [];
+  const groups: OrgGroup[] = data?.pages.flatMap((page) => page.groups) ?? [];
+  const totalGroups = data?.pages[data.pages.length - 1]?.total ?? groups.length;
 
   const handleDelete = (g: OrgGroup) => {
     confirmDialog({
@@ -171,6 +184,21 @@ export function OrgGroupPanel({ selectedId, onSelect }: Props) {
             )}
           </div>
         ))}
+        {!isLoading && hasNextPage && (
+          <div className="px-3 py-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-full text-xs text-muted-foreground"
+              disabled={isFetchingNextPage}
+              onClick={() => { void fetchNextPage(); }}
+            >
+              {isFetchingNextPage
+                ? t('common.loading')
+                : t('common.loadMoreShown', { shown: groups.length, total: totalGroups })}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ export const vi = {
     sliderThumb: "Nút điều chỉnh thanh trượt",
     unknownError: "Đã xảy ra lỗi. Vui lòng thử lại.",
     sidebar: "Thanh điều hướng", sidebarDescription: "Hiển thị thanh điều hướng trên thiết bị di động.", toggleSidebar: "Bật/tắt thanh điều hướng",
+    loadMoreShown: "Tải thêm (đang hiện {{shown}}/{{total}})",
   },
   language: {
     change: "Thay đổi ngôn ngữ",
