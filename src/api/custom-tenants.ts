@@ -30,9 +30,6 @@ export interface Tenant {
   data_quota_state: "initializing" | "observing" | "enforced" | "reconciling" | "drifted";
   data_quota_last_verified_at: string | null;
   ai_active_engine: TenantAiEngine;
-  ai_monthly_token_limit: string | null;
-  ai_token_total_used: string;
-  ai_token_reserved: string;
   ai_transition_state: "idle" | "queued" | "running" | "failed";
   ai_pending_engine: TenantAiEngine | null;
   is_active: boolean;
@@ -47,7 +44,6 @@ export interface TenantAiSettings {
   tenantId: string;
   activeEngine: TenantAiEngine;
   provider: "google_ai_studio";
-  monthlyTokenLimit: string | null;
   tokenTimezone: string;
   chatModel: string;
   lessonAuthorModel: string;
@@ -62,14 +58,12 @@ export interface TenantAiSettings {
   tokenEmbeddingUsed: string;
   tokenTotalUsed: string;
   tokenReserved: string;
-  tokenRemaining: string | null;
   estimatedCostVnd: string;
   pendingEngine: TenantAiEngine | null;
 }
 
 export interface UpdateTenantAiSettingsInput {
   active_engine?: TenantAiEngine;
-  monthly_token_limit?: string | null;
   google_ai_studio_api_key?: string | null;
   clear_google_ai_studio_api_key?: boolean;
 }

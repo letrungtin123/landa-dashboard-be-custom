@@ -58,7 +58,6 @@ export async function fetchPendingBlueprintJob(conversationId: string): Promise<
 }
 
 export type ChatTarget = "admin" | "learner" | "lesson_author";
-const AI_TOKEN_LIMIT_REACHED_CODE = "AI_TOKEN_LIMIT_REACHED";
 const AI_RAG_KB_NOT_ASSIGNED_CODE = "AI_RAG_KB_NOT_ASSIGNED";
 
 // ── Types ──
@@ -748,7 +747,6 @@ function normalizeStreamErrorMessage(err: unknown): string {
 
 function normalizeStreamErrorPayload(payload: unknown, fallbackKey: string): string {
   const data = payload as { code?: unknown; message?: unknown; error?: unknown };
-  if (data?.code === AI_TOKEN_LIMIT_REACHED_CODE) return streamText('chatWidget.aiTokenLimitReached');
   if (data?.code === AI_RAG_KB_NOT_ASSIGNED_CODE) return streamText('chatWidget.aiRagKbNotAssigned');
   // AI points used up / not enough for the request: the same plain message everywhere.
   const creditKey = aiCreditErrorKey(data?.code);
