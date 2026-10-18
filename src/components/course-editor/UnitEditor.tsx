@@ -4,7 +4,7 @@
  */
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   getUnitChildren, createXBlock, updateXBlock, deleteXBlock, studioSubmit, getBlockInfo, publishBlock, discardDraft, reorderChildren,
   COURSE_ASSET_UPLOAD_STATE_EVENT, deleteCourseAssetByStoragePath, fetchCurrentTenantCourseComponentPermissions,
@@ -334,6 +334,22 @@ async function fetchBlockDetail(block: ChildBlock): Promise<any> {
   }
 }
 
+/**
+ * Component detail loads share one query key per component, so loads started
+ * together (closing the editor and refreshing after a save, or opening the
+ * editor while the preview is still loading) send one request instead of two
+ * or three. staleTime 0 and gcTime 0: every load still asks the server and no
+ * answer is kept or served from an older cache entry.
+ */
+function loadSharedBlockDetail(queryClient: QueryClient, block: ChildBlock): Promise<any> {
+  return queryClient.fetchQuery({
+    queryKey: ['course-block-detail', block.id || block.block_id],
+    queryFn: () => fetchBlockDetail(block),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
 // ─── UnitEditor (main) ────────────────────────────────────────────────────────
 
 export default function UnitEditor({ unitId, courseId, focusComponentId, onContentChange, onMissingUnit, onActiveComponentChange }: {
@@ -371,6 +387,20 @@ export default function UnitEditor({ unitId, courseId, focusComponentId, onConte
     if (!isError || !isBlockNotFoundError(error)) return;
     onMissingUnit?.();
   }, [error, isError, onMissingUnit]);
+
+  // An AI ID Apply (chat widget) changes this course's components without
+  // touching this query. Refresh the unit so its cards show the applied
+  // content now, instead of waiting for a tab switch (queries no longer
+  // refetch on window focus).
+  useEffect(() => {
+    if (!courseId) return;
+    const handleCourseOutlineUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ courseId?: string }>).detail;
+      if (detail?.courseId === courseId) void refetch();
+    };
+    window.addEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
+    return () => window.removeEventListener('landa:course-outline-updated', handleCourseOutlineUpdated);
+  }, [courseId, refetch]);
 
   const { data: componentPermissions, isLoading: componentPermissionsLoading } = useQuery({
     queryKey: ['course-component-permissions', courseId || 'current-course', activeTenantId || 'current-tenant'],
@@ -622,11 +652,11 @@ function ComponentCard({ block, courseId, detailRefreshKey, isFocused, onActiveC
 
   const loadDetail = useCallback(async () => {
     setLoadingDetail(true);
-    const detail = await fetchBlockDetail(block);
+    const detail = await loadSharedBlockDetail(queryClient, block);
     setBlockData(detail);
     setDetailVersion((version) => version + 1);
     setLoadingDetail(false);
-  }, [block]);
+  }, [block, queryClient]);
 
   // Fetch lại khi unit-children refetch để data AI vừa apply hiện ngay trên card/form đang mở.
   // QUAN TRỌNG: Skip refresh khi đang editing — tránh mất state chưa save (video upload, v.v.)
