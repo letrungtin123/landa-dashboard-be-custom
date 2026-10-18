@@ -73,10 +73,13 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // ── Production build — giảm request cho Tunnelto ──
+    // ── Production build ──
     build: {
       sourcemap: false,
-      assetsInlineLimit: 200 * 1024,
+      // Only tiny icons are inlined. Larger images stay separate files under
+      // /admin/assets/: cached across releases and downloaded only when a page
+      // shows them, instead of inside the main script.
+      assetsInlineLimit: 4 * 1024,
       cssCodeSplit: false,
       rollupOptions: {
         output: {
