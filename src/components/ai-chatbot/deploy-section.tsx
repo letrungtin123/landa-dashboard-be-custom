@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Rocket, Bot, Loader2, Database, Drama, AlertTriangle } from "lucide-react";
+import { Rocket, Bot, Loader2, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -290,32 +290,6 @@ export function DeploySection() {
                         <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">{lessonSettings.active_kb.learned_count} {t("aiChatbot.learned").toLowerCase()}</Badge>
                         {lessonSettings.active_kb.learning_count > 0 && <Badge variant="secondary">{lessonSettings.active_kb.learning_count} {t("aiChatbot.learning").toLowerCase()}</Badge>}
                         {lessonSettings.active_kb.error_count > 0 && <Badge variant="destructive">{lessonSettings.active_kb.error_count} {t("aiChatbot.error").toLowerCase()}</Badge>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="app-liquid-card rounded-lg border bg-muted/20 p-3 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-medium">
-                      <Drama className="h-3.5 w-3.5 text-amber-600" />
-                      {t("aiChatbot.expertPersona")}
-                    </div>
-                    {lessonSettings?.active_persona ? (
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full overflow-hidden bg-muted border flex items-center justify-center shrink-0">
-                          {lessonSettings.active_persona.persona_avatar_url ? (
-                            <img src={storageUrl(lessonSettings.active_persona.persona_avatar_url)} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <Drama className="h-4 w-4 text-amber-600" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{lessonSettings.active_persona.persona_name}</p>
-                          {/* <p className="text-[11px] text-muted-foreground">Lấy từ Prompt hệ thống</p> */}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-[11px] text-amber-700">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        {t("aiChatbot.expertPersonaMissing")}
                       </div>
                     )}
                   </div>
