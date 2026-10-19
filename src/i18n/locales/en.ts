@@ -441,6 +441,7 @@ export const en: TranslationSchema<typeof vi> = {
       TENANT_REQUIRED: "The active organization could not be determined.",
       LAST_SUPERADMIN: "The last active Super Admin cannot be disabled, demoted or deleted.",
       TARGET_CHANGED: "This account was just changed by someone else. Reload and try again.",
+      TENANTLESS_AVATAR_DELETE: "This account belongs to no organization and has a profile picture, so it cannot be deleted permanently yet. You can disable the account instead.",
     },
   },
   userForm: {

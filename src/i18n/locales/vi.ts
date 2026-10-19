@@ -438,6 +438,7 @@ export const vi = {
       TENANT_REQUIRED: "Không xác định được doanh nghiệp đang thao tác.",
       LAST_SUPERADMIN: "Không thể khóa, hạ quyền hoặc xóa Super Admin cuối cùng đang hoạt động.",
       TARGET_CHANGED: "Tài khoản vừa được người khác thay đổi. Vui lòng tải lại và thử lại.",
+      TENANTLESS_AVATAR_DELETE: "Tài khoản này không thuộc doanh nghiệp nào và đang có ảnh đại diện nên chưa xóa vĩnh viễn được. Bạn có thể khóa tài khoản thay cho việc xóa.",
     },
   },
   userForm: {
