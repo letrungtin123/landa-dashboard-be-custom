@@ -38,7 +38,6 @@ import {
 type ChartView = { start: number; end: number };
 type EdgeDirection = Extract<ReportChartWindowDirection, 'before' | 'after'>;
 type TooltipState = { index: number; x: number; y: number } | null;
-type ChartVariant = 'bar' | 'line';
 
 const EDGE_LOAD_THRESHOLD = 6;
 const PARTIAL_BUCKET_ALPHA = 0.45;
@@ -155,7 +154,6 @@ export function ReportWindowChart({
   valueSuffix = '',
   formatValue,
   colors = DEFAULT_COLORS,
-  variant = 'bar',
 }: {
   request: ReportChartRequest;
   enabled?: boolean;
@@ -166,7 +164,6 @@ export function ReportWindowChart({
   valueSuffix?: string;
   formatValue?: (value: number) => string;
   colors?: string[];
-  variant?: ChartVariant;
 }) {
   const { t } = useTranslation();
   const locale = useLocaleStore((state) => state.locale);
@@ -406,7 +403,7 @@ export function ReportWindowChart({
 
     if (!visiblePoints.length || !seriesKeys.length) return;
 
-    const maxValue = Math.max(1, ...visiblePoints.flatMap(point => variant === 'line' ? seriesKeys.map(key => getSeriesValue(point, key)) : [isGrouped ? sumPoint(point, seriesKeys) : getSeriesValue(point, seriesKeys[0])]));
+    const maxValue = Math.max(1, ...visiblePoints.map(point => isGrouped ? sumPoint(point, seriesKeys) : getSeriesValue(point, seriesKeys[0])));
     const yFor = (value: number) => zeroY - (Math.max(0, value) / maxValue) * plotHeight;
 
     ctx.save();
@@ -447,90 +444,39 @@ export function ReportWindowChart({
     // A week or month cut by the range holds fewer days: drawn lighter, explained in the tooltip.
     const bucketAlpha = (index: number) => (visibleBuckets[index]?.partial ? PARTIAL_BUCKET_ALPHA : 1);
 
-    if (variant === 'line') {
-      seriesKeys.forEach((key, seriesIndex) => {
-        const color = colors[seriesIndex % colors.length];
-        let hasActiveSegment = false;
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = seriesKeys.length > 4 ? 2 : 2.6;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.shadowColor = `${color}33`;
-        ctx.shadowBlur = 7;
-        ctx.beginPath();
+    visiblePoints.forEach((point, index) => {
+      const xCenter = plot.left + step * index + step / 2;
+      const x = xCenter - barWidth / 2;
+      let stackedTop = zeroY;
+      ctx.globalAlpha = bucketAlpha(index);
 
-        visiblePoints.forEach((point, index) => {
+      if (isGrouped) {
+        for (let seriesIndex = 0; seriesIndex < seriesKeys.length; seriesIndex += 1) {
+          const key = seriesKeys[seriesIndex];
           const value = getSeriesValue(point, key);
-          const xCenter = plot.left + step * index + step / 2;
-          if (value <= 0) {
-            hasActiveSegment = false;
-            return;
-          }
-          const y = yFor(value);
-          if (!hasActiveSegment) {
-            ctx.moveTo(xCenter, y);
-            hasActiveSegment = true;
-          } else {
-            ctx.lineTo(xCenter, y);
-          }
-        });
-
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        visiblePoints.forEach((point, index) => {
-          const value = getSeriesValue(point, key);
-          if (value <= 0) return;
-          const xCenter = plot.left + step * index + step / 2;
-          const y = yFor(value);
-          ctx.fillStyle = background;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.globalAlpha = bucketAlpha(index);
-          ctx.beginPath();
-          ctx.arc(xCenter, y, value > 0 ? 3.4 : 2.2, 0, Math.PI * 2);
+          if (value <= 0) continue;
+          const y = yFor(sumPoint(point, seriesKeys.slice(0, seriesIndex + 1)));
+          const heightPx = Math.max(2, stackedTop - y);
+          ctx.fillStyle = colors[seriesIndex % colors.length];
+          roundedRect(ctx, x, stackedTop - heightPx, barWidth, heightPx, Math.min(5, barWidth / 2));
           ctx.fill();
-          ctx.stroke();
-        });
-
-        ctx.restore();
-      });
-    } else {
-      visiblePoints.forEach((point, index) => {
-        const xCenter = plot.left + step * index + step / 2;
-        const x = xCenter - barWidth / 2;
-        let stackedTop = zeroY;
-        ctx.globalAlpha = bucketAlpha(index);
-
-        if (isGrouped) {
-          for (let seriesIndex = 0; seriesIndex < seriesKeys.length; seriesIndex += 1) {
-            const key = seriesKeys[seriesIndex];
-            const value = getSeriesValue(point, key);
-            if (value <= 0) continue;
-            const y = yFor(sumPoint(point, seriesKeys.slice(0, seriesIndex + 1)));
-            const heightPx = Math.max(2, stackedTop - y);
-            ctx.fillStyle = colors[seriesIndex % colors.length];
-            roundedRect(ctx, x, stackedTop - heightPx, barWidth, heightPx, Math.min(5, barWidth / 2));
-            ctx.fill();
-            stackedTop -= heightPx;
-          }
-        } else {
-          const value = getSeriesValue(point, seriesKeys[0]);
-          const y = yFor(value);
-          const heightPx = value > 0 ? Math.max(2, zeroY - y) : 0;
-          if (heightPx > 0) {
-            const gradient = ctx.createLinearGradient(0, y, 0, zeroY);
-            gradient.addColorStop(0, colors[0]);
-            gradient.addColorStop(1, `${colors[0]}66`);
-            ctx.fillStyle = gradient;
-            roundedRect(ctx, x, zeroY - heightPx, barWidth, heightPx, Math.min(5, barWidth / 2));
-            ctx.fill();
-          }
+          stackedTop -= heightPx;
         }
-      });
-      ctx.globalAlpha = 1;
-    }
+      } else {
+        const value = getSeriesValue(point, seriesKeys[0]);
+        const y = yFor(value);
+        const heightPx = value > 0 ? Math.max(2, zeroY - y) : 0;
+        if (heightPx > 0) {
+          const gradient = ctx.createLinearGradient(0, y, 0, zeroY);
+          gradient.addColorStop(0, colors[0]);
+          gradient.addColorStop(1, `${colors[0]}66`);
+          ctx.fillStyle = gradient;
+          roundedRect(ctx, x, zeroY - heightPx, barWidth, heightPx, Math.min(5, barWidth / 2));
+          ctx.fill();
+        }
+      }
+    });
+    ctx.globalAlpha = 1;
 
     visiblePoints.forEach((point, index) => {
       const xCenter = plot.left + step * index + step / 2;
@@ -558,7 +504,7 @@ export function ReportWindowChart({
         ctx.restore();
       }
     }
-  }, [bucketViews, colors, isGrouped, seriesKeys, size, themeVersion, tooltip, valueSuffix, variant, view, visiblePoints]);
+  }, [bucketViews, colors, isGrouped, seriesKeys, size, themeVersion, tooltip, valueSuffix, view, visiblePoints]);
 
   const moveTooltip = useCallback((clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
