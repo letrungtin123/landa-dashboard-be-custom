@@ -145,6 +145,14 @@ test('the Reports chart draws its axis and tooltip with these helpers', () => {
   assert.match(chart, /formatReportChartPartialNote\(tooltipBucket, translate\)/);
   assert.doesNotMatch(chart, /Tuần|Tháng|Week of/, 'no hard-coded bucket words in the component');
   // Both Reports screen charts ask for the automatic buckets of the backend.
-  assert.match(read('../../pages/report-summary.tsx'), /granularity: 'auto' as const/);
+  assert.match(read('./group-enrollments-widget.tsx'), /granularity: 'auto' as const/);
   assert.match(read('./report-metric-trend-modal.tsx'), /granularity: 'auto' as const/);
+});
+
+test('the branch enrollment chart writes its axis and tooltip with the same helpers', () => {
+  const chart = read('./report-branch-chart.tsx');
+  assert.match(chart, /describeReportChartBucket\(id, chart\.granularity, chart\.range, locale\)/);
+  assert.match(chart, /formatReportChartBucketTitle\(view, translate\)/);
+  assert.match(chart, /formatReportChartPartialNote\(view, translate\)/);
+  assert.doesNotMatch(chart, /Tuần|Tháng|Week of/, 'no hard-coded bucket words in the component');
 });

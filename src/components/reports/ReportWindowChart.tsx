@@ -3,14 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, MoveHorizontal } from 'lucide-react';
 
-import {
-  getReportChart,
-  type ReportChartGranularity,
-  type ReportChartPoint,
-  type ReportChartResponse,
-  type ReportChartWindowMeta,
-  type ReportChartWindowDirection,
+import type {
+  ReportChartGranularity,
+  ReportChartPoint,
+  ReportChartResponse,
+  ReportChartWindowMeta,
+  ReportChartWindowDirection,
 } from '@/api/custom-reports';
+import { useReportChartFetcher } from '@/hooks/queries/use-report-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/utils/utils';
 import { useTenantStore } from '@/utils/tenant-store';
@@ -24,26 +24,28 @@ import {
   reportChartBucketSizeKey,
   type ReportChartRange,
 } from './report-chart-buckets.logic';
+import {
+  REPORT_CHART_SERIES_LIMIT as SERIES_LIMIT,
+  mergeReportChartPoints as mergePoints,
+  reportChartBucketId as getBucketId,
+  reportChartSeriesValue as getSeriesValue,
+  reportChartWindowParams,
+  resolveReportChartSeriesKeys as resolveSeriesKeys,
+  sumReportChartPoint as sumPoint,
+  type ReportChartRequest,
+} from './report-chart-window.logic';
 
-type ReportChartRequest = Parameters<typeof getReportChart>[0];
 type ChartView = { start: number; end: number };
 type EdgeDirection = Extract<ReportChartWindowDirection, 'before' | 'after'>;
 type TooltipState = { index: number; x: number; y: number } | null;
 type ChartVariant = 'bar' | 'line';
 
-const META_KEYS = new Set(['month', 'month_label', 'bucket', 'bucket_label']);
-const WINDOW_LIMIT_BUCKETS = 72;
-const SERIES_LIMIT = 8;
 const EDGE_LOAD_THRESHOLD = 6;
 const PARTIAL_BUCKET_ALPHA = 0.45;
 const DEFAULT_COLORS = [
   '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444',
   '#06b6d4', '#ec4899', '#84cc16', '#6366f1', '#14b8a6',
 ];
-
-function getBucketId(point: ReportChartPoint): string {
-  return String(point.bucket || point.month || '');
-}
 
 function getPreferredVisibleBuckets(granularity?: ReportChartGranularity): number {
   if (granularity === 'month') return 10;
@@ -93,19 +95,6 @@ function clampView(view: ChartView, total: number, granularity?: ReportChartGran
   return { start, end: start + width - 1 };
 }
 
-function mergePoints(existing: ReportChartPoint[], incoming: ReportChartPoint[]): ReportChartPoint[] {
-  const points = new Map<string, ReportChartPoint>();
-  for (const point of existing) {
-    const id = getBucketId(point);
-    if (id) points.set(id, point);
-  }
-  for (const point of incoming) {
-    const id = getBucketId(point);
-    if (id) points.set(id, point);
-  }
-  return [...points.values()].sort((a, b) => getBucketId(a).localeCompare(getBucketId(b)));
-}
-
 function mergeWindowMeta(
   previous: ReportChartWindowMeta | null,
   next: ReportChartWindowMeta | undefined,
@@ -127,25 +116,6 @@ function mergeWindowMeta(
     has_after: next.has_after,
     next_after: next.next_after,
   };
-}
-
-function resolveSeriesKeys(points: ReportChartPoint[], grouped: boolean): string[] {
-  if (!grouped) return points.some(point => typeof point.value === 'number') ? ['value'] : [];
-  const keys = new Set<string>();
-  for (const point of points) {
-    Object.keys(point).forEach((key) => {
-      if (!META_KEYS.has(key) && Number.isFinite(Number(point[key]))) keys.add(key);
-    });
-  }
-  return [...keys];
-}
-
-function sumPoint(point: ReportChartPoint, keys: string[]): number {
-  return keys.reduce((sum, key) => sum + Math.max(0, Number(point[key]) || 0), 0);
-}
-
-function getSeriesValue(point: ReportChartPoint, key: string): number {
-  return Math.max(0, Number(point[key]) || 0);
 }
 
 function resolveCssColor(name: string, fallback: string): string {
@@ -203,6 +173,7 @@ export function ReportWindowChart({
   const resolvedEmptyLabel = emptyLabel ?? t('reportChart.noData');
   const resolvedValueLabel = valueLabel ?? t('reportChart.value');
   const resolvedFormatValue = formatValue ?? ((value: number) => `${formatLocaleNumber(value, locale)}${valueSuffix}`);
+  const fetchReportChart = useReportChartFetcher();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pointsRef = useRef<ReportChartPoint[]>([]);
@@ -323,18 +294,10 @@ export function ReportWindowChart({
   const fetchWindow = useCallback(async (direction: ReportChartWindowDirection, anchorBucket?: string) => {
     const activeKey = resetKeyRef.current;
     const baseRequest = requestRef.current;
-    const response = await getReportChart({
-      ...baseRequest,
-      mode: 'window',
-      direction,
-      anchor_bucket: anchorBucket,
-      limit_buckets: WINDOW_LIMIT_BUCKETS,
-      series_limit: SERIES_LIMIT,
-      granularity: baseRequest.granularity || 'auto',
-    });
+    const response = await fetchReportChart(reportChartWindowParams(baseRequest, direction, anchorBucket));
     if (resetKeyRef.current !== activeKey) return;
     applyResponse(direction, response);
-  }, [applyResponse]);
+  }, [applyResponse, fetchReportChart]);
 
   const loadEdge = useCallback(async (direction: EdgeDirection) => {
     const meta = metaRef.current;

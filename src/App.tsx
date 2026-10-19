@@ -65,6 +65,9 @@ const AiCreditsPage = lazy(() => import('@/pages/ai-credits'));
 // Development only: the dynamic import is removed from production builds with this branch.
 const DevAiCreditsPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-credits-preview')) : null;
 const AI_CREDITS_PREVIEW_PATH = '/dev/ai-credits-preview';
+// Development only, same pattern: the report branch chart with mock data.
+const DevReportBranchChartPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-report-branch-chart-preview')) : null;
+const REPORT_BRANCH_CHART_PREVIEW_PATH = '/dev/report-branch-chart-preview';
 // Development only, same pattern: a static import kept the workspace dialog
 // (React Flow, markdown, rehype-raw) in the production main chunk.
 const DevAiIdMindmapSkeletonPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev-ai-id-mindmap-skeleton')) : null;
@@ -87,6 +90,8 @@ function AppRoutes() {
       {import.meta.env.DEV && DevAiIdMindmapSkeletonPage && <Route path={AI_ID_MINDMAP_SKELETON_PREVIEW_PATH} element={<LazyPage><DevAiIdMindmapSkeletonPage /></LazyPage>} />}
       {/* Development preview of the AI points pages with mock data: no auth, no backend. */}
       {import.meta.env.DEV && DevAiCreditsPreviewPage && <Route path={AI_CREDITS_PREVIEW_PATH} element={<LazyPage><DevAiCreditsPreviewPage /></LazyPage>} />}
+      {/* Development preview of the report branch chart with mock data: no auth, no backend. */}
+      {import.meta.env.DEV && DevReportBranchChartPreviewPage && <Route path={REPORT_BRANCH_CHART_PREVIEW_PATH} element={<LazyPage><DevReportBranchChartPreviewPage /></LazyPage>} />}
 
       {/* Public routes */}
       <Route element={<AuthGuard requireAuth={false} />}>

@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 import { useTenantStore } from '@/utils/tenant-store';
 import { useHeaderInfo } from '@/utils/header-store';
@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, BookOpen, GraduationCap, UserCheck, Percent, Award, AlertTriangle, ShieldAlert,
-  Calendar as CalendarIcon, Clock, Download, RefreshCcw, ChevronLeft, ChevronRight, BarChart3, ChevronDown, Check, CheckCircle2, TrendingUp, Search, ArrowLeft, X
+  Calendar as CalendarIcon, Clock, Download, RefreshCcw, ChevronLeft, ChevronRight, BarChart3, ChevronDown, Check, CheckCircle2, Search, ArrowLeft, X
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -44,7 +44,7 @@ import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { exportReportExcel } from '@/utils/export-report';
 import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
-import { ReportWindowChart } from '@/components/reports/ReportWindowChart';
+import { GroupEnrollmentsWidget } from '@/components/reports/group-enrollments-widget';
 import { ReportMetricTrendModal } from '@/components/reports/report-metric-trend-modal';
 import { CourseCompletionRankingWidget } from '@/components/reports/course-completion-ranking-widget';
 import { ReportLearnerListWidget } from '@/components/reports/report-learner-list-widget';
@@ -94,92 +94,6 @@ function getPreviousDateRange(from: Date, to: Date): { from: Date; to: Date } {
 
 
 
-const GROUP_BAR_COLORS = [
-  '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
-  '#10b981', '#f59e0b', '#ef4444', '#06b6d4',
-  '#84cc16', '#14b8a6',
-];
-
-function GroupEnrollmentsWidget({
-  dateFrom,
-  dateTo,
-  dateLabel,
-  selectedGroupId,
-  selectedSubGroupId,
-  selectedTeamId,
-  totalEnrollments,
-}: {
-  dateFrom: string;
-  dateTo: string;
-  dateLabel: string;
-  selectedGroupId: string | 'all';
-  selectedSubGroupId: string | 'all';
-  selectedTeamId: string | 'all';
-  totalEnrollments: number;
-}) {
-  const { t } = useTranslation();
-  const locale = useLocaleStore((state) => state.locale);
-  const groupLabels = useAuthStore((s) => s.groupLabels);
-  const labels = getGroupLabelSet(groupLabels);
-  const title = selectedTeamId !== 'all'
-    ? t('reports.totalEnrollmentOf', { group: lowerGroupLabel(labels.team) })
-    : selectedSubGroupId !== 'all'
-      ? t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.team) })
-      : selectedGroupId !== 'all'
-        ? t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.subgroup) })
-        : t('reports.totalEnrollmentBy', { group: lowerGroupLabel(labels.group) });
-
-  const chartRequest = useMemo(() => ({
-    date_from: dateFrom,
-    date_to: dateTo,
-    metric: 'total_enrollments',
-    group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
-    group_by_org: selectedGroupId === 'all' && selectedTeamId === 'all',
-    grouped: selectedTeamId !== 'all' ? false : undefined,
-    subgroup_id: selectedSubGroupId === 'all' ? undefined : selectedSubGroupId,
-    team_id: selectedTeamId === 'all' ? undefined : selectedTeamId,
-    granularity: 'auto' as const,
-  }), [dateFrom, dateTo, selectedGroupId, selectedSubGroupId, selectedTeamId]);
-
-  const formatEnrollmentValue = useCallback((value: number) => `${formatLocaleNumber(value, locale)} ${t('reports.enrollment')}`, [locale, t]);
-
-  return (
-    <Card className="shadow-sm border-border/70 h-full flex flex-col bg-card/95 overflow-hidden relative">
-      <CardHeader className="p-5 pb-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-1 min-w-0">
-            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
-                <TrendingUp className="h-4 w-4" />
-              </span>
-              {title}
-            </CardTitle>
-            <p className="text-[11px] text-muted-foreground">
-              {t('reports.enrollmentTrend', { dateRange: dateLabel })}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-0.5 shrink-0">
-            <span className="text-2xl font-bold text-foreground leading-none">
-              {formatLocaleNumber(totalEnrollments, locale)}
-            </span>
-            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{t('reports.duringPeriod')}</span>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="p-5 flex-grow flex flex-col min-w-0">
-        <ReportWindowChart
-          request={chartRequest}
-          height={340}
-          valueLabel={t('reports.enrollment')}
-          emptyLabel={t('reports.noEnrollmentData')}
-          formatValue={formatEnrollmentValue}
-          colors={GROUP_BAR_COLORS}
-          variant="line"
-        />
-      </CardContent>
-    </Card>
-  );
-}
 // LearnerDetailModal được import từ shared component:
 // import { LearnerDetailModal } from '@/components/users/learner-detail-modal';
 

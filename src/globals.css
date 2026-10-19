@@ -169,6 +169,20 @@
   --ai-series-8: #e66767;
 }
 
+/* Reports branch enrollment chart: the same validated categorical order as the
+   AI charts (light and dark steps follow them), plus a neutral "Khác" line. */
+:root {
+  --report-series-1: var(--ai-series-1);
+  --report-series-2: var(--ai-series-2);
+  --report-series-3: var(--ai-series-3);
+  --report-series-4: var(--ai-series-4);
+  --report-series-5: var(--ai-series-5);
+  --report-series-6: var(--ai-series-6);
+  --report-series-7: var(--ai-series-7);
+  --report-series-8: var(--ai-series-8);
+  --report-series-other: var(--ai-feature-other);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
