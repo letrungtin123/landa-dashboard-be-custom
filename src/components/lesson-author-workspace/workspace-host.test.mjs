@@ -18,7 +18,22 @@ const ui = {
   DialogDescription: ({ children }) => h('p', null, children),
   Button: ({ children, disabled }) => h('button', { disabled }, children),
   Input: props => h('input', props),
+  // Start screen tabs (organization context): every panel renders so SSR shows both; the root names the open tab.
+  Tabs: ({ value, children }) => h('div', { 'data-open-tab': value }, children),
+  TabsList: ({ children, 'aria-label': label }) => h('div', { role: 'tablist', 'aria-label': label }, children),
+  TabsTrigger: ({ value, children }) => h('button', { role: 'tab', 'data-tab': value }, children),
+  TabsContent: ({ value, children }) => h('section', { 'data-tab-panel': value }, children),
+  Switch: ({ checked, disabled, id: switchId }) => h('button', { role: 'switch', 'aria-checked': String(!!checked), disabled, id: switchId }),
 };
+// Organization context GET as the start screen tabs see it (set per test).
+let orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({ data: undefined }) };
+// Real VI/EN copy for components that translate (the host itself uses its own copy table).
+const i18nEnv = { locale: 'en', locales: null };
+function translate(key, values = {}) {
+  const value = key.split('.').reduce((node, part) => node?.[part], i18nEnv.locales[i18nEnv.locale]);
+  assert.equal(typeof value, 'string', `missing ${i18nEnv.locale} translation ${key}`);
+  return value.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values[name]));
+}
 // Actual host/controller/session. Only auth/network/UI boundaries are replaced;
 // SSR does not claim browser geometry, focus, navigation or live backend coverage.
 function load(relative) {
@@ -45,7 +60,9 @@ function load(relative) {
     if (name === '@/utils/store') return { useAuthStore: select => select({ user: null, isAuthenticated: false, hasPermission: () => false }) };
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };
     if (name === '@/hooks/queries/use-lesson-author-sessions') return { useLessonAuthorActiveRuns: () => ({ data: undefined }) };
-    if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' } }) };
+    if (name === '@/hooks/queries/use-workspace-org-context') return { useWorkspaceOrgContext: input => { orgContextQuery.input = input; return orgContextQuery; } };
+    if (name === './workspace-org-context-panel') return { WorkspaceOrgContextPanel: ({ state }) => h('div', null, `Org context panel r${state.profile.revision}`) };
+    if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' }, t: translate }) };
     if (name.startsWith('../ui/')) return ui;
     if (name === './workspace-graph-node') return { WorkspaceNodeTypePill: ({ node }) => h('span', null, node.kind) };
     if (name === './workspace-dialog') return {
@@ -76,6 +93,7 @@ const { createWorkspaceSession } = load('./workspace-session.ts');
 const { WorkspaceReadError } = load('../../api/lesson-author-workspace.contract.ts');
 const { workspaceApplyMessage } = load('../../api/workspace-apply.ts');
 const { WorkspaceCourseHostOverlay, useCourseWorkspaceHost } = load('./workspace-course-host.tsx');
+i18nEnv.locales = { vi: load('../../i18n/locales/vi.ts').vi, en: load('../../i18n/locales/en.ts').en };
 const { workspaceApplyScope, workspaceScopeApplyLabel, workspaceNodeSupportsEditor, workspaceNodeUsesHeaderTitleEditor,
   saveThenApplyWorkspaceScope, completeWorkspaceApplyUi, workspaceOverviewAutoLoadAttempt, workspaceAppliedScopeRevisions,
   projectWorkspaceAppliedGraph } = load('./workspace-course-host.logic.ts');
@@ -443,4 +461,72 @@ test('the legacy floating widget cannot switch into the AI Instructional Design 
   assert.doesNotMatch(widget, /handleSwitchLessonAuthor/);
   assert.doesNotMatch(widget, /lessonAuthorBot/);
   assert.match(widget, /const adminBot = await fetchActiveBot\('admin'\);/);
+});
+
+// ── Start screen tabs (organization context) ──
+const startScreenSources = () => {
+  const snapshot = { busy: false, unknown: false, phase: 'idle', briefError: null };
+  return { offers: [], subscribe: () => () => {}, getState: () => snapshot, setOrganizationContextOffer(offer) { this.offers.push(offer); } };
+};
+const orgState = confirmed => ({ enabled: true, ready: true, not_ready_reason: null, limit_bytes: 52_428_800, used_bytes: 0, documents: [],
+  profile: { revision: 7, current: null, confirmed_version: confirmed ? 2 : null, confirmed_at: confirmed ? '2026-10-19T12:00:00.000Z' : null,
+    confirmed_by_name: null, unread_document_count: 0 },
+  distill: { status: 'idle', requested_at: null, finished_at: null, error_code: null }, history: [] });
+const answered = data => ({ data, isPending: false, fetchStatus: 'idle', refetch: async () => ({ data }) });
+async function startScreen() {
+  const f = fixture({ resolve: async () => null }); await f.host.launch();
+  assert.equal(f.host.getState().issue, 'no_workspace');
+  return f;
+}
+const todayStartScreen = '<div class="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><div>Sources</div><div>Launch brief</div></div>';
+
+test('start screen: with the organization context off, unknown or unreadable it is exactly today\'s screen', async () => {
+  const f = await startScreen();
+  try {
+    for (const query of [answered({ enabled: false }), { ...answered(undefined), isError: true },
+      { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({}) }]) {
+      orgContextQuery = query;
+      const html = render(f, 'en', { sources: startScreenSources(), tenantId: id(2) });
+      assert.ok(html.includes(todayStartScreen), html);
+      assert.doesNotMatch(html, /role="tablist"|Org context panel|Organization context|role="switch"/);
+    }
+    assert.deepEqual(orgContextQuery.input, { tenantId: id(2), enabled: true }, 'one GET keyed by the active tenant');
+    orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'fetching', refetch: async () => ({}) };
+    const waiting = render(f, 'en', { sources: startScreenSources(), tenantId: id(2) });
+    assert.match(waiting, /role="status"[^>]*><span class="sr-only">Loading…<\/span>/, 'the first answer is awaited with a short placeholder');
+    assert.doesNotMatch(waiting, /Sources/);
+  } finally { f.host.dispose(); orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({}) }; }
+});
+
+for (const locale of ['en', 'vi']) test(`${locale}: with the feature on, two tabs; context first until a profile is confirmed, then Create`, async () => {
+  const f = await startScreen();
+  i18nEnv.locale = locale;
+  try {
+    const [contextLabel, createLabel] = locale === 'vi' ? ['Ngữ cảnh doanh nghiệp', 'Tạo khoá học'] : ['Organization context', 'Create a course'];
+    orgContextQuery = answered(orgState(false));
+    let html = render(f, locale, { sources: startScreenSources(), tenantId: id(2) });
+    assert.match(html, /data-open-tab="context"/);
+    assert.match(html, new RegExp(`role="tablist" aria-label="${locale === 'vi' ? 'Chuẩn bị tạo khoá học' : 'Get ready to create a course'}"`));
+    assert.match(html, new RegExp(`<button role="tab" data-tab="context">(?:(?!</button>).)*${contextLabel}</button><button role="tab" data-tab="create">(?:(?!</button>).)*${createLabel}</button>`));
+    assert.ok(html.includes('<section data-tab-panel="context"><div>Org context panel r7</div></section>'));
+    assert.ok(html.includes(`<section data-tab-panel="create">${todayStartScreen}</section>`), 'the Create tab is today\'s start screen');
+    orgContextQuery = answered(orgState(true));
+    html = render(f, locale, { sources: startScreenSources(), tenantId: id(2) });
+    assert.match(html, /data-open-tab="create"/, 'a confirmed profile opens on Create');
+  } finally { i18nEnv.locale = 'en'; f.host.dispose(); orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({}) }; }
+});
+
+test('organization context UI: polling only through React Query, no timers, browser storage or raw requests; host within 400 lines', () => {
+  for (const file of ['./workspace-launch-tabs.tsx', './workspace-org-context-panel.tsx', './workspace-org-profile-card.tsx', './workspace-org-profile-fields.tsx',
+    './workspace-org-profile-history.tsx', './workspace-org-context-launch.tsx', './workspace-org-context-dialogs.tsx', './workspace-org-context.logic.ts']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /localStorage|sessionStorage|setInterval|setTimeout|(?<![A-Za-z])fetch\(|axios|customApiClient/, file);
+    assert.ok(source.split('\n').length <= 400, file);
+  }
+  const host = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  assert.ok(host.split('\n').length <= 400);
+  assert.match(host, /<WorkspaceLaunchTabs sources=\{sources\} tenantId=\{tenantId\} locale=\{locale\}>/);
+  const tabs = readFileSync(new URL('./workspace-launch-tabs.tsx', import.meta.url), 'utf8');
+  assert.match(tabs, /if \(!read\.data\?\.enabled\) return <>\{children\}<\/>;/, 'off or unknown renders the children unchanged');
+  assert.equal((tabs.match(/forceMount/g) ?? []).length, 2, 'switching tabs keeps both panels and their unsaved work');
 });
