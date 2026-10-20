@@ -210,3 +210,11 @@ test('hooks: keys carry the tenant; reads retry once and only when the server co
   for (const status of [400, 401, 403, 404, 409]) assert.equal(hooks.shouldRetryOrgContextRead(0, error(status)), false);
   assert.equal(hooks.shouldRetryOrgContextRead(0, new contract.OrgContextError('ORG_CONTEXT_CONTRACT_INVALID', null, null)), false);
 });
+
+test('a stored text that the screen would normalise differently never shows as changed just because it was opened', () => {
+  const stored = Object.freeze({ ...logic.EMPTY_ORG_PROFILE, organization_summary: 'Hai  khoảng trắng', products_services: ['  Tủ lạnh'] });
+  const editor = logic.orgProfileEditorFrom({ revision: 1, current: version(1, stored) });
+  assert.deepEqual(logic.orgProfileChangedFields(editor.draft, stored), []);
+  assert.equal(logic.orgProfileEditorDirty(editor), false);
+  assert.deepEqual(logic.orgProfileChangedFields({ ...editor.draft, organization_summary: 'Khác' }, stored), ['organization_summary']);
+});

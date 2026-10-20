@@ -1,6 +1,6 @@
 import {
   codePointLength, ORG_PROFILE_FIELDS, ORG_PROFILE_LIST_FIELDS, ORG_PROFILE_LIST_LIMITS, ORG_PROFILE_ROW_FIELDS,
-  ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_TEXT_FIELDS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX,
+  ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_TEXT_FIELDS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX, orgContextErrorMessage,
   type OrgContextNotReadyReason, type OrgContextRead, type OrgContextState, type OrgProfile, type OrgProfileField,
   type OrgProfileListField, type OrgProfileRowField, type OrgProfileTextField, type OrgProfileVersion,
 } from '../../api/workspace-org-context.contract';
@@ -44,6 +44,10 @@ export function formatOrgContextFileSize(bytes: number, locale: WorkspaceLocale)
   if (bytes < 1024) return `${decimal(bytes, locale)} B`;
   if (bytes < MB) return `${decimal(Math.max(1, Math.round(bytes / 1024)), locale)} KB`;
   return formatOrgContextMegabytes(bytes, locale);
+}
+/** Counters: "6.000" in Vietnamese, "6,000" in English. */
+export function formatOrgContextCount(value: number, locale: WorkspaceLocale): string {
+  return new Intl.NumberFormat(intlLocale(locale)).format(value);
 }
 export function formatOrgContextDate(value: string, locale: WorkspaceLocale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
@@ -126,9 +130,10 @@ export function isOrgProfileEmpty(profile: Readonly<OrgProfile>): boolean {
 const fieldJson = (profile: Readonly<OrgProfile>, field: OrgProfileField) => JSON.stringify(field === 'learner_groups'
   ? profile.learner_groups.map(row => [row.name, row.description]) : field === 'glossary'
     ? profile.glossary.map(row => [row.term, row.meaning]) : profile[field]);
-/** Fields whose normalised value differs from the version being edited (or the empty profile). */
+/** Fields whose normalised value differs from the version being edited (or the empty profile). Both sides go
+ * through the same normalising, so a stored text never shows as changed just because it was opened. */
 export function orgProfileChangedFields(draft: Readonly<OrgProfileDraft>, base: Readonly<OrgProfile> | null): OrgProfileField[] {
-  const next = normalizeOrgProfile(draft), from = base ?? EMPTY_ORG_PROFILE;
+  const next = normalizeOrgProfile(draft), from = base ? normalizeOrgProfile(orgProfileDraftFrom(base)) : EMPTY_ORG_PROFILE;
   return ORG_PROFILE_FIELDS.filter(field => fieldJson(next, field) !== fieldJson(from, field));
 }
 
@@ -251,9 +256,18 @@ export type WorkspaceLaunchTab = 'context' | 'create';
 export function orgContextDefaultTab(state: Pick<OrgContextState, 'profile'>): WorkspaceLaunchTab {
   return state.profile.confirmed_version === null ? 'context' : 'create';
 }
-/** What the Create tab may offer: null when the feature is off or its state is unknown. */
+/** What the Create tab may offer: null when the feature is off or its state is unknown. A confirmed version is offered
+ * only with its date, so the switch line can always say which version it uses. */
 export function orgContextLaunchOffer(read: OrgContextRead | undefined): { confirmedVersion: number | null; confirmedAt: string | null } | null {
   if (!read?.enabled) return null;
-  const confirmed = read.profile.confirmed_version;
-  return { confirmedVersion: confirmed, confirmedAt: confirmed === null ? null : read.profile.confirmed_at };
+  const { confirmed_version: version, confirmed_at: at } = read.profile;
+  return version !== null && at ? { confirmedVersion: version, confirmedAt: at } : { confirmedVersion: null, confirmedAt: null };
+}
+
+type Translate = (key: string, options?: Record<string, string | number>) => string;
+/** The plain message of any org-context failure, with the field label and the space limit filled in. */
+export function orgContextErrorText(t: Translate, error: unknown, locale: WorkspaceLocale, limitBytes: number): string {
+  const copy = orgContextErrorMessage(error);
+  return t(copy.key, { field: copy.field ? t(`aiIdOrgContext.profile.fields.${copy.field}.label`) : '',
+    limit: formatOrgContextMegabytes(copy.limitBytes ?? limitBytes, locale) });
 }

@@ -6,6 +6,7 @@ import {
   WORKSPACE_COURSE_PURPOSE_MAX, WORKSPACE_LEARNER_AUDIENCE_MAX, type WorkspaceLaunchBrief,
 } from '../../api/lesson-author-workspace.contract';
 import type { createWorkspaceSourceState } from './workspace-source-state';
+import { WorkspaceOrgContextLaunchOption } from './workspace-org-context-launch';
 
 const MODES = [
   { value: 'instructional_design', icon: Sparkles, title: 'aiIdLaunchBrief.modeDesignTitle', body: 'aiIdLaunchBrief.modeDesignBody' },
@@ -51,6 +52,7 @@ export function WorkspaceLaunchBriefPanel({ controller }: {
         value={brief.course_purpose} max={WORKSPACE_COURSE_PURPOSE_MAX} disabled={locked}
         onChange={value => controller.setBrief({ course_purpose: value })} />
     </>}
+    <WorkspaceOrgContextLaunchOption controller={controller} />
   </section>;
 }
 

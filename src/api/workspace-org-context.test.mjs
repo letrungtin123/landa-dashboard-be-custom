@@ -1,4 +1,4 @@
-/* global FormData */
+/* global FormData, File, AbortController */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, statSync } from 'node:fs';
