@@ -345,6 +345,7 @@ export const vi = {
       "knowledgebase.assignment.updated": "đã cập nhật kho tri thức chuyên gia bài học",
       "lesson_author.job.applied": "đã áp dụng kết quả chuyên gia bài học",
       "lesson_author.workspace.applied_shared": "đã đưa nội dung từ phiên thiết kế của người khác vào khoá học",
+      "lesson_author.workspace.review_resolved": "đã đánh dấu đã kiểm tra một câu hỏi do AI tạm giữ",
       "ai.pricing_rate_card.created": "đã cập nhật bảng giá AI",
       "knowledgebase.created": "đã tạo kho tri thức",
       "knowledgebase.updated": "đã cập nhật kho tri thức",

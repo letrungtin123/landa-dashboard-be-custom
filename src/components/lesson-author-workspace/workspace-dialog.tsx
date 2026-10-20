@@ -16,6 +16,7 @@ import type { WorkspaceReadState } from './workspace-read-state';
 import { WorkspaceAggregateContent, WorkspaceCourseOverviewSkeleton, WorkspaceNodeDetail, workspaceCopy, workspaceRunEnded, workspaceDetailMatches, workspaceLearningOutcomeLabel, type WorkspaceTypedDetail } from './workspace-node-detail';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { workspacePreserveFailureCopy } from './workspace-preserve-failure.logic';
+import { workspaceReviewCopy, workspaceReviewRequired } from './workspace-review.logic';
 
 type Expansion = Readonly<Record<string, boolean>>;
 export interface WorkspaceProjectionNode {
@@ -429,6 +430,8 @@ export interface WorkspaceDialogProps {
   toolbar?: ReactNode;
   /** Presentation-only block above the Overview content (the launch brief). */
   overviewHeader?: ReactNode;
+  /** Run-level panel above the overview header (the "Chờ duyệt" review list). */
+  overviewNotice?: ReactNode;
   renderNodeDetail?: (node: WorkspaceNode | null) => ReactNode;
   assistantAvatarSrc?: string | null;
   /** Authorized conversation display name for this exact workspace. */
@@ -599,15 +602,9 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   const stage = status.failure_stage ? `${stageNames[status.failure_stage][vi ? 0 : 1]}${chapter ? ` (${vi ? 'Chương' : 'Chapter'} ${chapter})` : ''}` : null;
   const kept = workspacePreserveFailureCopy(status.failure_code, locale);
   if (kept) return { stage, ...kept };
-  if (status.failure_code === 'ASSESSMENT_REVIEW_REQUIRED') return {
-    stage: vi ? 'kiểm tra chất lượng đánh giá' : 'reviewing assessment quality',
-    message: vi
-      ? 'Nội dung bài học đã được tạo và lưu. Một số câu hỏi đánh giá cần được rà soát lại theo tài liệu nguồn trước khi khóa học được xác nhận hoàn tất.'
-      : 'Lesson content was created and saved. Some assessment questions require source review before the course can be finalized.',
-    note: vi
-      ? 'Bạn vẫn có thể xem và áp dụng các nội dung đã sẵn sàng trong bản thiết kế khoá học.'
-      : 'You can still review and apply the content that is ready in the course design.',
-  };
+  // Not a failure: the content is complete and saved; held questions wait for the author ("Chờ duyệt").
+  if (workspaceReviewRequired(status)) return { stage: null,
+    message: workspaceReviewCopy[locale].pendingLead, note: workspaceReviewCopy[locale].pendingNote };
   if (status.failure_code === 'ORCHESTRATION_V2_EXECUTION_RUNTIME_CHANGED') return {
     stage, message: vi ? 'Cấu hình AI của doanh nghiệp đã thay đổi trong lúc tạo nội dung.' : 'The organization AI configuration changed while content was being created.',
     note: vi ? 'Yêu cầu của bước này chưa được gửi đến AI và không phát sinh lượt gọi cho lần thử đó.' : 'This step was not sent to the AI provider, so that attempt did not create a provider call.',
@@ -646,12 +643,12 @@ function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false }: 
   const message = status.status === 'needs_action' ? c.terminalNeedsAction : status.status === 'failed' ? c.terminalFailed
     : status.status === 'canceled' ? c.terminalCanceled : c.terminalReady;
   const failure = terminalFailureText(status, locale);
-  const isFailure = status.status === 'needs_action' || status.status === 'failed';
+  const assessmentReviewRequired = workspaceReviewRequired(status);
+  const isFailure = (status.status === 'needs_action' || status.status === 'failed') && !assessmentReviewRequired;
   const contentCommitted = status.failure_stage === 'finalize_course' && status.unit_count > 0 && status.ready_unit_count === status.unit_count;
-  const assessmentReviewRequired = status.failure_code === 'ASSESSMENT_REVIEW_REQUIRED';
   return <div className={`${compact ? 'mx-4 my-3 sm:mx-5' : 'm-4 max-w-2xl'} flex flex-col gap-3 rounded-2xl border p-4 text-sm ${isFailure && !contentCommitted ? 'border-destructive/35 bg-destructive/[0.06]' : 'border-amber-500/30 bg-amber-500/[0.06]'}`} role={isFailure && !contentCommitted ? 'alert' : 'status'} aria-live="polite">
     <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isFailure && !contentCommitted ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}><AlertTriangle className="h-4 w-4" aria-hidden /></span>
-      <div className="min-w-0"><p className="font-semibold">{c[status.status]}</p><p className="mt-1 leading-6 text-muted-foreground">{isFailure && status.failure_code ? failure.message : message}</p>
+      <div className="min-w-0"><p className="font-semibold">{assessmentReviewRequired ? workspaceReviewCopy[locale].pendingTitle : c[status.status]}</p><p className="mt-1 leading-6 text-muted-foreground">{(isFailure || assessmentReviewRequired) && status.failure_code ? failure.message : message}</p>
         {failure.stage && <p className="mt-1 text-xs font-medium text-foreground">{locale === 'vi' ? 'Bước gặp lỗi' : 'Failed step'}: {failure.stage}</p>}
         {failure.note && <p className="mt-1 text-xs leading-5 text-muted-foreground">{failure.note}</p>}
       </div></div>
@@ -783,7 +780,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps) {
 /** Body deliberately has no Dialog/Portal boundary. The host keeps one modal
  * mounted from source selection through workspace delivery, so a status/graph
  * update cannot recreate focus, scroll lock, entry animation, or viewport. */
-export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, overviewHeader, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
+export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, overviewHeader, overviewNotice, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
   const c = workspaceCopy[locale];
   const [tab, setTab] = useState('overview');
   const [expansion, setExpansion] = useState<Expansion>({});
@@ -988,6 +985,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
           </TabsList>
         </div>
         <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {canRead && overviewNotice}
           {canRead && overviewHeader}
           {canRead ? <Overview graph={graph} preview={preview} details={details} locale={locale} loading={overviewLoading} terminal={terminal} onRefresh={onRefresh} /> : <p className="p-4">{state.access === 'blocked' ? c.unavailable : c.unknown}</p>}
         </TabsContent>
