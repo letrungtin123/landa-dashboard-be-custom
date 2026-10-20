@@ -348,6 +348,7 @@ export const en: TranslationSchema<typeof vi> = {
       "knowledgebase.assignment.updated": "updated the lesson-author knowledge base",
       "lesson_author.job.applied": "applied lesson-author output",
       "lesson_author.workspace.applied_shared": "added content from another person's course design session to the course",
+      "lesson_author.workspace.review_resolved": "marked a question held back by the AI as checked",
       "ai.pricing_rate_card.created": "updated AI pricing",
       "knowledgebase.created": "created a knowledge base",
       "knowledgebase.updated": "updated a knowledge base",

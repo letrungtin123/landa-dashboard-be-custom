@@ -21,9 +21,11 @@ import { listLessonAuthorSessions, type LessonAuthorActiveRun } from '../../api/
 import { useLessonAuthorActiveRuns } from '@/hooks/queries/use-lesson-author-sessions';
 import { WorkspaceActiveRunNotice } from './workspace-active-run-banner';
 import { WorkspaceApplyConflictDialog } from './workspace-apply-conflict-dialog';
+import { WorkspaceReviewPanel } from './workspace-review-panel';
+import { workspaceReviewRequired } from './workspace-review.logic';
 import { workspaceActiveRunNotice, workspaceAppliedNote, workspaceReadOnlyNotice } from './workspace-sharing';
 import { createWorkspaceWriteClient, WorkspaceWriteError, workspaceWriteMessage } from '../../api/workspace-write';
-import { createWorkspaceApplyClient, workspaceApplyMessage, WorkspaceApplyError, type WorkspaceApplyCode,
+import { createWorkspaceApplyClient, workspaceApplyErrorMessage, WorkspaceApplyError, type WorkspaceApplyCode,
   type WorkspaceApplyConflict } from '../../api/workspace-apply';
 import { createWorkspaceStreamClient, type WorkspaceStreamState } from '../../api/workspace-stream';
 import { createWorkspaceSourceStreamClient } from '../../api/workspace-source-stream';
@@ -319,7 +321,7 @@ function WorkspaceCourseHostOverlayMount({ host, courseId, tenantId, locale, sou
   const state = useSyncExternalStore(host.subscribe, host.getState, emptySnapshot);
   const activeRuns = useLessonAuthorActiveRuns({ tenantId, courseId, locale, enabled: !!state?.open });
   return state ? <WorkspaceCourseHostOverlay host={host} courseId={courseId} state={state} locale={locale} sources={sources}
-    activeRuns={activeRuns.data} onCourseApplied={onCourseApplied} /> : null;
+    activeRuns={activeRuns.data} onCourseApplied={onCourseApplied} tenantId={tenantId} /> : null;
 }
 
 /** Exactly one Fetch/SSE connection for the open authorized workspace. The
@@ -359,8 +361,10 @@ function WorkspaceModalShell({ host, children }: { host: Host; children: ReactNo
   </Dialog>;
 }
 
-export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, activeRuns, onCourseApplied }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
-  sources?: ReturnType<typeof createWorkspaceSourceState> | null; activeRuns?: readonly LessonAuthorActiveRun[]; onCourseApplied?: () => Promise<void> | void }) {
+export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, activeRuns, onCourseApplied, tenantId = null }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
+  sources?: ReturnType<typeof createWorkspaceSourceState> | null; activeRuns?: readonly LessonAuthorActiveRun[]; onCourseApplied?: () => Promise<void> | void;
+  /** Active tenant of the review list key ("Chờ duyệt"). */
+  tenantId?: string | null }) {
   const c = copy[locale], session = host.getSession(), workspace = state.workspace;
   const [actionError, setActionError] = useState(false);
   // Normal product entry has no selected launch and therefore starts at the
@@ -368,7 +372,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   // already-authorized workspace directly without a one-frame session flash.
   const [view, setView] = useState<'sessions' | 'source' | 'workspace'>(() => state.launch || state.issue ? 'workspace' : 'sessions');
   const [applyState, setApplyState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle');
-  const [applyError, setApplyError] = useState<WorkspaceApplyCode | null>(null);
+  const [applyError, setApplyError] = useState<WorkspaceApplyError | null>(null);
   const [editingTitleNodeId, setEditingTitleNodeId] = useState<string | null>(null);
   const [appliedOverlay, setAppliedOverlay] = useState<WorkspaceAppliedRevisionOverlay | null>(null);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState<string | null>(null);
@@ -523,7 +527,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
       } catch (error) {
         // Edited/moved course parts: list them in a dialog (replace only after confirmation).
         if (error instanceof WorkspaceApplyError && error.conflict) { setApplyConflict({ nodeId: node.node_id, code: error.code, conflict: error.conflict }); setApplyState('idle'); }
-        else if (error instanceof WorkspaceApplyError) { setApplyError(error.code); setApplyState('failed'); }
+        else if (error instanceof WorkspaceApplyError) { setApplyError(error); setApplyState('failed'); }
         else { setActionError(true); setApplyState('failed'); }
       }
     };
@@ -588,7 +592,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
           {(write?.phase === 'committed' || applyState === 'done' || applyState === 'failed') && <div
             className={`pointer-events-none absolute right-5 top-[5.25rem] z-30 max-w-md rounded-xl border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur-xl ${applyState === 'failed' ? 'border-destructive/35 text-destructive' : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'}`}
             role={applyState === 'failed' ? 'alert' : 'status'}>
-            {applyState === 'failed' ? (applyError ? workspaceApplyMessage(applyError, locale) : c.error)
+            {applyState === 'failed' ? (applyError ? workspaceApplyErrorMessage(applyError, locale) : c.error)
               : applyState === 'done' ? c.applied : c.saved}
           </div>}
           {(message || actionError) && <div className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p role="alert">{message ?? c.error}</p><Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button></div>}
@@ -603,6 +607,9 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   };
   return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={presentationRead!} locale={locale}
     onSelectNode={nodeId => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(nodeId)); }} overviewDetails={workspace.overview.details} toolbar={toolbar} renderNodeDetail={renderDetail}
+    overviewNotice={state.launch && workspaceReviewRequired(presentationRead?.status) ? <WorkspaceReviewPanel locale={locale} tenantId={tenantId}
+      scope={{ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id }}
+      canResolve={host.canApply()} /> : undefined}
     overviewHeader={<WorkspaceLaunchBriefSummary brief={workspaceSessionLaunchBrief(presentationRead)} />}
     assistantAvatarSrc={assistantAvatarSrc}
     draftTitle={state.launch && activeConversation?.id === state.launch.conversation_id ? activeConversation.title : null}

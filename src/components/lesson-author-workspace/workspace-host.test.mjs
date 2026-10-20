@@ -41,6 +41,7 @@ function load(relative) {
     if (name === './workspace-launch-brief-panel') return { WorkspaceLaunchBriefPanel: () => h('div', null, 'Launch brief'),
       WorkspaceLaunchBriefSummary: ({ brief }) => brief ? h('p', null, brief.design_mode) : null };
     if (name === './workspace-ai-avatar') return { WorkspaceAiAvatar: () => h('span', null, 'AI') };
+    if (name === './workspace-review-panel') return { WorkspaceReviewPanel: () => h('section', null, 'Review') };
     if (name === '@/utils/store') return { useAuthStore: select => select({ user: null, isAuthenticated: false, hasPermission: () => false }) };
     if (name === '@/utils/tenant-store') return { useTenantStore: select => select({ activeTenantId: null }) };
     if (name === '@/hooks/queries/use-lesson-author-sessions') return { useLessonAuthorActiveRuns: () => ({ data: undefined }) };
