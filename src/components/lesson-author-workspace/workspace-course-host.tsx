@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpenCheck, Eye, Network, Pencil, Sparkles, X } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -37,6 +37,7 @@ import { WorkspaceNodeEditor, updateWorkspaceEditorField } from './workspace-nod
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey,
   type WorkspaceLaunchContext, type WorkspaceLaunchResolver } from './workspace-host.logic';
+import { useWorkspaceRecovery } from './workspace-recovery-controls';
 
 /** Optional authorized launch adapter. Default is the actor-owned latest GET;
  * a missing/disabled backend fails closed and never triggers Create. */
@@ -318,8 +319,9 @@ function WorkspaceCourseHostOverlayMount({ host, courseId, tenantId, locale, sou
   sources: ReturnType<typeof createWorkspaceSourceState> | null; onCourseApplied?: () => Promise<void> | void }) {
   const state = useSyncExternalStore(host.subscribe, host.getState, emptySnapshot);
   const activeRuns = useLessonAuthorActiveRuns({ tenantId, courseId, locale, enabled: !!state?.open });
+  const refreshRuns = activeRuns.refetch;
   return state ? <WorkspaceCourseHostOverlay host={host} courseId={courseId} state={state} locale={locale} sources={sources}
-    activeRuns={activeRuns.data} onCourseApplied={onCourseApplied} /> : null;
+    activeRuns={activeRuns.data} onCourseApplied={onCourseApplied} onRunsChanged={() => { void refreshRuns(); }} /> : null;
 }
 
 /** Exactly one Fetch/SSE connection for the open authorized workspace. The
@@ -359,8 +361,9 @@ function WorkspaceModalShell({ host, children }: { host: Host; children: ReactNo
   </Dialog>;
 }
 
-export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, activeRuns, onCourseApplied }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
-  sources?: ReturnType<typeof createWorkspaceSourceState> | null; activeRuns?: readonly LessonAuthorActiveRun[]; onCourseApplied?: () => Promise<void> | void }) {
+export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sources, activeRuns, onCourseApplied, onRunsChanged }: { host: Host; courseId: string; state: ReturnType<Host['getState']>; locale: WorkspaceLocale;
+  sources?: ReturnType<typeof createWorkspaceSourceState> | null; activeRuns?: readonly LessonAuthorActiveRun[]; onCourseApplied?: () => Promise<void> | void;
+  onRunsChanged?: () => void }) {
   const c = copy[locale], session = host.getSession(), workspace = state.workspace;
   const [actionError, setActionError] = useState(false);
   // Normal product entry has no selected launch and therefore starts at the
@@ -449,6 +452,18 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     const graph = projectWorkspaceAppliedGraph(authoritativeRead.graph, appliedOverlay);
     return graph === authoritativeRead.graph ? authoritativeRead : { ...authoritativeRead, graph };
   }, [authoritativeRead, appliedOverlay]);
+  // Stop / Continue / Rewrite: owner of an open, readable draft only (the server checks again).
+  const recovery = useWorkspaceRecovery({
+    // "unknown" is a re-authorizing read (Reload): keep the options and any open confirmation meanwhile.
+    enabled: state.open && view === 'workspace' && !!session && host.canWrite() && !!workspace && workspace.read.access !== 'blocked',
+    scope: state.launch ? { courseId: state.launch.course_id, conversationId: state.launch.conversation_id,
+      workspaceId: state.launch.workspace_id } : null,
+    locale, status: workspace?.read.status?.status ?? null, head: workspace?.read.status?.last_event_sequence ?? null,
+    onCommitted: target => session?.refreshForApply(target ?? undefined), onRunsChanged,
+  });
+  const recoveryUnitAction = recovery.unitAction;
+  const renderRecoveryNodeAction = useCallback((node: WorkspaceNode) => node.kind === 'unit'
+    ? recoveryUnitAction(node.node_id, 'card') : null, [recoveryUnitAction]);
   if (!state.open) return null;
   if (!state.loading && view === 'sessions') return <WorkspaceModalShell host={host}><WorkspaceSessionBrowser
     courseId={courseId} locale={locale} assistantAvatarSrc={assistantAvatarSrc} banner={<WorkspaceActiveRunNotice text={runNotice} />}
@@ -527,6 +542,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
         else { setActionError(true); setApplyState('failed'); }
       }
     };
+    const unitRecovery = node.kind === 'unit' ? recovery.unitAction(node.node_id, 'detail') : null;
     const readOnlyDetail = !!detail && !workspaceNodeSupportsEditor(detail.kind);
     const DetailIcon = detail?.component_type === 'la_diagram' ? Network : readOnlyDetail ? Eye : BookOpenCheck;
     const editingTitle = hierarchyTitle && editingTitleNodeId === node.node_id && !appliedReadOnly && !!editor.draft;
@@ -570,6 +586,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
               <Sparkles className="h-4 w-4" />{workspaceScopeApplyLabel(node.kind, locale, applyState === 'busy')}
             </Button>
           </div>}
+          {unitRecovery && <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/70 bg-card/95 px-5 py-4">{unitRecovery}</div>}
           {editorCapable && <WorkspaceNodeEditor {...editor}
             onChange={value => { setApplyState('idle'); act(() => { host.assertCanWrite(); editor.onChange(value); }); }}
             onSave={(value, revision) => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => { host.assertCanWrite(); editor.onSave(value, revision); }); }}
@@ -606,5 +623,8 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     overviewHeader={<WorkspaceLaunchBriefSummary brief={workspaceSessionLaunchBrief(presentationRead)} />}
     assistantAvatarSrc={assistantAvatarSrc}
     draftTitle={state.launch && activeConversation?.id === state.launch.conversation_id ? activeConversation.title : null}
-    onRefresh={() => act(refreshWorkspace)} /></WorkspaceModalShell>;
+    onRefresh={() => act(refreshWorkspace)}
+    headerActions={recovery.headerAction} recoveryBanner={recovery.banner} recoveryActions={recovery.actions}
+    renderChapterAction={chapter => recovery.chapterAction(chapter.node_id)} renderNodeAction={renderRecoveryNodeAction} />
+    {recovery.dialog}</WorkspaceModalShell>;
 }
