@@ -5,8 +5,8 @@ import { WorkspaceCreateError, workspaceCreateFailure, type createWorkspaceCreat
 import { isWorkspaceId, type WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { isWorkspaceLaunchBriefErrorCode, type WorkspaceHostScope, type WorkspaceLaunchBriefErrorCode,
   type WorkspaceLaunchContext } from '../../api/workspace-launch.contract';
-import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, workspaceLaunchBriefFields,
-  type WorkspaceLaunchBriefDraft } from './workspace-launch-brief.logic';
+import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, workspaceLaunchBriefFields, workspaceOrgContextOffer,
+  workspaceOrgContextRequestField, type WorkspaceLaunchBriefDraft, type WorkspaceOrgContextChoice } from './workspace-launch-brief.logic';
 
 export interface WorkspaceSourceState {
   busy: boolean;
@@ -19,6 +19,8 @@ export interface WorkspaceSourceState {
   briefError: WorkspaceLaunchBriefErrorCode | null;
   /** Start-screen choice and texts; Create sends a trimmed copy taken when it is pressed. */
   brief: Readonly<WorkspaceLaunchBriefDraft>;
+  /** "Use the organization profile": null while the feature is off or unknown (Create then sends no such key). */
+  organizationContext: Readonly<WorkspaceOrgContextChoice> | null;
   documents: readonly LessonAuthorSourceDocument[];
   selectedId: string | null;
   conversation: ChatConversation | null;
@@ -68,7 +70,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   let sourceStream: SourceStreamClient | null = null, sourceStreamDocumentId: string | null = null, sourceStreamSerial = 0;
   const listeners = new Set<() => void>();
   let state: Readonly<WorkspaceSourceState> = Object.freeze({ busy: false, phase: 'idle', ready: false, unknown: false, issue: null,
-    briefError: null, brief: DEFAULT_WORKSPACE_LAUNCH_BRIEF, documents: [], selectedId: null, conversation: null, transcript: null, progress: null, contentLocale: locale,
+    briefError: null, brief: DEFAULT_WORKSPACE_LAUNCH_BRIEF, organizationContext: null, documents: [], selectedId: null, conversation: null, transcript: null, progress: null, contentLocale: locale,
     sourceObservation: 'idle', operation: null });
   const emit = (patch: Partial<WorkspaceSourceState>) => {
     if (disposed) return;
@@ -252,6 +254,20 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
       if (typeof patch.course_purpose === 'string') next.course_purpose = patch.course_purpose;
       emit({ brief: Object.freeze(next), ...(state.issue === 'brief_rejected' ? { issue: null, briefError: null } : {}) });
     },
+    /** From the context tab's server state (null: feature off or unknown). A Create already in flight keeps the
+     * choice it was built with. */
+    setOrganizationContextOffer(offer: { confirmedVersion: number | null } | null) {
+      const next = workspaceOrgContextOffer(state.organizationContext, offer);
+      if (next !== state.organizationContext) emit({ organizationContext: next });
+    },
+    /** The author's switch; closed like the brief while Create is in flight or its outcome is unknown. */
+    setUseOrganizationContext(value: boolean) {
+      const current = state.organizationContext;
+      if (state.phase === 'creating' || state.unknown || !allowed() || !current || current.confirmedVersion === null
+        || typeof value !== 'boolean' || current.use === value) return;
+      emit({ organizationContext: Object.freeze({ ...current, use: value }),
+        ...(state.issue === 'brief_rejected' ? { issue: null, briefError: null } : {}) });
+    },
     select(documentId: string) {
       if (!state.busy && !state.unknown && allowed() && state.documents.some(d => d.document_id === documentId)) emit({ selectedId: documentId, issue: null });
     },
@@ -260,12 +276,13 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
       // The brief as shown when Create was pressed; an incomplete brief never dispatches.
       const brief = workspaceLaunchBriefFields(state.brief);
       if (!brief) return;
+      const organization = workspaceOrgContextRequestField(state.organizationContext, brief.design_mode);
       await readPrerequisites(); assertActive();
       const source = state.documents.find(d => d.document_id === state.selectedId && d.status === 'learned');
       if (!source) { emit({ issue: 'source_not_ready' }); return; }
       const c = await conversation(); assertActive();
       const request: Readonly<WorkspaceCreateRequest> = Object.freeze({ operation_id: dependencies.operationId(),
-        source_document_ids: [source.document_id], content_locale: state.contentLocale, ...brief });
+        source_document_ids: [source.document_id], content_locale: state.contentLocale, ...brief, ...organization });
       emit({ operation: request });
       let result: WorkspaceLaunchContext;
       try { result = await dependencies.create(c.id, request, locale); }

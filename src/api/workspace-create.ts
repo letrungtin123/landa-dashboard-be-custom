@@ -2,12 +2,13 @@ import type { AxiosRequestConfig } from 'axios';
 import { customApiClient } from './custom-client';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
 import { readWorkspaceLaunchResult } from './workspace-launch';
-import { isWorkspaceLaunchBriefErrorCode, isWorkspaceLaunchBriefFields, type WorkspaceHostScope,
-  type WorkspaceLaunchBriefFields } from './workspace-launch.contract';
+import { isWorkspaceLaunchBriefErrorCode, isWorkspaceLaunchBriefFields, isWorkspaceOrgContextRequestField, WORKSPACE_ORG_CONTEXT_KEY,
+  type WorkspaceHostScope, type WorkspaceLaunchBriefFields, type WorkspaceOrgContextRequestField } from './workspace-launch.contract';
 
-/** design_mode is always sent; learner_audience/course_purpose only for instructional_design. */
+/** design_mode is always sent; learner_audience/course_purpose only for instructional_design;
+ * use_organization_context only while the organization context feature is on. */
 export type WorkspaceCreateRequest = { operation_id: string; source_document_ids: string[]; content_locale: WorkspaceLocale }
-  & WorkspaceLaunchBriefFields;
+  & WorkspaceLaunchBriefFields & WorkspaceOrgContextRequestField;
 const CREATE_SOURCE_KEYS = ['content_locale', 'operation_id', 'source_document_ids'];
 export class WorkspaceCreateError extends Error {
   constructor(readonly outcome: 'rejected' | 'unknown', readonly code: string) { super(code); }
@@ -26,12 +27,14 @@ export function workspaceCreateFailure(error: unknown): WorkspaceCreateError {
 }
 export function createWorkspaceCreateClient(scope: WorkspaceHostScope, transport: Pick<typeof customApiClient, 'post'> = customApiClient) {
   return async (conversationId: string, request: WorkspaceCreateRequest, uiLocale: WorkspaceLocale) => {
-    // Every other key is the launch brief, checked exactly (no extra key passes).
-    const brief = Object.fromEntries(Object.entries(request).filter(([key]) => !CREATE_SOURCE_KEYS.includes(key)));
+    // Every other key except the optional organization context choice is the launch brief,
+    // checked exactly (no extra key passes).
+    const brief = Object.fromEntries(Object.entries(request).filter(([key]) => !CREATE_SOURCE_KEYS.includes(key) && key !== WORKSPACE_ORG_CONTEXT_KEY));
     if (![scope.actorId, scope.tenantId, conversationId, request.operation_id].every(isWorkspaceId)
       || !scope.courseId.trim() || scope.courseId.length > 255 || Array.from(scope.courseId).some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127) || ['.', '..'].includes(scope.courseId)
       || !['en', 'vi'].includes(uiLocale) || !['en', 'vi'].includes(request.content_locale)
       || !CREATE_SOURCE_KEYS.every(key => Object.prototype.hasOwnProperty.call(request, key)) || !isWorkspaceLaunchBriefFields(brief)
+      || !isWorkspaceOrgContextRequestField(request)
       || !Array.isArray(request.source_document_ids) || request.source_document_ids.length < 1 || request.source_document_ids.length > 5
       || !request.source_document_ids.every(isWorkspaceId) || new Set(request.source_document_ids.map(id => id.toLowerCase())).size !== request.source_document_ids.length) {
       throw new WorkspaceCreateError('rejected', 'WORKSPACE_CREATE_INPUT_INVALID');

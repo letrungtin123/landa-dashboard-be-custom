@@ -402,3 +402,78 @@ test('session overview shows the brief read-only, and nothing for sessions creat
     /Mode: <\/dt><dd[^>]*>Keep the material as it is/);
   env.locale = 'vi';
 });
+
+test('Create client: use_organization_context is optional, a boolean, and true only with the design mode', async () => {
+  const scope = { actorId: id(1), tenantId: id(2), courseId: 'course-v1:TEST+BRIEF+2026' };
+  const posts = [];
+  const client = createWorkspaceCreateClient(scope, { post: async (...args) => { posts.push(args); return { data: { success: true,
+    data: { workspace_id: id(10), conversation_id: id(6), correlation_id: id(11), content_locale: 'vi', status: 'designing' } } }; } });
+  const base = { operation_id: id(9), source_document_ids: [id(7)], content_locale: 'vi' };
+  const designed = { ...base, design_mode: 'instructional_design', learner_audience: 'Nhân viên mới', course_purpose: 'Hiểu công ty' };
+  await client(id(6), { ...designed, use_organization_context: true }, 'vi');
+  await client(id(6), { ...designed, use_organization_context: false }, 'vi');
+  await client(id(6), { ...base, design_mode: 'preserve_source', use_organization_context: false }, 'vi');
+  await client(id(6), designed, 'vi');
+  assert.deepEqual(posts.map(call => call[1]), [{ ...designed, use_organization_context: true }, { ...designed, use_organization_context: false },
+    { ...base, design_mode: 'preserve_source', use_organization_context: false }, designed], 'sent exactly as given; absent stays absent');
+  for (const bad of [{ ...designed, use_organization_context: 'true' }, { ...designed, use_organization_context: null },
+    { ...designed, use_organization_context: 1 }, { ...base, design_mode: 'preserve_source', use_organization_context: true }]) {
+    await assert.rejects(client(id(6), bad, 'vi'), { outcome: 'rejected', code: 'WORKSPACE_CREATE_INPUT_INVALID' });
+  }
+  assert.equal(posts.length, 4);
+  assert.equal(launchContract.isWorkspaceOrgContextRequestField({ design_mode: 'preserve_source' }), true);
+});
+
+test('controller: the context tab offers the switch; Create sends the key only while the feature is on, true only when it may be used', async () => {
+  const f = controllerFixture();
+  await f.controller.refresh(); f.controller.select(id(7));
+  f.controller.setBrief({ learner_audience: 'A', course_purpose: 'B' });
+  const sent = async () => { await f.controller.create(); return f.requests.at(-1); };
+  assert.equal(f.controller.getState().organizationContext, null);
+  assert.equal(Object.hasOwn(await sent(), 'use_organization_context'), false, 'feature off or unknown: today\'s request');
+
+  f.controller.setOrganizationContextOffer({ confirmedVersion: null });
+  f.controller.setUseOrganizationContext(true);
+  assert.deepEqual(f.controller.getState().organizationContext, { confirmedVersion: null, use: false }, 'nothing confirmed: cannot be turned on');
+  assert.equal((await sent()).use_organization_context, false);
+
+  f.controller.setOrganizationContextOffer({ confirmedVersion: 3 });
+  assert.deepEqual(f.controller.getState().organizationContext, { confirmedVersion: 3, use: true }, 'default on once a profile is confirmed');
+  assert.equal((await sent()).use_organization_context, true);
+
+  f.controller.setUseOrganizationContext(false);
+  f.controller.setOrganizationContextOffer({ confirmedVersion: 3 });
+  assert.equal(f.controller.getState().organizationContext.use, false, 'the same offer keeps the author\'s choice');
+  assert.equal((await sent()).use_organization_context, false);
+  f.controller.setOrganizationContextOffer({ confirmedVersion: 4 });
+  assert.equal(f.controller.getState().organizationContext.use, true, 'a newly confirmed version is offered on again');
+
+  f.controller.setBrief({ design_mode: 'preserve_source' });
+  assert.deepEqual(await sent(), { operation_id: id(9), source_document_ids: [id(7)], content_locale: 'vi', design_mode: 'preserve_source',
+    use_organization_context: false }, 'keep-as-is never uses the profile');
+  f.controller.setBrief({ design_mode: 'instructional_design' });
+  f.controller.setOrganizationContextOffer(null);
+  assert.equal(Object.hasOwn(await sent(), 'use_organization_context'), false, 'feature turned off again');
+  assert.ok(Object.isFrozen(f.controller.getState().operation));
+});
+
+test('controller: an organization context refusal is a definite, fixable refusal with a plain message', async () => {
+  const f = controllerFixture();
+  await f.controller.refresh(); f.controller.select(id(7));
+  f.controller.setBrief({ learner_audience: 'A', course_purpose: 'B' });
+  f.controller.setOrganizationContextOffer({ confirmedVersion: 2 });
+  for (const [code, status] of [['ORG_CONTEXT_NOT_CONFIRMED', 409], ['ORG_CONTEXT_NOT_APPLICABLE', 422]]) {
+    f.fail(Object.assign(Error(String(status)), { response: { status, data: { code } } }));
+    await f.controller.create();
+    const state = f.controller.getState();
+    assert.equal(state.issue, 'brief_rejected'); assert.equal(state.briefError, code); assert.equal(state.unknown, false);
+    for (const locale of ['vi', 'en']) {
+      env.locale = locale;
+      assert.match(t(logic.workspaceLaunchBriefErrorKey(code)), locale === 'vi' ? /Dùng hồ sơ doanh nghiệp/ : /Use the organization profile/);
+    }
+    env.locale = 'vi';
+    f.controller.setUseOrganizationContext(false);
+    assert.equal(f.controller.getState().issue, null, 'turning the switch off clears the refusal');
+    f.controller.setUseOrganizationContext(true);
+  }
+});

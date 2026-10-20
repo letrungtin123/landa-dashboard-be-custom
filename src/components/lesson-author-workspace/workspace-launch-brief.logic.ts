@@ -3,7 +3,7 @@ import {
   type WorkspaceDesignMode, type WorkspaceGraph, type WorkspaceLaunchBrief, type WorkspaceStatus,
 } from '../../api/lesson-author-workspace.contract';
 import { AI_CREDIT_ERROR_KEYS, isAiCreditErrorCode, type AiCreditErrorCode } from '../../api/ai-credit-errors.logic';
-import type { WorkspaceLaunchBriefErrorCode, WorkspaceLaunchBriefFields } from '../../api/workspace-launch.contract';
+import type { WorkspaceLaunchBriefErrorCode, WorkspaceLaunchBriefFields, WorkspaceOrgContextRequestField } from '../../api/workspace-launch.contract';
 
 /**
  * AI ID launch brief (QLT-6): the way of working chosen on the start screen
@@ -93,10 +93,33 @@ const ERROR_KEYS: Record<Exclude<WorkspaceLaunchBriefErrorCode, AiCreditErrorCod
   LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG: 'errorTooLong',
   LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED: 'errorNotAllowed',
   LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE: 'errorModeUnavailable',
+  ORG_CONTEXT_NOT_CONFIRMED: 'errorOrgContextNotConfirmed',
+  ORG_CONTEXT_NOT_APPLICABLE: 'errorOrgContextNotApplicable',
 };
 /** i18n key of the plain message for a brief rejection (under aiIdLaunchBrief; AI points refusals share aiCredits.errors). */
 export function workspaceLaunchBriefErrorKey(code: WorkspaceLaunchBriefErrorCode): string {
   return isAiCreditErrorCode(code) ? AI_CREDIT_ERROR_KEYS[code] : `aiIdLaunchBrief.${ERROR_KEYS[code]}`;
+}
+
+/** "Use the organization profile" on the start screen: the confirmed version the context tab offers and the
+ * author's choice. Null while the feature is off or its state is unknown. */
+export interface WorkspaceOrgContextChoice {
+  confirmedVersion: number | null;
+  use: boolean;
+}
+/** A newly offered confirmed version turns the choice on (default on); the same version keeps what the author chose. */
+export function workspaceOrgContextOffer(previous: Readonly<WorkspaceOrgContextChoice> | null,
+  offer: { confirmedVersion: number | null } | null): Readonly<WorkspaceOrgContextChoice> | null {
+  if (!offer) return null;
+  if (previous && previous.confirmedVersion === offer.confirmedVersion) return previous;
+  return Object.freeze({ confirmedVersion: offer.confirmedVersion, use: offer.confirmedVersion !== null });
+}
+/** The Create key: absent while the feature is off; otherwise true only for the design mode with a confirmed
+ * profile and the switch on. */
+export function workspaceOrgContextRequestField(choice: Readonly<WorkspaceOrgContextChoice> | null,
+  designMode: WorkspaceDesignMode): WorkspaceOrgContextRequestField {
+  if (!choice) return {};
+  return { use_organization_context: designMode === 'instructional_design' && choice.confirmedVersion !== null && choice.use };
 }
 
 /** The brief of an open session, from the status read (or the graph when only

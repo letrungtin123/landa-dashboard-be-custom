@@ -41,12 +41,26 @@ export function isWorkspaceLaunchBriefFields(value: Record<string, unknown>): va
     && text(value.learner_audience, WORKSPACE_LEARNER_AUDIENCE_MAX) && text(value.course_purpose, WORKSPACE_COURSE_PURPOSE_MAX);
 }
 
+/** Optional Create key (organization context, ORG_CONTEXT_SPEC §3): sent, true or false, only while the feature is
+ * on for the tenant; absent means false. */
+export const WORKSPACE_ORG_CONTEXT_KEY = 'use_organization_context';
+export type WorkspaceOrgContextRequestField = { use_organization_context?: boolean };
+/** Absent, false, or true together with the design mode (the server refuses true for any other mode). */
+export function isWorkspaceOrgContextRequestField(request: Readonly<Record<string, unknown>>): boolean {
+  if (!Object.prototype.hasOwnProperty.call(request, WORKSPACE_ORG_CONTEXT_KEY)) return true;
+  const value = request[WORKSPACE_ORG_CONTEXT_KEY];
+  return value === false || value === true && request.design_mode === 'instructional_design';
+}
+
 /** Brief validation codes the server returns before it creates anything. */
 export const WORKSPACE_LAUNCH_BRIEF_ERROR_CODES = [
   'LESSON_AUTHOR_LAUNCH_MODE_INVALID', 'LESSON_AUTHOR_LAUNCH_AUDIENCE_REQUIRED', 'LESSON_AUTHOR_LAUNCH_PURPOSE_REQUIRED',
   'LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG', 'LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED',
   // QLT-6: keeping the material as it is is not turned on for this organization (no IDM pipeline).
   'LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE',
+  // Organization context: no confirmed profile (409), or the profile cannot be used for this run (422).
+  // Both are refused before anything is created; the author turns the switch off or confirms a profile.
+  'ORG_CONTEXT_NOT_CONFIRMED', 'ORG_CONTEXT_NOT_APPLICABLE',
   // AI points: the month's points are used up, or too few are left for a new run. Refused before
   // anything is created; Create works again once points are added (no field to fix).
   ...AI_CREDIT_ERROR_CODES,
