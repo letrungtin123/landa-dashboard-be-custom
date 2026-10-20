@@ -212,6 +212,8 @@ type FlowData = Record<string, unknown> & WorkspaceProjectionNode & {
   locale: WorkspaceLocale; onExpand: (id: string, expanded: boolean) => void;
   /** The run has ended: planned/generating nodes are no longer being built. */
   runEnded?: boolean;
+  /** Optional owner action on a committed card (rewrite a lesson without content). */
+  renderAction?: (node: WorkspaceNode) => ReactNode;
 };
 type FlowNode = Node<FlowData, 'workspace'>;
 type WorkspaceBuildEdgeData = Record<string, unknown> & {
@@ -368,7 +370,8 @@ function WorkspaceFlowBuildEdge({ id, sourceX, sourceY, sourcePosition, targetX,
 }
 
 export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
-  const { node, locale, childCount, expanded, onExpand, preview, previewState, runEnded = false } = data;
+  const { node, locale, childCount, expanded, onExpand, preview, previewState, runEnded = false, renderAction } = data;
+  const action = preview ? null : renderAction?.(node) ?? null;
   const c = workspaceCopy[locale];
   const status = workspaceMindmapStatus(node);
   const { Icon, key: iconKey, tone: iconTone } = getWorkspaceNodeVisual(node);
@@ -412,6 +415,7 @@ export function WorkspaceGraphNode({ data, selected }: NodeProps<FlowNode>) {
       </button>}
     </div>
     </div>
+    {action && <div className="absolute bottom-2 right-2 z-10">{action}</div>}
   </div>;
 }
 const nodeTypes = { workspace: WorkspaceGraphNode };
@@ -438,6 +442,15 @@ export interface WorkspaceDialogProps {
   draftTitle?: string | null;
   /** Explicit, authorized read only. Never starts or retries generation. */
   onRefresh?: () => void;
+  /** Owner Stop / Continue / Rewrite controls. Presentation slots only: the host
+   * owns the requests and the server decides what is allowed. */
+  headerActions?: ReactNode;
+  /** Stopped-design notice with its actions, shown above the tabs. */
+  recoveryBanner?: ReactNode;
+  /** The same actions without the notice, inside the terminal panel. */
+  recoveryActions?: ReactNode;
+  renderChapterAction?: (chapter: WorkspaceNode) => ReactNode;
+  renderNodeAction?: (node: WorkspaceNode) => ReactNode;
 }
 
 const pendingOverviewMetrics = (locale: WorkspaceLocale) => {
@@ -605,6 +618,12 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
   // Not a failure: the content is complete and saved; held questions wait for the author ("Chờ duyệt").
   if (workspaceReviewRequired(status)) return { stage: null,
     message: workspaceReviewCopy[locale].pendingLead, note: workspaceReviewCopy[locale].pendingNote };
+  if (status.failure_code === 'RUN_STOPPED_BY_AUTHOR') return {
+    stage: null,
+    message: vi ? 'Bạn đã dừng việc tạo nội dung. Các phần đã tạo xong vẫn được giữ.'
+      : 'You stopped creating content. Everything that was finished is kept.',
+    note: null,
+  };
   if (status.failure_code === 'ORCHESTRATION_V2_EXECUTION_RUNTIME_CHANGED') return {
     stage, message: vi ? 'Cấu hình AI của doanh nghiệp đã thay đổi trong lúc tạo nội dung.' : 'The organization AI configuration changed while content was being created.',
     note: vi ? 'Yêu cầu của bước này chưa được gửi đến AI và không phát sinh lượt gọi cho lần thử đó.' : 'This step was not sent to the AI provider, so that attempt did not create a provider call.',
@@ -638,14 +657,18 @@ function terminalFailureText(status: WorkspaceStatus, locale: WorkspaceLocale): 
     note: status.failure_code ? (vi ? 'Các phần đã ghi nhận trước đó vẫn được giữ nguyên.' : 'Previously committed sections remain available.') : null };
 }
 
-function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false }: { locale: WorkspaceLocale; status: WorkspaceStatus; onRefresh?: () => void; compact?: boolean }) {
+function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false, actions }: { locale: WorkspaceLocale; status: WorkspaceStatus; onRefresh?: () => void; compact?: boolean;
+  /** Continue / Rewrite offered for this stopped design; replaces the "start a new draft" hint. */
+  actions?: ReactNode }) {
   const c = workspaceCopy[locale];
   const message = status.status === 'needs_action' ? c.terminalNeedsAction : status.status === 'failed' ? c.terminalFailed
     : status.status === 'canceled' ? c.terminalCanceled : c.terminalReady;
   const failure = terminalFailureText(status, locale);
   const assessmentReviewRequired = workspaceReviewRequired(status);
   const isFailure = (status.status === 'needs_action' || status.status === 'failed') && !assessmentReviewRequired;
-  const contentCommitted = status.failure_stage === 'finalize_course' && status.unit_count > 0 && status.ready_unit_count === status.unit_count;
+  // An author stop is not an error: everything finished is kept (amber notice, not an alert).
+  const contentCommitted = status.failure_code === 'RUN_STOPPED_BY_AUTHOR'
+    || status.failure_stage === 'finalize_course' && status.unit_count > 0 && status.ready_unit_count === status.unit_count;
   return <div className={`${compact ? 'mx-4 my-3 sm:mx-5' : 'm-4 max-w-2xl'} flex flex-col gap-3 rounded-2xl border p-4 text-sm ${isFailure && !contentCommitted ? 'border-destructive/35 bg-destructive/[0.06]' : 'border-amber-500/30 bg-amber-500/[0.06]'}`} role={isFailure && !contentCommitted ? 'alert' : 'status'} aria-live="polite">
     <div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isFailure && !contentCommitted ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}><AlertTriangle className="h-4 w-4" aria-hidden /></span>
       <div className="min-w-0"><p className="font-semibold">{assessmentReviewRequired ? workspaceReviewCopy[locale].pendingTitle : c[status.status]}</p><p className="mt-1 leading-6 text-muted-foreground">{(isFailure || assessmentReviewRequired) && status.failure_code ? failure.message : message}</p>
@@ -654,7 +677,8 @@ function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = false }: 
       </div></div>
     {(!assessmentReviewRequired && (onRefresh || isFailure)) && <div className="flex flex-wrap items-center gap-2">
       {onRefresh && <Button type="button" variant="outline" size="sm" onClick={onRefresh}>{c.terminalReload}</Button>}
-      {isFailure && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}
+      {isFailure && !actions && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}
+      {isFailure && actions}
     </div>}
   </div>;
 }
@@ -704,14 +728,15 @@ export function WorkspacePlanningOverview({ preview, locale }: {
   </div>;
 }
 
-function Overview({ graph, preview, details, locale, loading, terminal, onRefresh }: { graph: WorkspaceGraph | null;
+function Overview({ graph, preview, details, locale, loading, terminal, onRefresh, terminalActions, renderChapterAction }: { graph: WorkspaceGraph | null;
   preview: WorkspaceArchitecturePreview | null;
   details: readonly WorkspaceTypedDetail[]; locale: WorkspaceLocale; loading: boolean;
-  terminal: WorkspaceStatus | null; onRefresh?: () => void }) {
+  terminal: WorkspaceStatus | null; onRefresh?: () => void; terminalActions?: ReactNode;
+  renderChapterAction?: (chapter: WorkspaceNode) => ReactNode }) {
   const c = workspaceCopy[locale];
   if (!graph?.overview_ready) return preview ? <WorkspacePlanningOverview preview={preview} locale={locale} />
     : loading ? <WorkspacePendingSkeleton locale={locale} stage="overview" />
-    : terminal ? <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} /> : <p className="p-4" role="status">{c.emptyOverview}</p>;
+    : terminal ? <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} actions={terminalActions} /> : <p className="p-4" role="status">{c.emptyOverview}</p>;
   const course = graph.nodes.find(n => n.kind === 'course');
   const chapters = graph.nodes.filter(n => n.kind === 'chapter').sort((a, b) => a.sort_order - b.sort_order);
   const counts = workspaceOverviewCounts(graph);
@@ -758,6 +783,7 @@ function Overview({ graph, preview, details, locale, loading, terminal, onRefres
           {values === null ? <div className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.045] p-3.5" aria-label={c.loading} role="status"><p className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300"><BookOpenCheck className="h-3.5 w-3.5" aria-hidden />{c.outcomes}</p><div className="animate-pulse space-y-2" aria-hidden><div className="h-3 w-5/6 rounded bg-violet-500/10" /><div className="h-3 w-2/3 rounded bg-violet-500/10" /></div></div>
             : values.length ? <div className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.045] p-3.5"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300">{c.outcomes}</p><ul className="space-y-2">{values.map((value, valueIndex) => <li key={valueIndex} className="flex gap-2 text-sm leading-5"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" /><span className="min-w-0 break-words">{value}</span></li>)}</ul></div>
               : <p className="mt-4 rounded-xl border border-border/60 bg-muted/25 p-3 text-sm text-muted-foreground">{c.notAvailable}</p>}
+          {renderChapterAction?.(node)}
         </div>
         </section>; })}
       </div>
@@ -780,7 +806,8 @@ export function WorkspaceDialog(props: WorkspaceDialogProps) {
 /** Body deliberately has no Dialog/Portal boundary. The host keeps one modal
  * mounted from source selection through workspace delivery, so a status/graph
  * update cannot recreate focus, scroll lock, entry animation, or viewport. */
-export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, overviewHeader, overviewNotice, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh }: WorkspaceDialogProps) {
+export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelectNode, overviewDetails = [], toolbar, overviewHeader, overviewNotice, renderNodeDetail, assistantAvatarSrc, draftTitle, onRefresh,
+  headerActions, recoveryBanner, recoveryActions, renderChapterAction, renderNodeAction }: WorkspaceDialogProps) {
   const c = workspaceCopy[locale];
   const [tab, setTab] = useState('overview');
   const [expansion, setExpansion] = useState<Expansion>({});
@@ -901,9 +928,9 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
     setFitRequest(value => value + 1);
   }, [allExpanded, expandableNodeIds, presentationNodes]);
   const nodes = useMemo<FlowNode[]>(() => projection.map(p => ({ id: p.node.node_id, type: 'workspace', position: nodePositions[p.node.node_id] ?? p.position,
-    data: { ...p, locale, onExpand, runEnded }, draggable: !p.preview, connectable: false, selectable: !p.preview,
+    data: { ...p, locale, onExpand, runEnded, renderAction: renderNodeAction }, draggable: !p.preview, connectable: false, selectable: !p.preview,
     ariaLabel: p.preview ? `${p.node.title ?? c[p.node.kind]}: ${locale === 'vi' ? 'đang tạo' : 'generating'}` : `${c.inspect}: ${p.node.title ?? c[p.node.kind]}`,
-  })), [projection, locale, nodePositions, onExpand, c, runEnded]);
+  })), [projection, locale, nodePositions, onExpand, c, runEnded, renderNodeAction]);
   const edges = useMemo<WorkspaceBuildEdge[]>(() => {
     const visible = new Set(nodes.map(n => n.id));
     const building = new Set(workspaceBuildingNodeIds(projection, undefined, runEnded));
@@ -963,6 +990,11 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
     && state.detail.correlation_id === graph.correlation_id && state.detail.content_locale === graph.content_locale ? state.detail : null;
   const details = useMemo(() => [...overviewDetails, ...(!state.detailStale && detail ? [detail] : [])], [overviewDetails, detail, state.detailStale]);
   const visibleReadError = state.error?.code === 'WORKSPACE_EVENT_RESNAPSHOT_REQUIRED' ? null : state.error;
+  // The stopped-design notice goes above the tabs unless this tab already shows
+  // the terminal panel (which then carries the same actions).
+  const terminalPanelVisible = !!terminal && (tab === 'overview'
+    ? canRead && !graph?.overview_ready && !preview && !overviewLoading
+    : nodes.length === 0 && !mindmapLoading);
   return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <span className="sr-only" ref={node => { if (node && !returnFocus.current) { returnFocus.current = document.activeElement as HTMLElement; } }} />
       <header className="flex shrink-0 items-start justify-between gap-3 border-b bg-card px-4 py-3 pr-4 sm:px-5 sm:py-3.5">
@@ -970,13 +1002,17 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
           <WorkspaceAiAvatar src={assistantAvatarSrc} compact />
           <div className="min-w-0"><DialogTitle className="truncate text-base font-semibold">{draftTitle?.trim() || c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{c.review}</DialogDescription></div>
         </div>
-        <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
+        <div className="flex shrink-0 items-center gap-2">
+          {headerActions}
+          <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
+        </div>
       </header>
       {visibleReadError && <p role="alert" className="mx-4 mt-3 shrink-0 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-5">{workspaceReadMessage(visibleReadError.code, locale)}</p>}
       {/* A committed graph is the user's actionable state. Terminal workflow
        * diagnostics stay in telemetry; a reload button cannot repair them and
        * must not displace or discredit already saved course-design content. */}
       {toolbar && <div className="max-h-[25dvh] shrink-0 overflow-y-auto border-b bg-background px-4 py-2 sm:px-5">{toolbar}</div>}
+      {canRead && recoveryBanner && !terminalPanelVisible && <div className="shrink-0 border-b bg-background px-4 py-2 sm:px-5">{recoveryBanner}</div>}
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 overflow-x-auto border-b bg-muted/10 px-3 py-2 sm:px-5">
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/35 p-1 dark:bg-muted/20">
@@ -987,7 +1023,8 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
         <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {canRead && overviewNotice}
           {canRead && overviewHeader}
-          {canRead ? <Overview graph={graph} preview={preview} details={details} locale={locale} loading={overviewLoading} terminal={terminal} onRefresh={onRefresh} /> : <p className="p-4">{state.access === 'blocked' ? c.unavailable : c.unknown}</p>}
+          {canRead ? <Overview graph={graph} preview={preview} details={details} locale={locale} loading={overviewLoading} terminal={terminal} onRefresh={onRefresh}
+            terminalActions={recoveryActions} renderChapterAction={renderChapterAction} /> : <p className="p-4">{state.access === 'blocked' ? c.unavailable : c.unknown}</p>}
         </TabsContent>
         <TabsContent value="mindmap" className="relative mt-0 min-h-0 flex-1 overflow-hidden bg-background">
           {nodes.length > 0 ? <div className="h-full w-full min-h-0"><ReactFlowProvider><ReactFlow<FlowNode, WorkspaceBuildEdge> nodes={flowNodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -1030,7 +1067,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
             <MiniMap pannable zoomable className="!border !border-border !bg-card !shadow-lg" nodeStrokeWidth={3}
               nodeColor={item => { const data = item.data as FlowData | undefined; return edgeColor[workspaceMindmapStatus(data?.node ?? { kind: 'course', applied: false, user_modified: false })]; }} />
             <Background gap={18} size={1} color="hsl(var(--muted-foreground) / 0.18)" />
-          </ReactFlow></ReactFlowProvider></div> : mindmapLoading ? <WorkspacePendingSkeleton locale={locale} stage="mindmap" /> : terminal ? <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} />
+          </ReactFlow></ReactFlowProvider></div> : mindmapLoading ? <WorkspacePendingSkeleton locale={locale} stage="mindmap" /> : terminal ? <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} actions={recoveryActions} />
             : <p className="p-4" role="status">{state.access === 'blocked' ? c.unavailable : c.empty}</p>}
         </TabsContent>
       </Tabs>

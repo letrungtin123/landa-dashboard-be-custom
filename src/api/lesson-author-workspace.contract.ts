@@ -118,7 +118,7 @@ export interface WorkspaceGraph extends WorkspaceView {
 }
 const EVENT_KINDS = ['workspace_created', 'architecture_started', 'architecture_progressed', 'overview_ready', 'structure_ready',
   'unit_started', 'unit_ready', 'node_revision_saved', 'node_reset', 'scope_apply_started',
-  'scope_applied', 'run_needs_action', 'run_ready', 'run_failed', 'run_canceled'] as const;
+  'scope_applied', 'run_needs_action', 'run_ready', 'run_failed', 'run_canceled', 'run_resumed'] as const;
 export interface WorkspaceEvent {
   sequence: number;
   event_kind: typeof EVENT_KINDS[number];
