@@ -374,7 +374,7 @@ test('workspace forms retain the visual vocabulary of Course Outline editors', (
 test('diagram workspace fills the remaining modal area and refits only after layout settles', () => {
   const componentSource = readFileSync(path.join(directory, 'workspace-component-draft-editor.tsx'), 'utf8');
   const editorSource = readFileSync(path.join(directory, 'workspace-node-editor.tsx'), 'utf8');
-  const hostSource = readFileSync(path.join(directory, 'workspace-course-host.tsx'), 'utf8');
+  const hostSource = readFileSync(path.join(directory, 'workspace-course-node-dialog.tsx'), 'utf8');
   const diagramSource = readFileSync(path.join(directory, '..', 'course-editor', 'editors', 'DiagramEditor.tsx'), 'utf8');
   assert.match(componentSource, /h-full min-h-0 w-full overflow-hidden/);
   assert.match(componentSource, /preview\.type === 'la_diagram' \? 'h-full min-h-0'/);

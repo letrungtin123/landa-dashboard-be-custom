@@ -1,11 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpenCheck, Eye, Network, Pencil, Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/utils/store';
 import { useTenantStore } from '@/utils/tenant-store';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
 import { createWorkspaceReadClient } from '../../api/lesson-author-workspace';
 import { createWorkspaceCreateClient } from '../../api/workspace-create';
@@ -20,27 +19,27 @@ import { WorkspaceSessionBrowser } from './workspace-session-browser';
 import { listLessonAuthorSessions, type LessonAuthorActiveRun } from '../../api/workspace-sessions';
 import { useLessonAuthorActiveRuns } from '@/hooks/queries/use-lesson-author-sessions';
 import { WorkspaceActiveRunNotice } from './workspace-active-run-banner';
-import { WorkspaceApplyConflictDialog } from './workspace-apply-conflict-dialog';
 import { WorkspaceReviewPanel } from './workspace-review-panel';
 import { workspaceReviewRequired } from './workspace-review.logic';
-import { workspaceActiveRunNotice, workspaceAppliedNote, workspaceReadOnlyNotice } from './workspace-sharing';
+import { workspaceActiveRunNotice, workspaceReadOnlyNotice } from './workspace-sharing';
 import { createWorkspaceWriteClient, WorkspaceWriteError, workspaceWriteMessage } from '../../api/workspace-write';
-import { createWorkspaceApplyClient, workspaceApplyErrorMessage, WorkspaceApplyError, type WorkspaceApplyCode,
-  type WorkspaceApplyConflict } from '../../api/workspace-apply';
+import type { WorkspaceApplyError } from '../../api/workspace-apply';
 import { createWorkspaceStreamClient, type WorkspaceStreamState } from '../../api/workspace-stream';
 import { createWorkspaceSourceStreamClient } from '../../api/workspace-source-stream';
 import { fetchLessonAuthorChatSettings } from '../../api/custom-chat';
 import { storageUrl } from '../../utils/storage-url';
-import { workspaceReadMessage, type WorkspaceContent, type WorkspaceGraph, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
+import { workspaceReadMessage, type WorkspaceLocale, type WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 import { createWorkspaceSession } from './workspace-session';
 import { WorkspaceDialogBody } from './workspace-dialog';
-import { WorkspaceNodeTypePill } from './workspace-graph-node';
-import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, WorkspaceNotGeneratedNotice, workspaceDetailStats, workspaceNodeNotGenerated, workspaceRunEnded } from './workspace-node-detail';
-import { WorkspaceNodeEditor, updateWorkspaceEditorField } from './workspace-node-editor';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import type { WorkspaceLaunchContext, WorkspaceLaunchResolver } from '../../api/workspace-launch.contract';
 import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey } from './workspace-host.logic';
 import { useWorkspaceRecovery } from './workspace-recovery-controls';
+import {
+  projectWorkspaceAppliedGraph, workspaceCourseHostCopy, workspaceOverviewAutoLoadAttempt,
+  type WorkspaceAppliedRevisionOverlay, type WorkspaceApplyConflictState, type WorkspaceApplyUiState,
+} from './workspace-course-host.logic';
+import { WorkspaceCourseNodeDialog } from './workspace-course-node-dialog';
 
 /** Optional authorized launch adapter. Default is the actor-owned latest GET;
  * a missing/disabled backend fails closed and never triggers Create. */
@@ -48,183 +47,10 @@ const LaunchContext = createContext<WorkspaceLaunchResolver | undefined>(undefin
 // Export the actual context provider used by the hook, without global mutable IDs.
 export const CourseWorkspaceLaunchProvider = LaunchContext.Provider;
 const sessionIndex: WorkspaceLaunchResolver = async () => null;
-const copy = {
-  en: { label: 'AI Instructional Design', title: 'AI Instructional Design · Course workspace', open: 'Open AI Instructional Design workspace', close: 'Close', loading: 'Loading the authorized workspace…',
-    discovery_unavailable: 'Workspace discovery is not connected yet. The existing Lesson Author and document upload remain available.',
-    no_workspace: 'No existing workspace is available for this course. Nothing has been created.',
-    launch_invalid: 'The workspace response does not match this course. Access is blocked.',
-    launch_changed: 'The server selected a different workspace. The previous local draft has been retained; reopen that workspace explicitly.',
-    launch_failed: 'The workspace could not be opened. Check your access and try again.', retry: 'Check again', refresh: 'Reload saved state',
-    overview: 'Load overview details', more: 'Load more overview details', readOnly: 'This workspace is currently read-only.',
-    kept: 'Closing keeps local drafts in this page and does not stop generation. Leaving or reloading this page discards unsaved local drafts.',
-    saved: 'The server confirmed this draft revision. It has not been applied to the course.', applied: 'The selected scope was added to the course draft. Publishing remains separate.',
-    replay: 'Repeat the same unconfirmed operation', replayHint: 'Reload saved state first. Repeating uses the original operation ID and payload.',
-    rebase: 'Keep my local edits against this saved revision', discard: 'Discard local edits', compare: 'Compare the saved content above with your local edits before choosing.',
-    waiting: 'Waiting for an authorized detail read.', error: 'The action could not be completed. Reload saved state.', detail: 'Draft content', review: 'Review and edit committed draft content. Publishing remains separate.',
-    readOnlyReview: 'AI design analysis for review.', appliedReview: 'This content has been added to the course and is now view-only.',
-    editTitle: 'Edit name', aiInsight: 'AI design insight', sessions: 'Draft list' },
-  vi: { label: 'AI Instructional Design', title: 'AI Instructional Design · Thiết kế khoá học', open: 'Mở bản thiết kế khoá học AI Instructional Design', close: 'Đóng', loading: 'Đang tải bản thiết kế khoá học được phép truy cập…',
-    discovery_unavailable: 'Chưa kết nối API tìm bản thiết kế khoá học. Trợ lý soạn bài và tải tài liệu hiện tại vẫn sử dụng được.',
-    no_workspace: 'Khóa học chưa có bản thiết kế khả dụng. Chưa tạo nội dung nào.',
-    launch_invalid: 'Phản hồi bản thiết kế khoá học không khớp khóa học này. Truy cập đã bị chặn.',
-    launch_changed: 'Máy chủ chọn bản thiết kế khoá học khác. Bản sửa cục bộ trước đó vẫn được giữ; hãy mở lại đúng bản thiết kế đó.',
-    launch_failed: 'Chưa thể mở bản thiết kế khoá học. Kiểm tra quyền truy cập rồi thử lại.', retry: 'Kiểm tra lại', refresh: 'Tải lại trạng thái đã lưu',
-    overview: 'Tải chi tiết tổng quan', more: 'Tải thêm chi tiết tổng quan', readOnly: 'Bản thiết kế khoá học hiện chỉ cho phép xem.',
-    kept: 'Đóng vẫn giữ bản sửa cục bộ trong trang này và không dừng quá trình tạo nội dung. Rời hoặc tải lại trang sẽ mất bản sửa chưa lưu.',
-    saved: 'Máy chủ đã xác nhận phiên bản bản thiết kế khoá học này. Chưa áp dụng vào khóa học.', applied: 'Đã đưa đúng phạm vi được chọn vào bản nháp khóa học. Xuất bản là thao tác riêng.',
-    replay: 'Gửi lại đúng thao tác chưa xác nhận', replayHint: 'Tải lại trạng thái đã lưu trước. Gửi lại giữ nguyên mã thao tác và nội dung ban đầu.',
-    rebase: 'Giữ bản sửa cục bộ trên phiên bản đã lưu này', discard: 'Bỏ bản sửa cục bộ', compare: 'So sánh nội dung đã lưu bên trên với bản sửa cục bộ trước khi chọn.',
-    waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thiết kế khoá học', review: 'Duyệt và sửa nội dung bản thiết kế khoá học đã ghi nhận. Xuất bản là thao tác riêng.',
-    readOnlyReview: 'Phân tích thiết kế do AI đề xuất để bạn rà soát.', appliedReview: 'Nội dung này đã được đưa vào khóa học và hiện chỉ cho phép xem.',
-    editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI', sessions: 'Danh sách bản thiết kế khoá học' },
-} as const;
 type Host = ReturnType<typeof createWorkspaceCourseHost>;
 const emptySubscribe = () => () => {};
 const emptySnapshot = () => null;
 const realtimeEnabled = workspaceHostEnabled(import.meta.env.VITE_LESSON_AUTHOR_WORKSPACE_STREAM_ENABLED);
-
-export interface WorkspaceOverviewAutoLoadInput {
-  open: boolean;
-  workspaceId: string | null;
-  sessionAvailable: boolean;
-  loading: boolean;
-  complete: boolean;
-  writeBusy: boolean;
-  hasError: boolean;
-  readOpened: boolean;
-  readAllowed: boolean;
-  stale: boolean;
-  overviewReady: boolean;
-  structureReady: boolean;
-  snapshotSequence: number | null;
-  detailCount: number;
-}
-
-/** Returns one progress fingerprint for an authorized overview batch. The
- * caller records it before dispatch, so a failed/no-progress read cannot form
- * a render -> request -> error -> render hot loop. A new head or a larger
- * committed detail cache produces a new key and permits the next bounded
- * batch. */
-export function workspaceOverviewAutoLoadAttempt(
-  previousAttempt: string | null,
-  input: WorkspaceOverviewAutoLoadInput,
-): string | null {
-  if (!input.open || !input.workspaceId || !input.sessionAvailable || input.loading || input.complete
-    || input.writeBusy || input.hasError || !input.readOpened || !input.readAllowed || input.stale
-    || !input.overviewReady || !input.structureReady || input.snapshotSequence == null) return null;
-  const attempt = `${input.workspaceId}:${input.snapshotSequence}:${input.detailCount}`;
-  return attempt === previousAttempt ? null : attempt;
-}
-
-const scopeApplyCopy = {
-  en: {
-    chapter: ['Apply entire chapter', 'Applying chapter…'], lesson: ['Apply entire section', 'Applying section…'],
-    unit: ['Apply entire lesson', 'Applying lesson…'], component: ['Apply content', 'Applying content…'],
-  },
-  vi: {
-    chapter: ['Áp dụng cả chương', 'Đang áp dụng cả chương…'], lesson: ['Áp dụng cả mục', 'Đang áp dụng cả mục…'],
-    unit: ['Áp dụng cả bài học', 'Đang áp dụng cả bài học…'], component: ['Áp dụng nội dung', 'Đang áp dụng nội dung…'],
-  },
-} as const;
-export function workspaceScopeApplyLabel(kind: WorkspaceNode['kind'], locale: WorkspaceLocale, busy = false): string {
-  if (!['chapter', 'lesson', 'unit', 'component'].includes(kind)) return '';
-  return scopeApplyCopy[locale][kind as 'chapter' | 'lesson' | 'unit' | 'component'][busy ? 1 : 0];
-}
-
-/** Browser-side scope discovery only. The server independently authorizes and
- * validates the exact selected hierarchy node; this helper never widens it. */
-export function workspaceApplyScope(nodes: readonly WorkspaceNode[], selectedNodeId: string): WorkspaceNode | null {
-  const selected = nodes.find(node => node.node_id === selectedNodeId);
-  if (!selected) return null;
-  return ['chapter', 'lesson', 'unit', 'component'].includes(selected.kind) ? selected : null;
-}
-
-export interface WorkspaceAppliedRevisionOverlay {
-  workspaceId: string;
-  revisions: Readonly<Record<string, number>>;
-}
-
-/** The committed Apply compiler materializes the selected subtree together
- * with its required hierarchy. Mirror that exact path rule only after the
- * POST has returned a durable receipt, and bind every optimistic flag to the
- * revision that was confirmed immediately before dispatch. */
-export function workspaceAppliedScopeRevisions(nodes: readonly WorkspaceNode[], selectedNodeId: string): Record<string, number> {
-  const selected = workspaceApplyScope(nodes, selectedNodeId);
-  if (!selected?.canonical_path) return {};
-  const within = (path: string, scope: string) => path === scope || path.startsWith(`${scope}.`);
-  return Object.fromEntries(nodes.filter(node => node.kind !== 'course' && node.kind !== 'media_brief'
-    && node.content_state === 'content_ready' && node.current_revision !== null
-    && (within(node.canonical_path, selected.canonical_path) || within(selected.canonical_path, node.canonical_path)))
-    .map(node => [node.node_id, node.current_revision!]));
-}
-
-/** Presentation-only reconciliation. The server graph remains authoritative;
- * a later revision can never inherit an older successful Apply flag. */
-export function projectWorkspaceAppliedGraph(graph: WorkspaceGraph | null, overlay: WorkspaceAppliedRevisionOverlay | null): WorkspaceGraph | null {
-  if (!graph || !overlay || overlay.workspaceId !== graph.workspace_id) return graph;
-  let changed = false;
-  const nodes = graph.nodes.map(node => {
-    if (node.applied || node.current_revision === null || overlay.revisions[node.node_id] !== node.current_revision) return node;
-    changed = true;
-    return { ...node, applied: true };
-  });
-  return changed ? { ...graph, nodes } : graph;
-}
-
-export function workspaceNodeSupportsEditor(kind: WorkspaceNode['kind']): boolean {
-  return kind === 'component';
-}
-
-export function workspaceNodeUsesHeaderTitleEditor(_kind: WorkspaceNode['kind']): boolean {
-  return false;
-}
-
-export async function saveThenApplyWorkspaceScope(input: {
-  session: Pick<ReturnType<typeof createWorkspaceSession>, 'getState' | 'setDraft' | 'save' | 'refreshForApply'>;
-  selectedNodeId: string;
-  draft?: WorkspaceContent;
-  expectedRevision?: number;
-  changed: boolean;
-  assertCanWrite: () => void;
-  apply: (scopeNodeId: string, expectedWorkspaceRevision: number) => Promise<void>;
-}) {
-  input.assertCanWrite();
-  if (input.changed) {
-    if (!input.draft || input.expectedRevision === undefined) throw new WorkspaceWriteError('WORKSPACE_EDIT_INPUT_INVALID');
-    input.session.setDraft(input.selectedNodeId, structuredClone(input.draft));
-    await input.session.save(input.selectedNodeId, input.expectedRevision);
-  }
-  // Save/Reset/another Apply all advance the authoritative event head. Always
-  // resnapshot immediately before Apply instead of reusing a visually current
-  // but stale graph sequence from the modal.
-  await input.session.refreshForApply();
-  const confirmed = input.session.getState();
-  const confirmedScope = workspaceApplyScope(confirmed.read.graph?.nodes ?? [], input.selectedNodeId);
-  const confirmedWrite = confirmed.writes[input.selectedNodeId];
-  if (!confirmedScope || confirmedScope.content_state !== 'content_ready' || !confirmed.read.status || !confirmed.read.graph
-    || confirmed.read.stale || confirmed.writeBusy || confirmed.error
-    || confirmed.read.status.last_event_sequence !== confirmed.read.graph.snapshot_sequence
-    || input.changed && (confirmedWrite?.phase !== 'committed' || confirmedWrite.readRequired)) {
-    throw new WorkspaceWriteError('WORKSPACE_EDIT_READ_REQUIRED');
-  }
-  input.assertCanWrite();
-  await input.apply(confirmedScope.node_id, confirmed.read.status.last_event_sequence);
-  return confirmedScope;
-}
-
-/** Apply success belongs to the POST response. Course/workspace refreshes are
- * independent reconciliation work and must never keep the modal button busy or
- * turn a committed Apply into a visible failure. */
-export function completeWorkspaceApplyUi(input: {
-  markApplied: () => void;
-  refreshWorkspace: () => Promise<void>;
-  refreshCourse?: () => Promise<void> | void;
-}) {
-  input.markApplied();
-  for (const refresh of [input.refreshWorkspace, input.refreshCourse].filter(Boolean) as Array<() => Promise<void> | void>) {
-    try { void Promise.resolve(refresh()).catch(() => undefined); } catch { /* Apply already committed; background refresh may retry later. */ }
-  }
-}
 
 /** Called once by Course Editor. Both responsive triggers share this controller.
  * Exact string flag only; absent/false never creates a controller or API call. */
@@ -311,8 +137,8 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
   // workspace state. This synchronous identity read cannot schedule work.
   const current = eligible && host && host.getState().scopeKey === key ? host : null;
   return {
-    trigger: current ? <Button type="button" variant="outline" size="sm" className="mt-2 gap-2" aria-label={copy[locale].open}
-      onClick={() => { void current.launch(); }}><Sparkles className="h-4 w-4" aria-hidden />{copy[locale].label}</Button> : null,
+    trigger: current ? <Button type="button" variant="outline" size="sm" className="mt-2 gap-2" aria-label={workspaceCourseHostCopy[locale].open}
+      onClick={() => { void current.launch(); }}><Sparkles className="h-4 w-4" aria-hidden />{workspaceCourseHostCopy[locale].label}</Button> : null,
     overlay: current ? <WorkspaceCourseHostOverlayMount host={current} courseId={courseId!} tenantId={tenantId ?? null} locale={locale} sources={sources}
       onCourseApplied={() => onCourseAppliedRef.current?.()} /> : null,
   };
@@ -369,19 +195,19 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   /** Active tenant of the review list key ("Chờ duyệt"). */
   tenantId?: string | null;
   onRunsChanged?: () => void }) {
-  const c = copy[locale], session = host.getSession(), workspace = state.workspace;
+  const c = workspaceCourseHostCopy[locale], session = host.getSession(), workspace = state.workspace;
   const [actionError, setActionError] = useState(false);
   // Normal product entry has no selected launch and therefore starts at the
   // session index. A pre-resolved host (embedded recovery/tests) may render its
   // already-authorized workspace directly without a one-frame session flash.
   const [view, setView] = useState<'sessions' | 'source' | 'workspace'>(() => state.launch || state.issue ? 'workspace' : 'sessions');
-  const [applyState, setApplyState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle');
+  const [applyState, setApplyState] = useState<WorkspaceApplyUiState>('idle');
   const [applyError, setApplyError] = useState<WorkspaceApplyError | null>(null);
   const [editingTitleNodeId, setEditingTitleNodeId] = useState<string | null>(null);
   const [appliedOverlay, setAppliedOverlay] = useState<WorkspaceAppliedRevisionOverlay | null>(null);
   const [assistantAvatarSrc, setAssistantAvatarSrc] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<{ id: string; title: string; ownerName?: string; mine?: boolean } | null>(null);
-  const [applyConflict, setApplyConflict] = useState<{ nodeId: string; code: WorkspaceApplyCode; conflict: WorkspaceApplyConflict } | null>(null);
+  const [applyConflict, setApplyConflict] = useState<WorkspaceApplyConflictState | null>(null);
   const runNotice = workspaceActiveRunNotice(activeRuns ?? [], view === 'workspace' ? state.launch?.conversation_id ?? null : null, locale);
   const titleLookupRef = useRef<string | null>(null);
   const overviewAttemptRef = useRef<string | null>(null);
@@ -507,122 +333,12 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     {!state.launch?.can_edit && <p role="status">{otherOwner ? workspaceReadOnlyNotice(activeConversation?.ownerName ?? null, locale) : c.readOnly}</p>}
     {message && <p role="alert">{message}</p>}{actionError && <p role="alert">{c.error}</p>}
   </div> : undefined;
-  const renderDetail = (node: WorkspaceNode | null) => {
-    if (!node) return null;
-    const editor = session.editorProps(node.node_id), write = workspace.writes[node.node_id];
-    const detail = editor.access === 'allowed' ? editor.detail : null;
-    // A planned node of a finished run will never be drafted: say so instead of a loading skeleton.
-    const notGenerated = !detail && workspaceNodeNotGenerated(node, workspaceRunEnded(workspace.read.status?.status));
-    const stats = presentationRead?.graph ? workspaceDetailStats(node, presentationRead.graph.nodes) : undefined;
-    const editorCapable = host.canWrite() && !!detail && workspaceNodeSupportsEditor(detail.kind)
-      && detail.content_state === 'content_ready' && detail.current_revision !== null;
-    const hierarchyTitle = !!detail && workspaceNodeUsesHeaderTitleEditor(detail.kind);
-    // The graph marks an exact revision/hash as applied. The local done state
-    // closes the write window immediately, before the background read catches up.
-    const appliedReadOnly = node.applied || applyState === 'done';
-    const appliedNote = workspaceAppliedNote(detail?.applied_info, locale);
-    const applyScope = workspaceApplyScope(presentationRead?.graph?.nodes ?? [], node.node_id);
-    const canApply = host.canApply() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
-      && !appliedReadOnly && !!state.launch && !!workspace.read.status && !workspace.read.stale && !workspace.writeBusy;
-    const apply = async (draft?: NonNullable<typeof editor.draft>, expectedRevision?: number, changed = false, overwriteConfirmation?: string) => {
-      if (!canApply || !state.launch || !workspace.read.status || !applyScope) return;
-      setActionError(false); setApplyError(null); setApplyState('busy');
-      try {
-        const client = createWorkspaceApplyClient({ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id });
-        const confirmedScope = await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
-          assertCanWrite: () => host.assertCanApply(),
-          apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, secureRandomUuid(), sequence, locale, overwriteConfirmation); } });
-        const confirmedGraph = session.getState().read.graph;
-        const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
-        completeWorkspaceApplyUi({ markApplied: () => {
-          setAppliedOverlay(current => ({ workspaceId: state.launch!.workspace_id,
-            revisions: { ...(current?.workspaceId === state.launch!.workspace_id ? current.revisions : {}), ...confirmedRevisions } }));
-          setApplyState('done');
-        },
-          refreshWorkspace: () => session.refreshForApply(), refreshCourse: onCourseApplied });
-      } catch (error) {
-        // Edited/moved course parts: list them in a dialog (replace only after confirmation).
-        if (error instanceof WorkspaceApplyError && error.conflict) { setApplyConflict({ nodeId: node.node_id, code: error.code, conflict: error.conflict }); setApplyState('idle'); }
-        else if (error instanceof WorkspaceApplyError) { setApplyError(error); setApplyState('failed'); }
-        else { setActionError(true); setApplyState('failed'); }
-      }
-    };
-    const unitRecovery = node.kind === 'unit' ? recovery.unitAction(node.node_id, 'detail') : null;
-    const readOnlyDetail = !!detail && !workspaceNodeSupportsEditor(detail.kind);
-    const DetailIcon = detail?.component_type === 'la_diagram' ? Network : readOnlyDetail ? Eye : BookOpenCheck;
-    const editingTitle = hierarchyTitle && editingTitleNodeId === node.node_id && !appliedReadOnly && !!editor.draft;
-    const visibleTitle = hierarchyTitle && editor.draft?.title ? editor.draft.title : detail?.content?.title ?? node.title ?? c.detail;
-    return <Dialog open onOpenChange={open => { if (!open) { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); } }}>
-      <DialogContent showCloseButton={false} overlayClassName="z-[10060]"
-        onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}
-        className={`z-[10070] flex h-[calc(100dvh-2rem)] max-h-none flex-col overflow-hidden rounded-2xl border-border/70 bg-background p-0 shadow-[0_30px_100px_-24px_rgba(2,6,23,0.75)] duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none ${detail?.component_type === 'la_diagram' ? 'w-[calc(100vw-2rem)] max-w-none' : detail?.kind === 'component' ? 'w-[calc(100vw-1rem)] max-w-[min(96vw,90rem)]' : 'w-[calc(100vw-1rem)] max-w-5xl'}`}>
-        <div className="relative flex shrink-0 items-start justify-between gap-4 overflow-hidden border-b border-border/70 bg-gradient-to-r from-primary/[0.08] via-card to-card px-5 py-4 sm:px-6 sm:py-5">
-          <div className="pointer-events-none absolute -left-12 -top-20 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-          <div className="relative flex min-w-0 items-start gap-3.5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm"><DetailIcon className="h-5 w-5" aria-hidden /></span>
-            <div className="min-w-0"><div className="flex min-w-0 flex-wrap items-center gap-2">
-              {editingTitle ? <><DialogTitle className="sr-only">{visibleTitle}</DialogTitle><Input autoFocus aria-label={c.editTitle}
-                className="h-9 min-w-[16rem] flex-1 bg-background/90 text-base font-bold sm:min-w-[24rem] sm:text-lg" value={editor.draft!.title}
-                maxLength={500} lang={detail!.content_locale} onChange={event => {
-                  const next = updateWorkspaceEditorField(detail!, editor.draft!, 0, event.target.value);
-                  if (next) { setApplyState('idle'); act(() => { host.assertCanWrite(); editor.onChange(next); }); }
-                }} /></> : <DialogTitle className="max-w-full truncate text-base font-bold tracking-tight sm:text-lg">{visibleTitle}</DialogTitle>}
-              {hierarchyTitle && !appliedReadOnly && editor.draft && !editingTitle && <Button type="button" variant="ghost" size="icon"
-                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-primary" aria-label={c.editTitle}
-                onClick={() => setEditingTitleNodeId(node.node_id)}><Pencil className="h-3.5 w-3.5" aria-hidden /></Button>}
-              <WorkspaceNodeTypePill node={node} locale={locale} />
-            </div><DialogDescription className="mt-1.5 max-w-3xl text-xs leading-5 sm:text-sm">{appliedReadOnly ? c.appliedReview : readOnlyDetail ? c.readOnlyReview : c.review}{appliedReadOnly && appliedNote ? ` ${appliedNote}` : ''}</DialogDescription></div>
-          </div>
-          <Button type="button" variant="ghost" size="icon" className="relative h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-background/70 shadow-sm backdrop-blur transition-transform hover:scale-105" aria-label={c.close}
-            onClick={() => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); }}><X className="h-4 w-4" /><span className="sr-only">{c.close}</span></Button>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {notGenerated && <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-5 sm:px-6"><div className="mx-auto max-w-5xl"><WorkspaceNotGeneratedNotice locale={locale} /></div></div>}
-          {!detail && !notGenerated && <div className="min-h-0 flex-1 overflow-hidden bg-gradient-to-b from-muted/30 to-background px-4 py-5 sm:px-6" role="status" aria-label={c.waiting}>
-            <div className="mx-auto max-w-5xl animate-pulse space-y-4" aria-hidden>
-              <div className="grid gap-3 md:grid-cols-2"><div className="h-28 rounded-2xl border border-border/60 bg-card/80" /><div className="h-28 rounded-2xl border border-border/60 bg-card/80" /></div>
-              <div className="h-48 rounded-2xl border border-border/60 bg-card/80 p-5"><div className="h-3 w-1/4 rounded bg-muted" /><div className="mt-5 h-3 w-full rounded bg-muted/80" /><div className="mt-3 h-3 w-11/12 rounded bg-muted/70" /><div className="mt-3 h-3 w-3/4 rounded bg-muted/60" /></div>
-            </div><span className="sr-only">{c.waiting}</span>
-          </div>}
-          {detail && !editorCapable && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-4 sm:px-6 sm:py-6"><div className="mx-auto max-w-5xl"><WorkspaceDetailContent detail={detail} locale={locale} stats={stats} /></div></motion.div>}
-          {detail && !editorCapable && canApply && <div className="flex shrink-0 justify-end border-t border-border/70 bg-card/95 px-5 py-4 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-            <Button type="button" className="h-10 gap-2 rounded-xl px-5 shadow-md shadow-primary/20" disabled={applyState === 'busy'} onClick={() => { void apply(); }}>
-              <Sparkles className="h-4 w-4" />{workspaceScopeApplyLabel(node.kind, locale, applyState === 'busy')}
-            </Button>
-          </div>}
-          {unitRecovery && <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/70 bg-card/95 px-5 py-4">{unitRecovery}</div>}
-          {editorCapable && <WorkspaceNodeEditor {...editor}
-            onChange={value => { setApplyState('idle'); act(() => { host.assertCanWrite(); editor.onChange(value); }); }}
-            onSave={(value, revision) => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => { host.assertCanWrite(); editor.onSave(value, revision); }); }}
-            onReset={revision => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => { host.assertCanWrite(); editor.onReset(revision); }); }}
-            onApply={applyScope ? (value, revision, changed) => { setEditingTitleNodeId(null); void apply(value, revision, changed); } : undefined}
-            applyLabel={workspaceScopeApplyLabel(node.kind, locale)} applyingLabel={workspaceScopeApplyLabel(node.kind, locale, true)}
-            applyBusy={applyState === 'busy'} applyDisabled={!canApply} readOnly={appliedReadOnly}
-            titleInHeader={hierarchyTitle} reviewContent={hierarchyTitle
-              ? <WorkspaceDetailContent detail={detail!} locale={locale} stats={stats} />
-              : detail?.kind === 'component' ? <WorkspaceAuthorReviewCards detail={detail} locale={locale} /> : undefined} />}
-          {editorCapable && !appliedReadOnly && editor.conflict && write?.phase !== 'unknown' && !workspace.writeBusy && !write?.readRequired && detail.current_revision !== null && <div className="mx-5 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-            <p>{c.compare}</p><Button type="button" variant="outline" onClick={() => act(() => session.rebaseDraft(node.node_id, detail.current_revision!))}>{c.rebase}</Button>
-            <Button type="button" variant="outline" onClick={() => act(() => session.discardDraft(node.node_id))}>{c.discard}</Button></div>}
-          {editorCapable && !appliedReadOnly && write?.phase === 'unknown' && <div className="mx-5 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3"><p>{c.replayHint}</p>
-            <Button type="button" disabled={write.readRequired || workspace.writeBusy} onClick={() => act(() => session.replay(node.node_id))}>{c.replay}</Button></div>}
-          {(write?.phase === 'committed' || applyState === 'done' || applyState === 'failed') && <div
-            className={`pointer-events-none absolute right-5 top-[5.25rem] z-30 max-w-md rounded-xl border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur-xl ${applyState === 'failed' ? 'border-destructive/35 text-destructive' : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'}`}
-            role={applyState === 'failed' ? 'alert' : 'status'}>
-            {applyState === 'failed' ? (applyError ? workspaceApplyErrorMessage(applyError, locale) : c.error)
-              : applyState === 'done' ? c.applied : c.saved}
-          </div>}
-          {(message || actionError) && <div className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p role="alert">{message ?? c.error}</p><Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button></div>}
-        </div>
-      </DialogContent>
-      {applyConflict?.nodeId === node.node_id && <WorkspaceApplyConflictDialog code={applyConflict.code} conflict={applyConflict.conflict} locale={locale}
-        busy={applyState === 'busy'} onClose={() => setApplyConflict(null)} onConfirm={() => {
-          const token = applyConflict.conflict.overwrite_confirmation; setApplyConflict(null);
-          if (token) void apply(undefined, undefined, false, token);
-        }} />}
-    </Dialog>;
-  };
+  const renderDetail = (node: WorkspaceNode | null) => node ? <WorkspaceCourseNodeDialog node={node} host={host} session={session}
+    workspace={workspace} state={state} presentationRead={presentationRead} locale={locale} recovery={recovery} onCourseApplied={onCourseApplied}
+    message={message} actionError={actionError} setActionError={setActionError} act={act} refreshWorkspace={refreshWorkspace}
+    applyState={applyState} setApplyState={setApplyState} applyError={applyError} setApplyError={setApplyError}
+    applyConflict={applyConflict} setApplyConflict={setApplyConflict} setAppliedOverlay={setAppliedOverlay}
+    editingTitleNodeId={editingTitleNodeId} setEditingTitleNodeId={setEditingTitleNodeId} /> : null;
   return <WorkspaceModalShell host={host}><WorkspaceDialogBody open={state.open} onOpenChange={open => { if (!open) host.close(); }} state={presentationRead!} locale={locale}
     onSelectNode={nodeId => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(nodeId)); }} overviewDetails={workspace.overview.details} toolbar={toolbar} renderNodeDetail={renderDetail}
     overviewNotice={state.launch && workspaceReviewRequired(presentationRead?.status) ? <WorkspaceReviewPanel locale={locale} tenantId={tenantId}

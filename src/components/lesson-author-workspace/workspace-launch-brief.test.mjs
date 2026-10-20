@@ -376,7 +376,8 @@ test('Create button stays in the left column, disabled with a one-line reason un
   f.fail(Object.assign(Error('400'), { response: { status: 400, data: { code: 'LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG' } } }));
   await f.controller.create();
   assert.ok(render().includes(locales.vi.aiIdLaunchBrief.errorTooLong));
-  const host = readFileSync(path.join(directory, 'workspace-course-host.tsx'), 'utf8');
+  const host = ['workspace-course-host.tsx', 'workspace-course-node-dialog.tsx', 'workspace-course-host.logic.ts']
+    .map(file => readFileSync(path.join(directory, file), 'utf8')).join('\n');
   assert.match(host, /<WorkspaceSourcePanel controller=\{sources\} locale=\{locale\} \/><WorkspaceLaunchBriefPanel controller=\{sources\} \/>/);
   assert.match(host, /grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-\[1\.45fr_0\.8fr\]/, 'columns stack on phones with 16px gutters');
   assert.doesNotMatch(host, /Bản thiết kế khoá học có kiểm soát/, 'the static steps card is replaced');

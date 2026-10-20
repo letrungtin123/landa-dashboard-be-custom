@@ -75,10 +75,13 @@ const { createWorkspaceCourseHost, workspaceHostEnabled, readWorkspaceLaunch, wo
 const { createWorkspaceSession } = load('./workspace-session.ts');
 const { WorkspaceReadError } = load('../../api/lesson-author-workspace.contract.ts');
 const { workspaceApplyMessage } = load('../../api/workspace-apply.ts');
-const { WorkspaceCourseHostOverlay, useCourseWorkspaceHost, workspaceApplyScope, workspaceScopeApplyLabel,
-  workspaceNodeSupportsEditor, workspaceNodeUsesHeaderTitleEditor, saveThenApplyWorkspaceScope,
-  completeWorkspaceApplyUi, workspaceOverviewAutoLoadAttempt, workspaceAppliedScopeRevisions,
-  projectWorkspaceAppliedGraph } = load('./workspace-course-host.tsx');
+const { WorkspaceCourseHostOverlay, useCourseWorkspaceHost } = load('./workspace-course-host.tsx');
+const { workspaceApplyScope, workspaceScopeApplyLabel, workspaceNodeSupportsEditor, workspaceNodeUsesHeaderTitleEditor,
+  saveThenApplyWorkspaceScope, completeWorkspaceApplyUi, workspaceOverviewAutoLoadAttempt, workspaceAppliedScopeRevisions,
+  projectWorkspaceAppliedGraph } = load('./workspace-course-host.logic.ts');
+// The course host is split into these modules; source pins that once read one file read them all.
+const courseHostSource = () => ['./workspace-course-host.tsx', './workspace-course-node-dialog.tsx', './workspace-course-host.logic.ts']
+  .map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const scope = { actorId: id(1), tenantId: id(2), courseId: 'course-v1:TEST+HOST+2026' };
 const launch = { course_id: scope.courseId, conversation_id: id(3), workspace_id: id(4), content_locale: 'en', can_edit: true };
@@ -377,7 +380,7 @@ test('someone else\'s shared session opens read-only: no editing, but Apply stay
     f.host.close();
     assert.equal(f.host.canApply(), false, 'closed host never Applies');
   } finally { f.host.dispose(); }
-  const source = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  const source = courseHostSource();
   assert.match(source, /const canApply = host\.canApply\(\) && !!detail/);
   assert.match(source, /assertCanWrite: \(\) => host\.assertCanApply\(\)/);
   assert.match(source, /const editorCapable = host\.canWrite\(\)/, 'editing still needs the creator');
@@ -404,7 +407,7 @@ test('course editor mounts two responsive triggers but one host, without replaci
   assert.equal((page.match(/\{workspaceHost.trigger\}/g) ?? []).length, 2);
   assert.equal((page.match(/\{workspaceHost.overlay\}/g) ?? []).length, 1);
   assert.match(page, /workspaceLaunch\?: WorkspaceLaunchResolver/);
-  const host = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  const host = courseHostSource();
   assert.match(host, /VITE_LESSON_AUTHOR_WORKSPACE_ENABLED/);
   assert.match(host, /WorkspaceNodeTypePill node=\{node\} locale=\{locale\}/);
   assert.doesNotMatch(host, /component_type\.replace/);
@@ -424,7 +427,7 @@ test('course editor mounts two responsive triggers but one host, without replaci
   assert.doesNotMatch(editor, /key=\{`\$\{detail\.workspace_id\}:\$\{detail\.node_id\}:\$\{detail\.current_revision\}`\}/);
 });
 test('AI Instructional Design setup is a dedicated horizontal source workspace, not a free-text chat surface', () => {
-  const host = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  const host = courseHostSource();
   const source = readFileSync(new URL('./workspace-source-panel.tsx', import.meta.url), 'utf8');
   assert.match(host, /motion\.div/);
   assert.match(host, /h-\[100dvh\] w-screen max-h-none max-w-none/);

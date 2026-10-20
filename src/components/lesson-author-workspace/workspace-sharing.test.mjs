@@ -121,7 +121,7 @@ test('"course was edited" dialog lists the parts and replaces them only on expli
     conflict: { ...conflict, overwrite_confirmation: null, total: 2 }, locale: 'en', busy: false, onConfirm() {}, onClose() {} }));
   assert.match(structural, /The content cannot be added yet/); assert.match(structural, /deleted or moved/);
   assert.doesNotMatch(structural, /Replace with new content/, 'deleted/moved parts can never be overwritten');
-  const host = readFileSync(new URL('./workspace-course-host.tsx', import.meta.url), 'utf8');
+  const host = readFileSync(new URL('./workspace-course-node-dialog.tsx', import.meta.url), 'utf8');
   assert.match(host, /if \(token\) void apply\(undefined, undefined, false, token\)/);
 });
 
