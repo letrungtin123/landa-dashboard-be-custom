@@ -1,6 +1,6 @@
 import { Map as MapIcon, Moon, Sun, Target } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { WorkspacePendingSkeleton } from '@/components/lesson-author-workspace/workspace-dialog';
+import { WorkspacePendingSkeleton } from '@/components/lesson-author-workspace/workspace-pending-skeleton';
 
 /** Development-only visual harness (route and path in App.tsx, loaded lazily so
  * production never includes it). It owns no workspace/session/source

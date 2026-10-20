@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -58,7 +58,7 @@ function load(filename) {
     } };
     if (specifier.startsWith('.')) {
       const base = path.resolve(path.dirname(filename), specifier);
-      return load(base + (specifier.endsWith('workspace-node-detail') || specifier.endsWith('workspace-ai-avatar') ? '.tsx' : '.ts'));
+      return load(existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`);
     }
     return require(specifier);
   }
@@ -69,10 +69,19 @@ function load(filename) {
 const detailModule = load(path.join(directory, 'workspace-node-detail.tsx'));
 const { WorkspaceDetailContent, WorkspaceNodeDetail, readWorkspacePreview, workspaceCopy, workspaceLearningOutcomeLabel,
   workspaceDetailStats } = detailModule;
-const { WorkspaceDialog, WorkspaceGraphNode, WorkspacePendingSkeleton, WorkspacePlanningOverview, projectWorkspaceGraph,
-  projectWorkspaceLiveGraph, workspacePresentationNodes, collapseWorkspaceBranch, collapseWorkspaceToChapterLevel,
-  initialWorkspaceExpansion, workspaceOverviewCounts, workspaceNodeTypeLabel, workspaceProgressiveRevealQueue,
-  workspaceBuildingNodeIds } = load(path.join(directory, 'workspace-dialog.tsx'));
+const { WorkspaceDialog } = load(path.join(directory, 'workspace-dialog.tsx'));
+const { WorkspaceGraphNode } = load(path.join(directory, 'workspace-graph-node.tsx'));
+const { WorkspacePendingSkeleton } = load(path.join(directory, 'workspace-pending-skeleton.tsx'));
+const { WorkspacePlanningOverview } = load(path.join(directory, 'workspace-overview-panel.tsx'));
+const { workspaceNodeTypeLabel } = load(path.join(directory, 'workspace-node-visual.ts'));
+const { projectWorkspaceGraph, projectWorkspaceLiveGraph, workspacePresentationNodes, collapseWorkspaceBranch,
+  collapseWorkspaceToChapterLevel, initialWorkspaceExpansion, workspaceOverviewCounts, workspaceProgressiveRevealQueue,
+  workspaceBuildingNodeIds } = load(path.join(directory, 'workspace-graph.logic.ts'));
+// The dialog is split into these modules; source pins that once read one file read them all.
+const dialogFiles = ['workspace-dialog.tsx', 'workspace-graph-node.tsx', 'workspace-node-visual.ts', 'workspace-build-beacon.tsx',
+  'workspace-pending-skeleton.tsx', 'workspace-overview-panel.tsx', 'workspace-terminal-panel.tsx', 'workspace-terminal.logic.ts',
+  'workspace-graph.logic.ts'];
+const dialogSource = () => dialogFiles.map(file => readFileSync(path.join(directory, file), 'utf8')).join('\n');
 const base = { workspace_id: 'workspace-private', correlation_id: 'run-private', contract_version: 1, content_locale: 'en',
   status: 'ready', last_event_sequence: 4, updated_at: '2026-09-29T00:00:00Z' };
 function node(id, kind, parent = null, order = 0) {
@@ -246,7 +255,8 @@ test('individual branch expansion preserves the viewport while the explicit all-
   assert.match(source, /h-\[100dvh\] w-screen max-h-none max-w-none/);
   const flowNodes = source.slice(source.indexOf('const nodes = useMemo<FlowNode[]>'), source.indexOf('const edges = useMemo<Edge[]>'));
   assert.doesNotMatch(flowNodes, /animate-in|zoom-in|fade-in/, 'React Flow positioning wrapper must never receive transform animation');
-  assert.match(source, /group relative h-\[144px\] w-\[260px\] animate-in/, 'only the inner card may animate');
+  const graphNodeSource = readFileSync(path.join(directory, 'workspace-graph-node.tsx'), 'utf8');
+  assert.match(graphNodeSource, /group relative h-\[144px\] w-\[260px\] animate-in/, 'only the inner card may animate');
 });
 
 test('learner-facing outcomes hide provider binding prefixes without mutating ordinary text', () => {
@@ -452,7 +462,7 @@ test('durable planning preview renders real progress immediately and remains non
 });
 
 test('workspace progress animations do not inherit the browser reduced-motion preference', () => {
-  const source = readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8');
+  const source = dialogSource();
   const styles = readFileSync(path.join(directory, '..', '..', 'globals.css'), 'utf8');
   assert.doesNotMatch(source, /motion-reduce:/);
   assert.doesNotMatch(source, /prefers-reduced-motion/);

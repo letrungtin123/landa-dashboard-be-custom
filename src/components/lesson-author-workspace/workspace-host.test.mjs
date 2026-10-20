@@ -47,8 +47,8 @@ function load(relative) {
     if (name === '@/hooks/queries/use-lesson-author-sessions') return { useLessonAuthorActiveRuns: () => ({ data: undefined }) };
     if (name === 'react-i18next') return { useTranslation: () => ({ i18n: { language: 'en' } }) };
     if (name.startsWith('../ui/')) return ui;
+    if (name === './workspace-graph-node') return { WorkspaceNodeTypePill: ({ node }) => h('span', null, node.kind) };
     if (name === './workspace-dialog') return {
-      WorkspaceNodeTypePill: ({ node }) => h('span', null, node.kind),
       WorkspaceDialogBody: props => {
       dialogProps = props;
       const selected = props.state.opened && props.state.access === 'allowed' ? props.state.graph?.nodes.find(n => n.node_id === props.state.selectedNodeId) : null;

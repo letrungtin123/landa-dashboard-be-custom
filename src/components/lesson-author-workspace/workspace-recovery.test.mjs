@@ -1,7 +1,7 @@
 /* global Buffer, URL */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -354,7 +354,7 @@ function load(filename) {
     if (specifier.endsWith('DiagramPreviewInteractive')) return { __esModule: true, default: () => null };
     if (specifier.startsWith('.')) {
       const base = path.resolve(path.dirname(filename), specifier);
-      return load(base + (specifier.endsWith('workspace-node-detail') || specifier.endsWith('workspace-ai-avatar') ? '.tsx' : '.ts'));
+      return load(existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`);
     }
     return require(specifier);
   };
