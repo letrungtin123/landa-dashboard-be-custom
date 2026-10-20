@@ -2,6 +2,7 @@ import type { AxiosRequestConfig } from 'axios';
 import { customApiClient } from './custom-client';
 import { isWorkspaceId, isWorkspaceSequence, type WorkspaceLocale } from './lesson-author-workspace.contract';
 import type { WorkspaceReadScope } from './lesson-author-workspace';
+import { readWorkspaceApplyReason, workspaceApplyReasonMessage, type WorkspaceApplyReason } from './workspace-apply-reason.logic';
 
 export type WorkspaceApplyCode = 'WORKSPACE_APPLY_FORBIDDEN' | 'WORKSPACE_APPLY_DISABLED' | 'WORKSPACE_APPLY_INPUT_INVALID'
   | 'WORKSPACE_APPLY_NOT_READY' | 'WORKSPACE_APPLY_CONFLICT' | 'WORKSPACE_APPLY_VALIDATION_FAILED' | 'WORKSPACE_APPLY_UNAVAILABLE'
@@ -15,7 +16,9 @@ export interface WorkspaceApplyConflict {
   overwrite_confirmation: string | null;
 }
 export class WorkspaceApplyError extends Error {
-  constructor(readonly code: WorkspaceApplyCode, readonly outcome: 'rejected' | 'unknown', readonly conflict: WorkspaceApplyConflict | null = null) { super(code); }
+  constructor(readonly code: WorkspaceApplyCode, readonly outcome: 'rejected' | 'unknown', readonly conflict: WorkspaceApplyConflict | null = null,
+    /** Why a check refused it and where (validation / not-ready answers only). */
+    readonly reason: WorkspaceApplyReason | null = null) { super(code); }
 }
 const messages: Record<WorkspaceApplyCode, readonly [string, string]> = {
   WORKSPACE_APPLY_FORBIDDEN: ['Bạn không có quyền đưa nội dung này vào khóa học.', 'You do not have permission to add this content to the course.'],
@@ -35,6 +38,11 @@ const messages: Record<WorkspaceApplyCode, readonly [string, string]> = {
 export function workspaceApplyMessage(code: WorkspaceApplyCode, locale: WorkspaceLocale): string {
   return messages[code][locale === 'en' ? 1 : 0];
 }
+/** The specific reason when the server named one, else the plain message of the code. */
+export function workspaceApplyErrorMessage(error: Pick<WorkspaceApplyError, 'code' | 'reason'>, locale: WorkspaceLocale): string {
+  return error.reason ? workspaceApplyReasonMessage(error.reason, locale) : workspaceApplyMessage(error.code, locale);
+}
+const reasonCodes = new Set<WorkspaceApplyCode>(['WORKSPACE_APPLY_VALIDATION_FAILED', 'WORKSPACE_APPLY_NOT_READY']);
 export interface WorkspaceApplyReceipt { receipt_id: string; workspace_id: string; node_id: string; correlation_id: string; revision_set_hash: string; created_block_count: number; updated_block_count: number; replayed: boolean; }
 const codes = new Set<WorkspaceApplyCode>(Object.keys(messages) as WorkspaceApplyCode[]);
 const conflictCodes = new Set<WorkspaceApplyCode>(['WORKSPACE_APPLY_COURSE_EDITED', 'WORKSPACE_APPLY_COURSE_STRUCTURE_CHANGED']);
@@ -73,11 +81,12 @@ export function createWorkspaceApplyClient(scope: WorkspaceReadScope, transport:
         || !Number.isSafeInteger(r.updated_block_count) || typeof r.replayed !== 'boolean') throw { response: { data, status } };
       return r;
     } catch (error) {
-      const response = (error as { response?: { status?: number; data?: { code?: unknown; conflict?: unknown } } })?.response;
+      const response = (error as { response?: { status?: number; data?: { code?: unknown; conflict?: unknown; reason?: unknown } } })?.response;
       const code = response?.data?.code;
       if (typeof code === 'string' && codes.has(code as WorkspaceApplyCode)) {
         throw new WorkspaceApplyError(code as WorkspaceApplyCode, code === 'WORKSPACE_APPLY_UNAVAILABLE' ? 'unknown' : 'rejected',
-          readWorkspaceApplyConflict(code as WorkspaceApplyCode, response?.data?.conflict));
+          readWorkspaceApplyConflict(code as WorkspaceApplyCode, response?.data?.conflict),
+          reasonCodes.has(code as WorkspaceApplyCode) ? readWorkspaceApplyReason(response?.data?.reason) : null);
       }
       throw new WorkspaceApplyError('WORKSPACE_APPLY_UNAVAILABLE', 'unknown');
     }
