@@ -69,10 +69,21 @@ export function workspaceLocationText(location: WorkspaceLocation | null, locale
 }
 
 const capitalize = (text: string) => text.charAt(0).toLocaleUpperCase() + text.slice(1);
-// 'Viết lại chương' / 'Rewrite chapter' must stay the label of the chapter rewrite action.
+// The advice names only what the recovery actions can actually do for each case
+// (same sentences as the backend lesson-author-workspace-apply-reason.logic.ts):
+// 'Viết lại chương' / 'Rewrite chapter' rewrites the lessons of a chapter that
+// have no content; 'Chạy tiếp' / 'Continue' re-runs the free checks whose
+// lessons are all done. Both must stay the labels of workspaceRecoveryCopy. A
+// lesson that has content (a source-copy draft, or content whose checked
+// evidence no longer matches) cannot be rewritten by this design, and editing
+// it in the design does not change that evidence.
 const REWRITE = {
   vi: "Bạn có thể dùng 'Viết lại chương' hoặc tự soạn phần này trong khoá học.",
   en: "You can use 'Rewrite chapter' or write this part yourself in the course.",
+} as const;
+const ELSEWHERE = {
+  vi: 'bạn có thể tự soạn phần này trong khoá học, hoặc tạo bản thiết kế mới.',
+  en: 'you can write this part yourself in the course, or create a new course design.',
 } as const;
 
 /** Plain VI/EN sentence: what happened, where, and what the author can do. */
@@ -81,12 +92,13 @@ export function workspaceApplyReasonMessage(reason: WorkspaceApplyReason, locale
   const subject = (fallback: string) => where ? capitalize(where) : fallback;
   if (locale === 'vi') {
     switch (reason.category) {
-      case 'CHAPTER_NOT_COMPLETED': return `${subject('Một chương')} chưa hoàn tất bước kiểm tra cuối, nên chưa áp dụng được. ${REWRITE.vi}`;
+      case 'CHAPTER_NOT_COMPLETED':
+        return `${subject('Một chương')} đã soạn xong các bài học nhưng chưa hoàn tất bước kiểm tra cuối, nên chưa áp dụng được. Nếu việc tạo nội dung đã dừng, hãy dùng 'Chạy tiếp' để chạy lại bước kiểm tra này (không dùng điểm AI); nếu chưa dừng, hãy chờ bước này chạy xong. Nếu vẫn không được, ${ELSEWHERE.vi}`;
       case 'UNIT_NOT_GENERATED': return `${subject('Một số bài học')} chưa được AI soạn xong, nên chưa áp dụng được. ${REWRITE.vi}`;
       case 'UNIT_FALLBACK_NOT_APPLICABLE':
-        return `${subject('Một số bài học')} chỉ có bản nháp chép từ tài liệu nguồn vì AI chưa soạn được, nên không đưa vào khoá học. ${REWRITE.vi}`;
+        return `${subject('Một số bài học')} chỉ có bản nháp chép từ tài liệu nguồn vì AI chưa soạn được, nên không đưa vào khoá học được. Bản thiết kế này không thể soạn lại phần đó, nên ${ELSEWHERE.vi}`;
       case 'CONTENT_CHANGED':
-        return `Nội dung của ${where ?? 'một phần bản thiết kế'} không còn khớp với bản đã được kiểm tra. Hãy tải lại bản thiết kế rồi thử lại. Nếu vẫn không được, bạn có thể dùng 'Viết lại chương' hoặc tự soạn phần này trong khoá học.`;
+        return `Nội dung của ${where ?? 'một phần bản thiết kế'} không còn khớp với bản đã được kiểm tra. Hãy tải lại bản thiết kế rồi thử lại. Nếu vẫn không được, ${ELSEWHERE.vi}`;
       case 'CONTENT_INCOMPLETE':
         return `${subject('Một phần bản thiết kế')} chưa có nội dung hoàn chỉnh, nên chưa áp dụng được. Hãy chờ AI soạn xong, hoặc dùng 'Viết lại chương'.`;
       case 'CONTENT_EDIT_INVALID':
@@ -98,15 +110,16 @@ export function workspaceApplyReasonMessage(reason: WorkspaceApplyReason, locale
     }
   }
   switch (reason.category) {
-    case 'CHAPTER_NOT_COMPLETED': return `${subject('A chapter')} did not finish its final check, so it cannot be applied yet. ${REWRITE.en}`;
+    case 'CHAPTER_NOT_COMPLETED':
+      return `${subject('A chapter')} has all its lessons written but did not finish its final check, so it cannot be applied yet. If creating content has stopped, use 'Continue' to run this check again (this does not use AI points); otherwise, wait for it to finish. If it still fails, ${ELSEWHERE.en}`;
     case 'UNIT_NOT_GENERATED': return where
       ? `${capitalize(where)} was not finished by the AI, so it cannot be applied yet. ${REWRITE.en}`
       : `Some lessons were not finished by the AI, so they cannot be applied yet. ${REWRITE.en}`;
     case 'UNIT_FALLBACK_NOT_APPLICABLE': return where
-      ? `${capitalize(where)} only has a draft copied from the source because the AI could not write it, so it is not added to the course. ${REWRITE.en}`
-      : `Some lessons only have a draft copied from the source because the AI could not write them, so they are not added to the course. ${REWRITE.en}`;
+      ? `${capitalize(where)} only has a draft copied from the source because the AI could not write it, so it cannot be added to the course. This design cannot write it again, so ${ELSEWHERE.en}`
+      : `Some lessons only have a draft copied from the source because the AI could not write them, so they cannot be added to the course. This design cannot write them again, so ${ELSEWHERE.en}`;
     case 'CONTENT_CHANGED':
-      return `The content of ${where ?? 'part of the design'} no longer matches the checked version. Reload the design and try again. If it still fails, you can use 'Rewrite chapter' or write this part yourself in the course.`;
+      return `The content of ${where ?? 'part of the design'} no longer matches the checked version. Reload the design and try again. If it still fails, ${ELSEWHERE.en}`;
     case 'CONTENT_INCOMPLETE':
       return `${subject('Part of the design')} does not have complete content yet, so it cannot be applied. Wait for the AI to finish, or use 'Rewrite chapter'.`;
     case 'CONTENT_EDIT_INVALID':
