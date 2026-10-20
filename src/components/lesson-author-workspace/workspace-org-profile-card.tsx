@@ -112,7 +112,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
         <span className="min-w-0 flex-1">{error.text}</span>{error.conflict && reloadButton}</div>}
       {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</p>}
       {empty && (dirty || !!server.current) && <p className="text-xs text-muted-foreground">{t('aiIdOrgContext.profile.emptyCannotConfirm')}</p>}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
         <Button type="button" variant="outline" disabled={!actions.save} onClick={() => submit(false)}>
           {save.isPending && !save.variables?.confirm && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}{t('aiIdOrgContext.profile.save')}</Button>
         <Button type="button" disabled={!actions.confirm} onClick={() => submit(true)}>

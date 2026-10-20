@@ -123,7 +123,7 @@ function RowEditor({ id, field, rows, count, issues, changed, disabled, locale, 
   const emit = onChange;
   return <fieldset disabled={disabled} className="min-w-0 space-y-2" aria-describedby={`${id}-footer`}>
     <legend className="flex w-full items-center justify-between gap-2 text-sm font-medium"><span>{name}</span><Changed show={changed} /></legend>
-    {rows.map((row, index) => <div key={index} className="flex items-start gap-2">
+    {rows.map((row, index) => <div key={index} className="flex items-start gap-2 rounded-lg border border-border/60 p-2 sm:border-0 sm:p-0">
       <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {parts.map(part => <Input key={part.key} value={row[part.key] ?? ''} className="bg-background"
           aria-label={`${t(`aiIdOrgContext.profile.fields.${field}.${part.key}`)} ${index + 1}`}
