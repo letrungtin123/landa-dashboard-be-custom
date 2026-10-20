@@ -406,3 +406,21 @@ for (const locale of ['vi', 'en']) test(`${locale}: before any content the termi
   assert.match(noActions, locale === 'vi' ? /Sau khi xử lý nguyên nhân/ : /After resolving the cause/,
     'without recovery the old guidance stays');
 });
+
+test('activity log names Stop, Continue and Rewrite in plain VI/EN words', () => {
+  const vi = read('../../i18n/locales/vi.ts');
+  const en = read('../../i18n/locales/en.ts');
+  const label = (file, code) => new RegExp(`"lesson_author\\.workspace\\.${code}": "([^"]+)"`).exec(file)?.[1];
+  const codes = ['run_stopped', 'run_resumed', 'lessons_rewritten'];
+  for (const code of codes) {
+    for (const [locale, file] of [['vi', vi], ['en', en]]) {
+      const text = label(file, code);
+      assert.ok(text && text.length > 10, `${locale} ${code}`);
+      assert.doesNotMatch(text, /[A-Z][A-Z0-9]*_[A-Z0-9_]+|\b(AI ID|workspace|run|revision|hash|token|task)\b/i, `${locale} ${code}: ${text}`);
+      if (locale === 'vi') assert.doesNotMatch(text, /\b(session|course|lesson|chapter|rewrite|stop)\b/i, text);
+    }
+  }
+  assert.equal(label(vi, 'run_stopped'), 'đã dừng việc AI tạo nội dung của phiên thiết kế khoá học');
+  assert.equal(label(vi, 'run_resumed'), 'đã cho AI chạy tiếp các bước kiểm tra còn dang dở của phiên thiết kế khoá học');
+  assert.equal(label(vi, 'lessons_rewritten'), 'đã cho AI viết lại các bài học còn thiếu của phiên thiết kế khoá học');
+});
