@@ -62,6 +62,7 @@ for (const name of ['vi', 'en']) {
 }
 const logic = load(path.join(directory, 'workspace-launch-brief.logic.ts'));
 const contract = load(path.join(src, 'api/lesson-author-workspace.contract.ts'));
+const launchContract = load(path.join(src, 'api/workspace-launch.contract.ts'));
 const { createWorkspaceCreateClient, workspaceCreateFailure } = load(path.join(src, 'api/workspace-create.ts'));
 const { createWorkspaceSourceState } = load(path.join(directory, 'workspace-source-state.ts'));
 const { WorkspaceLaunchBriefPanel, WorkspaceLaunchBriefSummary } = load(path.join(directory, 'workspace-launch-brief-panel.tsx'));
@@ -146,7 +147,7 @@ test('Create client sends design_mode always and the texts only for design; anyt
 });
 
 test('brief validation codes are definite rejections with plain messages; unknown codes keep the generic handling', () => {
-  for (const code of logic.WORKSPACE_LAUNCH_BRIEF_ERROR_CODES) {
+  for (const code of launchContract.WORKSPACE_LAUNCH_BRIEF_ERROR_CODES) {
     for (const status of [400, 422]) {
       const failure = workspaceCreateFailure({ response: { status, data: { code } } });
       assert.equal(failure.outcome, 'rejected'); assert.equal(failure.code, code);
@@ -157,7 +158,7 @@ test('brief validation codes are definite rejections with plain messages; unknow
       assert.ok(text.length > 20); assert.doesNotMatch(text, /LESSON_AUTHOR|_|\b(?:400|401|403|409|422)\b/);
     }
   }
-  assert.equal(logic.isWorkspaceLaunchBriefErrorCode('LESSON_AUTHOR_LAUNCH_OTHER'), false);
+  assert.equal(launchContract.isWorkspaceLaunchBriefErrorCode('LESSON_AUTHOR_LAUNCH_OTHER'), false);
   assert.equal(workspaceCreateFailure({ response: { status: 422, data: { code: 'LESSON_AUTHOR_LAUNCH_OTHER' } } }).outcome, 'unknown');
   assert.equal(workspaceCreateFailure({ response: { status: 400, data: { code: 'LESSON_AUTHOR_LAUNCH_OTHER' } } }).outcome, 'rejected');
 });
@@ -238,7 +239,7 @@ test('AI points refusals (429) are definite: the start screen shows the plain po
     },
   };
   for (const [code, text] of Object.entries(copy)) {
-    assert.equal(logic.isWorkspaceLaunchBriefErrorCode(code), true);
+    assert.equal(launchContract.isWorkspaceLaunchBriefErrorCode(code), true);
     const failure = workspaceCreateFailure({ response: { status: 429, data: { code } } });
     assert.equal(failure.outcome, 'rejected'); assert.equal(failure.code, code);
     for (const locale of ['vi', 'en']) { env.locale = locale; assert.equal(t(logic.workspaceLaunchBriefErrorKey(code)), text[locale]); }

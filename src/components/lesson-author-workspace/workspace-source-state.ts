@@ -3,9 +3,10 @@ import type { workspaceSourceApi } from '../../api/workspace-sources';
 import type { SourceStreamClient, SourceStreamDocument, SourceStreamScope, SourceStreamState } from '../../api/workspace-source-stream';
 import { WorkspaceCreateError, workspaceCreateFailure, type createWorkspaceCreateClient, type WorkspaceCreateRequest } from '../../api/workspace-create';
 import { isWorkspaceId, type WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
-import type { WorkspaceHostScope, WorkspaceLaunchContext } from './workspace-host.logic';
-import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, isWorkspaceLaunchBriefErrorCode, workspaceLaunchBriefFields,
-  type WorkspaceLaunchBriefDraft, type WorkspaceLaunchBriefErrorCode } from './workspace-launch-brief.logic';
+import { isWorkspaceLaunchBriefErrorCode, type WorkspaceHostScope, type WorkspaceLaunchBriefErrorCode,
+  type WorkspaceLaunchContext } from '../../api/workspace-launch.contract';
+import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, workspaceLaunchBriefFields,
+  type WorkspaceLaunchBriefDraft } from './workspace-launch-brief.logic';
 
 export interface WorkspaceSourceState {
   busy: boolean;

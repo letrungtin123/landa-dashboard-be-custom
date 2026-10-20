@@ -1,6 +1,6 @@
 import { customApiClient } from './custom-client';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
-import type { WorkspaceLaunchContext } from '../components/lesson-author-workspace/workspace-host.logic';
+import type { WorkspaceLaunchContext } from './workspace-launch.contract';
 
 /** Sessions are shared with every course editor of the tenant; only the
  * creator continues one (server decides; these flags only shape the UI). */

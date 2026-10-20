@@ -37,8 +37,8 @@ import { WorkspaceDialogBody, WorkspaceNodeTypePill } from './workspace-dialog';
 import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, WorkspaceNotGeneratedNotice, workspaceDetailStats, workspaceNodeNotGenerated, workspaceRunEnded } from './workspace-node-detail';
 import { WorkspaceNodeEditor, updateWorkspaceEditorField } from './workspace-node-editor';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
-import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey,
-  type WorkspaceLaunchContext, type WorkspaceLaunchResolver } from './workspace-host.logic';
+import type { WorkspaceLaunchContext, WorkspaceLaunchResolver } from '../../api/workspace-launch.contract';
+import { createWorkspaceCourseHost, workspaceHostEnabled, workspaceHostKey } from './workspace-host.logic';
 import { useWorkspaceRecovery } from './workspace-recovery-controls';
 
 /** Optional authorized launch adapter. Default is the actor-owned latest GET;

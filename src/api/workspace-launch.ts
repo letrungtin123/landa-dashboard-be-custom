@@ -1,7 +1,6 @@
 import { customApiClient } from './custom-client';
 import { isWorkspaceId, WorkspaceReadError, workspaceReadFailure } from './lesson-author-workspace.contract';
-import type { WorkspaceLaunchResolver } from '../components/lesson-author-workspace/workspace-host.logic';
-import type { WorkspaceLaunchContext } from '../components/lesson-author-workspace/workspace-host.logic';
+import type { WorkspaceLaunchContext, WorkspaceLaunchResolver } from './workspace-launch.contract';
 
 export function readWorkspaceLaunchResult(value: unknown, courseId: string): WorkspaceLaunchContext {
   const v = value as Record<string, unknown> | null;

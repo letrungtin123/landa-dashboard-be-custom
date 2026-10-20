@@ -2,7 +2,8 @@ import {
   readWorkspaceLaunchBrief, WORKSPACE_COURSE_PURPOSE_MAX, WORKSPACE_DESIGN_MODES, WORKSPACE_LEARNER_AUDIENCE_MAX,
   type WorkspaceDesignMode, type WorkspaceGraph, type WorkspaceLaunchBrief, type WorkspaceStatus,
 } from '../../api/lesson-author-workspace.contract';
-import { AI_CREDIT_ERROR_CODES, AI_CREDIT_ERROR_KEYS, isAiCreditErrorCode, type AiCreditErrorCode } from '../../api/ai-credit-errors.logic';
+import { AI_CREDIT_ERROR_KEYS, isAiCreditErrorCode, type AiCreditErrorCode } from '../../api/ai-credit-errors.logic';
+import type { WorkspaceLaunchBriefErrorCode, WorkspaceLaunchBriefFields } from '../../api/workspace-launch.contract';
 
 /**
  * AI ID launch brief (QLT-6): the way of working chosen on the start screen
@@ -22,11 +23,6 @@ export interface WorkspaceLaunchBriefDraft {
 export const DEFAULT_WORKSPACE_LAUNCH_BRIEF: Readonly<WorkspaceLaunchBriefDraft> = Object.freeze({
   design_mode: 'instructional_design', learner_audience: '', course_purpose: '',
 });
-
-/** The brief keys of the Create request: the texts only for the design mode. */
-export type WorkspaceLaunchBriefFields =
-  | { design_mode: 'preserve_source' }
-  | { design_mode: 'instructional_design'; learner_audience: string; course_purpose: string };
 
 export type WorkspaceLaunchBriefField = 'learners' | 'purpose';
 export type WorkspaceCreateMissing = 'document' | 'mode' | WorkspaceLaunchBriefField;
@@ -63,16 +59,6 @@ export function workspaceLaunchBriefFields(draft: Readonly<WorkspaceLaunchBriefD
     : { design_mode: 'instructional_design', learner_audience: draft.learner_audience.trim(), course_purpose: draft.course_purpose.trim() };
 }
 
-/** Request-side check of the brief keys (everything in a Create request except
- * operation_id, source_document_ids and content_locale). */
-export function isWorkspaceLaunchBriefFields(value: Record<string, unknown>): value is WorkspaceLaunchBriefFields {
-  const keys = Object.keys(value).sort().join(',');
-  if (value.design_mode === 'preserve_source') return keys === 'design_mode';
-  const text = (item: unknown, max: number) => typeof item === 'string' && !!item && item === item.trim() && item.length <= max;
-  return value.design_mode === 'instructional_design' && keys === 'course_purpose,design_mode,learner_audience'
-    && text(value.learner_audience, WORKSPACE_LEARNER_AUDIENCE_MAX) && text(value.course_purpose, WORKSPACE_COURSE_PURPOSE_MAX);
-}
-
 /** Null when Create may be pressed. Brief problems come first because they are
  * fixed on this screen; a chosen document that is still processing comes last. */
 export function workspaceCreateBlock(input: {
@@ -100,20 +86,6 @@ export function workspaceCreateBlockCopy(block: WorkspaceCreateBlock): { key: st
   return { key: 'aiIdLaunchBrief.missing', itemKeys: block.items.map(item => MISSING_KEYS[item]) };
 }
 
-/** Brief validation codes the server returns before it creates anything. */
-export const WORKSPACE_LAUNCH_BRIEF_ERROR_CODES = [
-  'LESSON_AUTHOR_LAUNCH_MODE_INVALID', 'LESSON_AUTHOR_LAUNCH_AUDIENCE_REQUIRED', 'LESSON_AUTHOR_LAUNCH_PURPOSE_REQUIRED',
-  'LESSON_AUTHOR_LAUNCH_BRIEF_TOO_LONG', 'LESSON_AUTHOR_LAUNCH_BRIEF_NOT_ALLOWED',
-  // QLT-6: keeping the material as it is is not turned on for this organization (no IDM pipeline).
-  'LESSON_AUTHOR_LAUNCH_MODE_UNAVAILABLE',
-  // AI points: the month's points are used up, or too few are left for a new run. Refused before
-  // anything is created; Create works again once points are added (no field to fix).
-  ...AI_CREDIT_ERROR_CODES,
-] as const;
-export type WorkspaceLaunchBriefErrorCode = typeof WORKSPACE_LAUNCH_BRIEF_ERROR_CODES[number];
-export function isWorkspaceLaunchBriefErrorCode(code: unknown): code is WorkspaceLaunchBriefErrorCode {
-  return WORKSPACE_LAUNCH_BRIEF_ERROR_CODES.includes(code as WorkspaceLaunchBriefErrorCode);
-}
 const ERROR_KEYS: Record<Exclude<WorkspaceLaunchBriefErrorCode, AiCreditErrorCode>, string> = {
   LESSON_AUTHOR_LAUNCH_MODE_INVALID: 'errorMode',
   LESSON_AUTHOR_LAUNCH_AUDIENCE_REQUIRED: 'errorLearners',

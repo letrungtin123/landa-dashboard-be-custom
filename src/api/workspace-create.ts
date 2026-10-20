@@ -2,9 +2,8 @@ import type { AxiosRequestConfig } from 'axios';
 import { customApiClient } from './custom-client';
 import { isWorkspaceId, type WorkspaceLocale } from './lesson-author-workspace.contract';
 import { readWorkspaceLaunchResult } from './workspace-launch';
-import type { WorkspaceHostScope } from '../components/lesson-author-workspace/workspace-host.logic';
-import { isWorkspaceLaunchBriefErrorCode, isWorkspaceLaunchBriefFields,
-  type WorkspaceLaunchBriefFields } from '../components/lesson-author-workspace/workspace-launch-brief.logic';
+import { isWorkspaceLaunchBriefErrorCode, isWorkspaceLaunchBriefFields, type WorkspaceHostScope,
+  type WorkspaceLaunchBriefFields } from './workspace-launch.contract';
 
 /** design_mode is always sent; learner_audience/course_purpose only for instructional_design. */
 export type WorkspaceCreateRequest = { operation_id: string; source_document_ids: string[]; content_locale: WorkspaceLocale }

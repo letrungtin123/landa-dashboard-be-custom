@@ -18,7 +18,7 @@ import { AppTooltip } from '@/components/ui/tooltip';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import { useCourseWorkspaceHost } from '@/components/lesson-author-workspace/workspace-course-host';
 import { courseAuthorNotesQueryKey } from '@/api/course-author-notes';
-import type { WorkspaceLaunchResolver } from '@/components/lesson-author-workspace/workspace-host.logic';
+import type { WorkspaceLaunchResolver } from '@/api/workspace-launch.contract';
 import {
   publishLessonAuthorEditorContext,
   type LessonAuthorEditorContext,

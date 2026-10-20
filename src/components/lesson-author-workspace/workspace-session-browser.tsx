@@ -12,7 +12,7 @@ import {
   type LessonAuthorSessionScope,
   type LessonAuthorSessionSummary,
 } from '../../api/workspace-sessions';
-import type { WorkspaceLaunchContext } from './workspace-host.logic';
+import type { WorkspaceLaunchContext } from '../../api/workspace-launch.contract';
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { WorkspaceSessionCard, WorkspaceSessionScopeFilter } from './workspace-session-card';
 import { workspaceSharingCopy } from './workspace-sharing';

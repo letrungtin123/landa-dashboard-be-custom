@@ -1,24 +1,8 @@
 import { isWorkspaceId, WorkspaceReadError, type WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { WorkspaceWriteError } from '../../api/workspace-write';
+import type { WorkspaceHostScope, WorkspaceLaunchContext, WorkspaceLaunchResolver } from '../../api/workspace-launch.contract';
 import type { createWorkspaceSession, WorkspaceSessionIdentity, WorkspaceSessionState } from './workspace-session';
 
-export interface WorkspaceHostScope { actorId: string; tenantId: string; courseId: string }
-/** Must be returned by an authorized server discovery/selection API. No route,
- * URL parameter, localStorage ID or client-generated ID is a launch source. */
-export interface WorkspaceLaunchContext {
-  course_id: string;
-  conversation_id: string;
-  workspace_id: string;
-  content_locale: WorkspaceLocale;
-  can_edit: boolean;
-  correlation_id?: string;
-}
-export type WorkspaceLaunchResolver = (input: WorkspaceHostScope & {
-  uiLocale: WorkspaceLocale;
-  signal: AbortSignal;
-  /** Re-authorize this exact previous server selection on reopen. */
-  previous: Readonly<WorkspaceLaunchContext> | null;
-}) => Promise<WorkspaceLaunchContext | null>;
 export type WorkspaceHostIssue = 'discovery_unavailable' | 'no_workspace' | 'launch_invalid' | 'launch_changed' | 'launch_failed';
 type Session = ReturnType<typeof createWorkspaceSession>;
 export interface WorkspaceHostState {
