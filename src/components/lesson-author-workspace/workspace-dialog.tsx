@@ -301,7 +301,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
             <Panel position="top-right" className="!m-3 flex items-start gap-2">
               <div className="group relative nodrag nopan">
                 <button type="button" aria-label={c.colorGuide}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/60 bg-amber-50 text-amber-700 shadow-lg transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-500/50 dark:bg-amber-950/80 dark:text-amber-300 dark:hover:bg-amber-950">
+                  className="workspace-guide-pulse flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/60 bg-amber-50 text-amber-700 shadow-lg transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-500/50 dark:bg-amber-950/80 dark:text-amber-300 dark:hover:bg-amber-950">
                   <Info className="h-4 w-4" aria-hidden />
                 </button>
                 <div role="tooltip" className="pointer-events-none absolute right-0 top-11 z-20 w-72 translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-2xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
@@ -333,7 +333,6 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
             : <p className="p-4" role="status">{state.access === 'blocked' ? c.unavailable : c.empty}</p>}
         </TabsContent>
       </Tabs>
-      <footer className="shrink-0 border-t bg-card px-4 py-2 text-xs text-muted-foreground sm:px-5">{c.available}</footer>
       {renderNodeDetail ? renderNodeDetail(open ? selected : null) : <WorkspaceNodeDetail node={open ? selected : null} detail={detail} locale={locale} stale={state.detailStale} runEnded={runEnded}
         onClose={() => onSelectNode(null)} />}
   </div>;

@@ -489,6 +489,25 @@ test('media legend uses a yellow warning icon and explains that AI suggestions a
     'AI only recommends and suggests videos/infographics; the system cannot create videos/infographics directly.');
 });
 
+for (const locale of ['en', 'vi']) test(`${locale}: the window has no footer line about which items are gray`, () => {
+  // QC 21/10 (C5): "Chỉ những mục đã đưa vào khoá học thành công mới hiển thị màu xám." was wrong and is gone.
+  const html = renderDialog({}, locale, { overviewDetails: [courseDetail, chapterDetail] });
+  assert.doesNotMatch(html, /<footer|shown in gray|màu xám/);
+  assert.equal(workspaceCopy[locale].available, undefined);
+  assert.doesNotMatch(readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8'), /<footer/);
+});
+
+test('the yellow colour guide button pulses gently and stops when the device asks for reduced motion', () => {
+  // QC 21/10 (C6). The ring is a pseudo-element, so the button keeps its own shadow and focus ring.
+  const source = readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8');
+  assert.match(source, /aria-label=\{c\.colorGuide\}\s+className="workspace-guide-pulse /);
+  const styles = readFileSync(path.join(directory, '..', '..', 'globals.css'), 'utf8');
+  assert.match(styles, /@keyframes workspace-guide-pulse \{/);
+  assert.match(styles, /\.workspace-guide-pulse::after \{[^}]*animation: workspace-guide-pulse 2\.4s ease-out infinite;[^}]*\}/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.workspace-guide-pulse::after \{\s*animation: none;\s*\}\s*\}/);
+  assert.match(styles, /\.workspace-guide-pulse::after \{[^}]*pointer-events: none;/, 'the ring never takes the click');
+});
+
 test('live build edge motion covers all unfinished child nodes, excludes terminal states and stays bounded', () => {
   const item = (id, content_state, preview = false, previewState = null) => ({
     node: { ...node(id, 'component', root.node_id), content_state }, preview, previewState,

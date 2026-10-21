@@ -278,6 +278,11 @@
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
+@keyframes workspace-guide-pulse {
+  0% { opacity: 0.8; transform: scale(0.94); }
+  70%, 100% { opacity: 0; transform: scale(1.22); }
+}
+
 @keyframes scale-in {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
@@ -1312,6 +1317,29 @@
   .workspace-build-beacon-idle > span {
     height: 2px;
     opacity: 0.4;
+  }
+
+  /* Mindmap colour guide button: a soft amber ring grows and fades so authors
+   * notice it. Decorative; off when the device asks for reduced motion. */
+  .workspace-guide-pulse {
+    position: relative;
+  }
+
+  .workspace-guide-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 2px solid rgb(245 158 11 / 0.55);
+    opacity: 0;
+    pointer-events: none;
+    animation: workspace-guide-pulse 2.4s ease-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .workspace-guide-pulse::after {
+      animation: none;
+    }
   }
 
   .workspace-build-shimmer {
