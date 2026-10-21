@@ -326,6 +326,20 @@ export function createWorkspaceReadState(client: WorkspaceReadClient, options: {
       urgent = true;
       return pump();
     },
+    /** Settles only on a read that started after this call, for a write whose
+     * new head the caller does not know (Apply). A read already in flight may
+     * have asked for the head before that commit: it is awaited, then one fresh
+     * read follows. At most two reads, never a loop. */
+    async refreshAfterCommit(): Promise<void> {
+      // A function, not a narrowed expression: the state changes while awaiting.
+      const readable = () => !disposed && state.opened && state.access !== 'blocked';
+      if (!readable()) return;
+      const earlier = flight;
+      if (earlier) await earlier;
+      if (!readable()) return;
+      // Any read in flight now started after `earlier` settled, so after this call.
+      await pump();
+    },
     /** Switch between commit-hint delivery and bounded polling without
      * creating a second reader. A degraded/reconnecting SSE transport must not
      * strand an active workspace until its next auth-lease reconnect. */

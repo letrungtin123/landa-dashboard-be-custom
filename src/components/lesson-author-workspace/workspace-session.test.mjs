@@ -159,6 +159,23 @@ test('Apply refresh preserves exact selected detail across an unrelated event-he
   f.session.dispose();
 });
 
+test('the reload after an Apply never settles on a read that started before the Apply committed', async () => {
+  const f = fixture(); await f.session.open();
+  const original = f.reads.status, hold = deferred();
+  // The answer is taken when the request starts; it arrives once `hold` opens.
+  f.reads.status = async options => { const answer = await original(options); await hold.promise; return answer; };
+  f.clock.fire(); await settle();   // a background read is in flight and saw head 1
+  f.advanceHead();                  // the Apply commits: head 2
+  let settled = false;
+  const reload = f.session.refreshForApply().then(() => { settled = true; });
+  await settle(); assert.equal(settled, false);
+  hold.resolve(); await reload;
+  assert.equal(f.session.getState().read.status.last_event_sequence, 2, 'the next Apply sends the new head');
+  assert.equal(f.session.getState().read.graph.snapshot_sequence, 2);
+  assert.equal(f.calls.filter(call => call[0] === 'status').length, 3, 'open, the earlier read and one fresh read');
+  f.session.dispose();
+});
+
 test('manual refresh preserves exact overview and selected detail without a detail request fan-out', async () => {
   const f = fixture(); await f.session.open(); await f.session.loadOverview(); await select(f);
   const beforeDetail = f.session.editorProps(id(1)).detail;

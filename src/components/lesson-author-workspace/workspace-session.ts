@@ -291,9 +291,13 @@ export function createWorkspaceSession(identity: WorkspaceSessionIdentity, depen
     // also preserves the last authorized presentation while the status/graph
     // heads catch up; reader.refresh() deliberately drops access to "unknown"
     // and made the open detail modal unmount/remount after every action.
+    // Without a known target head (Apply answers carry none), only a read that
+    // started after this call may settle it: a read already in flight can
+    // predate the commit and would hand the next Apply the old head.
     const currentSequence = reader.getState().graph?.snapshot_sequence;
     if (currentSequence == null) await reader.refresh();
-    else await reader.notifyCommittedEvent(targetSequence ?? currentSequence + 1);
+    else if (targetSequence !== undefined) await reader.notifyCommittedEvent(targetSequence);
+    else await reader.refreshAfterCommit();
     if (readable()) {
       const selected = reader.getState().selectedNodeId;
       if (selected && !details.has(selected)) await loadNode(selected);

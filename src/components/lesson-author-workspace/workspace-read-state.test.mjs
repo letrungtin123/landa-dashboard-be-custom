@@ -111,6 +111,32 @@ test('event-driven mode has no idle timer, coalesces committed hints, and drains
   f.store.dispose();
 });
 
+test('a read after a commit never settles on a read that started before it, and takes at most one more read', async () => {
+  const f = fixture(); await f.store.open();
+  const original = f.client.status;
+  let hold = deferred();
+  // The answer is taken when the request starts; it arrives once `hold` opens.
+  f.client.status = async options => { const answer = await original(options); await hold.promise; return answer; };
+  f.scheduler.fire(); await settle();   // a background read is in flight and saw head 1
+  f.change(2);                          // then the Apply commits
+  let settled = false;
+  const after = f.store.refreshAfterCommit().then(() => { settled = true; });
+  await settle(); assert.equal(settled, false);
+  const statusBefore = f.calls.filter(call => call[0] === 'status').length;
+  hold.resolve(); await after;
+  assert.equal(f.store.getState().status.last_event_sequence, 2, 'the read that started before the commit was not accepted');
+  assert.equal(f.store.getState().graph.snapshot_sequence, 2, 'the fresh read was');
+  assert.equal(f.calls.filter(call => call[0] === 'status').length, statusBefore + 1, 'exactly one more read');
+  // Nothing in flight: exactly one read, even when the head has not moved (no loop).
+  hold = deferred(); hold.resolve();
+  const count = f.calls.filter(call => call[0] === 'status').length;
+  await f.store.refreshAfterCommit();
+  assert.equal(f.calls.filter(call => call[0] === 'status').length, count + 1);
+  f.store.close(); await f.store.refreshAfterCommit();
+  assert.equal(f.calls.filter(call => call[0] === 'status').length, count + 1, 'a closed reader reads nothing');
+  f.store.dispose();
+});
+
 test('event-driven reader degrades to one bounded poller and stops it immediately when SSE recovers', async () => {
   const f = fixture(1, true);
   await f.store.open(); assert.equal(f.scheduler.delay, undefined);
