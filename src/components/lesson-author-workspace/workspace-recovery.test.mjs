@@ -23,7 +23,7 @@ const logicUrl = compile(read('./workspace-recovery.logic.ts'));
 const { WorkspaceRecoveryError } = await import(apiUrl);
 const {
   workspaceRecoveryBanner, workspaceRecoveryChapterAction, workspaceRecoveryUnitAction, workspaceRecoveryConfirmText,
-  workspaceRecoveryCopy, workspaceRecoveryFetchKey, workspaceRecoveryCanStop, WORKSPACE_RECOVERY_DRAIN_POLL_LIMIT,
+  workspaceRecoveryCopy, workspaceRecoveryFetchKey, WORKSPACE_RECOVERY_DRAIN_POLL_LIMIT,
   WORKSPACE_RECOVERY_DRAIN_POLL_MS,
 } = await import(logicUrl);
 const { createWorkspaceRecoveryState } = await import(compile(read('./workspace-recovery-state.ts')
@@ -92,8 +92,6 @@ test('stopped design: banner, chapter and lesson actions come only from the serv
     regenerate: { ...view().regenerate, ...option('RECOVERY_REVIEW_REQUIRED') } }), 'vi'), null);
   assert.equal(workspaceRecoveryBanner(running(), 'vi'), null);
   assert.equal(workspaceRecoveryBanner(null, 'vi'), null);
-  assert.equal(workspaceRecoveryCanStop(running()), true);
-  assert.equal(workspaceRecoveryCanStop(view()), false);
 
   assert.deepEqual(workspaceRecoveryChapterAction(view(), id(31).toUpperCase(), 'vi').intent,
     { kind: 'regenerate', scope: 'chapter', nodeId: id(31), unitCount: 2, rewritesUsed: null });
@@ -105,6 +103,23 @@ test('stopped design: banner, chapter and lesson actions come only from the serv
   assert.deepEqual(workspaceRecoveryUnitAction(view(), id(42), 'en'), { intent: null, note: workspaceRecoveryCopy.en.lessonLimit });
   assert.equal(workspaceRecoveryUnitAction(view(), id(43), 'en'), null, 'a lesson with content offers nothing');
   assert.equal(workspaceRecoveryUnitAction(running(), id(41), 'en'), null);
+});
+
+test('no Stop button for anyone while AI is writing; Continue and Rewrite stay for a stopped run', () => {
+  // QC 21/10 (C11): the header no longer offers Stop, even when the server would allow it.
+  // The server stop stays for engineers, so the option is still read and the confirm copy kept.
+  const controls = read('./workspace-recovery-controls.tsx');
+  assert.doesNotMatch(controls, /kind: 'stop'|c\.stop\b|Square|CanStop|stop\.available/);
+  assert.match(controls, /const headerAction = notice \?/, 'the header keeps only the "request sent" notice');
+  const logic = read('./workspace-recovery.logic.ts');
+  assert.doesNotMatch(logic, /export function workspaceRecoveryCanStop/);
+  // A running draft whose server offers Stop shows no banner and no actions; a stopped one keeps both.
+  assert.equal(workspaceRecoveryBanner(running(), 'vi'), null);
+  assert.equal(workspaceRecoveryUnitAction(running(), id(41), 'vi'), null);
+  const stopped = workspaceRecoveryBanner(view({ resume: { ...option(), task_count: 1 } }), 'vi');
+  assert.deepEqual([stopped.resume?.kind, stopped.rewriteAll?.kind], ['resume', 'regenerate']);
+  assert.equal(workspaceRecoveryCopy.vi.resume, 'Chạy tiếp');
+  assert.equal(workspaceRecoveryCopy.vi.rewrite, 'Viết lại');
 });
 
 test('confirmation words: what happens, AI points, the rewrite limit', () => {
@@ -376,22 +391,22 @@ const status = { ...base, node_count: 4, unit_count: 1, ready_unit_count: 0, fai
 const state = { opened: true, visible: true, busy: false, access: 'allowed', status, graph, stale: false, selectedNodeId: null,
   detail: null, detailStale: false, drafts: {}, error: null };
 const slots = {
-  headerActions: h('button', null, 'HEADER-STOP'), recoveryBanner: h('p', null, 'RECOVERY-BANNER'), recoveryActions: h('span', null, 'RECOVERY-ACTIONS'),
+  headerActions: h('button', null, 'HEADER-ACTION'), recoveryBanner: h('p', null, 'RECOVERY-BANNER'), recoveryActions: h('span', null, 'RECOVERY-ACTIONS'),
   renderChapterAction: chapter => h('span', null, `CHAPTER-ACTION:${chapter.node_id}`),
   renderNodeAction: n => n.kind === 'unit' ? h('span', null, `UNIT-ACTION:${n.node_id}`) : null,
 };
 const render = (patch, locale = 'vi', extra = slots) => renderToStaticMarkup(h(WorkspaceDialog, { open: true, locale,
   state: { ...state, ...patch }, onSelectNode() {}, onOpenChange() {}, ...extra }));
 
-test('dialog: Stop in the header, the stopped notice above the tabs, chapter and lesson actions on their cards', () => {
+test('dialog: the header action slot, the stopped notice above the tabs, chapter and lesson actions on their cards', () => {
   const html = render({});
-  assert.match(html, /HEADER-STOP/);
+  assert.match(html, /HEADER-ACTION/);
   assert.match(html, /RECOVERY-BANNER/);
   assert.match(html, new RegExp(`CHAPTER-ACTION:${id(31)}`));
   assert.match(html, new RegExp(`UNIT-ACTION:${id(41)}`));
   assert.doesNotMatch(html, /UNIT-ACTION:.*UNIT-ACTION/, 'only lessons get the card action');
   const plain = render({}, 'vi', {});
-  assert.doesNotMatch(plain, /HEADER-STOP|RECOVERY-BANNER|CHAPTER-ACTION|UNIT-ACTION/, 'no slots, unchanged dialog');
+  assert.doesNotMatch(plain, /HEADER-ACTION|RECOVERY-BANNER|CHAPTER-ACTION|UNIT-ACTION/, 'no slots, unchanged dialog');
 });
 
 for (const locale of ['vi', 'en']) test(`${locale}: before any content the terminal panel carries the actions instead of the "new draft" hint`, () => {

@@ -66,11 +66,6 @@ export type WorkspaceRecoveryIntent =
   | { kind: 'resume'; taskCount: number }
   | { kind: 'regenerate'; scope: 'course' | 'chapter' | 'unit'; nodeId: string; unitCount: number; rewritesUsed: number | null };
 
-/** Header Stop: only while the run is active and the server offers it. */
-export function workspaceRecoveryCanStop(view: WorkspaceRecoveryView | null): boolean {
-  return !!view && view.stop.available;
-}
-
 /** A stopped run the author may act on (not an assessment review: that has its own review panel). */
 function stoppedRun(view: WorkspaceRecoveryView | null): view is WorkspaceRecoveryView {
   return !!view && view.run_status === 'needs_action'

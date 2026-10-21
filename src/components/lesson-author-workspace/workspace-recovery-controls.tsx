@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { Loader2, RefreshCw, Square } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { createWorkspaceRecoveryClient, workspaceRecoveryMessage, type WorkspaceRecoveryClient } from '../../api/workspace-recovery';
 import { secureRandomUuid } from '../../utils/random-uuid';
 import {
-  workspaceRecoveryBanner, workspaceRecoveryCanStop, workspaceRecoveryChapterAction, workspaceRecoveryConfirmText,
+  workspaceRecoveryBanner, workspaceRecoveryChapterAction, workspaceRecoveryConfirmText,
   workspaceRecoveryCopy, workspaceRecoveryUnitAction,
 } from './workspace-recovery.logic';
 import { createWorkspaceRecoveryState, type WorkspaceRecoveryController, type WorkspaceRecoveryState } from './workspace-recovery-state';
@@ -38,8 +38,8 @@ const emptySubscribe = () => () => {};
 const emptyState = (): WorkspaceRecoveryState | null => null;
 function stopPropagation(event: ReactMouseEvent) { event.stopPropagation(); }
 
-/** Stop / Continue / Rewrite controls of the owner. The server decides what is
- * allowed; this only renders the options of the last GET …/recovery. */
+/** Continue / Rewrite controls of the owner (Stop is not offered on screen). The
+ * server decides what is allowed; this only renders the options of the last GET …/recovery. */
 export function useWorkspaceRecovery(input: WorkspaceRecoveryInput): WorkspaceRecoveryUi {
   const { enabled, locale, status, head } = input;
   const c = workspaceRecoveryCopy[locale];
@@ -105,12 +105,10 @@ export function useWorkspaceRecovery(input: WorkspaceRecoveryInput): WorkspaceRe
   }, [begin, busy, c.rewriteChapter, view, locale]);
 
   const notice = state?.notice ? (state.notice === 'stopped' ? c.stopped : c.started) : null;
-  const canStop = workspaceRecoveryCanStop(view) && !!begin;
-  const headerAction = canStop || notice ? <div className="flex items-center gap-2">
-    {notice && <span role="status" className="hidden max-w-[16rem] truncate text-xs text-muted-foreground sm:inline">{notice}</span>}
-    {canStop && <Button type="button" variant="outline" size="sm" disabled={busy}
-      className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-      onClick={() => begin!({ kind: 'stop' })}><Square className="h-3.5 w-3.5" aria-hidden />{c.stop}</Button>}
+  // No Stop button for anyone while AI is writing (QC 21/10, C11). The server
+  // stop remains for engineers; Continue / Rewrite stay for a stopped run.
+  const headerAction = notice ? <div className="flex items-center gap-2">
+    <span role="status" className="hidden max-w-[16rem] truncate text-xs text-muted-foreground sm:inline">{notice}</span>
   </div> : null;
 
   const bannerNode = banner ? <div role="status" aria-live="polite" data-workspace-recovery="banner"
