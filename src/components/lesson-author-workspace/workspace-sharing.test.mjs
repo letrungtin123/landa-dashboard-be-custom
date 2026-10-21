@@ -143,7 +143,9 @@ test('Apply client parses conflict lists strictly and echoes the confirmation to
   const busy = apply.createWorkspaceApplyClient({ courseId: 'c', conversationId: id(1), workspaceId: id(2) }, { post: async () => {
     throw { response: { status: 409, data: { code: 'WORKSPACE_APPLY_COURSE_BUSY' } } }; } });
   await assert.rejects(busy(id(9), id(22), 4, 'en'), error => error.code === 'WORKSPACE_APPLY_COURSE_BUSY' && error.outcome === 'rejected' && error.conflict === null);
-  assert.equal(apply.workspaceApplyMessage('WORKSPACE_APPLY_COURSE_BUSY', 'vi'), 'Có người khác đang đưa nội dung vào khoá học này. Vui lòng thử lại sau ít phút.');
+  // Busy is (almost always) the author's own previous chapter still being applied, never "someone else".
+  assert.equal(apply.workspaceApplyMessage('WORKSPACE_APPLY_COURSE_BUSY', 'vi'), 'Một chương khác của khoá học đang được áp dụng. Hãy đợi vài giây rồi bấm lại.');
+  assert.equal(apply.workspaceApplyMessage('WORKSPACE_APPLY_COURSE_BUSY', 'en'), 'Another chapter of this course is being applied. Wait a few seconds, then try again.');
 });
 
 test('AI course design upload goes to the course-editor route, never the knowledge base admin route', async () => {
