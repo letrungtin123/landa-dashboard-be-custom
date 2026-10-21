@@ -104,6 +104,8 @@ import { useTranslation } from 'react-i18next';
 import { resolveDiagramData } from './editors/diagram/diagram-data';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import { sanitizeRichHtml } from '@/utils/rich-html-sanitizer';
+import { quizCorrectLetters } from '@/utils/quiz-text.logic';
+import { ProblemExplanationPreview, ProblemQuestionPreview } from '@/components/shared/quiz-text';
 
 /**
  * Stored component HTML (text blocks, quiz prompts/choices/hints/explanations,
@@ -2943,11 +2945,8 @@ function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; wei
       <div className="app-liquid-card rounded-2xl border border-border bg-card p-6 shadow-sm space-y-6">
         <ProblemMediaPreview media={media} />
 
-        {/* Question */}
-        <div
-          className="text-[20px] font-bold leading-snug text-foreground"
-          dangerouslySetInnerHTML={{ __html: rewriteHtml(parsed.questionHtml) }}
-        />
+        {/* Question: plain AI ID text keeps its lines and list; only the question line is bold */}
+        <ProblemQuestionPreview html={parsed.questionHtml} renderHtml={rewriteHtml} />
 
         {/* Type info badge */}
         <div className="flex items-center gap-2 text-[14px] font-medium text-muted-foreground bg-muted/30 w-fit px-3 py-1.5 rounded-md border border-border/50">
@@ -3056,10 +3055,8 @@ function ProblemPreviewInteractive({ parsed, weight, media }: { parsed: any; wei
               <HelpCircle className="h-5 w-5" />
               <span className="font-bold text-sm tracking-wide uppercase">{i18n.t('courseUnit.explanation')}</span>
             </div>
-            <div
-              className="prose prose-sm dark:prose-invert max-w-none text-[14px] leading-relaxed text-foreground/90 [&_p]:m-0"
-              dangerouslySetInnerHTML={{ __html: rewriteHtml(parsed.explanationHtml) }}
-            />
+            <ProblemExplanationPreview html={parsed.explanationHtml} renderHtml={rewriteHtml}
+              correctLetters={isInput ? [] : quizCorrectLetters(parsed.choices)} correctLabel={i18n.t('courseUnit.quizCorrectOption')} />
           </div>
         )}
 

@@ -13,6 +13,8 @@ import CarouselImageOrder from '../CarouselImageOrder';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { plainProblemHtml, problemPlainEditTag, problemPlainText } from '@/utils/quiz-text.logic';
+import { ProblemPlainTextField } from './ProblemPlainTextField';
 import {
   extractYoutubeId,
   normalizeProblemMedia,
@@ -419,6 +421,10 @@ export default function ProblemEditor({
       hints: []
     };
   });
+  // AI ID stems and explanations are plain text with line feeds; the rich editor would join the lines, so such a
+  // field is edited as multi-line plain text and stored back in its element. Decided once per loaded quiz.
+  const [plainTags, setPlainTags] = useState(() => ({
+    question: problemPlainEditTag(state.questionHtml, 'label'), explanation: problemPlainEditTag(state.explanationHtml, 'p') }));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -631,6 +637,7 @@ export default function ProblemEditor({
         tolerance: type.id === 'numericalresponse' ? '5%' : undefined,
         hints: []
       };
+      setPlainTags({ question: null, explanation: null });
       setState(newState);
       onXmlChange(serializeProblemXml(newState));
     } else {
@@ -850,11 +857,14 @@ export default function ProblemEditor({
               <div>
                 <h3 className="text-sm font-bold">{t('courseEditorForms.question')}</h3>
               </div>
-              <RichTextEditor 
-                content={state.questionHtml} 
+              {plainTags.question ? <ProblemPlainTextField initial={problemPlainText(state.questionHtml)?.text ?? ''}
+                label={t('courseEditorForms.question')} hint={t('courseUnit.quizQuestionPlainHint')}
+                onChange={text => updateState(s => ({ ...s, questionHtml: plainProblemHtml(plainTags.question!, text) }))} />
+              : <RichTextEditor
+                content={state.questionHtml}
                 onChange={val => updateState(s => ({ ...s, questionHtml: val }))}
                 minHeight="min-h-[120px]"
-              />
+              />}
             </div>
 
             <div className="space-y-3">
@@ -862,11 +872,14 @@ export default function ProblemEditor({
                 <h3 className="text-sm font-bold">{t('courseEditorForms.problemExplanation')}</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">{t('courseEditorForms.problemExplanationHint')}</p>
               </div>
-              <RichTextEditor 
-                content={state.explanationHtml} 
+              {plainTags.explanation ? <ProblemPlainTextField initial={problemPlainText(state.explanationHtml)?.text ?? ''}
+                label={t('courseEditorForms.problemExplanation')} hint={t('courseUnit.quizExplanationPlainHint')}
+                onChange={text => updateState(s => ({ ...s, explanationHtml: text.trim() ? plainProblemHtml(plainTags.explanation!, text) : '' }))} />
+              : <RichTextEditor
+                content={state.explanationHtml}
                 onChange={val => updateState(s => ({ ...s, explanationHtml: val }))}
                 minHeight="min-h-[120px]"
-              />
+              />}
             </div>
 
             <div className="space-y-3">

@@ -10,6 +10,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import DiagramPreviewInteractive from '../course-editor/editors/diagram/DiagramPreviewInteractive';
+import { QuizExplanationText, QuizQuestionText } from '../shared/quiz-text';
+import { quizCorrectLetters } from '../../utils/quiz-text.logic';
 import type { WorkspaceComponentType, WorkspaceDetail, WorkspaceLocale, WorkspaceNode, WorkspaceRunState } from '../../api/lesson-author-workspace.contract';
 
 // Optional during the additive READ rollout. Missing protected binding types
@@ -363,14 +365,16 @@ function ComponentContent({ preview, locale }: { preview: Preview; locale: Works
       </div></Field>;
     case 'problem': {
       const p = preview.data;
-      return <><Field label={`${c.practice} · ${c[p.kind]}`}>{p.question}</Field>
+      // Stem and explanation keep their lines (QC 21/10, B1/B2); choices are lettered like the explanation's "A - …".
+      return <><Field label={`${c.practice} · ${c[p.kind]}`}><QuizQuestionText text={p.question} /></Field>
         <Field label={c.answer}>{'choices' in p
-          ? <ol className="list-decimal space-y-2 pl-5">{p.choices.map((item, i) => <li key={i}>{item.text}<span className="ml-2 rounded border px-2 text-xs">{item.correct ? c.correct : c.incorrect}</span></li>)}</ol>
+          ? <ol className="list-[upper-alpha] space-y-2 pl-5">{p.choices.map((item, i) => <li key={i}>{item.text}<span className="ml-2 rounded border px-2 text-xs">{item.correct ? c.correct : c.incorrect}</span></li>)}</ol>
           : <Lines values={p.answers} />}</Field>
         {p.kind === 'short_text' && <Field label={c.caseSensitive}>{p.case_sensitive ? c.yes : c.no}</Field>}
         {p.kind === 'numerical' && <Field label={c.tolerance}>{p.tolerance}</Field>}
         {p.hints.length > 0 && <Field label={c.hint}><Lines values={p.hints} /></Field>}
-        {p.explanation && <Field label={c.explanation}>{p.explanation}</Field>}</>;
+        {p.explanation.trim() && <Field label={c.explanation}><QuizExplanationText text={p.explanation} correctLabel={c.correct}
+          correctLetters={'choices' in p ? quizCorrectLetters(p.choices) : []} /></Field>}</>;
     }
     case 'la_faq': return <Field label={c.faq}><dl className="space-y-4">{preview.data.items.map((item, i) => <div key={i}><dt className="font-medium">{item.question}</dt><dd className="mt-1">{item.answer}</dd></div>)}</dl></Field>;
     case 'la_sortable': return <><Field label={c.practice}>{preview.data.question_text}</Field><Field label={c.order}><Lines ordered values={preview.data.items.map(item => item.text)} /></Field></>;

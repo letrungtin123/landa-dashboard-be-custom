@@ -594,6 +594,24 @@ test('all five problem subtypes retain questions, answer mapping, explanation an
   assert.equal(readWorkspacePreview(detail('problem', { kind: 'short_text', question: 'Q', answers: 'not an array' })), null);
 });
 
+for (const locale of ['vi', 'en']) test(`${locale}: an AI ID quiz keeps its lines: context, list, bold question, and one explanation line per lettered option`, () => {
+  // QC 21/10 (B1/B2, contract K1).
+  const data = { kind: 'multiple_choice', hints: [],
+    question: 'Cửa hàng có hai việc gấp:\n- Khách chờ đổi hàng\n- Kho báo thiếu hàng\nNên làm gì trước?',
+    explanation: 'Nguyên tắc: khách hàng trước.\nA - Sai vì kho có thể chờ.\nB - Đúng vì khách đang chờ.',
+    choices: [{ text: 'Kiểm kho', correct: false }, { text: 'Đổi hàng cho khách', correct: true }] };
+  const html = renderDetail(detail('problem', data), locale);
+  assert.match(html, /<p class="font-normal[^"]*">Cửa hàng có hai việc gấp:<\/p><ul class="list-disc[^"]*"><li>Khách chờ đổi hàng<\/li><li>Kho báo thiếu hàng<\/li><\/ul><p class="font-semibold">Nên làm gì trước\?<\/p>/);
+  assert.match(html, /<ol class="list-\[upper-alpha\][^"]*"><li>Kiểm kho/, 'choices are lettered like the explanation');
+  assert.match(html, /data-correct="true"[^>]*><span[^>]*>B<\/span><span class="min-w-0 flex-1">Đúng vì khách đang chờ\.<\/span>/);
+  assert.match(html, new RegExp(`<span class="sr-only">${workspaceCopy[locale].correct}</span>`));
+  assert.equal((html.match(/data-correct="true"/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /text-\[20px\]|Cửa hàng có hai việc gấp:\n/);
+  const old = renderDetail(detail('problem', { ...data, question: 'Câu hỏi cũ?', explanation: 'Giải thích cũ.' }), locale);
+  assert.match(old, /<p class="font-semibold">Câu hỏi cũ\?<\/p>/);
+  assert.match(old, /<div data-quiz-explanation=""[^>]*><p>Giải thích cũ\.<\/p><\/div>/, 'an old quiz looks as before');
+});
+
 test('FAQ, order, crossword and aggregate fields show actual data in review cards without protected item IDs', () => {
   assert.match(renderDetail(detail('la_faq', { items: [{ id: 'hidden-id', question: 'Q one', answer: 'A one' }, { id: 2, question: 'Q two', answer: 'A two' }] })), /A one/);
   const order = renderDetail(detail('la_sortable', { question_text: 'Order task', items: ['First', 'Second', 'Third'].map((text, id) => ({ id, text })) }));

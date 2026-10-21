@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -53,7 +53,10 @@ function load(filename) {
       return React.createElement('section', { 'data-diagram-editor': true }, props.displayName);
     } };
     if (specifier.endsWith('DiagramPreviewInteractive')) return { __esModule: true, default: () => null };
-    if (specifier.startsWith('.')) return load(path.resolve(path.dirname(filename), `${specifier}.tsx`));
+    if (specifier.startsWith('.')) {
+      const base = path.resolve(path.dirname(filename), specifier);
+      return load(existsSync(`${base}.tsx`) ? `${base}.tsx` : `${base}.ts`);
+    }
     return require(specifier);
   };
   new Function('require', 'module', 'exports', output)(localRequire, module, module.exports);
