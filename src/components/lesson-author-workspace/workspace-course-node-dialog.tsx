@@ -8,6 +8,7 @@ import { secureRandomUuid } from '../../utils/random-uuid';
 import { createWorkspaceApplyClient, workspaceApplyErrorMessage, WorkspaceApplyError } from '../../api/workspace-apply';
 import type { WorkspaceLocale, WorkspaceNode } from '../../api/lesson-author-workspace.contract';
 import { WorkspaceApplyConflictDialog } from './workspace-apply-conflict-dialog';
+import { runWorkspaceApplyFlight, useWorkspaceApplyFlight, workspaceApplyFlights } from './workspace-apply-flight';
 import { workspaceAppliedNote } from './workspace-sharing';
 import { WorkspaceNodeTypePill } from './workspace-graph-node';
 import { WorkspaceAuthorReviewCards, WorkspaceDetailContent, WorkspaceNotGeneratedNotice, workspaceDetailStats, workspaceNodeNotGenerated, workspaceRunEnded } from './workspace-node-detail';
@@ -74,29 +75,43 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
   const applyScope = workspaceApplyScope(presentationRead?.graph?.nodes ?? [], node.node_id);
   const canApply = host.canApply() && !!detail && !!applyScope && applyScope.content_state === 'content_ready'
     && !appliedReadOnly && !!state.launch && !!workspace.read.status && !workspace.read.stale && !workspace.writeBusy;
+  // One Apply per workspace at a time, kept across closing/reopening dialogs:
+  // while it runs every Apply button of the workspace is "Applying…" and disabled.
+  const applying = useWorkspaceApplyFlight(state.launch?.workspace_id ?? null);
+  const applyingHere = applying?.nodeId === node.node_id;
   const apply = async (draft?: NonNullable<typeof editor.draft>, expectedRevision?: number, changed = false, overwriteConfirmation?: string) => {
-    if (!canApply || !state.launch || !workspace.read.status || !applyScope) return;
-    setActionError(false); setApplyError(null); setApplyState('busy');
-    try {
-      const client = createWorkspaceApplyClient({ courseId: state.launch.course_id, conversationId: state.launch.conversation_id, workspaceId: state.launch.workspace_id });
-      const confirmedScope = await saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
+    if (!canApply || applying || !state.launch || !workspace.read.status || !applyScope) return;
+    const launch = state.launch;
+    // The outcome belongs to this node's dialog only; another one may be open by then.
+    const shown = () => session.getState().read.selectedNodeId === node.node_id;
+    setActionError(false); setApplyError(null); setApplyState('idle');
+    const client = createWorkspaceApplyClient({ courseId: launch.course_id, conversationId: launch.conversation_id, workspaceId: launch.workspace_id });
+    await runWorkspaceApplyFlight({ flights: workspaceApplyFlights, workspaceId: launch.workspace_id, nodeId: node.node_id,
+      send: () => saveThenApplyWorkspaceScope({ session, selectedNodeId: node.node_id, draft, expectedRevision, changed,
         assertCanWrite: () => host.assertCanApply(),
-        apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, secureRandomUuid(), sequence, locale, overwriteConfirmation); } });
-      const confirmedGraph = session.getState().read.graph;
-      const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
-      completeWorkspaceApplyUi({ markApplied: () => {
-        setAppliedOverlay(current => ({ workspaceId: state.launch!.workspace_id,
-          revisions: { ...(current?.workspaceId === state.launch!.workspace_id ? current.revisions : {}), ...confirmedRevisions } }));
-        setApplyState('done');
+        apply: async (scopeNodeId, sequence) => { await client(scopeNodeId, secureRandomUuid(), sequence, locale, overwriteConfirmation); } }),
+      applied: confirmedScope => {
+        const confirmedGraph = session.getState().read.graph;
+        const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
+        completeWorkspaceApplyUi({ markApplied: () => {
+          setAppliedOverlay(current => ({ workspaceId: launch.workspace_id,
+            revisions: { ...(current?.workspaceId === launch.workspace_id ? current.revisions : {}), ...confirmedRevisions } }));
+          if (shown()) setApplyState('done');
+        },
+          refreshWorkspace: () => session.refreshForApply(), refreshCourse: onCourseApplied });
       },
-        refreshWorkspace: () => session.refreshForApply(), refreshCourse: onCourseApplied });
-    } catch (error) {
-      // Edited/moved course parts: list them in a dialog (replace only after confirmation).
-      if (error instanceof WorkspaceApplyError && error.conflict) { setApplyConflict({ nodeId: node.node_id, code: error.code, conflict: error.conflict }); setApplyState('idle'); }
-      else if (error instanceof WorkspaceApplyError) { setApplyError(error); setApplyState('failed'); }
-      else { setActionError(true); setApplyState('failed'); }
-    }
+      failed: error => {
+        // Edited/moved course parts: list them in a dialog (replace only after confirmation).
+        if (error instanceof WorkspaceApplyError && error.conflict) { setApplyConflict({ nodeId: node.node_id, code: error.code, conflict: error.conflict }); return; }
+        if (!(error instanceof WorkspaceApplyError)) setActionError(true);
+        if (!shown()) return;
+        setApplyError(error instanceof WorkspaceApplyError ? error : null); setApplyState('failed');
+      },
+      // The draft or course changed: reload so the next Apply sends the fresh event head.
+      reload: () => act(() => session.refreshForApply()),
+    });
   };
+  const applyLabel = applying && !applyingHere ? c.applying : workspaceScopeApplyLabel(node.kind, locale, applyingHere);
   const unitRecovery = node.kind === 'unit' ? recovery.unitAction(node.node_id, 'detail') : null;
   const readOnlyDetail = !!detail && !workspaceNodeSupportsEditor(detail.kind);
   const DetailIcon = detail?.component_type === 'la_diagram' ? Network : readOnlyDetail ? Eye : BookOpenCheck;
@@ -137,8 +152,8 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
         {detail && !editorCapable && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }}
           className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/30 to-background px-4 py-4 sm:px-6 sm:py-6"><div className="mx-auto max-w-5xl"><WorkspaceDetailContent detail={detail} locale={locale} stats={stats} /></div></motion.div>}
         {detail && !editorCapable && canApply && <div className="flex shrink-0 justify-end border-t border-border/70 bg-card/95 px-5 py-4 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-          <Button type="button" className="h-10 gap-2 rounded-xl px-5 shadow-md shadow-primary/20" disabled={applyState === 'busy'} onClick={() => { void apply(); }}>
-            <Sparkles className="h-4 w-4" />{workspaceScopeApplyLabel(node.kind, locale, applyState === 'busy')}
+          <Button type="button" className="h-10 gap-2 rounded-xl px-5 shadow-md shadow-primary/20" disabled={!!applying} onClick={() => { void apply(); }}>
+            <Sparkles className="h-4 w-4" />{applyLabel}
           </Button>
         </div>}
         {unitRecovery && <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/70 bg-card/95 px-5 py-4">{unitRecovery}</div>}
@@ -147,8 +162,8 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
           onSave={(value, revision) => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => { host.assertCanWrite(); editor.onSave(value, revision); }); }}
           onReset={revision => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => { host.assertCanWrite(); editor.onReset(revision); }); }}
           onApply={applyScope ? (value, revision, changed) => { setEditingTitleNodeId(null); void apply(value, revision, changed); } : undefined}
-          applyLabel={workspaceScopeApplyLabel(node.kind, locale)} applyingLabel={workspaceScopeApplyLabel(node.kind, locale, true)}
-          applyBusy={applyState === 'busy'} applyDisabled={!canApply} readOnly={appliedReadOnly}
+          applyLabel={applyLabel} applyingLabel={workspaceScopeApplyLabel(node.kind, locale, true)}
+          applyBusy={applyingHere} applyDisabled={!canApply || !!applying} readOnly={appliedReadOnly}
           titleInHeader={hierarchyTitle} reviewContent={hierarchyTitle
             ? <WorkspaceDetailContent detail={detail!} locale={locale} stats={stats} />
             : detail?.kind === 'component' ? <WorkspaceAuthorReviewCards detail={detail} locale={locale} /> : undefined} />}
@@ -167,7 +182,7 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
       </div>
     </DialogContent>
     {applyConflict?.nodeId === node.node_id && <WorkspaceApplyConflictDialog code={applyConflict.code} conflict={applyConflict.conflict} locale={locale}
-      busy={applyState === 'busy'} onClose={() => setApplyConflict(null)} onConfirm={() => {
+      busy={!!applying} onClose={() => setApplyConflict(null)} onConfirm={() => {
         const token = applyConflict.conflict.overwrite_confirmation; setApplyConflict(null);
         if (token) void apply(undefined, undefined, false, token);
       }} />}

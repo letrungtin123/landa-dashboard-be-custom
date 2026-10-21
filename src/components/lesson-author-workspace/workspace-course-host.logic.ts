@@ -20,7 +20,7 @@ export const workspaceCourseHostCopy = {
     rebase: 'Keep my local edits against this saved revision', discard: 'Discard local edits', compare: 'Compare the saved content above with your local edits before choosing.',
     waiting: 'Waiting for an authorized detail read.', error: 'The action could not be completed. Reload saved state.', detail: 'Draft content', review: 'Review and edit committed draft content. Publishing remains separate.',
     readOnlyReview: 'AI design analysis for review.', appliedReview: 'This content has been added to the course and is now view-only.',
-    editTitle: 'Edit name', aiInsight: 'AI design insight', sessions: 'Draft list' },
+    editTitle: 'Edit name', aiInsight: 'AI design insight', sessions: 'Draft list', applying: 'Applying…' },
   vi: { label: 'AI Instructional Design', title: 'AI Instructional Design · Thiết kế khoá học', open: 'Mở bản thiết kế khoá học AI Instructional Design', close: 'Đóng', loading: 'Đang tải bản thiết kế khoá học được phép truy cập…',
     discovery_unavailable: 'Chưa kết nối API tìm bản thiết kế khoá học. Trợ lý soạn bài và tải tài liệu hiện tại vẫn sử dụng được.',
     no_workspace: 'Khóa học chưa có bản thiết kế khả dụng. Chưa tạo nội dung nào.',
@@ -34,11 +34,12 @@ export const workspaceCourseHostCopy = {
     rebase: 'Giữ bản sửa cục bộ trên phiên bản đã lưu này', discard: 'Bỏ bản sửa cục bộ', compare: 'So sánh nội dung đã lưu bên trên với bản sửa cục bộ trước khi chọn.',
     waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thiết kế khoá học', review: 'Duyệt và sửa nội dung bản thiết kế khoá học đã ghi nhận. Xuất bản là thao tác riêng.',
     readOnlyReview: 'Phân tích thiết kế do AI đề xuất để bạn rà soát.', appliedReview: 'Nội dung này đã được đưa vào khóa học và hiện chỉ cho phép xem.',
-    editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI', sessions: 'Danh sách bản thiết kế khoá học' },
+    editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI', sessions: 'Danh sách bản thiết kế khoá học', applying: 'Đang áp dụng…' },
 } as const;
 
-/** Apply button state of the node detail dialog. */
-export type WorkspaceApplyUiState = 'idle' | 'busy' | 'done' | 'failed';
+/** Outcome of the last Apply shown in the node detail dialog. A running Apply
+ * is the workspace flight (workspace-apply-flight.ts), which outlives the dialog. */
+export type WorkspaceApplyUiState = 'idle' | 'done' | 'failed';
 /** Edited or moved course parts the server listed for one Apply; replaced only after confirmation. */
 export interface WorkspaceApplyConflictState { nodeId: string; code: WorkspaceApplyCode; conflict: WorkspaceApplyConflict }
 

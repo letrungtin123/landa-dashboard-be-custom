@@ -380,6 +380,46 @@ test('hierarchy nodes remain review-only before and after Apply', async () => {
     } finally { f.host.dispose(); }
   }
 });
+// The Apply button (Sparkles icon) of the open node dialog: disabled flag and visible text.
+const applyButton = html => {
+  const button = (html.match(/<button[^>]*>[^]*?<\/button>/g) ?? []).find(item => item.includes('lucide-sparkles'));
+  return button ? { disabled: button.startsWith('<button disabled=""'), label: button.replace(/<[^>]+>/g, '') } : null;
+};
+test('a running Apply survives closing and reopening: every Apply button of the workspace says Applying… and is disabled', async () => {
+  const { workspaceApplyFlights } = load('./workspace-apply-flight.ts');
+  const chapter = { kind: 'chapter', parent_id: id(5), canonical_path: 'chapter_1', sort_order: 1 };
+  const f = fixture({ nodePatch: chapter, detailPatch: chapter });
+  const releases = [];
+  try {
+    await f.host.launch(); const session = f.host.getSession(); await session.selectNode(f.node.node_id);
+    assert.deepEqual(applyButton(render(f)), { disabled: false, label: 'Apply entire chapter' });
+    // The author applies this chapter, closes its dialog and opens it again: still running.
+    releases.push(workspaceApplyFlights.begin(launch.workspace_id, f.node.node_id));
+    await session.selectNode(null); await session.selectNode(f.node.node_id);
+    assert.deepEqual(applyButton(render(f)), { disabled: true, label: 'Applying chapter…' });
+    assert.deepEqual(applyButton(render(f, 'vi')), { disabled: true, label: 'Đang áp dụng cả chương…' });
+    // ... closes the whole workspace and opens it again.
+    f.host.close(); assert.equal(render(f), '');
+    await f.host.launch(); await f.host.getSession().selectNode(f.node.node_id);
+    assert.deepEqual(applyButton(render(f)), { disabled: true, label: 'Applying chapter…' });
+    releases.pop()();
+    assert.deepEqual(applyButton(render(f)), { disabled: false, label: 'Apply entire chapter' }, 'usable again once it settled');
+    // Another chapter of this workspace is running: this one waits, saying plainly "Applying…".
+    releases.push(workspaceApplyFlights.begin(launch.workspace_id, id(77)));
+    assert.deepEqual(applyButton(render(f)), { disabled: true, label: 'Applying…' });
+    assert.deepEqual(applyButton(render(f, 'vi')), { disabled: true, label: 'Đang áp dụng…' });
+    releases.pop()();
+    // An Apply of another workspace (another session) does not block this one.
+    releases.push(workspaceApplyFlights.begin(id(78), id(79)));
+    assert.deepEqual(applyButton(render(f)), { disabled: false, label: 'Apply entire chapter' });
+  } finally { for (const release of releases) release?.(); f.host.dispose(); }
+});
+test('course host copy: VI and EN have the same keys; a waiting Apply button says Applying…', () => {
+  const { workspaceCourseHostCopy } = load('./workspace-course-host.logic.ts');
+  assert.deepEqual(Object.keys(workspaceCourseHostCopy.vi).sort(), Object.keys(workspaceCourseHostCopy.en).sort());
+  assert.equal(workspaceCourseHostCopy.vi.applying, 'Đang áp dụng…');
+  assert.equal(workspaceCourseHostCopy.en.applying, 'Applying…');
+});
 test('server read-only launch renders authorized preview without edit controls', async () => {
   const f = fixture({ resolve: async () => ({ ...launch, can_edit: false }) });
   try {
