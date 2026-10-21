@@ -123,7 +123,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
     <WorkspaceOrgProfileFields draft={synced.draft} review={review} changed={changed} disabled={!actions.editable} locale={locale}
       onChange={draft => { setNotice(null); setEditor(current => ({ ...current, draft })); }} />
 
-    <div className="sticky bottom-0 z-10 -mx-4 space-y-2 border-t bg-card/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
+    <div className="sticky -bottom-5 z-10 -mx-4 space-y-2 border-t border-border/70 bg-card px-4 pt-3 pb-4 shadow-[0_-12px_24px_-18px_rgba(0,0,0,0.55)] sm:-mx-5 sm:px-5">
       {error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
         <span className="min-w-0 flex-1">{error.text}</span>{error.conflict && reloadButton}</div>}
       {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</p>}
