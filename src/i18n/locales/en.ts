@@ -2249,7 +2249,6 @@ export const en: TranslationSchema<typeof vi> = {
     uploadTypes: "PDF, Word, PowerPoint, text or CSV, up to 50 MB per file. One file at a time.",
     uploading: "Uploading… {{percent}}%",
     uploadingWait: "Uploading…",
-    uploaded: "Uploaded. AI is reading the document; this page updates by itself.",
     empty: "No documents yet. Upload a document that introduces your organization.",
     status: {
       learning: "Reading",

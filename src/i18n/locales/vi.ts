@@ -2246,7 +2246,6 @@ export const vi = {
     uploadTypes: "PDF, Word, PowerPoint, văn bản hoặc CSV, tối đa 50 MB mỗi tệp. Mỗi lần một tệp.",
     uploading: "Đang tải lên… {{percent}}%",
     uploadingWait: "Đang tải lên…",
-    uploaded: "Đã tải lên. AI đang đọc tài liệu, trang sẽ tự cập nhật.",
     empty: "Chưa có tài liệu nào. Hãy tải lên tài liệu giới thiệu doanh nghiệp.",
     status: {
       learning: "Đang đọc",

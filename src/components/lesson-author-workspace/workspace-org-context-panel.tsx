@@ -31,7 +31,7 @@ export function WorkspaceOrgContextPanel({ state, tenantId, locale, onReload }: 
   const upload = useOrgContextUpload(tenantId);
   const remove = useOrgContextDeleteDocument(tenantId);
   const [progress, setProgress] = useState<number | null>(null);
-  const [uploadNote, setUploadNote] = useState<{ error: boolean; text: string } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Readonly<OrgContextDocument> | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const usage = orgContextUsage(state.used_bytes, state.limit_bytes);
@@ -40,17 +40,17 @@ export function WorkspaceOrgContextPanel({ state, tenantId, locale, onReload }: 
   const errorText = (failure: unknown) => orgContextErrorText(t, failure, locale, state.limit_bytes);
 
   const choose = (file: File) => {
-    setUploadNote(null);
+    setUploadError(null);
     const problem = orgContextUploadProblem(file, { usedBytes: state.used_bytes, limitBytes: state.limit_bytes });
     if (problem) {
-      setUploadNote({ error: true, text: problem === 'file' ? t('aiIdOrgContext.errors.fileInvalid')
-        : t('aiIdOrgContext.errors.limitReached', { limit: formatOrgContextMegabytes(state.limit_bytes, locale) }) });
+      setUploadError(problem === 'file' ? t('aiIdOrgContext.errors.fileInvalid')
+        : t('aiIdOrgContext.errors.limitReached', { limit: formatOrgContextMegabytes(state.limit_bytes, locale) }));
       return;
     }
     setProgress(null);
+    // A finished upload shows only as the new document's own status in the list.
     upload.mutate({ file, onProgress: setProgress }, {
-      onSuccess: () => setUploadNote({ error: false, text: t('aiIdOrgContext.uploaded') }),
-      onError: failure => setUploadNote({ error: true, text: errorText(failure) }),
+      onError: failure => setUploadError(errorText(failure)),
     });
   };
   const confirmDelete = () => {
@@ -92,8 +92,7 @@ export function WorkspaceOrgContextPanel({ state, tenantId, locale, onReload }: 
         <p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.uploadTypes')}</p>
         {upload.isPending && <p role="status" className="text-xs text-muted-foreground">{progress === null ? t('aiIdOrgContext.uploadingWait')
           : t('aiIdOrgContext.uploading', { percent: progress })}</p>}
-        {uploadNote && <p role={uploadNote.error ? 'alert' : 'status'}
-          className={`text-sm ${uploadNote.error ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400'}`}>{uploadNote.text}</p>}
+        {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
       </div>
 
       <div className="min-w-0">

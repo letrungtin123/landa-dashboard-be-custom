@@ -107,6 +107,17 @@ for (const locale of ['vi', 'en']) test(`${locale}: context tab shows the space 
     [['Tai-lieu-1.pdf', false], ['Tai-lieu-2.pdf', true], ['Tai-lieu-3.pdf', false]], 'a document being read cannot be deleted yet');
 });
 
+test('a finished upload adds no note under the button: the new document shows its own status in the list', () => {
+  // QC 21/10 (C3): "Đã tải lên. AI đang đọc tài liệu, trang sẽ tự cập nhật." is gone; the row status stays.
+  const source = readFileSync(path.join(directory, 'workspace-org-context-panel.tsx'), 'utf8');
+  assert.doesNotMatch(source, /aiIdOrgContext\.uploaded|upload\.mutate\([^;]*onSuccess|text-emerald-700 dark:text-emerald-400'\}`\}>\{upload/,
+    'only a failed upload writes a note');
+  for (const locale of ['vi', 'en']) assert.equal(locales[locale].aiIdOrgContext.uploaded, undefined, locale);
+  const words = text(panel(state(), 'vi'));
+  assert.doesNotMatch(words, /AI đang đọc tài liệu, trang sẽ tự cập nhật/);
+  assert.ok(words.includes('Đang đọc') && words.includes('Đã đọc'), 'the per-document status is kept');
+});
+
 for (const locale of ['vi', 'en']) test(`${locale}: profile card shows the status, 7 editors with counters and the 6000 total, and the right buttons`, () => {
   const vi = locale === 'vi', html = panel(state(), locale), words = text(html);
   assert.ok(words.includes(vi ? 'Trạng thái: Bản nháp chưa xác nhận' : 'Status: Draft, not confirmed'));
