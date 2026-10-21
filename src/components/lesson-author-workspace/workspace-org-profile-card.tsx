@@ -113,6 +113,9 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
         {t('aiIdOrgContext.profile.manualEntry')}</Button>
     </div>}
 
+    {!editing && error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+      <span className="min-w-0 flex-1">{error.text}</span>{error.conflict && reloadButton}</div>}
+
     {stale && !error && <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm">
       <span className="min-w-0 flex-1">{t('aiIdOrgContext.errors.conflict')}</span>{reloadButton}</div>}
 
