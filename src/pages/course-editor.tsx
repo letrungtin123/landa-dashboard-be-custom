@@ -17,7 +17,6 @@ import { Check, X, Pencil, BookOpen } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/tooltip';
 import { getLocalizedApiError } from '@/utils/localized-error';
 import { useCourseWorkspaceHost } from '@/components/lesson-author-workspace/workspace-course-host';
-import { courseAuthorNotesQueryKey } from '@/api/course-author-notes';
 import type { WorkspaceLaunchResolver } from '@/api/workspace-launch.contract';
 import {
   publishLessonAuthorEditorContext,
@@ -226,8 +225,6 @@ export default function CourseEditorPage({ workspaceLaunch }: { workspaceLaunch?
   const handleStructureChange = useCallback(async () => {
     if (!courseId) return;
     const outlineKey = ['course-outline-index', courseId] as const;
-    // AI ID Apply also writes author notes; refresh them with the outline.
-    void queryClient.invalidateQueries({ queryKey: courseAuthorNotesQueryKey(courseId), exact: true });
     await queryClient.invalidateQueries({ queryKey: outlineKey, exact: true });
     await queryClient.refetchQueries({ queryKey: outlineKey, exact: true, type: 'active' });
   }, [courseId, queryClient]);

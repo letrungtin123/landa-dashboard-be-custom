@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -23,6 +23,21 @@ test('create and edit course dialogs show no AI ID note at the description field
 
 test('saving the course name and description refreshes what the course editor shows', () => {
   const saved = edit.slice(edit.indexOf('const saveMut'), edit.indexOf('onError'));
-  assert.match(saved, /invalidateQueries\(\{ queryKey: courseAuthorNotesQueryKey\(course\.id\), exact: true \}\)/);
   assert.match(saved, /invalidateQueries\(\{ queryKey: \['course-outline-index', course\.id\], exact: true \}\)/);
+});
+
+test('the course editor has no "AI ID notes for authors" panel any more', () => {
+  // QC 21/10 (C9): the panel and its read are gone; review warnings stay in the AI ID window ("Chờ duyệt").
+  const src = path.resolve(directory, '..');
+  assert.equal(existsSync(path.join(src, 'components/course-editor/AiAuthorNotes.tsx')), false);
+  assert.equal(existsSync(path.join(src, 'api/course-author-notes.ts')), false);
+  for (const file of ['components/course-editor/UnitEditor.tsx', 'pages/course-editor.tsx', 'pages/courses.tsx']) {
+    assert.doesNotMatch(readFileSync(path.join(src, file), 'utf8'), /AiAuthorNotes|courseAuthorNotes|course-author-notes/, file);
+  }
+  for (const locale of ['vi', 'en']) {
+    const copy = readFileSync(path.join(src, `i18n/locales/${locale}.ts`), 'utf8');
+    assert.doesNotMatch(copy, /aiAuthorNotes:|Ghi chú AI ID cho tác giả|AI ID notes for authors/, locale);
+  }
+  const host = readFileSync(path.join(src, 'components/lesson-author-workspace/workspace-course-host.tsx'), 'utf8');
+  assert.match(host, /overviewNotice=\{state\.launch && workspaceReviewRequired\(presentationRead\?\.status\) \? <WorkspaceReviewPanel/);
 });
