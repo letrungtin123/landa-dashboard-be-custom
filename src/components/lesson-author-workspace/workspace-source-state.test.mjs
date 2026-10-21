@@ -12,6 +12,7 @@ function load(path){
   new Function('require','module','exports',output)(require,module,module.exports);modules.set(url.href,module.exports);return module.exports;
 }
 const {createWorkspaceSourceState}=load('./workspace-source-state.ts');
+const {SOURCE_DELETE_SETTLE_DELAYS_MS,workspaceSourceDeleteIssue}=load('./workspace-source.logic.ts');
 const {createWorkspaceCreateClient,WorkspaceCreateError}=load('../../api/workspace-create.ts');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 function fixture(){
@@ -21,14 +22,15 @@ function fixture(){
   const conv={id:id(6),user_id:id(1),tenant_id:id(2),course_id:scope.courseId,target:'lesson_author',bot_id:id(3)};
   const conversations=[conv];
   const docs=[{document_id:id(7),kb_id:id(4),name:'Synthetic.pdf',status:'learned'}];
-  const state={authorized:true,visible:true,unknown:false,creates:0,conversations:0,uploads:0,video:0,documentReads:0,settingsReads:0,waits:0};
+  const state={authorized:true,visible:true,unknown:false,creates:0,conversations:0,uploads:0,video:0,documentReads:0,settingsReads:0,waits:0,canDelete:false,deletes:[]};
   const results=[],requests=[];
   const streams=[];
   const api={settings:async()=>{state.settingsReads++;return settings;},documents:async()=>{state.documentReads++;return docs;},conversations:async()=>conversations,createConversation:async()=>{state.conversations++;return conv;},
     upload:async()=>{state.uploads++;return{results:[{success:true,data:{id:id(12),kb_id:id(4),name:'Uploaded.pdf',status:'learning',source_info:{extension:'pdf'}}}]};},
     video:async()=>{state.video++;return{job:{id:id(8),conversation_id:id(6),status:'queued',kb_document_id:null}};},
-    transcript:async()=>{throw Error('unexpected');},commitTranscript:async()=>{throw Error('unexpected');}};
-  const controller=createWorkspaceSourceState(scope,{api,authorized:()=>state.authorized,visible:()=>state.visible,canUpload:()=>true,
+    transcript:async()=>{throw Error('unexpected');},commitTranscript:async()=>{throw Error('unexpected');},
+    deleteDocument:async(kbId,docId)=>{state.deletes.push(['one',kbId,docId]);},bulkDeleteDocuments:async(kbId,ids)=>{state.deletes.push(['bulk',kbId,ids]);return{deleted:ids.length};}};
+  const controller=createWorkspaceSourceState(scope,{api,authorized:()=>state.authorized,visible:()=>state.visible,canUpload:()=>true,canDelete:()=>state.canDelete,
     operationId:()=>id(9),locale:'vi',wait:async()=>{state.waits++;},onCreated:r=>results.push(r),stream:(scope,deps)=>{const item={scope,deps,started:0,closed:0};streams.push(item);return{start(){item.started++;},close(){item.closed++;}};},create:async(...args)=>{state.creates++;requests.push(args);
       if(state.unknown)throw new WorkspaceCreateError('unknown','UNCONFIRMED');
       return{workspace_id:id(10),conversation_id:id(6),course_id:scope.courseId,content_locale:args[1].content_locale,correlation_id:id(11)};}});
@@ -157,4 +159,97 @@ test('source panel copy has a plain Try again action and no technical words',()=
   assert.match(copy,/refresh: 'Thử lại'/);assert.match(copy,/refresh: 'Try again'/);
   assert.match(copy,/connection: 'Tạm thời chưa kết nối được máy chủ/);
   assert.match(panel,/state\.issue === 'connection'/);
+});
+
+// ── Delete documents from the knowledge base (QC 21/10, C4 / contract K5) ──
+const doc=(n,status='learned')=>({document_id:id(n),kb_id:id(4),name:`Doc-${n}.pdf`,status});
+const refusal=(status,code)=>Object.assign(Error(String(status)),{response:{status,data:code?{code,message:'Thông báo máy chủ'}:{}}});
+const removeFrom=(docs,ids)=>{for(const docId of ids){const at=docs.findIndex(d=>d.document_id===docId);if(at>=0)docs.splice(at,1);}};
+test('delete: without the knowledge base delete permission there are no controls and nothing is sent',async()=>{
+  const f=fixture();await f.controller.refresh();
+  assert.equal(f.controller.getState().canDelete,false);
+  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),{issue:'forbidden',kept:0});
+  assert.deepEqual(f.state.deletes,[]);
+});
+test('delete one: the knowledge base delete route, one list re-read, the deleted source unselected, never Create',async()=>{
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));
+  await f.controller.refresh();assert.equal(f.controller.getState().canDelete,true);
+  f.controller.select(id(7));
+  f.api.deleteDocument=async(kbId,docId)=>{f.state.deletes.push(['one',kbId,docId]);removeFrom(f.docs,[docId]);};
+  const reads=f.state.documentReads;
+  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),{issue:null,kept:0});
+  assert.deepEqual(f.state.deletes,[['one',id(4),id(7)]],'the active AI ID knowledge base, exact document');
+  assert.equal(f.state.documentReads,reads+1,'the list had already settled');
+  const s=f.controller.getState();
+  assert.deepEqual(s.documents.map(d=>d.document_id),[id(20)]);
+  assert.deepEqual([s.selectedId,s.busy,s.phase,s.ready,s.issue],[null,false,'idle',true,null]);
+  await f.controller.create();
+  assert.equal(f.state.creates,0,'no source is chosen any more');assert.equal(f.controller.getState().issue,'source_not_ready');
+});
+test('delete several: one bulk request; another selected document and the brief stay; documents being read are never sent',async()=>{
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20),doc(21),doc(22,'learning'));
+  await f.controller.refresh();f.controller.select(id(7));f.controller.setBrief({course_purpose:'Mục đích mới'});
+  f.api.bulkDeleteDocuments=async(kbId,ids)=>{f.state.deletes.push(['bulk',kbId,ids]);removeFrom(f.docs,ids);return{deleted:ids.length,queued:ids.length};};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(21),id(22),id(20)]),{issue:null,kept:0});
+  assert.deepEqual(f.state.deletes,[['bulk',id(4),[id(20),id(21)]]]);
+  const s=f.controller.getState();
+  assert.equal(s.selectedId,id(7));assert.equal(s.brief.course_purpose,'Mục đích mới');
+  assert.deepEqual(s.documents.map(d=>d.document_id),[id(7),id(22)]);
+  await f.controller.create();assert.equal(f.state.creates,1,'Create still works with the kept selection');
+});
+test('a queued delete is followed until the list no longer shows it, and the following is bounded',async()=>{
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));await f.controller.refresh();
+  let pending=2;const documents=f.api.documents;
+  f.api.documents=async()=>{const list=await documents();return pending-->0?list:list.filter(d=>d.document_id!==id(20));};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),{issue:null,kept:0});
+  assert.equal(f.state.waits,2,'re-read twice while the queue finishes');
+  assert.deepEqual(f.controller.getState().documents.map(d=>d.document_id),[id(7)]);
+  const stuck=fixture();stuck.state.canDelete=true;stuck.docs.push(doc(20));await stuck.controller.refresh();
+  assert.deepEqual(await stuck.controller.deleteDocuments([id(20)]),{issue:null,kept:1},'a document that stays is reported, not followed forever');
+  assert.equal(stuck.state.waits,SOURCE_DELETE_SETTLE_DELAYS_MS.length);
+  assert.equal(stuck.controller.getState().busy,false);
+});
+test('a bulk delete the server partly skipped reports how many documents stay, without waiting for them',async()=>{
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20),doc(21));await f.controller.refresh();
+  f.api.bulkDeleteDocuments=async(_kbId,ids)=>{removeFrom(f.docs,[ids[0]]);return{deleted:1,queued:1};};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(21)]),{issue:null,kept:1});
+  assert.equal(f.state.waits,0);
+  assert.deepEqual(f.controller.getState().documents.map(d=>d.document_id),[id(7),id(21)]);
+});
+test('a document AI is using is not deleted: a plain refusal, the selection and the list stay, nothing is followed',async()=>{
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));await f.controller.refresh();f.controller.select(id(20));
+  f.api.deleteDocument=async()=>{throw refusal(409,'KB_DOCUMENT_IN_USE_BY_AI_ID');};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),{issue:'in_use',kept:0});
+  f.api.bulkDeleteDocuments=async()=>{throw refusal(409,'KB_DOCUMENT_IN_USE_BY_AI_ID');};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(7)]),{issue:'in_use',kept:0},'a refused bulk request deletes nothing');
+  const s=f.controller.getState();
+  assert.deepEqual([s.selectedId,s.ready,s.issue,s.busy,f.state.waits],[id(20),true,null,false,0]);
+  assert.deepEqual(s.documents.map(d=>d.document_id),[id(7),id(20)]);
+  await f.controller.create();assert.equal(f.state.creates,1,'Create is not broken by a refused delete');
+});
+test('delete refusals map to plain categories; an already deleted document counts as deleted',async()=>{
+  for(const [error,issue] of [[refusal(409,'KB_DOCUMENT_IN_USE_BY_AI_ID'),'in_use'],[refusal(409,'KB_DOCUMENT_LEARNING'),'learning'],
+    [refusal(403,'PERMISSION_DENIED'),'forbidden'],[refusal(401),'forbidden'],[refusal(500),'failed'],[refusal(409),'failed'],
+    [refusal(404),'gone'],[refusal(503),'connection'],[Object.assign(Error('Network Error'),{code:'ERR_NETWORK',request:{}}),'connection']]){
+    assert.equal(workspaceSourceDeleteIssue(error),issue,JSON.stringify(error.response??error.code));
+  }
+  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));await f.controller.refresh();
+  f.api.deleteDocument=async()=>{removeFrom(f.docs,[id(20)]);throw refusal(404);};
+  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),{issue:null,kept:0});
+  const lost=fixture();lost.state.canDelete=true;lost.docs.push(doc(20));await lost.controller.refresh();
+  lost.api.deleteDocument=async()=>{throw Object.assign(Error('Network Error'),{code:'ERR_NETWORK',request:{}});};
+  const reads=lost.state.documentReads;
+  assert.deepEqual(await lost.controller.deleteDocuments([id(20)]),{issue:'connection',kept:0});
+  assert.equal(lost.state.documentReads,reads+1,'after a lost answer the list is read once to show the truth');
+});
+test('a hidden panel, a revoked permission, a locked panel or a closed session never sends a delete',async()=>{
+  const f=fixture();f.state.canDelete=true;await f.controller.refresh();
+  f.state.visible=false;assert.deepEqual(await f.controller.deleteDocuments([id(7)]),{issue:'forbidden',kept:0});f.state.visible=true;
+  f.state.canDelete=false;assert.deepEqual(await f.controller.deleteDocuments([id(7)]),{issue:'forbidden',kept:0});f.state.canDelete=true;
+  assert.deepEqual(await f.controller.deleteDocuments([id(99)]),{issue:null,kept:0},'an id outside the list is ignored');
+  f.state.unknown=true;f.controller.select(id(7));await f.controller.create();
+  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),{issue:null,kept:0},'an unknown Create outcome locks the panel');
+  const closed=fixture();closed.state.canDelete=true;await closed.controller.refresh();closed.controller.dispose();
+  assert.deepEqual(await closed.controller.deleteDocuments([id(7)]),{issue:null,kept:0});
+  assert.deepEqual([...f.state.deletes,...closed.state.deletes],[]);
 });

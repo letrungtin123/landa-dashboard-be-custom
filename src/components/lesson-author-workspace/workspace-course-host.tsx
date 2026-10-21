@@ -109,6 +109,8 @@ export function useCourseWorkspaceHost(courseId: string | undefined, ready: bool
       visible: () => controller.getState().open && controller.getState().issue === 'no_workspace' && !controller.getState().launch && !controller.getState().loading,
       // AI course design upload needs only course editing (never the chatbot configuration module).
       canUpload: () => authorized(),
+      // Deleting a document needs the knowledge base page's own delete permission.
+      canDelete: () => authorized() && useAuthStore.getState().hasPermission('ai_chatbot', 'can_delete'),
       operationId: createLessonAuthorUploadAttemptId, locale, onCreated: value => controller.acceptCreated(value),
       stream: createWorkspaceSourceStreamClient,
     });

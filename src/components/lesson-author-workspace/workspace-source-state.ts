@@ -7,11 +7,15 @@ import { isWorkspaceLaunchBriefErrorCode, type WorkspaceHostScope, type Workspac
   type WorkspaceLaunchContext } from '../../api/workspace-launch.contract';
 import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, workspaceLaunchBriefFields, workspaceOrgContextOffer,
   workspaceOrgContextRequestField, type WorkspaceLaunchBriefDraft, type WorkspaceOrgContextChoice } from './workspace-launch-brief.logic';
+import { isTransientReadFailure, SOURCE_DELETE_SETTLE_DELAYS_MS, workspaceSourceDeletable, workspaceSourceDeleteIssue,
+  type WorkspaceSourceDeleteOutcome } from './workspace-source.logic';
 
 export interface WorkspaceSourceState {
   busy: boolean;
-  phase: 'idle' | 'reading' | 'uploading' | 'creating';
+  phase: 'idle' | 'reading' | 'uploading' | 'creating' | 'deleting';
   ready: boolean;
+  /** The author may delete documents from the knowledge base (same permission as the knowledge base page). */
+  canDelete: boolean;
   unknown: boolean;
   issue: 'unavailable' | 'connection' | 'source_not_ready' | 'source_failed' | 'invalid_file' | 'rejected' | 'unknown'
     | 'brief_rejected' | null;
@@ -36,15 +40,6 @@ export interface WorkspaceSourceState {
 const READ_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000] as const;
 const defaultWait = (ms: number) => new Promise<void>(resolve => { setTimeout(resolve, ms); });
 
-/** Network loss, timeout or a gateway/restart status: the request may simply
- * be retried. Any other status is an authoritative answer. */
-export function isTransientReadFailure(error: unknown): boolean {
-  const failure = error as { response?: { status?: number }; code?: unknown; request?: unknown } | null;
-  if (!failure || typeof failure !== 'object') return false;
-  if (failure.response) return [502, 503, 504].includes(Number(failure.response.status));
-  return failure.code === 'ERR_NETWORK' || failure.code === 'ECONNABORTED' || failure.code === 'ETIMEDOUT' || failure.request !== undefined;
-}
-
 /** No timer, restoration, effect or read can dispatch Create. The upload
  * receipt is rendered optimistically, then an exact-document SSE snapshot is
  * the only readiness authority for that upload. */
@@ -53,6 +48,8 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   create: ReturnType<typeof createWorkspaceCreateClient>;
   authorized: () => boolean;
   canUpload: () => boolean;
+  /** Live knowledge base delete permission; absent means no delete controls. The server checks it again. */
+  canDelete?: () => boolean;
   visible: () => boolean;
   operationId: () => string;
   onCreated: (context: WorkspaceLaunchContext) => void | Promise<void>;
@@ -69,7 +66,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
   let preferredConversationId: string | null = null, forceNewConversation = false;
   let sourceStream: SourceStreamClient | null = null, sourceStreamDocumentId: string | null = null, sourceStreamSerial = 0;
   const listeners = new Set<() => void>();
-  let state: Readonly<WorkspaceSourceState> = Object.freeze({ busy: false, phase: 'idle', ready: false, unknown: false, issue: null,
+  let state: Readonly<WorkspaceSourceState> = Object.freeze({ busy: false, phase: 'idle', ready: false, canDelete: false, unknown: false, issue: null,
     briefError: null, brief: DEFAULT_WORKSPACE_LAUNCH_BRIEF, organizationContext: null, documents: [], selectedId: null, conversation: null, transcript: null, progress: null, contentLocale: locale,
     sourceObservation: 'idle', operation: null });
   const emit = (patch: Partial<WorkspaceSourceState>) => {
@@ -78,6 +75,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     for (const listener of listeners) { try { listener(); } catch { /* View cannot dispatch work. */ } }
   };
   const allowed = () => !disposed && dependencies.authorized();
+  const canDelete = () => allowed() && (dependencies.canDelete?.() ?? false);
   const streamActive = () => allowed() && panelVisible && dependencies.visible();
   function assertActive() { if (!allowed() || !panelVisible || !dependencies.visible()) throw new WorkspaceCreateError('rejected', 'WORKSPACE_READ_FORBIDDEN'); }
   function stopSourceObservation(next: WorkspaceSourceState['sourceObservation'] = 'idle') {
@@ -184,7 +182,7 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
     // back to another conversation if it was deleted or became unauthorized.
     if (preferredConversationId && !forceNewConversation && !preferred) throw new Error('UNAVAILABLE');
     const conversation = forceNewConversation ? null : preferredConversationId ? preferred : retained ?? convs.find(owned) ?? null;
-    emit({ documents, conversation: conversation ? Object.freeze({ ...conversation }) : null, ready: true });
+    emit({ documents, conversation: conversation ? Object.freeze({ ...conversation }) : null, ready: true, canDelete: canDelete() });
   }
   async function conversation() {
     if (state.conversation && owned(state.conversation)) return state.conversation;
@@ -342,6 +340,53 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
           name: next.transcript_file_name, type: 'file', status: next.kb_document_status ?? 'learning' });
       } catch (error) { throw workspaceCreateFailure(error); }
     }, true),
+    /** Delete ready or failed documents from the knowledge base through its own delete routes (one or bulk,
+     * both queued), then re-read the list until they are gone. A deleted source is unselected; any other
+     * selection and the brief stay. Never dispatches Create. */
+    async deleteDocuments(documentIds: readonly string[]): Promise<WorkspaceSourceDeleteOutcome> {
+      const none: WorkspaceSourceDeleteOutcome = { issue: null, kept: 0 };
+      if (state.busy || state.unknown || disposed) return none;
+      const ids = [...new Set(documentIds)].filter(id => state.documents.some(d => d.document_id === id && workspaceSourceDeletable(d)));
+      if (!ids.length) return none;
+      if (!panelVisible || !dependencies.visible() || !canDelete() || !settings?.active_kb) return { issue: 'forbidden', kept: 0 };
+      const kbId = settings.active_kb.kb_id;
+      emit({ busy: true, phase: 'deleting' });
+      let outcome = none, accepted = ids.length;
+      try {
+        try {
+          if (ids.length === 1) await dependencies.api.deleteDocument(kbId, ids[0]);
+          else {
+            const result = await dependencies.api.bulkDeleteDocuments(kbId, ids);
+            accepted = Math.min(ids.length, Math.max(0, Number(result?.deleted) || 0));
+          }
+        } catch (error) {
+          // A refusal deletes nothing; after a lost answer the one list read below shows what happened.
+          const issue = workspaceSourceDeleteIssue(error);
+          if (issue !== 'gone') { outcome = { issue, kept: 0 }; accepted = 0; }
+        }
+        if (accepted > 0 && state.selectedId && ids.includes(state.selectedId)) {
+          stopSourceObservation();
+          emit({ selectedId: null, ...(state.issue === 'source_failed' || state.issue === 'source_not_ready' ? { issue: null } : {}) });
+        }
+        // The list is the authority: re-read until the accepted deletes are gone, bounded.
+        const mayRemain = ids.length - accepted;
+        for (let attempt = 0; ; attempt++) {
+          assertActive();
+          const documents = normalizeDocuments(await read(() => dependencies.api.documents())); assertActive();
+          emit({ documents });
+          const remaining = ids.filter(id => documents.some(d => d.document_id === id)).length;
+          if (remaining <= mayRemain || attempt >= SOURCE_DELETE_SETTLE_DELAYS_MS.length) {
+            if (!outcome.issue) outcome = { issue: null, kept: remaining };
+            break;
+          }
+          await wait(SOURCE_DELETE_SETTLE_DELAYS_MS[attempt]);
+        }
+      } catch (error) {
+        // The panel closed or the list could not be re-read: the next refresh shows the truth.
+        if (!disposed && !(error instanceof WorkspaceCreateError)) emit({ ready: false, issue: isTransientReadFailure(error) ? 'connection' : 'unavailable' });
+      } finally { emit({ busy: false, phase: 'idle' }); }
+      return outcome;
+    },
     dispose() {
       stopSourceObservation(); disposed = true; settings = null; listeners.clear();
       preferredConversationId = null; forceNewConversation = false;

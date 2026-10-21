@@ -29,6 +29,9 @@ const mocks = {
   '@/components/course-editor/AiAuthorNotes': { useCourseAuthorNotes: () => { env.notesRead = true; return null; } },
   '../ui/button': { Button: ({ children, disabled, onClick, ...props }) => h('button', { disabled, onClick, ...props }, children) },
   '../ui/textarea': { Textarea: props => h('textarea', props) },
+  // Portals render nothing in SSR: the delete confirmation is shown inline.
+  '../ui/dialog': { Dialog: ({ open, children }) => open ? h('div', { role: 'dialog' }, children) : null, DialogContent: ({ children }) => h('section', null, children),
+    DialogTitle: ({ children }) => h('h2', null, children), DialogDescription: ({ children }) => h('p', null, children) },
   'lucide-react': new Proxy({}, { get: () => () => h('i') }),
   './workspace-source-stream': {},
   '../../api/workspace-source-stream': {},
@@ -163,7 +166,7 @@ test('brief validation codes are definite rejections with plain messages; unknow
   assert.equal(workspaceCreateFailure({ response: { status: 400, data: { code: 'LESSON_AUTHOR_LAUNCH_OTHER' } } }).outcome, 'rejected');
 });
 
-function controllerFixture() {
+function controllerFixture({ canDelete = false, documents = [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned' }] } = {}) {
   const scope = { actorId: id(1), tenantId: id(2), courseId: 'course-v1:TEST+BRIEF+2026' };
   const settings = { active_bot: { target: 'lesson_author', tenant_id: id(2), bot_id: id(3), ai_active_engine: 'self_built_rag' },
     active_kb: { target: 'lesson_author', tenant_id: id(2), kb_id: id(4) },
@@ -171,9 +174,9 @@ function controllerFixture() {
   const conv = { id: id(6), user_id: id(1), tenant_id: id(2), course_id: scope.courseId, target: 'lesson_author', bot_id: id(3) };
   const counts = { reads: 0, creates: 0 }, requests = [];
   let reply = null;
-  const api = { settings: async () => { counts.reads++; return settings; }, documents: async () => [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned' }],
+  const api = { settings: async () => { counts.reads++; return settings; }, documents: async () => documents,
     conversations: async () => [conv], createConversation: async () => conv };
-  const controller = createWorkspaceSourceState(scope, { api, authorized: () => true, visible: () => true, canUpload: () => true,
+  const controller = createWorkspaceSourceState(scope, { api, authorized: () => true, visible: () => true, canUpload: () => true, canDelete: () => canDelete,
     operationId: () => id(9), locale: 'vi', wait: async () => {}, onCreated: () => {}, stream: () => ({ start() {}, close() {} }),
     create: async (...args) => { counts.creates++; requests.push(args[1]);
       if (reply) throw reply;
@@ -476,4 +479,62 @@ test('controller: an organization context refusal is a definite, fixable refusal
     assert.equal(f.controller.getState().issue, null, 'turning the switch off clears the refusal');
     f.controller.setUseOrganizationContext(true);
   }
+});
+
+// ── "Chọn tài liệu đã sẵn sàng": delete from the knowledge base (QC 21/10, C4) ──
+const sourceDocs = [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned' },
+  { document_id: id(8), kb_id: id(4), name: 'Dang-doc.pdf', status: 'learning' }];
+const sourcePanel = (f, locale) => { env.locale = locale; return renderToStaticMarkup(h(WorkspaceSourcePanel, { controller: f.controller, locale })); };
+
+test('source list: delete controls only for authors with the knowledge base delete permission', async () => {
+  const plain = controllerFixture({ documents: sourceDocs }); await plain.controller.refresh();
+  const html = sourcePanel(plain, 'vi');
+  assert.doesNotMatch(html, /role="checkbox"|Xoá tài liệu|Chọn tất cả/);
+  assert.ok(html.includes('Nguon.pdf') && html.includes('Dang-doc.pdf'), 'the list itself is unchanged');
+  for (const locale of ['vi', 'en']) {
+    const f = controllerFixture({ canDelete: true, documents: sourceDocs }); await f.controller.refresh();
+    const allowed = sourcePanel(f, locale), vi = locale === 'vi';
+    assert.ok(allowed.includes(vi ? 'Chọn tất cả' : 'Select all'));
+    const label = vi ? 'Xoá tài liệu' : 'Delete the document';
+    const deletes = [...allowed.matchAll(new RegExp(`<button[^>]*aria-label="${label} ([^"]+)"[^>]*>`, 'g'))].map(m => [m[1], / disabled=""/.test(m[0])]);
+    assert.deepEqual(deletes, [['Nguon.pdf', false], ['Dang-doc.pdf', true]], 'a document still being read cannot be deleted yet');
+    const checks = [...allowed.matchAll(/<button[^>]*role="checkbox"[^>]*>/g)].map(m => m[0]);
+    assert.equal(checks.length, 3, 'select all and one per document');
+    assert.ok(checks.some(tag => tag.includes(`aria-label="${vi ? 'Chọn tài liệu Nguon.pdf để xoá' : 'Select the document Nguon.pdf to delete'}"`)));
+    assert.doesNotMatch(allowed, /KB_|\bKB\b|knowledge base id|document_id|00000000-/);
+    f.controller.dispose();
+  }
+  plain.controller.dispose();
+});
+
+test('one confirmation for one or several documents, in plain words, with the names', () => {
+  const { WorkspaceSourceDeleteConfirm } = load(path.join(directory, 'workspace-source-delete.tsx'));
+  const confirm = (names, locale, extra = {}) => { env.locale = locale; return renderToStaticMarkup(h(WorkspaceSourceDeleteConfirm,
+    { names, busy: false, error: null, onConfirm() {}, onClose() {}, ...extra })); };
+  let html = confirm(['Nguon.pdf'], 'vi');
+  assert.ok(html.includes('<h2>Xoá tài liệu này khỏi Kho tri thức?</h2>'));
+  assert.ok(html.includes('“Nguon.pdf”') && html.includes('>Xoá tài liệu</button>') && html.includes('>Huỷ</button>'));
+  html = confirm(Array.from({ length: 7 }, (_, i) => `Tai-lieu-${i + 1}.pdf`), 'vi');
+  assert.ok(html.includes('<h2>Xoá 7 tài liệu khỏi Kho tri thức?</h2>'));
+  assert.ok(html.includes('“Tai-lieu-1.pdf”, “Tai-lieu-2.pdf”, “Tai-lieu-3.pdf”, “Tai-lieu-4.pdf”, “Tai-lieu-5.pdf” và 2 tài liệu khác'));
+  assert.ok(html.includes('>Xoá 7 tài liệu</button>'));
+  html = confirm(['A.pdf', 'B.pdf'], 'en', { error: locales.en.aiIdSourceDelete.errors.in_use });
+  assert.ok(html.includes('<h2>Delete 2 documents from the Knowledge Base?</h2>') && html.includes('>Delete 2 documents</button>'));
+  assert.match(html, /role="alert"[^>]*>Not deleted: AI is using the document to write a course\./, 'a refusal stays inside the confirmation');
+});
+
+test('delete copy: VI and EN have the same keys, every refusal has a plain message, no codes or abbreviations', () => {
+  const shape = value => typeof value === 'string' ? 'string' : Object.fromEntries(Object.keys(value).sort().map(key => [key, shape(value[key])]));
+  assert.deepEqual(shape(locales.en.aiIdSourceDelete), shape(locales.vi.aiIdSourceDelete));
+  for (const issue of ['in_use', 'learning', 'forbidden', 'connection', 'failed']) {
+    for (const locale of ['vi', 'en']) assert.ok(locales[locale].aiIdSourceDelete.errors[issue].length > 30, `${locale} ${issue}`);
+  }
+  const strings = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(strings);
+  for (const locale of ['vi', 'en']) {
+    for (const value of strings(locales[locale].aiIdSourceDelete)) {
+      assert.doesNotMatch(value, /_|\bKB\b|\bAPI\b|\b(?:202|403|404|409|500)\b|workspace|bulk/i, value);
+    }
+  }
+  const panel = readFileSync(path.join(directory, 'workspace-source-panel.tsx'), 'utf8');
+  assert.match(panel, /t\(`aiIdSourceDelete\.errors\.\$\{outcome\.issue\}`\)/);
 });

@@ -451,7 +451,10 @@ test('someone else\'s shared session opens read-only: no editing, but Apply stay
   assert.match(source, /assertCanWrite: \(\) => host\.assertCanApply\(\)/);
   assert.match(source, /const editorCapable = host\.canWrite\(\)/, 'editing still needs the creator');
   assert.match(source, /canUpload: \(\) => authorized\(\),/);
-  assert.doesNotMatch(source, /'ai_chatbot'/, 'AI course design never needs the chatbot configuration permission');
+  // AI course design never needs the chatbot configuration permission. The one exception is optional:
+  // deleting a source document from the knowledge base needs that page's own delete permission (QC 21/10, C4).
+  assert.equal((source.match(/'ai_chatbot'/g) ?? []).length, 1);
+  assert.match(source, /canDelete: \(\) => authorized\(\) && useAuthStore\.getState\(\)\.hasPermission\('ai_chatbot', 'can_delete'\),/);
 });
 for (const locale of ['en', 'vi']) test(`${locale}: another person's running session shows a banner in the open workspace`, async () => {
   const f = fixture();

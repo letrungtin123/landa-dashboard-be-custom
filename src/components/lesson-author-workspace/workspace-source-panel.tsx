@@ -1,10 +1,12 @@
-import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, Check, FileText, Loader2, Plus, RefreshCw, Sparkles, Upload, Video } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { createWorkspaceSourceState } from './workspace-source-state';
+import { workspaceSourceDeletable } from './workspace-source.logic';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { workspaceCreateBlock, workspaceCreateBlockCopy, workspaceLaunchBriefErrorKey } from './workspace-launch-brief.logic';
+import { WorkspaceSourceDeleteBar, WorkspaceSourceDeleteConfirm, WorkspaceSourceRowCheck, WorkspaceSourceRowDelete } from './workspace-source-delete';
 
 const copy = {
   en: { title: 'Build a course from your document', source: 'Choose a ready document', refresh: 'Try again', upload: 'Upload document', create: 'Create learning content',
@@ -57,7 +59,28 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
   const reason = blockCopy ? t(blockCopy.key, { max: blockCopy.max, items: blockCopy.itemKeys?.map(key => t(key)).join(', ') }) : null;
   const status = state.phase === 'uploading'
     ? state.progress === 100 ? c.accepting : `${c.uploading}${state.progress === null ? '' : ` ${state.progress}%`}`
-    : state.phase === 'creating' ? c.creating : c.reading;
+    : state.phase === 'creating' ? c.creating : state.phase === 'deleting' ? t('aiIdSourceDelete.deleting') : c.reading;
+  // Delete (knowledge base delete permission only): checked rows, the one confirmation and its outcome.
+  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  // Names are kept from when the confirmation opened: the list drops the documents while they are deleted.
+  const [deleting, setDeleting] = useState<{ ids: readonly string[]; names: readonly string[] } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteNote, setDeleteNote] = useState<string | null>(null);
+  const deletableIds = state.canDelete ? state.documents.filter(workspaceSourceDeletable).map(d => d.document_id) : [];
+  const checkedIds = deletableIds.filter(id => checked.has(id));
+  const askDelete = (ids: readonly string[]) => {
+    setDeleteError(null); setDeleteNote(null);
+    setDeleting({ ids, names: ids.map(id => state.documents.find(d => d.document_id === id)?.name ?? '').filter(Boolean) });
+  };
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteError(null);
+    const outcome = await controller.deleteDocuments(deleting.ids);
+    if (outcome.issue) { setDeleteError(t(`aiIdSourceDelete.errors.${outcome.issue}`)); return; }
+    setChecked(current => new Set([...current].filter(id => !deleting.ids.includes(id))));
+    setDeleting(null);
+    setDeleteNote(outcome.kept > 0 ? t('aiIdSourceDelete.kept', { count: outcome.kept }) : null);
+  };
 
   return <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={c.title}>
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -77,20 +100,31 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
 
     <div className="flex min-h-0 flex-1 flex-col rounded-2xl border bg-card/60 p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between gap-2 px-1"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{c.source}</p><span className="text-xs text-muted-foreground">{state.documents.length}/50</span></div>
+      {!loading && <WorkspaceSourceDeleteBar deletableIds={deletableIds} checkedIds={checkedIds} disabled={locked}
+        onCheckAll={value => setChecked(value ? new Set(deletableIds) : new Set())} onDelete={() => askDelete(checkedIds)} />}
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {loading && Array.from({ length: 4 }).map((_, index) => <div key={index} className="flex animate-pulse items-center gap-3 rounded-xl border p-3"><span className="h-9 w-9 rounded-xl bg-muted" /><span className="flex-1 space-y-2"><span className="block h-3 w-3/4 rounded bg-muted" /><span className="block h-2.5 w-1/3 rounded bg-muted" /></span></div>)}
         {!loading && state.documents.length === 0 && <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-5 text-center text-sm text-muted-foreground"><FileText className="h-7 w-7 opacity-40" /><p>{c.empty}</p></div>}
         {!loading && state.documents.map(document => {
           const Icon = sourceIcon(document.name), selected = document.document_id === state.selectedId, ready = document.status === 'learned', failed = document.status === 'error';
-          return <button key={document.document_id} type="button" disabled={locked} onClick={() => controller.select(document.document_id)}
-            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all ${selected ? 'border-primary/60 bg-primary/[0.08] shadow-sm shadow-primary/10' : 'border-border/80 bg-background/50 hover:border-primary/35 hover:bg-muted/40'} ${!ready ? 'opacity-65' : ''}`}>
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}><Icon className="h-4 w-4" /></span>
-            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{document.name}</span><span className={`mt-0.5 flex items-center gap-1 text-[11px] ${ready ? 'text-emerald-600 dark:text-emerald-400' : failed ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>{ready ? <Check className="h-3 w-3" /> : failed ? <AlertCircle className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}{ready ? c.ready : failed ? c.failedStatus : c.processing}</span></span>
-            {selected && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>}
-          </button>;
+          const deletable = state.canDelete && workspaceSourceDeletable(document);
+          return <div key={document.document_id} className={`flex w-full items-center gap-2 rounded-xl border transition-all ${state.canDelete ? 'px-1' : ''} ${selected ? 'border-primary/60 bg-primary/[0.08] shadow-sm shadow-primary/10' : 'border-border/80 bg-background/50 hover:border-primary/35 hover:bg-muted/40'}`}>
+            {state.canDelete && <WorkspaceSourceRowCheck name={document.name} checked={checked.has(document.document_id)} disabled={locked || !deletable}
+              onCheck={value => setChecked(current => { const next = new Set(current); if (value) next.add(document.document_id); else next.delete(document.document_id); return next; })} />}
+            <button type="button" disabled={locked} onClick={() => controller.select(document.document_id)}
+              className={`flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left ${state.canDelete ? 'px-1' : 'px-3'} ${!ready ? 'opacity-65' : ''}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}><Icon className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{document.name}</span><span className={`mt-0.5 flex items-center gap-1 text-[11px] ${ready ? 'text-emerald-600 dark:text-emerald-400' : failed ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>{ready ? <Check className="h-3 w-3" /> : failed ? <AlertCircle className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}{ready ? c.ready : failed ? c.failedStatus : c.processing}</span></span>
+              {selected && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>}
+            </button>
+            {state.canDelete && <WorkspaceSourceRowDelete name={document.name} disabled={locked || !deletable} onDelete={() => askDelete([document.document_id])} />}
+          </div>;
         })}
       </div>
+      {deleteNote && <p role="status" className="mt-2 px-1 text-xs text-amber-700 dark:text-amber-400">{deleteNote}</p>}
     </div>
+    {deleting && <WorkspaceSourceDeleteConfirm busy={state.phase === 'deleting'} error={deleteError} names={deleting.names}
+      onConfirm={() => { void confirmDelete(); }} onClose={() => setDeleting(null)} />}
 
     <div className="flex flex-col gap-2 rounded-2xl border bg-muted/25 p-3 sm:items-end">
       <Button type="button" size="lg" className="min-w-52 rounded-xl shadow-lg shadow-primary/20" disabled={locked || !state.ready || !!block}

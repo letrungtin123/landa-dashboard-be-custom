@@ -3,7 +3,7 @@ import { customApiClient } from './custom-client';
 import { fetchLessonAuthorChatSettings, fetchConversations, fetchLessonAuthorSourceDocuments,
   uploadLessonAuthorVideoTranscript, fetchLessonAuthorVideoTranscript, commitLessonAuthorVideoTranscript,
   type ChatConversation } from './custom-chat';
-import type { UploadResult } from './custom-ai-chatbot';
+import { bulkDeleteDocuments, deleteDocument, type UploadResult } from './custom-ai-chatbot';
 
 /** AI course design source upload. Needs only the course edit permission: the
  * server resolves the tenant's AI course design knowledge base itself, so this
@@ -39,6 +39,9 @@ export const workspaceSourceApi = {
     return data.data;
   },
   upload: uploadLessonAuthorSourceDocument,
+  /** The knowledge base page's own delete routes (queued; `ai_chatbot` delete permission, checked by the server). */
+  deleteDocument,
+  bulkDeleteDocuments,
   video: uploadLessonAuthorVideoTranscript,
   transcript: fetchLessonAuthorVideoTranscript,
   commitTranscript: commitLessonAuthorVideoTranscript,
