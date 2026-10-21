@@ -1842,6 +1842,20 @@ export const vi = {
     tenantName: "Tên doanh nghiệp", brandName: "Tên hệ thống", learnerDomain: "Domain học viên", learnerPortalUrl: "Link cổng học viên", courseName: "Tên khóa học", courseCount: "Số lượng khóa học", notificationTitle: "Tiêu đề thông báo", notificationMessage: "Nội dung thông báo", assignmentTitle: "Tên bài tập", assignmentQuestion: "Câu hỏi bài tập", deadline: "Hạn nộp", submissionUnlock: "Điều kiện nộp bài", learnerName: "Tên học viên", learnerEmail: "Email học viên", feedbackText: "Nội dung feedback", feedbackByName: "Tên admin feedback", feedbackByEmail: "Email admin feedback", score: "Điểm bài tập", courseCategories: "Danh mục khóa học", courseCategoriesTable: "Bảng danh mục khóa học", learner: "Học viên", assignment: "Bài tập", deadlineLabel: "Thời hạn", submissionCondition: "Điều kiện nộp", feedbackBy: "Người feedback", scoreStatus: "Điểm/Trạng thái", learnerPortal: "Cổng học viên", nameOfGroup: "Tên {{group}}",
     usingDefault: "Đang dùng mặc định", saved: "Đã lưu mẫu email", saveFailed: "Không thể lưu mẫu email", reset: "Đã khôi phục mẫu mặc định", resetFailed: "Không thể khôi phục mẫu mặc định", invalidToken: "Nhãn dữ liệu không hợp lệ ở {{field}}: {{token}}. Hãy xóa nguyên nhãn hoặc chèn lại từ danh sách dữ liệu tự điền.", subject: "Dòng tiêu đề", preheader: "Dòng mô tả ngắn", body: "Nội dung chính", loadFailed: "Không thể tải dữ liệu mẫu email.", title: "Mẫu email", description: "Quản lý mẫu email gửi cho học viên", descriptionSimple: "Tùy chỉnh email gửi cho học viên bằng ngôn ngữ dễ hiểu", customizedCount: "{{count}}/{{total}} mẫu đã chỉnh", smtpReady: "SMTP sẵn sàng", smtpNotReady: "SMTP chưa sẵn sàng", smtpRequired: "Tenant cần cấu hình SMTP Google hợp lệ trước khi chỉnh mẫu email.", smtpRequiredDescription: "Vui lòng cấu hình SMTP trước khi chỉnh mẫu email. Các thao tác lưu và khôi phục đang bị khóa.", viewOnly: "Bạn chỉ có quyền xem mẫu email. Cần quyền chỉnh sửa module Mẫu email để lưu thay đổi.", customized: "Đã chỉnh", default: "Mặc định", usingCustomized: "Đang dùng bản đã chỉnh", usingDefaultTemplate: "Đang dùng mẫu mặc định", saveTemplate: "Lưu mẫu", autofillData: "Dữ liệu tự điền", autofillHint: "Bấm vào nhãn để chèn vào ô đang chọn.", insertingInto: "Đang chèn vào:", emailPreview: "Xem trước email", instantUpdate: "Cập nhật tức thì", previewBadge: "Email xem trước", defaultSubject: "Dòng tiêu đề email", defaultPreheader: "Dòng mô tả ngắn", defaultBody: "Nội dung chính của email", openLearnerPortal: "Mở cổng học viên", previewHelp: "Bản xem trước giữ nguyên nhãn dữ liệu như [Tên học viên], [Tên khóa học]. Khi gửi thật, hệ thống mới tự điền giá trị.",
   },
+  aiChatbotKbUsage: {
+    places: {
+      admin: "trợ lý trang quản trị",
+      learner: "trợ lý trang học viên",
+      ai_id: "AI ID",
+    },
+    and: " và ",
+    alreadyUsed: "Kho tri thức “{{name}}” đang được dùng cho {{places}}. Trợ lý trang quản trị, trợ lý trang học viên và AI ID mỗi nơi cần một Kho tri thức riêng. Hãy chọn Kho tri thức khác.",
+    alreadyUsedElsewhere: "Kho tri thức này đang được dùng ở nơi khác. Trợ lý trang quản trị, trợ lý trang học viên và AI ID mỗi nơi cần một Kho tri thức riêng. Hãy chọn Kho tri thức khác.",
+    conflictsTitle: "Có Kho tri thức đang được dùng chung",
+    conflictsHint: "Trợ lý trang quản trị, trợ lý trang học viên và AI ID mỗi nơi cần một Kho tri thức riêng. Hãy chọn lại để không còn Kho tri thức nào dùng chung.",
+    conflict: "Kho tri thức “{{name}}” đang được dùng chung cho {{places}}.",
+    conflictUnnamed: "Một Kho tri thức đang được dùng chung cho {{places}}.",
+  },
   aiChatbot: {
     title: "AI Chatbot", description: "Quản lý Kho tri thức, tài liệu và chatbot AI", knowledgeBases: "Kho tri thức", chatbots: "Chatbot", deploy: "Triển khai",
     learned: "Đã học", learning: "Đang học", deleting: "Đang xóa", error: "Lỗi", draft: "Nháp", showing: "Hiển thị", perPage: "/ trang", previous: "Trước", next: "Sau", pageOf: "Trang {{page}} / {{total}}",

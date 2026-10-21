@@ -42,6 +42,7 @@ import { storageUrl } from "@/utils/storage-url";
 import { useTenantStore } from "@/utils/tenant-store";
 import { InputFilterTab } from "@/components/ai-chatbot/input-filter-tab";
 import { getLocalizedApiError } from "@/utils/localized-error";
+import { isKbAlreadyUsedError } from "@/api/ai-chatbot-kb-usage";
 // ── Mascot palette ──
 const MASCOT_COLORS = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4"];
 function getMascotColor(i: number) { return MASCOT_COLORS[i % MASCOT_COLORS.length]; }
@@ -144,7 +145,10 @@ export function BotDetail({ botId, onBack }: BotDetailProps) {
     try {
       const updated = await updateBot(botId, { name: formName, kb_id: formKbId });
       setBot(updated); setIsDirty(false); toast.success(t("aiChatbot.botUpdated"));
-    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.updateBotFailed"))); }
+    } catch (err: unknown) {
+      // A knowledge base already used by another assistant or AI ID: the server names where (Vietnamese), plain words in English.
+      toast.error(getLocalizedApiError(err, t(isKbAlreadyUsedError(err) ? "aiChatbotKbUsage.alreadyUsedElsewhere" : "aiChatbot.updateBotFailed")));
+    }
     finally { setSaving(false); }
   }
 

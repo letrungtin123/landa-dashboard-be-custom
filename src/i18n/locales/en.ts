@@ -1845,6 +1845,20 @@ export const en: TranslationSchema<typeof vi> = {
     tenantName: "Organization name", brandName: "System name", learnerDomain: "Learner domain", learnerPortalUrl: "Learner portal link", courseName: "Course name", courseCount: "Course count", notificationTitle: "Notification title", notificationMessage: "Notification content", assignmentTitle: "Assignment title", assignmentQuestion: "Assignment question", deadline: "Deadline", submissionUnlock: "Submission condition", learnerName: "Learner name", learnerEmail: "Learner email", feedbackText: "Feedback content", feedbackByName: "Feedback admin name", feedbackByEmail: "Feedback admin email", score: "Assignment score", courseCategories: "Course categories", courseCategoriesTable: "Course category table", learner: "Learner", assignment: "Assignment", deadlineLabel: "Deadline", submissionCondition: "Submission condition", feedbackBy: "Feedback by", scoreStatus: "Score/status", learnerPortal: "Learner portal", nameOfGroup: "{{group}} name",
     usingDefault: "Using default", saved: "Email template saved", saveFailed: "Could not save email template", reset: "Default template restored", resetFailed: "Could not restore default template", invalidToken: "Invalid data label in {{field}}: {{token}}. Remove the entire label or insert it again from the autofill data list.", subject: "Subject line", preheader: "Preheader", body: "Main content", loadFailed: "Could not load email template data.", title: "Email templates", description: "Manage email templates sent to learners", descriptionSimple: "Customize learner emails using clear language", customizedCount: "{{count}}/{{total}} customized templates", smtpReady: "SMTP ready", smtpNotReady: "SMTP not ready", smtpRequired: "The tenant needs valid Google SMTP configuration before editing email templates.", smtpRequiredDescription: "Configure SMTP before editing email templates. Save and restore actions are locked.", viewOnly: "You only have permission to view email templates. You need edit permission for the Email Templates module to save changes.", customized: "Customized", default: "Default", usingCustomized: "Using customized version", usingDefaultTemplate: "Using default template", saveTemplate: "Save template", autofillData: "Autofill data", autofillHint: "Click a label to insert it into the selected field.", insertingInto: "Inserting into:", emailPreview: "Email preview", instantUpdate: "Updates instantly", previewBadge: "Email preview", defaultSubject: "Email subject line", defaultPreheader: "Email preheader", defaultBody: "Main email content", openLearnerPortal: "Open learner portal", previewHelp: "The preview retains data labels such as [Learner name] and [Course name]. The system fills in actual values only when sending.",
   },
+  aiChatbotKbUsage: {
+    places: {
+      admin: "the admin page assistant",
+      learner: "the learner page assistant",
+      ai_id: "AI ID",
+    },
+    and: " and ",
+    alreadyUsed: "The Knowledge Base “{{name}}” is already used by {{places}}. The admin page assistant, the learner page assistant and AI ID each need their own Knowledge Base. Choose another Knowledge Base.",
+    alreadyUsedElsewhere: "This Knowledge Base is already used somewhere else. The admin page assistant, the learner page assistant and AI ID each need their own Knowledge Base. Choose another Knowledge Base.",
+    conflictsTitle: "Some Knowledge Bases are shared",
+    conflictsHint: "The admin page assistant, the learner page assistant and AI ID each need their own Knowledge Base. Choose again so that no Knowledge Base is shared.",
+    conflict: "The Knowledge Base “{{name}}” is shared by {{places}}.",
+    conflictUnnamed: "A Knowledge Base is shared by {{places}}.",
+  },
   aiChatbot: {
     title: "AI Chatbot", description: "Manage knowledge bases, documents, and AI chatbots", knowledgeBases: "Knowledge bases", chatbots: "Chatbots", deploy: "Deploy",
     learned: "Learned", learning: "Learning", deleting: "Deleting", error: "Error", draft: "Draft", showing: "Showing", perPage: "/ page", previous: "Previous", next: "Next", pageOf: "Page {{page}} / {{total}}",

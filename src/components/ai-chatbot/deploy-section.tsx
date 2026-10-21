@@ -24,6 +24,11 @@ import { storageUrl } from "@/utils/storage-url";
 import { useAuthStore } from "@/utils/store";
 import { getLocalizedApiError } from "@/utils/localized-error";
 import { useTenantStore } from "@/utils/tenant-store";
+import { useQueryClient } from "@tanstack/react-query";
+import { isKbAlreadyUsedError } from "@/api/ai-chatbot-kb-usage";
+import { aiChatbotKbUsageKeys, useAiChatbotKbUsageConflicts } from "@/hooks/queries/use-ai-chatbot-kb-usage";
+import { DeployKbConflicts } from "./deploy-kb-conflicts";
+import { joinKbUsagePlaces, kbAlreadyUsedCopy, kbUsagePlacesElsewhere, type KbUsageSlot } from "./deploy-kb-usage.logic";
 
 const TARGETS = [
   { key: "admin" as const, labelKey: "aiChatbot.targetAdmin", descriptionKey: "aiChatbot.targetAdminDescription" },
@@ -71,6 +76,22 @@ export function DeploySection() {
     }));
   }, [activeTenantId, actorTenantId]);
 
+  // Admin assistant, learner assistant and AI ID each need their own knowledge base (the server enforces it).
+  const queryClient = useQueryClient();
+  const kbConflicts = useAiChatbotKbUsageConflicts(activeTenantId ?? actorTenantId);
+  const refreshKbConflicts = () => { void queryClient.invalidateQueries({ queryKey: aiChatbotKbUsageKeys.all }); };
+  /** A refused clash names the knowledge base and where it is used, when this page knows; otherwise the server's words. */
+  function assignmentError(err: unknown, slot: KbUsageSlot, kbId: string | null | undefined, kbName: string | null | undefined): string {
+    if (!isKbAlreadyUsedError(err)) return getLocalizedApiError(err, t("aiChatbot.genericError"));
+    refreshKbConflicts();
+    const copy = kbAlreadyUsedCopy({ kbName,
+      places: kbUsagePlacesElsewhere(kbId, { assignments, aiIdKbId: lessonSettings?.active_kb?.kb_id }, slot) });
+    if (copy.key === "aiChatbotKbUsage.alreadyUsedElsewhere") return getLocalizedApiError(err, t(copy.key));
+    return t(copy.key, { name: copy.name,
+      places: joinKbUsagePlaces(copy.places, place => t(`aiChatbotKbUsage.places.${place}`), t("aiChatbotKbUsage.and")) });
+  }
+  const botKb = (botId: string) => bots.find(bot => bot.id === botId);
+
   async function handleToggle(target: ChatTarget, botId: string, checked: boolean) {
     setTogglingTarget(target);
     try {
@@ -82,8 +103,9 @@ export function DeploySection() {
         toast.success(t("aiChatbot.botUnassigned"));
       }
       notifyRuntimeAssignmentChanged();
+      refreshKbConflicts();
       loadData();
-    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
+    } catch (err: unknown) { toast.error(assignmentError(err, target, botKb(botId)?.kb_id, botKb(botId)?.kb_name)); }
     finally { setTogglingTarget(null); }
   }
 
@@ -93,8 +115,9 @@ export function DeploySection() {
       await assignBot(target, botId);
       toast.success(t("aiChatbot.botAssigned"));
       notifyRuntimeAssignmentChanged();
+      refreshKbConflicts();
       loadData();
-    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
+    } catch (err: unknown) { toast.error(assignmentError(err, target, botKb(botId)?.kb_id, botKb(botId)?.kb_name)); }
     finally { setSelectingTarget(null); }
   }
 
@@ -103,8 +126,9 @@ export function DeploySection() {
     try {
       await assignLessonAuthorKb(kbId);
       toast.success(t("aiChatbot.lessonAuthorKbAssigned"));
+      refreshKbConflicts();
       loadData();
-    } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
+    } catch (err: unknown) { toast.error(assignmentError(err, "ai_id", kbId, kbs.find(kb => kb.id === kbId)?.name)); }
     finally { setSelectingKb(false); }
   }
 
@@ -113,6 +137,7 @@ export function DeploySection() {
     try {
       await unassignLessonAuthorKb();
       toast.success(t("aiChatbot.lessonAuthorKbUnassigned"));
+      refreshKbConflicts();
       loadData();
     } catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
     finally { setSelectingKb(false); }
@@ -138,6 +163,8 @@ export function DeploySection() {
           {t("aiChatbot.deployDescription")}
         </p>
       </div>
+
+      <DeployKbConflicts conflicts={kbConflicts.data} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {TARGETS.map(({ key, labelKey, descriptionKey }) => {
