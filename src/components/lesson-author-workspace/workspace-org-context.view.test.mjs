@@ -143,9 +143,12 @@ test('confirmed, empty and not-yet-read states', () => {
   assert.ok(words.includes('Trạng thái: Chưa có'));
   assert.ok(words.includes('Hãy tải lên ít nhất một tài liệu và đợi trạng thái Đã đọc để AI soạn hồ sơ.'));
   assert.equal(buttonDisabled(html, 'Cập nhật từ tài liệu'), true, 'no document has been read yet');
-  assert.equal(buttonDisabled(html, 'Xác nhận'), true, 'an empty profile cannot be confirmed');
-  assert.ok(words.includes('Tổng cộng 0/6.000 ký tự'));
-  assert.ok(words.includes('Chưa có bản nào.'));
+  // Before the first version the AI writes the profile: no empty editors, the two steps, and a way to fill it in by hand.
+  assert.ok(words.includes('Chưa có hồ sơ. Để AI soạn giúp bạn:'));
+  assert.ok(words.includes('Bấm Cập nhật từ tài liệu. AI sẽ đọc và điền hồ sơ, bạn chỉ cần xem lại rồi bấm Xác nhận.'));
+  assert.equal(buttonDisabled(html, 'Không có tài liệu\\? Tự điền hồ sơ'), false);
+  assert.doesNotMatch(html, /<textarea|<fieldset/, 'no empty editors before the AI drafts');
+  assert.ok(!words.includes('Lưu bản nháp') && !words.includes('Tổng cộng 0/6.000 ký tự') && !words.includes('Chưa có bản nào.'));
   env.locale = 'en';
   assert.ok(text(panel(state({}, { current: version(2), confirmed_version: 2, confirmed_by_name: null }), 'en')).includes('Confirmed on 10/19/2026'));
 });

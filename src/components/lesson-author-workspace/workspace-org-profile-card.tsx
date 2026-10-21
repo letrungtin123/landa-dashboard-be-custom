@@ -16,6 +16,8 @@ import { WorkspaceOrgProfileHistory } from './workspace-org-profile-history';
 import { WorkspaceOrgContextConfirm } from './workspace-org-context-dialogs';
 
 /** "Hồ sơ doanh nghiệp": status, AI draft from the documents, the 7 editors, Save draft / Confirm, history.
+ * Until a first version exists the editors stay closed: the card shows the two steps that let the AI write the
+ * profile, and "fill it in yourself" opens empty editors for an organization without documents.
  * The draft keeps the server revision it started from; a newer server version replaces it only while it has no
  * changes, so another author's work is never overwritten silently (the server answers a stale save with a conflict). */
 export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
@@ -31,6 +33,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
   const [error, setError] = useState<{ text: string; conflict: boolean } | null>(null);
   const [pending, setPending] = useState<'distill' | 'reload' | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [manual, setManual] = useState(false);
   const save = useOrgProfileSave(tenantId);
   const distill = useOrgProfileDistill(tenantId);
 
@@ -45,6 +48,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
     valid: review.issues.length === 0, empty, currentVersion: server.current?.version ?? null, confirmedVersion: server.confirmed_version });
   const stale = dirty && orgProfileEditorStale(synced, server);
   const status = orgProfileStatus(server);
+  const editing = server.current !== null || manual;
 
   const begin = () => { setNotice(null); setError(null); };
   const fail = (failure: unknown) => setError({ text: orgContextErrorText(t, failure, locale, state.limit_bytes),
@@ -101,9 +105,18 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
             : server.unread_document_count > 0 ? <p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.profile.unread', { count: server.unread_document_count })}</p> : null}
     </div>
 
+    {!editing && <div className="space-y-2 rounded-xl border border-dashed border-border/80 p-3 text-sm">
+      <p className="font-medium">{t('aiIdOrgContext.profile.startTitle')}</p>
+      <ol className="list-decimal space-y-1 pl-5 leading-6 text-muted-foreground">
+        <li>{t('aiIdOrgContext.profile.startStep1')}</li><li>{t('aiIdOrgContext.profile.startStep2')}</li></ol>
+      <Button type="button" variant="link" size="sm" className="h-auto px-0" disabled={!actions.editable} onClick={() => setManual(true)}>
+        {t('aiIdOrgContext.profile.manualEntry')}</Button>
+    </div>}
+
     {stale && !error && <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm">
       <span className="min-w-0 flex-1">{t('aiIdOrgContext.errors.conflict')}</span>{reloadButton}</div>}
 
+    {editing && <>
     <WorkspaceOrgProfileFields draft={synced.draft} review={review} changed={changed} disabled={!actions.editable} locale={locale}
       onChange={draft => { setNotice(null); setEditor(current => ({ ...current, draft })); }} />
 
@@ -119,10 +132,11 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
           {save.isPending && save.variables?.confirm ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}{t('aiIdOrgContext.profile.confirm')}</Button>
       </div>
     </div>
+    </>}
 
-    <WorkspaceOrgProfileHistory history={state.history} currentVersion={server.current?.version ?? null} confirmedVersion={server.confirmed_version}
+    {state.history.length > 0 && <WorkspaceOrgProfileHistory history={state.history} currentVersion={server.current?.version ?? null} confirmedVersion={server.confirmed_version}
       revision={server.revision} tenantId={tenantId} locale={locale} limitBytes={state.limit_bytes} disabled={!actions.editable} dirty={dirty}
-      onRestored={result => { begin(); setEditor(orgProfileEditorFrom(result)); setNotice(t('aiIdOrgContext.profile.restored', { version: result.current.version })); }} />
+      onRestored={result => { begin(); setEditor(orgProfileEditorFrom(result)); setNotice(t('aiIdOrgContext.profile.restored', { version: result.current.version })); }} />}
 
     {pending && <WorkspaceOrgContextConfirm busy={false} error={null} onClose={() => setPending(null)}
       title={t(pending === 'distill' ? 'aiIdOrgContext.profile.distillDirtyTitle' : 'aiIdOrgContext.profile.reloadTitle')}
