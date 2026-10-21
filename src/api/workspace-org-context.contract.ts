@@ -14,6 +14,11 @@ import { AI_CREDIT_ERROR_KEYS, isAiCreditErrorCode } from './ai-credit-errors.lo
 export const ORG_PROFILE_FIELDS = ['organization_summary', 'products_services', 'learner_groups', 'glossary',
   'key_processes', 'culture_tone', 'design_conventions'] as const;
 export type OrgProfileField = typeof ORG_PROFILE_FIELDS[number];
+/** The fields the screen shows and edits, in the same order. `learner_groups` stays in the stored profile (v1) but is
+ * never shown or edited and is saved as `[]`: learners come only from the run's "Đối tượng học" (QC 21/10, C10). */
+export const ORG_PROFILE_SHOWN_FIELDS = ['organization_summary', 'products_services', 'glossary',
+  'key_processes', 'culture_tone', 'design_conventions'] as const;
+export type OrgProfileShownField = typeof ORG_PROFILE_SHOWN_FIELDS[number];
 export const ORG_PROFILE_TEXT_FIELDS = ['organization_summary', 'culture_tone'] as const;
 export type OrgProfileTextField = typeof ORG_PROFILE_TEXT_FIELDS[number];
 export const ORG_PROFILE_LIST_FIELDS = ['products_services', 'key_processes', 'design_conventions'] as const;
@@ -314,7 +319,7 @@ export function readOrgContextFailure(error: unknown): OrgContextError {
 }
 
 /** i18n key of a plain message; `field` is a profile field whose label fills {{field}}, `limitBytes` fills {{limit}}. */
-export interface OrgContextMessage { key: string; field?: OrgProfileField; limitBytes?: number }
+export interface OrgContextMessage { key: string; field?: OrgProfileShownField; limitBytes?: number }
 
 const PROFILE_REASONS = ['too_long', 'too_many', 'total_too_long', 'empty', 'shape'] as const;
 const NOT_DEPLOYED_CODES = ['NOT_DEPLOYED', 'ORG_CONTEXT_NOT_DEPLOYED', 'LESSON_AUTHOR_SOURCE_UPLOAD_NOT_DEPLOYED'];
@@ -344,7 +349,7 @@ export function orgContextErrorMessage(error: unknown): OrgContextMessage {
   if (code === 'ORG_CONTEXT_PROFILE_INVALID') {
     const reason = PROFILE_REASONS.find(item => item === details?.reason);
     const head = typeof details?.path === 'string' ? details.path.split(/[.[\]/]/)[0] : '';
-    const field = ORG_PROFILE_FIELDS.find(item => item === head);
+    const field = ORG_PROFILE_SHOWN_FIELDS.find(item => item === head);
     if (reason === 'total_too_long' || reason === 'empty') return { key: `aiIdOrgContext.errors.profile.${reason}` };
     return reason && field ? { key: `aiIdOrgContext.errors.profile.${reason}`, field } : { key: 'aiIdOrgContext.errors.profile.generic' };
   }

@@ -2230,13 +2230,6 @@ export const en: TranslationSchema<typeof vi> = {
           label: "Products and services",
           placeholder: "The name of one product or service",
         },
-        learner_groups: {
-          label: "Learner groups",
-          name: "Group name",
-          description: "Description",
-          namePlaceholder: "For example: Sales staff",
-          descriptionPlaceholder: "What they do and need to know",
-        },
         glossary: {
           label: "Internal terms",
           term: "Term",

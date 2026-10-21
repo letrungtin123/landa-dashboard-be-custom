@@ -2227,13 +2227,6 @@ export const vi = {
           label: "Sản phẩm và dịch vụ",
           placeholder: "Tên một sản phẩm hoặc dịch vụ",
         },
-        learner_groups: {
-          label: "Nhóm người học",
-          name: "Tên nhóm",
-          description: "Mô tả",
-          namePlaceholder: "Ví dụ: Nhân viên bán hàng",
-          descriptionPlaceholder: "Họ làm gì, cần biết gì",
-        },
         glossary: {
           label: "Thuật ngữ nội bộ",
           term: "Thuật ngữ",

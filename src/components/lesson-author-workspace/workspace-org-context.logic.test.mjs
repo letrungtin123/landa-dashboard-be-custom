@@ -81,8 +81,8 @@ test('normalising like the server: NFC, controls removed, spaces collapsed, trim
   assert.equal(logic.normalizeOrgText('a\nb\r\nc', false), 'a b c');
   assert.equal(logic.normalizeOrgText('\n  Dòng 1  \r\n\r\n  Dòng   2 \u0007\n\n', true), 'Dòng 1\n\nDòng 2');
   const profile = logic.normalizeOrgProfile(draft({ organization_summary: ' Giới thiệu ', products_services: [' Tủ lạnh ', '   ', ''],
-    learner_groups: [{ name: ' Bán hàng ', description: '' }, { name: '', description: '' }], glossary: [{ term: '', meaning: '  ' }] }));
-  assert.deepEqual(profile, { organization_summary: 'Giới thiệu', products_services: ['Tủ lạnh'], learner_groups: [{ name: 'Bán hàng', description: '' }],
+    glossary: [{ term: '', meaning: '  ' }] }));
+  assert.deepEqual(profile, { organization_summary: 'Giới thiệu', products_services: ['Tủ lạnh'], learner_groups: [],
     glossary: [], key_processes: [], culture_tone: '', design_conventions: [] });
   assert.doesNotThrow(() => contract.readOrgProfile(profile), 'a normalised valid draft passes the shared reader');
   assert.equal(logic.isOrgProfileEmpty(logic.normalizeOrgProfile(draft({ products_services: ['  '], culture_tone: '\n' }))), true);
@@ -93,17 +93,16 @@ test('live counters and caps per field and in total, with the draft indexes', ()
   const review = logic.orgProfileReview(draft({
     organization_summary: '😀'.repeat(801), culture_tone: Array(13).fill('x').join('\n'),
     products_services: ['', 'a'.repeat(201), ...Array(15).fill('b')],
-    learner_groups: [{ name: '', description: 'Chỉ có mô tả' }, { name: '', description: '' }],
-    glossary: [{ term: 'POS', meaning: '' }, { term: 't'.repeat(81), meaning: 'm' }],
+    glossary: [{ term: 'POS', meaning: '' }, { term: 't'.repeat(81), meaning: 'm' }, { term: '', meaning: '' }],
   }));
   assert.deepEqual(review.fields.organization_summary, { length: 801, count: null }, 'code points');
   assert.deepEqual(review.fields.products_services, { length: 216, count: 16 }, 'empty items are not counted');
-  assert.deepEqual(review.fields.learner_groups, { length: 12, count: 1 }, 'an empty row is dropped');
+  assert.deepEqual(review.fields.glossary, { length: 85, count: 2 }, 'an empty row is dropped');
+  assert.equal(review.fields.learner_groups, undefined, 'learner groups are not an editor any more');
   assert.deepEqual(review.issues, [
     { kind: 'too_long', field: 'organization_summary', index: null, part: null, max: 800 },
     { kind: 'too_long', field: 'products_services', index: 1, part: null, max: 200 },
     { kind: 'too_many', field: 'products_services', max: 15 },
-    { kind: 'required', field: 'learner_groups', index: 0, part: 'name' },
     { kind: 'required', field: 'glossary', index: 0, part: 'meaning' },
     { kind: 'too_long', field: 'glossary', index: 1, part: 'term', max: 80 },
     { kind: 'too_many_lines', field: 'culture_tone', max: 12 },
@@ -113,6 +112,23 @@ test('live counters and caps per field and in total, with the draft indexes', ()
   assert.deepEqual(big.issues, [{ kind: 'total_too_long', max: 6000 }]);
   assert.deepEqual(logic.orgProfileReview(draft()).issues, []);
   assert.equal(logic.orgProfileReview(draft()).total, 0);
+});
+
+test('learner groups: an old version that has them opens without them, and every save sends none', () => {
+  // QC 21/10 (C10, contract K3): learners come only from the run's "Đối tượng học"; the field stays, always [].
+  const old = Object.freeze({ ...logic.EMPTY_ORG_PROFILE, organization_summary: 'Công ty A',
+    learner_groups: Object.freeze([{ name: 'Nhân viên bán hàng', description: 'Tư vấn tại cửa hàng' }]) });
+  const opened = logic.orgProfileDraftFrom(old);
+  assert.equal('learner_groups' in opened, false);
+  assert.deepEqual(logic.normalizeOrgProfile(opened).learner_groups, []);
+  assert.deepEqual(logic.normalizeOrgProfile({ ...opened, learner_groups: [{ name: 'X', description: '' }] }).learner_groups, [],
+    'even a draft that still carries them');
+  assert.deepEqual(logic.orgProfileChangedFields(opened, old), [], 'opening an old version is not a change');
+  assert.equal(logic.orgProfileReview(opened).total, 9, 'only the shown fields count towards the total');
+  assert.equal(logic.isOrgProfileEmpty({ ...logic.EMPTY_ORG_PROFILE, learner_groups: old.learner_groups }), true,
+    'a profile with only learner groups has nothing to confirm');
+  assert.deepEqual(contract.ORG_PROFILE_SHOWN_FIELDS, contract.ORG_PROFILE_FIELDS.filter(field => field !== 'learner_groups'));
+  assert.doesNotThrow(() => contract.readOrgProfile(logic.normalizeOrgProfile(opened)), 'the saved shape is still the full v1 profile');
 });
 
 const version = (n, profile) => ({ version: n, origin: 'author_edit', profile, char_count: 0, profile_hash: 'a'.repeat(64),

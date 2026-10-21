@@ -5,15 +5,15 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import {
-  ORG_PROFILE_FIELDS, ORG_PROFILE_LIST_LIMITS, ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX,
-  type OrgProfileField, type OrgProfileListField, type OrgProfileRowField, type OrgProfileTextField,
+  ORG_PROFILE_LIST_LIMITS, ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_SHOWN_FIELDS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX,
+  type OrgProfileListField, type OrgProfileRowField, type OrgProfileShownField, type OrgProfileTextField,
 } from '../../api/workspace-org-context.contract';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { formatOrgContextCount, type orgProfileReview, type OrgProfileDraft, type OrgProfileIssue } from './workspace-org-context.logic';
 
 type Review = ReturnType<typeof orgProfileReview>;
 type Translate = ReturnType<typeof useTranslation>['t'];
-const label = (t: Translate, field: OrgProfileField) => t(`aiIdOrgContext.profile.fields.${field}.label`);
+const label = (t: Translate, field: OrgProfileShownField) => t(`aiIdOrgContext.profile.fields.${field}.label`);
 
 /** One plain sentence per problem; the counters show the rest. */
 function issueText(t: Translate, issue: OrgProfileIssue, locale: WorkspaceLocale): string {
@@ -40,24 +40,22 @@ function Changed({ show }: { show: boolean }) {
   return show ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{t('aiIdOrgContext.profile.changed')}</span> : null;
 }
 
-/** The 7 profile editors in spec order, with live counters and the 6000 total. Values are the author's raw text;
- * the counters and problems use the normalised text that Save sends. */
+/** The 6 profile editors in spec order (no learner groups: C10), with live counters and the 6000 total. Values are the
+ * author's raw text; the counters and problems use the normalised text that Save sends. */
 export function WorkspaceOrgProfileFields({ draft, review, changed, disabled, locale, onChange }: {
-  draft: OrgProfileDraft; review: Review; changed: readonly OrgProfileField[]; disabled: boolean; locale: WorkspaceLocale;
+  draft: OrgProfileDraft; review: Review; changed: readonly OrgProfileShownField[]; disabled: boolean; locale: WorkspaceLocale;
   onChange: (next: OrgProfileDraft) => void;
 }) {
   const { t } = useTranslation();
   const id = useId();
-  const issuesOf = (field: OrgProfileField) => review.issues.filter(issue => issue.kind !== 'total_too_long' && issue.field === field);
+  const issuesOf = (field: OrgProfileShownField) => review.issues.filter(issue => issue.kind !== 'total_too_long' && issue.field === field);
   const total = review.issues.find(issue => issue.kind === 'total_too_long');
   return <div className="space-y-5">
-    {ORG_PROFILE_FIELDS.map(field => {
+    {ORG_PROFILE_SHOWN_FIELDS.map(field => {
       const common = { id: `${id}-${field}`, issues: issuesOf(field), changed: changed.includes(field), disabled, locale };
       const count = review.fields[field].count ?? 0;
       if (field === 'organization_summary' || field === 'culture_tone') return <TextEditor key={field} {...common} field={field} value={draft[field]}
         length={review.fields[field].length} onChange={value => onChange({ ...draft, [field]: value })} />;
-      if (field === 'learner_groups') return <RowEditor key={field} {...common} field={field} rows={draft.learner_groups} count={count}
-        onChange={rows => onChange({ ...draft, learner_groups: rows.map(row => ({ name: row.name ?? '', description: row.description ?? '' })) })} />;
       if (field === 'glossary') return <RowEditor key={field} {...common} field={field} rows={draft.glossary} count={count}
         onChange={rows => onChange({ ...draft, glossary: rows.map(row => ({ term: row.term ?? '', meaning: row.meaning ?? '' })) })} />;
       return <ListEditor key={field} {...common} field={field} values={draft[field]} count={count}
@@ -112,7 +110,7 @@ function ListEditor({ id, field, values, count, issues, changed, disabled, local
 }
 
 function RowEditor({ id, field, rows, count, issues, changed, disabled, locale, onChange }: EditorProps & {
-  field: OrgProfileRowField; rows: readonly Readonly<Record<string, string>>[]; count: number;
+  field: Extract<OrgProfileRowField, OrgProfileShownField>; rows: readonly Readonly<Record<string, string>>[]; count: number;
   onChange: (rows: Record<string, string>[]) => void;
 }) {
   const { t } = useTranslation();

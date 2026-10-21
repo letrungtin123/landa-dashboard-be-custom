@@ -1,8 +1,8 @@
 import {
-  codePointLength, ORG_PROFILE_FIELDS, ORG_PROFILE_LIST_FIELDS, ORG_PROFILE_LIST_LIMITS, ORG_PROFILE_ROW_FIELDS,
-  ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_TEXT_FIELDS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX, orgContextErrorMessage,
-  type OrgContextNotReadyReason, type OrgContextRead, type OrgContextState, type OrgProfile, type OrgProfileField,
-  type OrgProfileListField, type OrgProfileRowField, type OrgProfileTextField, type OrgProfileVersion,
+  codePointLength, ORG_PROFILE_LIST_FIELDS, ORG_PROFILE_LIST_LIMITS, ORG_PROFILE_ROW_LIMITS, ORG_PROFILE_SHOWN_FIELDS,
+  ORG_PROFILE_TEXT_FIELDS, ORG_PROFILE_TEXT_LIMITS, ORG_PROFILE_TOTAL_MAX, orgContextErrorMessage,
+  type OrgContextNotReadyReason, type OrgContextRead, type OrgContextState, type OrgProfile,
+  type OrgProfileListField, type OrgProfileRowField, type OrgProfileShownField, type OrgProfileTextField, type OrgProfileVersion,
 } from '../../api/workspace-org-context.contract';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 
@@ -66,10 +66,10 @@ export function orgContextUploadProblem(file: { name: string; size: number }, us
 }
 
 // ── Profile editing ──
+/** The shown fields only: an old version's learner groups are never loaded into the editors (C10). */
 export interface OrgProfileDraft {
   organization_summary: string;
   products_services: string[];
-  learner_groups: { name: string; description: string }[];
   glossary: { term: string; meaning: string }[];
   key_processes: string[];
   culture_tone: string;
@@ -81,7 +81,7 @@ export const EMPTY_ORG_PROFILE: Readonly<OrgProfile> = Object.freeze({ organizat
 export function orgProfileDraftFrom(profile: Readonly<OrgProfile> | null): OrgProfileDraft {
   const p = profile ?? EMPTY_ORG_PROFILE;
   return { organization_summary: p.organization_summary, products_services: [...p.products_services],
-    learner_groups: p.learner_groups.map(row => ({ ...row })), glossary: p.glossary.map(row => ({ ...row })),
+    glossary: p.glossary.map(row => ({ ...row })),
     key_processes: [...p.key_processes], culture_tone: p.culture_tone, design_conventions: [...p.design_conventions] };
 }
 
@@ -102,17 +102,16 @@ export function normalizeOrgText(value: string, multiline: boolean): string {
   if (!multiline) return collapse(text.replace(/\n/g, ' '));
   return text.split('\n').map(collapse).join('\n').trim();
 }
-const isText = (field: OrgProfileField): field is OrgProfileTextField => (ORG_PROFILE_TEXT_FIELDS as readonly string[]).includes(field);
-const isList = (field: OrgProfileField): field is OrgProfileListField => (ORG_PROFILE_LIST_FIELDS as readonly string[]).includes(field);
+const isText = (field: OrgProfileShownField): field is OrgProfileTextField => (ORG_PROFILE_TEXT_FIELDS as readonly string[]).includes(field);
+const isList = (field: OrgProfileShownField): field is OrgProfileListField => (ORG_PROFILE_LIST_FIELDS as readonly string[]).includes(field);
 
-/** What Save sends: every text normalised, empty items and rows dropped. */
+/** What Save sends: every text normalised, empty items and rows dropped, and always no learner groups (C10). */
 export function normalizeOrgProfile(draft: Readonly<OrgProfileDraft>): Readonly<OrgProfile> {
   const items = (values: readonly string[]) => values.map(value => normalizeOrgText(value, false)).filter(Boolean);
   return Object.freeze({
     organization_summary: normalizeOrgText(draft.organization_summary, true),
     products_services: items(draft.products_services),
-    learner_groups: draft.learner_groups.map(row => ({ name: normalizeOrgText(row.name, false), description: normalizeOrgText(row.description, false) }))
-      .filter(row => row.name || row.description),
+    learner_groups: [],
     glossary: draft.glossary.map(row => ({ term: normalizeOrgText(row.term, false), meaning: normalizeOrgText(row.meaning, false) }))
       .filter(row => row.term || row.meaning),
     key_processes: items(draft.key_processes),
@@ -121,24 +120,22 @@ export function normalizeOrgProfile(draft: Readonly<OrgProfileDraft>): Readonly<
   });
 }
 
-/** Every string empty and every list empty: such a profile cannot be confirmed. */
+/** Every shown string and list empty: such a profile cannot be confirmed. */
 export function isOrgProfileEmpty(profile: Readonly<OrgProfile>): boolean {
-  return !profile.organization_summary && !profile.culture_tone
-    && [...ORG_PROFILE_LIST_FIELDS, ...ORG_PROFILE_ROW_FIELDS].every(field => profile[field].length === 0);
+  return ORG_PROFILE_SHOWN_FIELDS.every(field => profile[field].length === 0);
 }
 
-const fieldJson = (profile: Readonly<OrgProfile>, field: OrgProfileField) => JSON.stringify(field === 'learner_groups'
-  ? profile.learner_groups.map(row => [row.name, row.description]) : field === 'glossary'
-    ? profile.glossary.map(row => [row.term, row.meaning]) : profile[field]);
+const fieldJson = (profile: Readonly<OrgProfile>, field: OrgProfileShownField) => JSON.stringify(field === 'glossary'
+  ? profile.glossary.map(row => [row.term, row.meaning]) : profile[field]);
 /** Fields whose normalised value differs from the version being edited (or the empty profile). Both sides go
  * through the same normalising, so a stored text never shows as changed just because it was opened. */
-export function orgProfileChangedFields(draft: Readonly<OrgProfileDraft>, base: Readonly<OrgProfile> | null): OrgProfileField[] {
+export function orgProfileChangedFields(draft: Readonly<OrgProfileDraft>, base: Readonly<OrgProfile> | null): OrgProfileShownField[] {
   const next = normalizeOrgProfile(draft), from = base ? normalizeOrgProfile(orgProfileDraftFrom(base)) : EMPTY_ORG_PROFILE;
-  return ORG_PROFILE_FIELDS.filter(field => fieldJson(next, field) !== fieldJson(from, field));
+  return ORG_PROFILE_SHOWN_FIELDS.filter(field => fieldJson(next, field) !== fieldJson(from, field));
 }
 
 export type OrgProfileIssue =
-  | { kind: 'too_long'; field: OrgProfileField; index: number | null; part: string | null; max: number }
+  | { kind: 'too_long'; field: OrgProfileShownField; index: number | null; part: string | null; max: number }
   | { kind: 'too_many_lines'; field: OrgProfileTextField; max: number }
   | { kind: 'too_many'; field: OrgProfileListField | OrgProfileRowField; max: number }
   | { kind: 'required'; field: OrgProfileRowField; index: number; part: string }
@@ -147,11 +144,11 @@ export interface OrgProfileFieldStats { length: number; count: number | null }
 
 /** Live counters and problems of a draft, with the indexes of the draft (not of the saved profile). */
 export function orgProfileReview(draft: Readonly<OrgProfileDraft>): {
-  fields: Record<OrgProfileField, OrgProfileFieldStats>; total: number; issues: OrgProfileIssue[];
+  fields: Record<OrgProfileShownField, OrgProfileFieldStats>; total: number; issues: OrgProfileIssue[];
 } {
   const issues: OrgProfileIssue[] = [];
-  const fields = {} as Record<OrgProfileField, OrgProfileFieldStats>;
-  for (const field of ORG_PROFILE_FIELDS) {
+  const fields = {} as Record<OrgProfileShownField, OrgProfileFieldStats>;
+  for (const field of ORG_PROFILE_SHOWN_FIELDS) {
     if (isText(field)) {
       const value = normalizeOrgText(draft[field], true), limit = ORG_PROFILE_TEXT_LIMITS[field], length = codePointLength(value);
       if (length > limit.max) issues.push({ kind: 'too_long', field, index: null, part: null, max: limit.max });
@@ -188,7 +185,7 @@ export function orgProfileReview(draft: Readonly<OrgProfileDraft>): {
       fields[field] = { length, count };
     }
   }
-  const total = ORG_PROFILE_FIELDS.reduce((sum, field) => sum + fields[field].length, 0);
+  const total = ORG_PROFILE_SHOWN_FIELDS.reduce((sum, field) => sum + fields[field].length, 0);
   if (total > ORG_PROFILE_TOTAL_MAX) issues.push({ kind: 'total_too_long', max: ORG_PROFILE_TOTAL_MAX });
   return { fields, total, issues };
 }

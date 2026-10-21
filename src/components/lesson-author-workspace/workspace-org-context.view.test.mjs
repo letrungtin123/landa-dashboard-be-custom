@@ -118,20 +118,23 @@ test('a finished upload adds no note under the button: the new document shows it
   assert.ok(words.includes('Đang đọc') && words.includes('Đã đọc'), 'the per-document status is kept');
 });
 
-for (const locale of ['vi', 'en']) test(`${locale}: profile card shows the status, 7 editors with counters and the 6000 total, and the right buttons`, () => {
+for (const locale of ['vi', 'en']) test(`${locale}: profile card shows the status, 6 editors with counters and the 6000 total, and the right buttons`, () => {
   const vi = locale === 'vi', html = panel(state(), locale), words = text(html);
   assert.ok(words.includes(vi ? 'Trạng thái: Bản nháp chưa xác nhận' : 'Status: Draft, not confirmed'));
   assert.ok(words.includes(vi ? 'Khoá học mới vẫn dùng bản đã xác nhận ngày 19/10/2026' : 'New courses keep using the version confirmed on 10/19/2026'));
   assert.ok(words.includes(vi ? 'Có 1 tài liệu mới chưa có trong hồ sơ.' : '1 new document(s) are not in the profile yet.'));
-  const labels = vi ? ['Giới thiệu doanh nghiệp', 'Sản phẩm và dịch vụ', 'Nhóm người học', 'Thuật ngữ nội bộ', 'Quy trình chính', 'Văn hoá và giọng văn', 'Quy ước khi soạn bài']
-    : ['About the organization', 'Products and services', 'Learner groups', 'Internal terms', 'Key processes', 'Culture and tone', 'Lesson writing rules'];
+  const labels = vi ? ['Giới thiệu doanh nghiệp', 'Sản phẩm và dịch vụ', 'Thuật ngữ nội bộ', 'Quy trình chính', 'Văn hoá và giọng văn', 'Quy ước khi soạn bài']
+    : ['About the organization', 'Products and services', 'Internal terms', 'Key processes', 'Culture and tone', 'Lesson writing rules'];
   let at = -1;
   for (const label of labels) { const next = words.indexOf(label, at + 1); assert.ok(next > at, `${label} in spec order`); at = next; }
+  // QC 21/10 (C10): the stored version still has a learner group; it is neither shown nor counted.
+  assert.doesNotMatch(words, vi ? /Nhóm người học|Tên nhóm|Nhân viên bán hàng|Tư vấn tại cửa hàng/ : /Learner groups|Group name|Nhân viên bán hàng/);
   assert.equal((html.match(/<textarea/g) ?? []).length, 2, 'two multi-line texts');
-  assert.ok(html.includes('value="Tủ lạnh"') && html.includes('value="Nhân viên bán hàng"') && html.includes('value="Phiếu đổi hàng trong 7 ngày"'));
+  assert.ok(html.includes('value="Tủ lạnh"') && html.includes('value="Phiếu đổi hàng trong 7 ngày"'));
   assert.ok(words.includes(vi ? '21/800 ký tự' : '21/800 characters'));
   assert.ok(words.includes(vi ? '2/15 mục' : '2/15 items') && words.includes(vi ? '0/10 mục' : '0/10 items'));
-  assert.ok(words.includes(vi ? `Tổng cộng ${chars}/6.000 ký tự` : `${chars}/6,000 characters in total`));
+  const shown = chars - 'Nhân viên bán hàng'.length - 'Tư vấn tại cửa hàng'.length;
+  assert.ok(words.includes(vi ? `Tổng cộng ${shown}/6.000 ký tự` : `${shown}/6,000 characters in total`));
   assert.equal(buttonDisabled(html, vi ? 'Cập nhật từ tài liệu' : 'Update from documents'), false);
   assert.equal(buttonDisabled(html, vi ? 'Lưu bản nháp' : 'Save draft'), true, 'nothing changed yet');
   assert.equal(buttonDisabled(html, vi ? 'Xác nhận' : 'Confirm'), false, 'the draft is not the confirmed version');
@@ -186,7 +189,7 @@ test('while AI drafts the profile the editors are closed; a failed draft explain
     const html = panel(state({ distill: { status, requested_at: '2026-10-20T06:00:00.000Z', finished_at: null, error_code: null } }), 'vi');
     assert.match(html, /role="status"[^>]*>(?:(?!<\/div><\/div>).)*AI đang đọc tài liệu…/);
     assert.equal((html.match(/<textarea[^>]*disabled=""/g) ?? []).length, 2);
-    assert.equal((html.match(/<fieldset disabled=""/g) ?? []).length, 5);
+    assert.equal((html.match(/<fieldset disabled=""/g) ?? []).length, 4);
     for (const label of ['Cập nhật từ tài liệu', 'Lưu bản nháp', 'Xác nhận']) assert.equal(buttonDisabled(html, label), true, label);
   }
   for (const [code, words] of [[null, 'AI chưa soạn được hồ sơ từ tài liệu. Hãy bấm Thử lại.'],
@@ -198,12 +201,18 @@ test('while AI drafts the profile the editors are closed; a failed draft explain
   }
 });
 
-test('a stored version is shown read only in the order of the editors', () => {
+test('a stored version is shown read only in the order of the editors; an old version\'s learner groups are not shown', () => {
   env.locale = 'vi';
   const html = renderToStaticMarkup(h(WorkspaceOrgProfileView, { profile }));
-  assert.ok(text(html).includes('Nhóm người học Nhân viên bán hàng: Tư vấn tại cửa hàng'));
+  assert.ok(text(html).includes('Sản phẩm và dịch vụ Tủ lạnh Máy giặt Thuật ngữ nội bộ Phiếu đổi: Phiếu đổi hàng trong 7 ngày'));
   assert.ok(text(html).includes('Quy ước khi soạn bài Chưa có'));
+  assert.doesNotMatch(text(html), /Nhóm người học|Nhân viên bán hàng|Tư vấn tại cửa hàng/);
+  assert.equal((html.match(/<dt/g) ?? []).length, 6);
   assert.doesNotMatch(html, /<input|<textarea/);
+  for (const many of [12, 0]) {
+    const old = { ...profile, learner_groups: Array.from({ length: many }, (_, i) => ({ name: `Nhóm ${i}`, description: '' })) };
+    assert.doesNotThrow(() => renderToStaticMarkup(h(WorkspaceOrgProfileView, { profile: old })), `${many} old groups`);
+  }
 });
 
 function launchController() {
@@ -256,11 +265,11 @@ test('VI and EN have the same organization context keys, every key the component
   assert.ok(used.length > 60);
   const lookup = (locale, key) => key.split('.').reduce((node, part) => node?.[part], locales[locale]);
   for (const key of new Set(used)) for (const locale of ['vi', 'en']) assert.equal(typeof lookup(locale, key), 'string', `${locale} ${key}`);
-  for (const field of contract.ORG_PROFILE_FIELDS) {
+  for (const field of contract.ORG_PROFILE_SHOWN_FIELDS) {
     for (const locale of ['vi', 'en']) {
       const copy = locales[locale].aiIdOrgContext.profile.fields[field];
       assert.equal(typeof copy.label, 'string');
-      if (field === 'learner_groups' || field === 'glossary') {
+      if (field === 'glossary') {
         for (const part of contract.ORG_PROFILE_ROW_LIMITS[field].parts) for (const suffix of ['', 'Placeholder']) assert.equal(typeof copy[`${part.key}${suffix}`], 'string');
       } else assert.equal(typeof copy.placeholder, 'string');
     }

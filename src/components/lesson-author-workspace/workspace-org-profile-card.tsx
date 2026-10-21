@@ -15,7 +15,7 @@ import { WorkspaceOrgProfileFields } from './workspace-org-profile-fields';
 import { WorkspaceOrgProfileHistory } from './workspace-org-profile-history';
 import { WorkspaceOrgContextConfirm } from './workspace-org-context-dialogs';
 
-/** "Hồ sơ doanh nghiệp": status, AI draft from the documents, the 7 editors, Save draft / Confirm, history.
+/** "Hồ sơ doanh nghiệp": status, AI draft from the documents, the 6 editors, Save draft / Confirm, history.
  * Until a first version exists the editors stay closed: the card shows the two steps that let the AI write the
  * profile, and "fill it in yourself" opens empty editors for an organization without documents.
  * The draft keeps the server revision it started from; a newer server version replaces it only while it has no

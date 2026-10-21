@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { History } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
-  ORG_PROFILE_FIELDS, type OrgProfile, type OrgProfileHistoryEntry, type OrgProfileVersion,
+  ORG_PROFILE_SHOWN_FIELDS, type OrgProfile, type OrgProfileHistoryEntry, type OrgProfileShownField, type OrgProfileVersion,
 } from '../../api/workspace-org-context.contract';
 import type { WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 import { useOrgProfileRestore, useOrgProfileVersion } from '@/hooks/queries/use-workspace-org-context';
@@ -72,14 +72,12 @@ export function WorkspaceOrgProfileHistory({ history, currentVersion, confirmedV
   </details>;
 }
 
-/** A stored profile, read only, in the order of the editors. */
+/** A stored profile, read only, in the order of the editors. An old version's learner groups are not shown (C10). */
 export function WorkspaceOrgProfileView({ profile }: { profile: Readonly<OrgProfile> }) {
   const { t } = useTranslation();
-  const values = (field: typeof ORG_PROFILE_FIELDS[number]): string[] => field === 'learner_groups'
-    ? profile.learner_groups.map(row => row.description ? `${row.name}: ${row.description}` : row.name)
-    : field === 'glossary' ? profile.glossary.map(row => `${row.term}: ${row.meaning}`)
-      : field === 'organization_summary' || field === 'culture_tone' ? (profile[field] ? [profile[field]] : []) : [...profile[field]];
-  return <dl className="space-y-4">{ORG_PROFILE_FIELDS.map(field => {
+  const values = (field: OrgProfileShownField): string[] => field === 'glossary' ? profile.glossary.map(row => `${row.term}: ${row.meaning}`)
+    : field === 'organization_summary' || field === 'culture_tone' ? (profile[field] ? [profile[field]] : []) : [...profile[field]];
+  return <dl className="space-y-4">{ORG_PROFILE_SHOWN_FIELDS.map(field => {
     const items = values(field);
     return <div key={field} className="min-w-0">
       <dt className="text-sm font-semibold">{t(`aiIdOrgContext.profile.fields.${field}.label`)}</dt>

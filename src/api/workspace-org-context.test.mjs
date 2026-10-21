@@ -251,8 +251,11 @@ test('error copy: every refusal has its own plain message without codes, abbrevi
   }
   assert.equal(message('vi', failure('ORG_CONTEXT_PROFILE_INVALID', 422, { path: 'glossary.3.term', reason: 'too_long' })),
     'Phần Thuật ngữ nội bộ dài quá giới hạn. Hãy rút gọn rồi lưu lại.');
-  assert.equal(message('en', failure('ORG_CONTEXT_PROFILE_INVALID', 422, { path: 'learner_groups', reason: 'too_many' })),
-    'Learner groups has too many items. Remove some, then save again.');
+  assert.equal(message('en', failure('ORG_CONTEXT_PROFILE_INVALID', 422, { path: 'products_services', reason: 'too_many' })),
+    'Products and services has too many items. Remove some, then save again.');
+  // Learner groups are no longer on screen (C10): a refusal naming them falls back to the general profile message.
+  assert.deepEqual(contract.orgContextErrorMessage(failure('ORG_CONTEXT_PROFILE_INVALID', 422, { path: 'learner_groups', reason: 'too_many' })),
+    { key: 'aiIdOrgContext.errors.profile.generic' });
 });
 
 test('not-ready reasons and failed drafts say what to do, in both languages', () => {
