@@ -681,8 +681,9 @@ test('diagram safely projects Course Outline renderer fields instead of rejectin
   assert.equal(readWorkspacePreview(detail('la_diagram', invalid)), null);
 });
 
-test('IDM course detail and overview show the Hold and Nice to know panels in both locales', () => {
-  // QC course 234653 (R3/R4): Hold items, held objectives and Nice to know blocks reach the author.
+test('the Hold and Nice to know panels are never shown, even for an old IDM course that still has them', () => {
+  // QC 21/10 (C7/C8): the AI no longer holds blocks or lists left-out content. An old course
+  // detail may still carry `idm_guidance`; it stays readable but nothing of it is shown.
   const guidance = {
     hold_items: [
       { name: 'Bộ lọc Tam Hóa', reason: 'Thiếu ngưỡng đánh giá', sme_question: 'Ngưỡng nào là đạt?',
@@ -693,26 +694,18 @@ test('IDM course detail and overview show the Hold and Nice to know panels in bo
     nice_to_know: [{ name: 'Ngôi nhà Business Excellence', summary: 'Mô hình tổng thể các trụ cột' }],
   };
   const idmCourse = { ...courseDetail, idm_guidance: guidance };
-  const vi = renderDetail(idmCourse, 'vi');
-  for (const text of ['Cần chuyên gia bổ sung (Hold)', 'Bộ lọc Tam Hóa', 'Thiếu ngưỡng đánh giá', 'Ngưỡng nào là đạt?',
-    'Must Do chưa dạy được', 'Đánh giá đề xuất theo 3 tiêu chí', 'Khối thiếu lý do',
-    'Mục tiêu chờ SME (chưa hiển thị là kết quả đầu ra của khoá học)', 'Lãnh đạo có thể đánh giá đề xuất công nghệ',
-    'Nội dung tham khảo đã lược (Nice to know)', 'Ngôi nhà Business Excellence', 'Mô hình tổng thể các trụ cột']) {
-    assert.ok(vi.includes(text), text);
+  const hidden = /Hold|Nice to know|SME|Must Do|chuyên gia|Bộ lọc Tam Hóa|Thiếu ngưỡng|Ngưỡng nào là đạt|Khối thiếu lý do|Ngôi nhà Business Excellence|Mô hình tổng thể|Lãnh đạo có thể đánh giá/;
+  const empty = { hold_items: [], pending_objectives: [], nice_to_know: [] };
+  for (const locale of ['vi', 'en']) {
+    for (const value of [idmCourse, { ...courseDetail, idm_guidance: empty }, { ...courseDetail, idm_guidance: null }, courseDetail]) {
+      const html = renderDetail(value, locale);
+      assert.doesNotMatch(html, hidden, locale);
+      assert.match(html, /Actual summary/, 'the rest of the course detail is unchanged');
+    }
+    assert.doesNotMatch(renderDialog({}, locale, { overviewDetails: [idmCourse, chapterDetail] }), hidden, `${locale} overview`);
+    for (const key of ['holdPanel', 'holdHint', 'holdReason', 'holdQuestion', 'holdBlocked', 'pendingObjectives', 'niceToKnowPanel', 'niceToKnowHint']) {
+      assert.equal(workspaceCopy[locale][key], undefined, `${locale} ${key}`);
+    }
   }
-  assert.equal((vi.match(/Câu hỏi cho SME/g) ?? []).length, 1, 'a hold item without a question shows no empty label');
-  const en = renderDetail(idmCourse, 'en');
-  assert.match(en, /Needs SME input \(Hold\)/);
-  assert.match(en, /Reference content left out \(Nice to know\)/);
-  assert.match(en, /Objectives waiting for the SME/);
-  const overview = renderDialog({}, 'vi', { overviewDetails: [idmCourse, chapterDetail] });
-  assert.match(overview, /Cần chuyên gia bổ sung \(Hold\)/);
-  assert.match(overview, /Nội dung tham khảo đã lược \(Nice to know\)/);
-  const niceOnly = renderDetail({ ...courseDetail, idm_guidance: { hold_items: [], pending_objectives: [],
-    nice_to_know: guidance.nice_to_know } }, 'vi');
-  assert.doesNotMatch(niceOnly, /Cần chuyên gia bổ sung/);
-  assert.match(niceOnly, /Nice to know/);
-  for (const plain of [courseDetail, { ...courseDetail, idm_guidance: null }, { ...chapterDetail, idm_guidance: guidance }]) {
-    assert.doesNotMatch(renderDetail(plain, 'vi'), /Cần chuyên gia bổ sung|Nice to know/);
-  }
+  assert.equal(detailModule.WorkspaceIdmGuidanceCards, undefined);
 });
