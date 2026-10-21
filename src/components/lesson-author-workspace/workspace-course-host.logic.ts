@@ -18,7 +18,7 @@ export const workspaceCourseHostCopy = {
     saved: 'The server confirmed this draft revision. It has not been applied to the course.', applied: 'The selected scope was added to the course draft. Publishing remains separate.',
     replay: 'Repeat the same unconfirmed operation', replayHint: 'Reload saved state first. Repeating uses the original operation ID and payload.',
     rebase: 'Keep my local edits against this saved revision', discard: 'Discard local edits', compare: 'Compare the saved content above with your local edits before choosing.',
-    waiting: 'Waiting for an authorized detail read.', error: 'The action could not be completed. Reload saved state.', detail: 'Draft content', review: 'Review and edit committed draft content. Publishing remains separate.',
+    waiting: 'Waiting for an authorized detail read.', error: 'The action could not be completed. Reload saved state.', detail: 'Draft content', review: 'AI never adds content to the course by itself. A design is applied only after you review it.',
     readOnlyReview: 'AI design analysis for review.', appliedReview: 'This content has been added to the course and is now view-only.',
     editTitle: 'Edit name', aiInsight: 'AI design insight', sessions: 'Draft list', applying: 'Applying…' },
   vi: { label: 'AI Instructional Design', title: 'AI Instructional Design · Thiết kế khoá học', open: 'Mở bản thiết kế khoá học AI Instructional Design', close: 'Đóng', loading: 'Đang tải bản thiết kế khoá học được phép truy cập…',
@@ -32,7 +32,7 @@ export const workspaceCourseHostCopy = {
     saved: 'Máy chủ đã xác nhận phiên bản bản thiết kế khoá học này. Chưa áp dụng vào khóa học.', applied: 'Đã đưa đúng phạm vi được chọn vào bản nháp khóa học. Xuất bản là thao tác riêng.',
     replay: 'Gửi lại đúng thao tác chưa xác nhận', replayHint: 'Tải lại trạng thái đã lưu trước. Gửi lại giữ nguyên mã thao tác và nội dung ban đầu.',
     rebase: 'Giữ bản sửa cục bộ trên phiên bản đã lưu này', discard: 'Bỏ bản sửa cục bộ', compare: 'So sánh nội dung đã lưu bên trên với bản sửa cục bộ trước khi chọn.',
-    waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thiết kế khoá học', review: 'Duyệt và sửa nội dung bản thiết kế khoá học đã ghi nhận. Xuất bản là thao tác riêng.',
+    waiting: 'Đang chờ tải chi tiết có kiểm tra quyền.', error: 'Chưa thực hiện được thao tác. Hãy tải lại trạng thái đã lưu.', detail: 'Nội dung bản thiết kế khoá học', review: 'AI không tự đưa nội dung vào khoá học. Bản thiết kế chỉ được áp dụng sau khi bạn duyệt.',
     readOnlyReview: 'Phân tích thiết kế do AI đề xuất để bạn rà soát.', appliedReview: 'Nội dung này đã được đưa vào khóa học và hiện chỉ cho phép xem.',
     editTitle: 'Chỉnh sửa tên', aiInsight: 'Phân tích thiết kế AI', sessions: 'Danh sách bản thiết kế khoá học', applying: 'Đang áp dụng…' },
 } as const;

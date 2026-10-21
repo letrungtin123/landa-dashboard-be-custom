@@ -564,6 +564,20 @@ for (const locale of ['en', 'vi']) test(`${locale}: with the feature on, two tab
   } finally { i18nEnv.locale = 'en'; f.host.dispose(); orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({}) }; }
 });
 
+for (const locale of ['en', 'vi']) test(`${locale}: the window subtitle says AI never adds content to the course by itself`, async () => {
+  // QC 21/10 (C2): the line under the title replaces the old "review and edit … publishing is separate" sentence.
+  const f = await startScreen();
+  try {
+    orgContextQuery = answered({ enabled: false });
+    const html = render(f, locale, { sources: startScreenSources(), tenantId: id(2) });
+    const [title, subtitle, old] = locale === 'vi'
+      ? ['AI Instructional Design · Thiết kế khoá học', 'AI không tự đưa nội dung vào khoá học. Bản thiết kế chỉ được áp dụng sau khi bạn duyệt.', /Xuất bản là thao tác riêng|Duyệt và sửa nội dung/]
+      : ['AI Instructional Design · Course workspace', 'AI never adds content to the course by itself. A design is applied only after you review it.', /Publishing remains separate|Review and edit committed/];
+    assert.ok(html.includes(`<h2>${title}</h2><p>${subtitle}</p>`), html);
+    assert.doesNotMatch(html, old);
+  } finally { f.host.dispose(); orgContextQuery = { data: undefined, isPending: true, fetchStatus: 'idle', refetch: async () => ({}) }; }
+});
+
 test('organization context UI: polling only through React Query, no timers, browser storage or raw requests; host within 400 lines', () => {
   for (const file of ['./workspace-launch-tabs.tsx', './workspace-org-context-panel.tsx', './workspace-org-profile-card.tsx', './workspace-org-profile-fields.tsx',
     './workspace-org-profile-history.tsx', './workspace-org-context-launch.tsx', './workspace-org-context-dialogs.tsx', './workspace-org-context.logic.ts']) {
