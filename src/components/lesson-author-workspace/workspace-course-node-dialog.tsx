@@ -93,7 +93,7 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
       applied: confirmedScope => {
         const confirmedGraph = session.getState().read.graph;
         const confirmedRevisions = workspaceAppliedScopeRevisions(confirmedGraph?.nodes ?? [], confirmedScope.node_id);
-        completeWorkspaceApplyUi({ markApplied: () => {
+        return completeWorkspaceApplyUi({ markApplied: () => {
           setAppliedOverlay(current => ({ workspaceId: launch.workspace_id,
             revisions: { ...(current?.workspaceId === launch.workspace_id ? current.revisions : {}), ...confirmedRevisions } }));
           if (shown()) setApplyState('done');
@@ -108,7 +108,8 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
         setApplyError(error instanceof WorkspaceApplyError ? error : null); setApplyState('failed');
       },
       // The draft or course changed: reload so the next Apply sends the fresh event head.
-      reload: () => act(() => session.refreshForApply()),
+      reload: () => session.refreshForApply(),
+      reloadFailed: () => setActionError(true),
     });
   };
   const applyLabel = applying && !applyingHere ? c.applying : workspaceScopeApplyLabel(node.kind, locale, applyingHere);

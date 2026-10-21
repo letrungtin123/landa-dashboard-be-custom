@@ -277,13 +277,21 @@ test('unknown or failed Save never dispatches Apply; a clean confirmed draft ski
     assertCanWrite() {}, apply: async (scopeId, sequence) => { applied++; assert.equal(scopeId, component.node_id); assert.equal(sequence, 3); } });
   assert.equal(applied, 1);
 });
-test('committed Apply exits busy state before background workspace and course refreshes settle', async () => {
+test('committed Apply is marked at once; the returned promise is the workspace reload, never the course refresh', async () => {
   const workspace = deferred(), course = deferred(); const order = [];
-  completeWorkspaceApplyUi({ markApplied: () => order.push('done'),
+  let settled = false;
+  const reload = completeWorkspaceApplyUi({ markApplied: () => order.push('done'),
     refreshWorkspace: () => { order.push('workspace'); return workspace.promise; },
     refreshCourse: () => { order.push('course'); return course.promise; } });
-  assert.deepEqual(order, ['done', 'workspace', 'course']);
-  workspace.resolve(); course.resolve(); await settle();
+  void reload.then(() => { settled = true; });
+  assert.deepEqual(order, ['done', 'workspace', 'course'], 'marked before either refresh settles');
+  await settle(); assert.equal(settled, false, 'the Apply flight waits for the workspace reload');
+  workspace.resolve(); await settle();
+  assert.equal(settled, true, 'settled with the workspace reload while the course refresh still runs');
+  course.resolve(); await settle();
+  // A failing course refresh never fails the committed Apply; a failed workspace reload is reported to the caller.
+  await completeWorkspaceApplyUi({ markApplied() {}, refreshWorkspace: async () => {}, refreshCourse: () => { throw Error('course'); } });
+  await assert.rejects(completeWorkspaceApplyUi({ markApplied() {}, refreshWorkspace: () => { throw Error('workspace'); } }), /workspace/);
 });
 test('missing, empty, invalid or failed discovery never creates a session or fallback request', async () => {
   for (const [resolve, issue] of [[undefined, 'discovery_unavailable'], [async () => null, 'no_workspace'],

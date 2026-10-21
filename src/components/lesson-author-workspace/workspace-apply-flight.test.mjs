@@ -76,52 +76,116 @@ test('the hook reads the running Apply of its workspace on every render, also on
   assert.equal(renderToStaticMarkup(h(Probe, { workspaceId: id(1) })), '<span>idle</span>');
 });
 
-test('an Apply holds the workspace until it settles; a second click meanwhile is never sent', async () => {
-  const flights = createWorkspaceApplyFlights();
-  const post = deferred(), events = [];
-  const first = runWorkspaceApplyFlight({ flights, workspaceId: id(1), nodeId: id(10),
+// Fake one-shot timer: the test decides when the reload bound expires.
+function fakeTimer() {
+  const timers = [];
+  return { timers, start(ms, expired) { const entry = { ms, expired, cancelled: false }; timers.push(entry); return () => { entry.cancelled = true; }; } };
+}
+async function settle() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
+const noop = () => {};
+
+test('a committed Apply holds the workspace until the reload after it has settled; a second Apply meanwhile is never sent', async () => {
+  const flights = createWorkspaceApplyFlights(), timer = fakeTimer();
+  const post = deferred(), reload = deferred(), events = [];
+  let finished = null;
+  const first = runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(10),
     send: () => { events.push('send 1'); return post.promise; },
-    applied: result => events.push(['applied', result, flights.get(id(1))]),
-    failed: () => events.push('failed'), reload: () => events.push('reload') });
+    applied: result => { events.push(['applied', result, flights.get(id(1))?.nodeId]); return reload.promise; },
+    failed: () => events.push('failed'), reload: async () => { events.push('conflict reload'); }, reloadFailed: () => events.push('reload failed') })
+    .then(result => { finished = result; });
   assert.equal(flights.get(id(1))?.nodeId, id(10), 'held while the request runs');
-  assert.equal(await runWorkspaceApplyFlight({ flights, workspaceId: id(1), nodeId: id(11),
-    send: async () => { events.push('send 2'); }, applied: () => events.push('applied 2'), failed: () => events.push('failed 2'),
-    reload: () => events.push('reload 2') }), 'busy');
-  post.resolve('receipt');
-  assert.equal(await first, 'applied');
-  assert.deepEqual(events, ['send 1', ['applied', 'receipt', null]], 'released before the outcome is shown; success reloads through completeWorkspaceApplyUi');
-  assert.equal(flights.get(id(1)), null);
+  post.resolve('receipt'); await settle();
+  assert.deepEqual(events, ['send 1', ['applied', 'receipt', id(10)]], 'the result is shown as soon as the answer arrives');
+  assert.equal(flights.get(id(1))?.nodeId, id(10), 'still held while the workspace reload runs');
+  assert.equal(finished, null);
+  assert.deepEqual(timer.timers.map(entry => entry.ms), [15_000], 'the wait for the reload is bounded');
+  // Another chapter clicked during the reload: refused here, nothing is sent with the old head.
+  assert.equal(await runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(11),
+    send: async () => { events.push('send 2'); }, applied: async () => { events.push('applied 2'); }, failed: () => events.push('failed 2'),
+    reload: async () => {}, reloadFailed: noop }), 'busy');
+  reload.resolve(); await first;
+  assert.equal(finished, 'applied');
+  assert.equal(flights.get(id(1)), null, 'released once the reload settled');
+  assert.equal(timer.timers[0].cancelled, true, 'the bound is cleared');
+  assert.deepEqual(events, ['send 1', ['applied', 'receipt', id(10)]]);
 });
 
-test('a changed draft or course reloads the workspace read so the next Apply sends the fresh head; other failures do not', async () => {
+test('a failed reload still frees the workspace and is shown; so does a reload that throws before it starts', async () => {
+  for (const start of ['rejects', 'throws']) {
+    const flights = createWorkspaceApplyFlights(), timer = fakeTimer(), reload = deferred(), shown = [];
+    const failure = new Error('read failed');
+    const run = runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(10), send: async () => 'receipt',
+      applied: () => { if (start === 'throws') throw failure; return reload.promise; },
+      failed: noop, reload: async () => {}, reloadFailed: error => shown.push([error, flights.get(id(1))?.nodeId ?? null]) });
+    await settle();
+    if (start === 'rejects') { assert.equal(flights.get(id(1))?.nodeId, id(10), 'held while the reload runs'); reload.reject(failure); }
+    assert.equal(await run, 'applied', 'the Apply itself committed');
+    assert.deepEqual(shown, [[failure, id(10)]], start);
+    assert.equal(flights.get(id(1)), null, start);
+  }
+});
+
+test('a reload that hangs is waited for at most the bound; the workspace is freed and a late failure is still shown', async () => {
+  const flights = createWorkspaceApplyFlights(), timer = fakeTimer(), reload = deferred(), shown = [];
+  const run = runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(10), send: async () => 'receipt',
+    applied: () => reload.promise, failed: noop, reload: async () => {}, reloadFailed: error => shown.push(error) });
+  await settle();
+  assert.equal(flights.get(id(1))?.nodeId, id(10));
+  timer.timers[0].expired();
+  assert.equal(await run, 'applied');
+  assert.equal(flights.get(id(1)), null, 'every Apply button is usable again after the bound');
+  const late = new Error('late');
+  reload.reject(late); await settle();
+  assert.deepEqual(shown, [late]);
+  assert.equal(flights.get(id(1)), null, 'a late answer never claims the workspace again');
+});
+
+test('a changed draft or course reloads the workspace read while the workspace stays held; other failures do not reload', async () => {
   const conflict = new WorkspaceApplyError('WORKSPACE_APPLY_CONFLICT', 'rejected');
   assert.equal(workspaceApplyFailureNeedsReload(conflict), true);
   for (const error of [new WorkspaceApplyError('WORKSPACE_APPLY_COURSE_BUSY', 'rejected'), new WorkspaceApplyError('WORKSPACE_APPLY_VALIDATION_FAILED', 'rejected'),
     new WorkspaceApplyError('WORKSPACE_APPLY_UNAVAILABLE', 'unknown'), new WorkspaceWriteError('WORKSPACE_EDIT_READ_REQUIRED'), new Error('network')]) {
     assert.equal(workspaceApplyFailureNeedsReload(error), false, String(error.code ?? error.message));
   }
-  for (const [error, reloads] of [[conflict, 1], [new WorkspaceApplyError('WORKSPACE_APPLY_COURSE_BUSY', 'rejected'), 0], [new Error('network'), 0]]) {
-    const flights = createWorkspaceApplyFlights(), events = [];
-    const result = await runWorkspaceApplyFlight({ flights, workspaceId: id(1), nodeId: id(10),
-      send: async () => { throw error; }, applied: () => events.push('applied'),
-      failed: failure => events.push(['failed', failure, flights.get(id(1))]), reload: () => events.push(['reload', flights.get(id(1))]) });
-    assert.equal(result, 'failed');
-    assert.deepEqual(events, [['failed', error, null], ...Array.from({ length: reloads }, () => ['reload', null])]);
-    assert.equal(flights.get(id(1)), null, 'a failed Apply frees the workspace');
+  // Conflict: the error is shown at once; the workspace stays held until the reload settled.
+  const flights = createWorkspaceApplyFlights(), timer = fakeTimer(), reload = deferred(), events = [];
+  const run = runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(10),
+    send: async () => { throw conflict; }, applied: async () => { events.push('applied'); },
+    failed: failure => events.push(['failed', failure, flights.get(id(1))?.nodeId]),
+    reload: () => { events.push(['reload', flights.get(id(1))?.nodeId]); return reload.promise; }, reloadFailed: noop });
+  await settle();
+  assert.deepEqual(events, [['failed', conflict, id(10)], ['reload', id(10)]]);
+  assert.equal(await runWorkspaceApplyFlight({ flights, timer, workspaceId: id(1), nodeId: id(11), send: async () => { events.push('send 2'); },
+    applied: async () => {}, failed: noop, reload: async () => {}, reloadFailed: noop }), 'busy', 'nothing is sent during the reload');
+  reload.resolve();
+  assert.equal(await run, 'failed');
+  assert.equal(flights.get(id(1)), null);
+  assert.equal(events.length, 2);
+  // Other failures free the workspace at once, without a reload.
+  for (const error of [new WorkspaceApplyError('WORKSPACE_APPLY_COURSE_BUSY', 'rejected'), new Error('network')]) {
+    const own = createWorkspaceApplyFlights(), seen = [];
+    assert.equal(await runWorkspaceApplyFlight({ flights: own, timer: fakeTimer(), workspaceId: id(1), nodeId: id(10),
+      send: async () => { throw error; }, applied: async () => { seen.push('applied'); }, failed: failure => seen.push(failure),
+      reload: async () => { seen.push('reload'); }, reloadFailed: noop }), 'failed');
+    assert.deepEqual(seen, [error]);
+    assert.equal(own.get(id(1)), null);
   }
   // A request that cannot even start (thrown before any promise) frees the workspace too.
-  const flights = createWorkspaceApplyFlights();
-  assert.equal(await runWorkspaceApplyFlight({ flights, workspaceId: id(1), nodeId: id(10),
-    send: () => { throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN'); }, applied() {}, failed() {}, reload() {} }), 'failed');
-  assert.equal(flights.get(id(1)), null);
+  const own = createWorkspaceApplyFlights();
+  assert.equal(await runWorkspaceApplyFlight({ flights: own, workspaceId: id(1), nodeId: id(10),
+    send: () => { throw new WorkspaceWriteError('WORKSPACE_EDIT_FORBIDDEN'); }, applied: async () => {}, failed: noop,
+    reload: async () => {}, reloadFailed: noop }), 'failed');
+  assert.equal(own.get(id(1)), null);
 });
 
-test('the node dialog runs every Apply through the page-wide flight and reloads after success and conflict', () => {
+test('the node dialog runs every Apply through the page-wide flight and waits for the reload after success and conflict', () => {
   const dialog = readFileSync(new URL('./workspace-course-node-dialog.tsx', import.meta.url), 'utf8');
   assert.match(dialog, /const applying = useWorkspaceApplyFlight\(state\.launch\?\.workspace_id \?\? null\);/);
   assert.match(dialog, /await runWorkspaceApplyFlight\(\{ flights: workspaceApplyFlights, workspaceId: launch\.workspace_id, nodeId: node\.node_id,/);
+  assert.match(dialog, /return completeWorkspaceApplyUi\(\{ markApplied:/, 'the flight waits for the success reload');
   assert.match(dialog, /refreshWorkspace: \(\) => session\.refreshForApply\(\)/, 'a committed Apply reloads the workspace (the node turns green)');
-  assert.match(dialog, /reload: \(\) => act\(\(\) => session\.refreshForApply\(\)\)/, 'a conflict reloads it, failures shown');
+  assert.match(dialog, /reload: \(\) => session\.refreshForApply\(\),\s*reloadFailed: \(\) => setActionError\(true\),/,
+    'a conflict reloads it; a failed reload shows the usual error');
   assert.match(dialog, /disabled=\{!!applying\}/);
   assert.match(dialog, /applyDisabled=\{!canApply \|\| !!applying\}/);
   assert.doesNotMatch(dialog, /setApplyState\('busy'\)|applyState === 'busy'/, 'the running state is never local to one dialog');

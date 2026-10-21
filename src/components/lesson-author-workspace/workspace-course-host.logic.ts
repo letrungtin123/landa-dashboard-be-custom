@@ -172,16 +172,21 @@ export async function saveThenApplyWorkspaceScope(input: {
   return confirmedScope;
 }
 
-/** Apply success belongs to the POST response. Course/workspace refreshes are
- * independent reconciliation work and must never keep the modal button busy or
- * turn a committed Apply into a visible failure. */
+/** Apply success belongs to the POST response: the applied nodes are marked at
+ * once. The returned promise is the workspace reload, which the workspace's
+ * Apply flight waits for (bounded) so the next Apply reads the new head. The
+ * course refresh is independent background work and must never turn a
+ * committed Apply into a visible failure. */
 export function completeWorkspaceApplyUi(input: {
   markApplied: () => void;
   refreshWorkspace: () => Promise<void>;
   refreshCourse?: () => Promise<void> | void;
-}) {
+}): Promise<void> {
   input.markApplied();
-  for (const refresh of [input.refreshWorkspace, input.refreshCourse].filter(Boolean) as Array<() => Promise<void> | void>) {
-    try { void Promise.resolve(refresh()).catch(() => undefined); } catch { /* Apply already committed; background refresh may retry later. */ }
+  let workspace: Promise<void>;
+  try { workspace = Promise.resolve(input.refreshWorkspace()); } catch (error) { workspace = Promise.reject(error); }
+  if (input.refreshCourse) {
+    try { void Promise.resolve(input.refreshCourse()).catch(() => undefined); } catch { /* Apply already committed; background refresh may retry later. */ }
   }
+  return workspace;
 }
