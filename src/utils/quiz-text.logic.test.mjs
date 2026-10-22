@@ -50,6 +50,9 @@ test('stem: context lines, one list item per "- " line, and the last line is the
     { kind: 'line', text: 'Chọn các ý đúng:', question: false }, { kind: 'list', items: ['A', 'B'] }],
     'a stem that ends with a list has no bold line');
   assert.deepEqual(logic.quizQuestionBlocks(' \n \n'), []);
+  assert.deepEqual(logic.quizQuestionBlocks('Bối cảnh\n \n\t\n  \nHỏi?'), [{ kind: 'line', text: 'Bối cảnh', question: false },
+    { kind: 'line', text: 'Hỏi?', question: true }], '"\\n \\n" (a line of spaces) is never an empty line');
+  assert.equal(logic.quizExplanationLines('Nguyên tắc\n \n\nA - Đúng vì x.\n \n').length, 2);
 });
 
 test('explanation: the principle, then one line per option; the correct option is marked', () => {
