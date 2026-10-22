@@ -516,6 +516,10 @@ export interface LessonAuthorSourceDocument {
   type?: string;
   status?: string;
   source_info?: { name?: string; size?: number; extension?: string; mime_type?: string } | null;
+  /** An active AI ID run designs from this document, so it cannot be deleted yet (absent on older servers). */
+  in_use_by_ai_id?: boolean;
+  /** The reader may delete it from the knowledge base (the knowledge base page's permission; absent on older servers). */
+  can_delete?: boolean;
 }
 
 export interface AppliedLessonAuthorJob {

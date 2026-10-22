@@ -507,6 +507,48 @@ test('source list: delete controls only for authors with the knowledge base dele
   plain.controller.dispose();
 });
 
+test('source list: a document AI ID is using says so and cannot be deleted; the row\'s can_delete wins over the permission', async () => {
+  const rows = [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned', in_use_by_ai_id: false, can_delete: true },
+    { document_id: id(9), kb_id: id(4), name: 'Dang-soan.pdf', status: 'learned', in_use_by_ai_id: true, can_delete: true }];
+  for (const locale of ['vi', 'en']) {
+    const f = controllerFixture({ canDelete: false, documents: rows }); await f.controller.refresh();
+    const html = sourcePanel(f, locale), vi = locale === 'vi';
+    const note = vi ? 'Đang dùng để soạn khoá học' : 'In use by a course design';
+    assert.equal((html.match(new RegExp(note, 'g')) ?? []).length, 1, 'only the row in use carries the note');
+    assert.match(html, new RegExp(`Dang-soan\\.pdf(?:(?!</button>).)*${note}`), 'the note sits in that row');
+    const label = vi ? 'Xoá tài liệu' : 'Delete the document';
+    const deletes = [...html.matchAll(new RegExp(`<button[^>]*aria-label="${label} ([^"]+)"[^>]*>`, 'g'))].map(m => [m[1], / disabled=""/.test(m[0])]);
+    assert.deepEqual(deletes, [['Nguon.pdf', false], ['Dang-soan.pdf', true]], 'the server allows it even without the client permission');
+    const check = html.match(new RegExp(`<button[^>]*role="checkbox"[^>]*aria-label="${vi ? 'Chọn tài liệu Dang-soan.pdf để xoá' : 'Select the document Dang-soan.pdf to delete'}"[^>]*>|<button[^>]*aria-label="${vi ? 'Chọn tài liệu Dang-soan.pdf để xoá' : 'Select the document Dang-soan.pdf to delete'}"[^>]*role="checkbox"[^>]*>`))[0];
+    assert.match(check, / disabled=""/);
+    f.controller.dispose();
+  }
+  const denied = controllerFixture({ canDelete: true, documents: rows.map(row => ({ ...row, can_delete: false })) }); await denied.controller.refresh();
+  assert.doesNotMatch(sourcePanel(denied, 'vi'), /role="checkbox"|Xoá tài liệu|Đang dùng để soạn khoá học/, 'a row the server does not allow has no controls');
+  denied.controller.dispose();
+});
+
+test('a refused or empty delete keeps the confirmation open with plain words, naming the documents in use', () => {
+  const { workspaceSourceDeleteText } = load(path.join(directory, 'workspace-source-delete.tsx'));
+  const outcome = (issue, extra = {}) => ({ issue, kept: 0, names: [], serverMessage: null, ...extra });
+  env.locale = 'vi';
+  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { names: ['A.pdf', 'B.pdf'] })),
+    'Chưa xoá được vì AI đang dùng các tài liệu này để soạn khoá học: “A.pdf”, “B.pdf”. Hãy đợi AI soạn xong rồi thử lại.');
+  assert.match(workspaceSourceDeleteText(t, outcome('in_use', { names: Array.from({ length: 7 }, (_, i) => `T${i}.pdf`) })),
+    /“T4\.pdf” và 2 tài liệu khác\. Hãy đợi/);
+  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { serverMessage: 'AI ID đang dùng “X.pdf”.' })), 'AI ID đang dùng “X.pdf”.');
+  assert.equal(workspaceSourceDeleteText(t, outcome('in_use')), locales.vi.aiIdSourceDelete.errors.in_use);
+  for (const issue of ['busy', 'not_listed', 'forbidden', 'learning', 'connection', 'failed']) {
+    assert.equal(workspaceSourceDeleteText(t, outcome(issue)), locales.vi.aiIdSourceDelete.errors[issue], issue);
+  }
+  env.locale = 'en';
+  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { names: ['A.pdf'] })),
+    'Not deleted: AI is using these documents to write a course: “A.pdf”. Wait until AI has finished, then try again.');
+  const panel = readFileSync(path.join(directory, 'workspace-source-panel.tsx'), 'utf8');
+  assert.match(panel, /if \(outcome\.issue\) \{ setDeleteError\(workspaceSourceDeleteText\(t, outcome\)\); return; \}/,
+    'any outcome with an issue keeps the confirmation open; only a real delete closes it');
+});
+
 test('one confirmation for one or several documents, in plain words, with the names', () => {
   const { WorkspaceSourceDeleteConfirm } = load(path.join(directory, 'workspace-source-delete.tsx'));
   const confirm = (names, locale, extra = {}) => { env.locale = locale; return renderToStaticMarkup(h(WorkspaceSourceDeleteConfirm,
@@ -526,7 +568,7 @@ test('one confirmation for one or several documents, in plain words, with the na
 test('delete copy: VI and EN have the same keys, every refusal has a plain message, no codes or abbreviations', () => {
   const shape = value => typeof value === 'string' ? 'string' : Object.fromEntries(Object.keys(value).sort().map(key => [key, shape(value[key])]));
   assert.deepEqual(shape(locales.en.aiIdSourceDelete), shape(locales.vi.aiIdSourceDelete));
-  for (const issue of ['in_use', 'learning', 'forbidden', 'connection', 'failed']) {
+  for (const issue of ['in_use', 'inUseNamed', 'learning', 'forbidden', 'connection', 'failed', 'busy', 'not_listed']) {
     for (const locale of ['vi', 'en']) assert.ok(locales[locale].aiIdSourceDelete.errors[issue].length > 30, `${locale} ${issue}`);
   }
   const strings = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(strings);
@@ -535,6 +577,4 @@ test('delete copy: VI and EN have the same keys, every refusal has a plain messa
       assert.doesNotMatch(value, /_|\bKB\b|\bAPI\b|\b(?:202|403|404|409|500)\b|workspace|bulk/i, value);
     }
   }
-  const panel = readFileSync(path.join(directory, 'workspace-source-panel.tsx'), 'utf8');
-  assert.match(panel, /t\(`aiIdSourceDelete\.errors\.\$\{outcome\.issue\}`\)/);
 });

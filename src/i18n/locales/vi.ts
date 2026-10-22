@@ -2164,8 +2164,12 @@ export const vi = {
     confirmMany: "Xoá {{count}} tài liệu",
     deleting: "Đang xoá tài liệu…",
     kept: "Còn {{count}} tài liệu chưa xoá được. Có thể AI đang dùng để soạn khoá học hoặc tài liệu đang được xử lý. Hãy thử lại sau.",
+    inUse: "Đang dùng để soạn khoá học",
     errors: {
       in_use: "Chưa xoá được vì AI đang dùng tài liệu để soạn khoá học. Hãy đợi AI soạn xong rồi thử lại.",
+      inUseNamed: "Chưa xoá được vì AI đang dùng các tài liệu này để soạn khoá học: {{names}}. Hãy đợi AI soạn xong rồi thử lại.",
+      busy: "Đang có một thao tác khác với danh sách tài liệu. Hãy đợi xong rồi bấm xoá lần nữa.",
+      not_listed: "Các tài liệu đã chọn không còn trong danh sách. Hãy đóng hộp này và xem lại danh sách.",
       learning: "Tài liệu đang được xử lý nên chưa xoá được. Hãy đợi xử lý xong rồi thử lại.",
       forbidden: "Bạn chưa có quyền xoá tài liệu trong Kho tri thức. Hãy nhờ quản trị viên cấp quyền.",
       connection: "Tạm thời chưa kết nối được máy chủ nên chưa rõ tài liệu đã được xoá hay chưa. Danh sách đã được tải lại, hãy xem lại rồi thử lại nếu cần.",

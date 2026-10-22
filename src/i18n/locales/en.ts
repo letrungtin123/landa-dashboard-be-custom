@@ -2167,8 +2167,12 @@ export const en: TranslationSchema<typeof vi> = {
     confirmMany: "Delete {{count}} documents",
     deleting: "Deleting the documents…",
     kept: "{{count}} document(s) were not deleted. AI may be using them to write a course, or they are still being processed. Try again later.",
+    inUse: "In use by a course design",
     errors: {
       in_use: "Not deleted: AI is using the document to write a course. Wait until AI has finished, then try again.",
+      inUseNamed: "Not deleted: AI is using these documents to write a course: {{names}}. Wait until AI has finished, then try again.",
+      busy: "Another action on the document list is still running. Wait until it finishes, then select Delete again.",
+      not_listed: "The selected documents are no longer in the list. Close this window and check the list.",
       learning: "The document is still being processed, so it cannot be deleted yet. Wait until processing finishes, then try again.",
       forbidden: "You do not have permission to delete documents from the Knowledge Base. Ask an administrator for access.",
       connection: "The server could not be reached, so it is not clear whether the documents were deleted. The list has been reloaded; check it and try again if needed.",

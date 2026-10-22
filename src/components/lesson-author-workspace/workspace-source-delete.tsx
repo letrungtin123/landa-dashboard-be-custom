@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { WorkspaceOrgContextConfirm } from './workspace-org-context-dialogs';
+import { workspaceSourceNameList, type WorkspaceSourceDeleteOutcome } from './workspace-source.logic';
 
 /** Delete controls of the "Chọn tài liệu đã sẵn sàng" list. Rendered only for authors with the knowledge base
  * delete permission; the server checks the same permission. Presentation only: the source controller deletes. */
@@ -43,15 +44,31 @@ export function WorkspaceSourceRowDelete({ name, disabled, onDelete }: { name: s
     aria-label={t('aiIdSourceDelete.deleteLabel', { name })} onClick={onDelete}><Trash2 className="h-4 w-4" aria-hidden /></Button>;
 }
 
-const NAMES_SHOWN = 5;
+/** "Đang dùng để soạn khoá học" under a document an active AI ID run designs from (it cannot be deleted yet). */
+export function WorkspaceSourceInUseNote() {
+  const { t } = useTranslation();
+  return <span className="mt-0.5 block text-[11px] text-muted-foreground">{t('aiIdSourceDelete.inUse')}</span>;
+}
+
+type Translate = ReturnType<typeof useTranslation>['t'];
+const nameList = (t: Translate, names: readonly string[]) => {
+  const { shown, more } = workspaceSourceNameList(names);
+  return more ? t('aiIdSourceDelete.namesMore', { names: shown, count: more }) : shown;
+};
+
+/** The plain words of a delete that sent nothing or was refused: the in-use documents by name when known. */
+export function workspaceSourceDeleteText(t: Translate, outcome: WorkspaceSourceDeleteOutcome): string {
+  if (outcome.issue === 'in_use' && outcome.names.length) return t('aiIdSourceDelete.errors.inUseNamed', { names: nameList(t, outcome.names) });
+  if (outcome.issue === 'in_use' && outcome.serverMessage) return outcome.serverMessage;
+  return t(`aiIdSourceDelete.errors.${outcome.issue ?? 'failed'}`);
+}
 
 /** One confirmation for one or several documents; the refusal stays inside it so the author can retry or cancel. */
 export function WorkspaceSourceDeleteConfirm({ names, busy, error, onConfirm, onClose }: {
   names: readonly string[]; busy: boolean; error: string | null; onConfirm: () => void; onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const count = names.length, shown = names.slice(0, NAMES_SHOWN).map(name => `“${name}”`).join(', ');
-  const listed = count > NAMES_SHOWN ? t('aiIdSourceDelete.namesMore', { names: shown, count: count - NAMES_SHOWN }) : shown;
+  const count = names.length, listed = nameList(t, names);
   return <WorkspaceOrgContextConfirm destructive busy={busy} error={error} onConfirm={onConfirm} onClose={onClose}
     title={count === 1 ? t('aiIdSourceDelete.titleOne') : t('aiIdSourceDelete.titleMany', { count })}
     body={t('aiIdSourceDelete.body')} note={listed}
