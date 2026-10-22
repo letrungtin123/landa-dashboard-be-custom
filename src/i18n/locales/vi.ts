@@ -1855,6 +1855,7 @@ export const vi = {
     conflictsHint: "Trợ lý trang quản trị, trợ lý trang học viên và AI ID mỗi nơi cần một Kho tri thức riêng. Hãy chọn lại để không còn Kho tri thức nào dùng chung.",
     conflict: "Kho tri thức “{{name}}” đang được dùng chung cho {{places}}.",
     conflictUnnamed: "Một Kho tri thức đang được dùng chung cho {{places}}.",
+    kbInUseByAiId: "AI ID đang dùng tài liệu của Kho tri thức này để soạn khoá học nên chưa xoá được. Vui lòng thử lại khi AI ID soạn xong.",
   },
   aiChatbot: {
     title: "AI Chatbot", description: "Quản lý Kho tri thức, tài liệu và chatbot AI", knowledgeBases: "Kho tri thức", chatbots: "Chatbot", deploy: "Triển khai",

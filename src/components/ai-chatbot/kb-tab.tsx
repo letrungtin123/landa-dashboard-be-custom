@@ -22,6 +22,7 @@ import {
 } from "@/api/custom-ai-chatbot";
 import { cardVariants, formatDate, useDebounce, PaginationBar, KbCardSkeleton } from "./ai-chatbot-helpers";
 import { getLocalizedApiError } from "@/utils/localized-error";
+import { kbInUseByAiIdMessage } from "@/api/ai-chatbot-kb-usage";
 
 function isAiTransitionActive(kb: Knowledgebase): boolean {
   return kb.ai_transition_state === "queued" || kb.ai_transition_state === "running";
@@ -68,7 +69,11 @@ export function KnowledgeBaseTab({ onSelectKb }: { onSelectKb: (kb: Knowledgebas
   async function handleDelete() {
     if (!deletingId) return;
     try { await deleteKnowledgebase(deletingId); toast.success(t("aiChatbot.knowledgeBaseDeleted")); setDeletingId(null); loadKbs(); }
-    catch (err: unknown) { toast.error(getLocalizedApiError(err, t("aiChatbot.genericError"))); }
+    catch (err: unknown) {
+      // AI ID is designing a course from one of its documents: the server says so in the page language.
+      const inUse = kbInUseByAiIdMessage(err);
+      toast.error(inUse !== null ? inUse || t("aiChatbotKbUsage.kbInUseByAiId") : getLocalizedApiError(err, t("aiChatbot.genericError")));
+    }
   }
 
   const totalPages = Math.ceil(total / pageSize);

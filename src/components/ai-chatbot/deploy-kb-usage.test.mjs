@@ -90,6 +90,23 @@ test('the refusal of a knowledge base already used elsewhere is recognised by it
   assert.equal(api.kbAlreadyUsedMessage({ response: { status: 409, data: { code: 'AI_CHATBOT_KB_ALREADY_USED', message: ' ' } } }), null);
 });
 
+test('deleting a whole knowledge base AI ID is designing from: the server words, else a plain fallback in both languages', () => {
+  // Backend QC 22/10: 409 KB_IN_USE_BY_AI_ID on DELETE /kb/:id.
+  const refused = message => ({ response: { status: 409, data: { success: false, code: 'KB_IN_USE_BY_AI_ID', message } } });
+  assert.equal(api.kbInUseByAiIdMessage(refused(' AI ID is designing a course from documents of this Knowledge Base. ')),
+    'AI ID is designing a course from documents of this Knowledge Base.');
+  assert.equal(api.kbInUseByAiIdMessage(refused(undefined)), '', 'refused without words: the page uses its own sentence');
+  for (const other of [{ response: { status: 409, data: { code: 'OTHER' } } }, { response: { status: 400, data: { code: 'KB_IN_USE_BY_AI_ID' } } },
+    new Error('x'), null]) assert.equal(api.kbInUseByAiIdMessage(other), null);
+  assert.equal(locales.vi.aiChatbotKbUsage.kbInUseByAiId,
+    'AI ID đang dùng tài liệu của Kho tri thức này để soạn khoá học nên chưa xoá được. Vui lòng thử lại khi AI ID soạn xong.');
+  assert.match(locales.en.aiChatbotKbUsage.kbInUseByAiId, /^AI ID is designing a course from documents of this Knowledge Base/);
+  const page = readFileSync(path.join(directory, 'kb-tab.tsx'), 'utf8');
+  const remove = page.slice(page.indexOf('async function handleDelete'), page.indexOf('const totalPages'));
+  assert.match(remove, /const inUse = kbInUseByAiIdMessage\(err\);/);
+  assert.match(remove, /toast\.error\(inUse !== null \? inUse \|\| t\("aiChatbotKbUsage\.kbInUseByAiId"\) : getLocalizedApiError\(err, t\("aiChatbot\.genericError"\)\)\);/);
+});
+
 test('places: the other assistant pages and AI ID that use the same knowledge base, never the slot being assigned', () => {
   const current = { assignments: [{ target: 'admin', bot_kb_id: id(1) }, { target: 'learner', bot_kb_id: id(2) },
     { target: 'lesson_author', bot_kb_id: id(1) }], aiIdKbId: id(1) };

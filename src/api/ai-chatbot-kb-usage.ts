@@ -26,6 +26,15 @@ export function kbAlreadyUsedMessage(error: unknown): string | null {
   return typeof message === 'string' && message.trim() ? message.trim() : null;
 }
 
+export const KB_IN_USE_BY_AI_ID = 'KB_IN_USE_BY_AI_ID';
+/** Deleting a whole knowledge base is refused while AI ID designs a course from one of its documents (409). Returns the
+ * server's own plain words (Vietnamese, or English with the English UI locale), '' when it sent none, null otherwise. */
+export function kbInUseByAiIdMessage(error: unknown): string | null {
+  const response = (error as { response?: { status?: number; data?: { code?: unknown; message?: unknown } } } | null)?.response;
+  if (response?.status !== 409 || response.data?.code !== KB_IN_USE_BY_AI_ID) return null;
+  return typeof response.data.message === 'string' ? response.data.message.trim() : '';
+}
+
 /** `{ conflicts: [{ kb_id, kb_name, used_by }] }`. Unknown places are dropped and a row needs two places to be a
  * clash; extra keys are ignored. Anything else is not this answer. */
 export function readKbUsageConflicts(value: unknown): KbUsageConflict[] {

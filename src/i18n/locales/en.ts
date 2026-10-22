@@ -1858,6 +1858,7 @@ export const en: TranslationSchema<typeof vi> = {
     conflictsHint: "The admin page assistant, the learner page assistant and AI ID each need their own Knowledge Base. Choose again so that no Knowledge Base is shared.",
     conflict: "The Knowledge Base “{{name}}” is shared by {{places}}.",
     conflictUnnamed: "A Knowledge Base is shared by {{places}}.",
+    kbInUseByAiId: "AI ID is designing a course from documents of this Knowledge Base, so it cannot be deleted yet. Please try again when AI ID has finished.",
   },
   aiChatbot: {
     title: "AI Chatbot", description: "Manage knowledge bases, documents, and AI chatbots", knowledgeBases: "Knowledge bases", chatbots: "Chatbots", deploy: "Deploy",
