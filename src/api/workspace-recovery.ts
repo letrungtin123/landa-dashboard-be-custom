@@ -8,12 +8,12 @@ import type { WorkspaceReadScope } from './lesson-author-workspace';
 export type WorkspaceRecoveryCode = 'AUTH_REQUIRED' | 'RECOVERY_DISABLED' | 'RECOVERY_FORBIDDEN' | 'RECOVERY_INPUT_INVALID'
   | 'RECOVERY_NOT_FOUND' | 'RECOVERY_STATE_CHANGED' | 'RECOVERY_UNIT_HAS_CONTENT' | 'RECOVERY_NOTHING_TO_DO'
   | 'RECOVERY_LIMIT_REACHED' | 'RECOVERY_RUNTIME_CHANGED' | 'RECOVERY_OTHER_RUN_ACTIVE' | 'RECOVERY_IDEMPOTENCY_CONFLICT'
-  | 'RUN_STOP_NOT_ACTIVE' | 'AI_CREDIT_INSUFFICIENT_FOR_RECOVERY' | 'RECOVERY_UNAVAILABLE';
+  | 'RUN_STOP_NOT_ACTIVE' | 'AI_CREDIT_INSUFFICIENT_FOR_RECOVERY' | 'RECOVERY_UNAVAILABLE' | 'RECOVERY_SOURCE_DOCUMENT_MISSING';
 /** Why an option is not offered now. Unknown future reasons stay plain strings and are never shown as text. */
 export type WorkspaceRecoveryReason = 'RECOVERY_DISABLED' | 'RECOVERY_NOT_SUPPORTED' | 'RECOVERY_RUN_ACTIVE'
   | 'RECOVERY_DRAINING' | 'RECOVERY_RUN_COMPLETE' | 'RECOVERY_REVIEW_REQUIRED' | 'RECOVERY_PLANNING_INCOMPLETE'
   | 'RECOVERY_RUNTIME_CHANGED' | 'RECOVERY_UNIT_HAS_CONTENT' | 'RECOVERY_NOTHING_TO_DO' | 'RECOVERY_LIMIT_REACHED'
-  | 'RECOVERY_UNAVAILABLE' | 'RUN_STOP_NOT_ACTIVE' | (string & {});
+  | 'RECOVERY_UNAVAILABLE' | 'RUN_STOP_NOT_ACTIVE' | 'RECOVERY_SOURCE_DOCUMENT_MISSING' | (string & {});
 export type WorkspaceRecoveryRunStatus = 'planning' | 'executing' | 'finalizing' | 'ready' | 'needs_action' | 'canceled';
 export interface WorkspaceRecoveryOption { available: boolean; reason: WorkspaceRecoveryReason | null }
 export interface WorkspaceRecoveryView {
@@ -77,6 +77,9 @@ const messages: Record<WorkspaceRecoveryCode, readonly [string, string]> = {
     'There are not enough AI points to rewrite. Please contact your administrator to buy more points.'],
   RECOVERY_UNAVAILABLE: ['Chưa xác nhận được kết quả. Vui lòng thử lại sau ít phút.',
     'The result could not be confirmed. Please try again in a few minutes.'],
+  // A definite refusal (never retried): the design's source document is gone, so nothing can be rewritten from it.
+  RECOVERY_SOURCE_DOCUMENT_MISSING: ['Tài liệu nguồn của bản thiết kế này không còn dùng được (đã bị xoá hoặc Kho tri thức của AI ID đã đổi) nên không thể viết lại. Bạn có thể tự soạn nội dung hoặc tạo bản thiết kế mới.',
+    'The source document of this design can no longer be used (it was deleted or the AI ID Knowledge Base was changed), so it cannot be rewritten. You can write the content yourself or start a new design.'],
 };
 const codes = new Set(Object.keys(messages));
 export function workspaceRecoveryMessage(code: WorkspaceRecoveryCode, locale: WorkspaceLocale): string {

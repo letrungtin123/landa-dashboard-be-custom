@@ -105,6 +105,30 @@ test('stopped design: banner, chapter and lesson actions come only from the serv
   assert.equal(workspaceRecoveryUnitAction(running(), id(41), 'en'), null);
 });
 
+test('source document gone: a definite refusal in plain words, and the reason of every rewrite option it closes', async () => {
+  // Backend QC 22/10: RECOVERY_SOURCE_DOCUMENT_MISSING (409 on regenerate, and `reason` on unavailable rewrite options).
+  const { workspaceRecoveryFailure, workspaceRecoveryMessage } = await import(apiUrl);
+  const failure = workspaceRecoveryFailure({ response: { status: 409, data: { code: 'RECOVERY_SOURCE_DOCUMENT_MISSING', message: 'x' } } });
+  assert.deepEqual([failure.code, failure.outcome], ['RECOVERY_SOURCE_DOCUMENT_MISSING', 'rejected'], 'never treated as unknown and retried');
+  assert.equal(workspaceRecoveryMessage('RECOVERY_SOURCE_DOCUMENT_MISSING', 'vi'),
+    'Tài liệu nguồn của bản thiết kế này không còn dùng được (đã bị xoá hoặc Kho tri thức của AI ID đã đổi) nên không thể viết lại. Bạn có thể tự soạn nội dung hoặc tạo bản thiết kế mới.');
+  for (const locale of ['vi', 'en']) {
+    assert.equal(workspaceRecoveryCopy[locale].sourceMissing, workspaceRecoveryMessage('RECOVERY_SOURCE_DOCUMENT_MISSING', locale), locale);
+    assert.doesNotMatch(workspaceRecoveryCopy[locale].sourceMissing, /[A-Z]{2,}_[A-Z_]+/);
+  }
+  const missing = option('RECOVERY_SOURCE_DOCUMENT_MISSING');
+  const gone = view({ failure_code: 'ORCHESTRATION_V2_SOURCE_DOCUMENT_MISSING', regenerate: { ...view().regenerate, ...missing,
+    course: { ...view().regenerate.course, ...missing },
+    chapters: view().regenerate.chapters.map(chapter => ({ ...chapter, ...missing })),
+    units: view().regenerate.units.map(unit => ({ ...unit, ...missing })) } });
+  const banner = workspaceRecoveryBanner(gone, 'en');
+  assert.equal(banner.rewriteAll, null);
+  assert.equal(banner.note, workspaceRecoveryCopy.en.sourceMissing, 'the stopped notice says why nothing can be rewritten');
+  assert.deepEqual(workspaceRecoveryChapterAction(gone, id(31), 'vi'), { intent: null, note: workspaceRecoveryCopy.vi.sourceMissing });
+  assert.deepEqual(workspaceRecoveryUnitAction(gone, id(41), 'en'), { intent: null, note: workspaceRecoveryCopy.en.sourceMissing });
+  assert.equal(workspaceRecoveryBanner({ ...gone, draining: true }, 'vi').note, null);
+});
+
 test('no Stop button for anyone while AI is writing; Continue and Rewrite stay for a stopped run', () => {
   // QC 21/10 (C11): the header no longer offers Stop, even when the server would allow it.
   // The server stop stays for engineers, so the option is still read and the confirm copy kept.

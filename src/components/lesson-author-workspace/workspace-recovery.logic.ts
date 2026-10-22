@@ -22,6 +22,7 @@ export const workspaceRecoveryCopy = {
     rewriteAllLabel: (n: number) => `Viết lại ${n} bài học còn thiếu`,
     lessonLimit: 'Bài này đã được viết lại 3 lần.',
     chapterLimit: 'Các bài còn thiếu của chương này đã được viết lại 3 lần.',
+    sourceMissing: 'Tài liệu nguồn của bản thiết kế này không còn dùng được (đã bị xoá hoặc Kho tri thức của AI ID đã đổi) nên không thể viết lại. Bạn có thể tự soạn nội dung hoặc tạo bản thiết kế mới.',
     lessonRewrites: (used: number, max: number) => `Đã viết lại ${used}/${max} lần.`,
     stopTitle: 'Dừng tạo nội dung?',
     stopBody: 'Các bài đã tạo xong vẫn được giữ. Bài đang được viết sẽ hoàn tất rồi mới dừng hẳn. Sau đó bạn có thể chạy tiếp hoặc viết lại các bài còn thiếu.',
@@ -45,6 +46,7 @@ export const workspaceRecoveryCopy = {
     rewriteAllLabel: (n: number) => n === 1 ? 'Rewrite the missing lesson' : `Rewrite the ${n} missing lessons`,
     lessonLimit: 'This lesson has already been rewritten 3 times.',
     chapterLimit: 'The missing lessons of this chapter have already been rewritten 3 times.',
+    sourceMissing: 'The source document of this design can no longer be used (it was deleted or the AI ID Knowledge Base was changed), so it cannot be rewritten. You can write the content yourself or start a new design.',
     lessonRewrites: (used: number, max: number) => `Rewritten ${used} of ${max} times.`,
     stopTitle: 'Stop creating content?',
     stopBody: 'Finished lessons are kept. The lesson that is being written will finish before everything stops. You can then continue or rewrite the missing lessons.',
@@ -72,6 +74,8 @@ function stoppedRun(view: WorkspaceRecoveryView | null): view is WorkspaceRecove
     && view.resume.reason !== 'RECOVERY_REVIEW_REQUIRED' && view.regenerate.reason !== 'RECOVERY_REVIEW_REQUIRED';
 }
 const runtimeChanged = (option: WorkspaceRecoveryOption) => option.reason === 'RECOVERY_RUNTIME_CHANGED';
+/** The design's source document was deleted or the AI ID knowledge base changed: nothing can be rewritten from it. */
+const sourceMissing = (option: WorkspaceRecoveryOption | null | undefined) => option?.reason === 'RECOVERY_SOURCE_DOCUMENT_MISSING';
 
 export interface WorkspaceRecoveryBanner {
   message: string;
@@ -92,17 +96,18 @@ export function workspaceRecoveryBanner(view: WorkspaceRecoveryView | null, loca
   const rewriteAll: WorkspaceRecoveryIntent | null = course?.available && course.unit_count > 0
     ? { kind: 'regenerate', scope: 'course', nodeId: course.node_id, unitCount: course.unit_count, rewritesUsed: null } : null;
   const changed = runtimeChanged(view.resume) || runtimeChanged(view.regenerate);
-  if (!view.draining && !resume && !rewriteAll && !changed) return null;
+  const noSource = sourceMissing(view.regenerate) || sourceMissing(course);
+  if (!view.draining && !resume && !rewriteAll && !changed && !noSource) return null;
   const missing = view.regenerate.missing_unit_count;
   const message = view.draining ? c.draining
     : `${view.failure_code === WORKSPACE_RECOVERY_STOPPED_BY_AUTHOR ? c.stoppedByYou : c.stoppedEarly}${missing > 0 ? ` ${c.missing(missing)}` : ''}`;
-  return { message, note: !view.draining && changed ? c.runtimeChanged : null, draining: view.draining,
+  return { message, note: view.draining ? null : changed ? c.runtimeChanged : noSource ? c.sourceMissing : null, draining: view.draining,
     resume, rewriteAll, rewriteAllLabel: rewriteAll ? c.rewriteAllLabel(course!.unit_count) : null };
 }
 
 export interface WorkspaceRecoveryScopeAction {
   intent: WorkspaceRecoveryIntent | null;
-  /** Plain reason shown instead of the button (rewrite limit only). */
+  /** Plain reason shown instead of the button (rewrite limit, or the source document is gone). */
   note: string | null;
 }
 
@@ -115,6 +120,7 @@ export function workspaceRecoveryChapterAction(view: WorkspaceRecoveryView | nul
   if (chapter.available && chapter.unit_count > 0) {
     return { intent: { kind: 'regenerate', scope: 'chapter', nodeId: chapter.node_id, unitCount: chapter.unit_count, rewritesUsed: null }, note: null };
   }
+  if (sourceMissing(chapter)) return { intent: null, note: workspaceRecoveryCopy[locale].sourceMissing };
   return chapter.reason === 'RECOVERY_LIMIT_REACHED' ? { intent: null, note: workspaceRecoveryCopy[locale].chapterLimit } : null;
 }
 
@@ -127,6 +133,7 @@ export function workspaceRecoveryUnitAction(view: WorkspaceRecoveryView | null, 
   if (unit.available) {
     return { intent: { kind: 'regenerate', scope: 'unit', nodeId: unit.node_id, unitCount: 1, rewritesUsed: unit.rewrites_used }, note: null };
   }
+  if (sourceMissing(unit)) return { intent: null, note: workspaceRecoveryCopy[locale].sourceMissing };
   return unit.reason === 'RECOVERY_LIMIT_REACHED' ? { intent: null, note: workspaceRecoveryCopy[locale].lessonLimit } : null;
 }
 
