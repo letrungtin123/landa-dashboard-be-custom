@@ -18,6 +18,14 @@ export function isKbAlreadyUsedError(error: unknown): boolean {
   return response?.status === 409 && response.data?.code === AI_CHATBOT_KB_ALREADY_USED;
 }
 
+/** The server's own plain words for that refusal: Vietnamese, or English when the page sends the English UI locale.
+ * They name where the knowledge base is used, including one bot serving both pages. */
+export function kbAlreadyUsedMessage(error: unknown): string | null {
+  if (!isKbAlreadyUsedError(error)) return null;
+  const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  return typeof message === 'string' && message.trim() ? message.trim() : null;
+}
+
 /** `{ conflicts: [{ kb_id, kb_name, used_by }] }`. Unknown places are dropped and a row needs two places to be a
  * clash; extra keys are ignored. Anything else is not this answer. */
 export function readKbUsageConflicts(value: unknown): KbUsageConflict[] {

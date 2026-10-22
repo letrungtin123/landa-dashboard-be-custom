@@ -25,7 +25,7 @@ import { useAuthStore } from "@/utils/store";
 import { getLocalizedApiError } from "@/utils/localized-error";
 import { useTenantStore } from "@/utils/tenant-store";
 import { useQueryClient } from "@tanstack/react-query";
-import { isKbAlreadyUsedError } from "@/api/ai-chatbot-kb-usage";
+import { isKbAlreadyUsedError, kbAlreadyUsedMessage } from "@/api/ai-chatbot-kb-usage";
 import { aiChatbotKbUsageKeys, useAiChatbotKbUsageConflicts } from "@/hooks/queries/use-ai-chatbot-kb-usage";
 import { DeployKbConflicts } from "./deploy-kb-conflicts";
 import { joinKbUsagePlaces, kbAlreadyUsedCopy, kbUsagePlacesElsewhere, type KbUsageSlot } from "./deploy-kb-usage.logic";
@@ -80,13 +80,16 @@ export function DeploySection() {
   const queryClient = useQueryClient();
   const kbConflicts = useAiChatbotKbUsageConflicts(activeTenantId ?? actorTenantId);
   const refreshKbConflicts = () => { void queryClient.invalidateQueries({ queryKey: aiChatbotKbUsageKeys.all }); };
-  /** A refused clash names the knowledge base and where it is used, when this page knows; otherwise the server's words. */
+  /** A refused clash: the server's own words (in the page language); else the knowledge base and its places as this
+   * page knows them; else a plain general sentence. */
   function assignmentError(err: unknown, slot: KbUsageSlot, kbId: string | null | undefined, kbName: string | null | undefined): string {
     if (!isKbAlreadyUsedError(err)) return getLocalizedApiError(err, t("aiChatbot.genericError"));
     refreshKbConflicts();
+    const server = kbAlreadyUsedMessage(err);
+    if (server) return server;
     const copy = kbAlreadyUsedCopy({ kbName,
       places: kbUsagePlacesElsewhere(kbId, { assignments, aiIdKbId: lessonSettings?.active_kb?.kb_id }, slot) });
-    if (copy.key === "aiChatbotKbUsage.alreadyUsedElsewhere") return getLocalizedApiError(err, t(copy.key));
+    if (copy.key === "aiChatbotKbUsage.alreadyUsedElsewhere") return t(copy.key);
     return t(copy.key, { name: copy.name,
       places: joinKbUsagePlaces(copy.places, place => t(`aiChatbotKbUsage.places.${place}`), t("aiChatbotKbUsage.and")) });
   }

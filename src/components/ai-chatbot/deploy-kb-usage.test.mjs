@@ -81,7 +81,13 @@ test('the refusal of a knowledge base already used elsewhere is recognised by it
   assert.equal(api.isKbAlreadyUsedError(failure(409, 'AI_CHATBOT_KB_ALREADY_USED')), true);
   for (const other of [failure(409, 'OTHER'), failure(400, 'AI_CHATBOT_KB_ALREADY_USED'), new Error('x'), null]) {
     assert.equal(api.isKbAlreadyUsedError(other), false);
+    assert.equal(api.kbAlreadyUsedMessage(other), null);
   }
+  // The server's own words (Vietnamese, or English with the English UI) name the places, including one bot on both pages.
+  const sameBot = { response: { status: 409, data: { success: false, code: 'AI_CHATBOT_KB_ALREADY_USED', error: 'AI_CHATBOT_KB_ALREADY_USED',
+    message: ' One assistant cannot serve both the admin page and the learner page. ' } } };
+  assert.equal(api.kbAlreadyUsedMessage(sameBot), 'One assistant cannot serve both the admin page and the learner page.');
+  assert.equal(api.kbAlreadyUsedMessage({ response: { status: 409, data: { code: 'AI_CHATBOT_KB_ALREADY_USED', message: ' ' } } }), null);
 });
 
 test('places: the other assistant pages and AI ID that use the same knowledge base, never the slot being assigned', () => {
@@ -136,8 +142,9 @@ test('copy: VI and EN have the same keys, no codes or abbreviations; the Deploy 
   assert.equal((page.match(/refreshKbConflicts\(\);/g) ?? []).length, 5, 'every assignment change and every refused clash reads the conflicts again');
   assert.match(page, /assignmentError\(err, target, botKb\(botId\)\?\.kb_id, botKb\(botId\)\?\.kb_name\)/);
   assert.match(page, /assignmentError\(err, "ai_id", kbId, kbs\.find\(kb => kb\.id === kbId\)\?\.name\)/);
+  assert.match(page, /const server = kbAlreadyUsedMessage\(err\);\s+if \(server\) return server;/, 'the server words come first');
   const bot = readFileSync(path.join(directory, 'bot-detail.tsx'), 'utf8');
-  assert.match(bot, /isKbAlreadyUsedError\(err\) \? "aiChatbotKbUsage\.alreadyUsedElsewhere" : "aiChatbot\.updateBotFailed"/);
+  assert.match(bot, /isKbAlreadyUsedError\(err\) \? kbAlreadyUsedMessage\(err\) \?\? t\("aiChatbotKbUsage\.alreadyUsedElsewhere"\)/);
   const hook = readFileSync(path.join(src, 'hooks/queries/use-ai-chatbot-kb-usage.ts'), 'utf8');
   assert.match(hook, /conflicts: \(tenantId: string\) => \[\.\.\.aiChatbotKbUsageKeys\.all, 'conflicts', tenantId\]/);
   assert.match(hook, /enabled: !!tenantId/);
