@@ -30,7 +30,6 @@ function load(file) {
 }
 const logic = load(path.join(directory, 'quiz-text.logic.ts'));
 const { QuizQuestionText, QuizExplanationText, ProblemQuestionPreview, ProblemExplanationPreview } = load(path.join(src, 'components/shared/quiz-text.tsx'));
-const { ProblemPlainTextField } = load(path.join(src, 'components/course-editor/editors/ProblemPlainTextField.tsx'));
 
 const stem = 'Chị Lan quản lý một cửa hàng có hai việc gấp:\n- Khách chờ đổi hàng\n- Kho báo thiếu hàng\nChị nên làm gì trước?';
 const explanation = 'Nguyên tắc: việc chạm tới khách hàng được xử lý trước.\nA - Sai vì kho có thể chờ.\nB - Đúng vì khách đang chờ tại quầy.\nC - Sai vì chưa rõ thiếu hàng nào.';
@@ -75,9 +74,6 @@ test('stored fields: plain text in one element (or bare) is read with its line f
   assert.deepEqual(logic.problemPlainText('\n<p>A &#39;x&#39; &#x41; &quot;y&quot; &apos;z&apos; &copy;</p>\n'), { tag: 'p', text: 'A \'x\' A "y" \'z\' &copy;' });
   assert.deepEqual(logic.problemPlainText('Câu hỏi trần?'), { tag: null, text: 'Câu hỏi trần?' });
   for (const rich of ['<p>Một</p><p>Hai</p>', '<p>Câu <strong>đậm</strong></p>', '<label>a</label><img src=x>']) assert.equal(logic.problemPlainText(rich), null, rich);
-  assert.equal(logic.problemPlainEditTag('<label>Bối cảnh\nHỏi?</label>', 'label'), 'label');
-  assert.equal(logic.problemPlainEditTag('Bối cảnh\nHỏi?', 'p'), 'p');
-  for (const html of ['<label>Một dòng?</label>', '<p>Một</p><p>Hai</p>', '']) assert.equal(logic.problemPlainEditTag(html, 'label'), null, html);
   const text = 'Dòng 1 & <b>không phải thẻ</b>\n- ý\n\nHỏi?\n';
   assert.equal(logic.plainProblemHtml('label', text), '<label>Dòng 1 &amp; &lt;b&gt;không phải thẻ&lt;/b&gt;\n- ý\n\nHỏi?\n</label>');
   assert.deepEqual(logic.problemPlainText(logic.plainProblemHtml('p', text)), { tag: 'p', text }, 'every line feed survives a save');
@@ -121,15 +117,7 @@ test('course editor preview: plain stems get the layout, rich stems keep their s
   assert.match(oldWhy, /prose[^"]*">\[sanitized\]<p>Giải thích<\/p><ul>/);
 });
 
-test('course editor: a multi-line AI ID stem or explanation is edited as plain text that keeps every line', () => {
-  const html = render(h(ProblemPlainTextField, { initial: 'Bối cảnh\n- ý\nHỏi?', label: 'Câu hỏi', hint: 'Mỗi dòng hiển thị riêng.', onChange() {} }));
-  assert.match(html, /<textarea aria-label="Câu hỏi" rows="4"[^>]*>Bối cảnh\n- ý\nHỏi\?<\/textarea>/);
-  assert.match(html, /<p class="text-xs text-muted-foreground">Mỗi dòng hiển thị riêng\.<\/p>/);
-  const editor = readFileSync(path.join(src, 'components/course-editor/editors/ProblemEditor.tsx'), 'utf8');
-  assert.match(editor, /question: problemPlainEditTag\(state\.questionHtml, 'label'\), explanation: problemPlainEditTag\(state\.explanationHtml, 'p'\)/);
-  assert.match(editor, /questionHtml: plainProblemHtml\(plainTags\.question!, text\)/);
-  assert.match(editor, /explanationHtml: text\.trim\(\) \? plainProblemHtml\(plainTags\.explanation!, text\) : ''/);
-  assert.match(editor, /setPlainTags\(\{ question: null, explanation: null \}\);/, 'a new quiz type starts in the rich editor');
+test('course editor preview uses the shared layout; the copy exists in both languages', () => {
   const unit = readFileSync(path.join(src, 'components/course-editor/UnitEditor.tsx'), 'utf8');
   assert.match(unit, /<ProblemQuestionPreview html=\{parsed\.questionHtml\} renderHtml=\{rewriteHtml\} \/>/);
   assert.match(unit, /<ProblemExplanationPreview html=\{parsed\.explanationHtml\} renderHtml=\{rewriteHtml\}/);

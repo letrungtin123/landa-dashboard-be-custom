@@ -49,7 +49,8 @@ export function quizCorrectLetters(choices: readonly { correct: boolean }[]): st
 }
 
 const NAMED: Readonly<Record<string, string>> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-function decodeEntities(value: string): string {
+/** The few entities stored quiz text uses (named, decimal, hex); unknown named ones stay as written. */
+export function decodeQuizEntities(value: string): string {
   return value.replace(/&(?:([a-z]+)|#(\d+)|#x([0-9a-f]+));/gi, (all, name: string | undefined, dec: string | undefined, hex: string | undefined) => {
     if (name) return NAMED[name.toLowerCase()] ?? all;
     const code = Number.parseInt(dec ?? hex ?? '', dec ? 10 : 16);
@@ -63,15 +64,11 @@ export type ProblemPlainTag = 'label' | 'p' | 'div' | 'span';
 export function problemPlainText(html: string): { tag: ProblemPlainTag | null; text: string } | null {
   const trimmed = html.trim();
   const element = /^<(label|p|div|span)(?:\s[^<>]*)?>([^<]*)<\/\1\s*>$/i.exec(trimmed);
-  if (element) return { tag: element[1].toLowerCase() as ProblemPlainTag, text: decodeEntities(element[2]) };
-  return trimmed.includes('<') ? null : { tag: null, text: decodeEntities(trimmed) };
-}
-
-/** The element to edit a stored field in as multi-line plain text, or null to keep the rich text editor: only plain
- * text that has a line break (the rich editor would join its lines into one paragraph). */
-export function problemPlainEditTag(html: string, fallback: ProblemPlainTag): ProblemPlainTag | null {
-  const plain = problemPlainText(html);
-  return plain && plain.text.includes('\n') ? plain.tag ?? fallback : null;
+  if (element) return { tag: element[1].toLowerCase() as ProblemPlainTag, text: decodeQuizEntities(element[2]) };
+  // An empty element read back from the problem XML is self-closing (`<label/>`).
+  const empty = /^<(label|p|div|span)(?:\s[^<>]*?)?\s*\/>$/i.exec(trimmed);
+  if (empty) return { tag: empty[1].toLowerCase() as ProblemPlainTag, text: '' };
+  return trimmed.includes('<') ? null : { tag: null, text: decodeQuizEntities(trimmed) };
 }
 
 /** The plain text back in its element, escaped (the editor keeps every line feed). */
