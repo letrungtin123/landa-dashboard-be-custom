@@ -23,7 +23,7 @@ const editorReact = { ...React, useMemo: f => f(), useState(initial) {
   const h = hooks, i = h.cursor++;
   if (!(i in h.values)) h.values[i] = { current: initial };
   return h.values[i];
-}, useEffect(effect) { effect(); } };
+}, useEffect(effect) { effect(); }, useId: () => 'quiz-field' };
 const ui = Object.fromEntries(['Button', 'Input', 'Textarea'].map(name => [name,
   ({ children, ...props }) => {
     const { variant: _variant, ...rest } = props;
@@ -42,7 +42,10 @@ function load(filename) {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
   const localRequire = specifier => {
-    if (specifier === 'react' && (filename.endsWith('workspace-node-editor.tsx') || filename.endsWith('workspace-component-draft-editor.tsx'))) return editorReact;
+    if (specifier === 'react' && (filename.endsWith('workspace-node-editor.tsx') || filename.endsWith('workspace-component-draft-editor.tsx')
+      || filename.endsWith('quiz-text-field.tsx'))) return editorReact;
+    // The shared quiz text field (standard frame) translates its buttons; the harness has no i18n instance.
+    if (specifier === 'react-i18next') return { useTranslation: () => ({ t: key => key, i18n: { language: 'en' } }) };
     if (specifier.startsWith('../ui/')) return ui;
     if (specifier === 'react-markdown') return { __esModule: true, default: ReactMarkdown };
     if (specifier === 'rehype-raw') return { __esModule: true, default: rehypeRaw };
@@ -243,6 +246,37 @@ test('Problem hint fields use the same editable list contract and persist in the
   assert.deepEqual(f.props.draft.data.hints, ['Review the first step.']);
   assert.equal(validate(f.props.detail, f.props.draft), null);
   assert.equal(f.button('Save changes').props.disabled, false);
+});
+
+test('AI ID quiz fields use the course editor\'s standard frame: + Thêm ý, Chèn mẫu with its confirmation, checks and preview', () => {
+  // Owner decision 22/10: one field component for hand-made and AI ID quizzes (button labels are i18n keys here).
+  const f = harness(problem('multiple_choice'));
+  f.change('Question', 'Cửa hàng có hai việc:\nViệc nào trước?');
+  f.click('quizText.addItem');
+  assert.equal(f.props.draft.data.question, 'Cửa hàng có hai việc:\n- \nViệc nào trước?', 'the first item goes before the question');
+  f.change('Question', 'Cửa hàng có hai việc:\n- Khách chờ\nViệc nào trước?');
+  f.click('quizText.addItem');
+  assert.equal(f.props.draft.data.question, 'Cửa hàng có hai việc:\n- Khách chờ\n- \nViệc nào trước?', 'the next item after the last one');
+  // A non-empty explanation asks first; the template follows the choices and the content language (vi).
+  f.click('quizText.insertTemplate');
+  assert.equal(f.props.draft.data.explanation, 'Explanation', 'nothing is replaced before the author confirms');
+  assert.ok(f.html().includes('quizText.replaceAsk'));
+  f.click('quizText.keep');
+  assert.ok(!f.html().includes('quizText.replaceAsk'));
+  f.click('quizText.insertTemplate'); f.click('quizText.replace');
+  assert.equal(f.props.draft.data.explanation, 'Nguyên tắc: \nA - Đúng vì \nB - Sai vì ');
+  assert.ok(f.html().includes('quizText.check.noReason'), 'the empty reasons are pointed out, softly');
+  f.change('Correct answer 2', true);
+  f.click('quizText.insertTemplate'); f.click('quizText.replace');
+  assert.equal(f.props.draft.data.explanation, 'Nguyên tắc: \nA - Sai vì \nB - Đúng vì ', 'rebuilt from the current correct answer');
+  f.change('Explanation', 'Nguyên tắc: khách trước.\nA - Sai vì kho chờ được.\nB - Đúng vì khách đang chờ.');
+  assert.ok(!f.html().includes('quizText.check.'), 'a consistent explanation has no warning');
+  assert.equal(validate(f.props.detail, f.props.draft), null, 'checks never block saving');
+  assert.ok(f.html().includes('quizText.preview'));
+  assert.equal(all(f.render()).filter(e => e.type === 'button' && text(e) === 'quizText.freeEditing').length, 0, 'AI ID fields stay plain text');
+  const numeric = harness(problem('numerical'));
+  numeric.change('Explanation', ''); numeric.click('quizText.insertTemplate');
+  assert.equal(numeric.props.draft.data.explanation, 'Nguyên tắc: \nĐáp án đúng vì ', 'an empty box is filled at once');
 });
 
 test('production Quiz payload stays saveable after the plain-text choice edit shown in the UI recording', () => {

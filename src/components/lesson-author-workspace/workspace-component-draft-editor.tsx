@@ -7,6 +7,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { readWorkspacePreview } from './workspace-node-detail';
+import { QuizTextField } from '../shared/quiz-text-field';
 import type { WorkspaceContent, WorkspaceDetail, WorkspaceJson, WorkspaceLocale } from '../../api/lesson-author-workspace.contract';
 
 const copy = {
@@ -103,7 +104,7 @@ export function WorkspaceComponentDraftEditor({ detail, draft, locale, disabled 
       </div>
     </Field>}
 
-    {preview.type === 'problem' && <ProblemEditor preview={preview.data} draft={draft} locale={locale}
+    {preview.type === 'problem' && <ProblemEditor preview={preview.data} draft={draft} locale={locale} contentLocale={detail.content_locale}
       disabled={disabled} commit={commit} />}
     {preview.type === 'la_faq' && <section className="space-y-3">
       <div className="flex items-start justify-between gap-3"><div><label className="text-sm font-medium">{c.faq} ({preview.data.items.length})</label><p className="mt-0.5 text-xs text-muted-foreground">{c.faqIntro}</p></div>
@@ -195,14 +196,15 @@ export function WorkspaceComponentDraftEditor({ detail, draft, locale, disabled 
 }
 
 type ProblemPreview = Extract<NonNullable<ReturnType<typeof readWorkspacePreview>>, { type: 'problem' }>['data'];
-function ProblemEditor({ preview, draft, locale, disabled, commit }: { preview: ProblemPreview; draft: WorkspaceContent;
-  locale: WorkspaceLocale; disabled: boolean; commit: (next: WorkspaceContent | null) => void }) {
+function ProblemEditor({ preview, draft, locale, contentLocale, disabled, commit }: { preview: ProblemPreview; draft: WorkspaceContent;
+  locale: WorkspaceLocale; contentLocale: WorkspaceLocale; disabled: boolean; commit: (next: WorkspaceContent | null) => void }) {
   const c = copy[locale];
   const set = (key: string, value: WorkspaceJson) => commit(updateData(draft, data => { data[key] = value; }));
   return <section className="flex flex-col gap-8 lg:flex-row">
     <div className="flex-1 space-y-8">
-      <div className="space-y-3"><h3 className="text-sm font-bold">{c.question}</h3><Textarea aria-label={c.question} value={preview.question} maxLength={4000} disabled={disabled} className="min-h-[120px] resize-y rounded-xl border-input bg-background/50 px-4 py-3 text-sm leading-6 shadow-sm transition-all duration-200 focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/10" onChange={event => set('question', event.target.value)} /></div>
-      <div className="space-y-3"><h3 className="text-sm font-bold">{c.explanation}</h3><Textarea aria-label={c.explanation} value={preview.explanation} maxLength={8000} disabled={disabled} className="min-h-[120px] resize-y rounded-xl border-input bg-background/50 px-4 py-3 text-sm leading-6 shadow-sm transition-all duration-200 focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/10" onChange={event => set('explanation', event.target.value)} /></div>
+      {/* The same standard frame as the course editor (owner decision 22/10): + Thêm ý / Chèn mẫu, checks, preview. */}
+      <div className="space-y-3"><h3 className="text-sm font-bold">{c.question}</h3><QuizTextField kind="question" value={preview.question} label={c.question} maxLength={4000} disabled={disabled} templateLocale={contentLocale} lang={contentLocale} onChange={value => set('question', value)} /></div>
+      <div className="space-y-3"><h3 className="text-sm font-bold">{c.explanation}</h3><QuizTextField kind="explanation" value={preview.explanation} label={c.explanation} maxLength={8000} disabled={disabled} choices={'choices' in preview ? preview.choices : null} templateLocale={contentLocale} lang={contentLocale} onChange={value => set('explanation', value)} /></div>
       <div className="space-y-3"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold">{c.answer}</h3><Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg" disabled={disabled || ('choices' in preview ? preview.choices.length >= 8 : preview.answers.length >= 5)} onClick={() => commit(updateData(draft, data => {
         if (Array.isArray(data.choices)) data.choices.push({ text: '', correct: false });
         else if (Array.isArray(data.answers)) data.answers.push('');
