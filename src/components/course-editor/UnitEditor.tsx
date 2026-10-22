@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
 import HtmlEditor from './editors/HtmlEditor';
 import ProblemEditor, { getProblemTypes, normalizeProblemXmlForStorage, parseProblemXml, problemXmlUnreadable } from './editors/ProblemEditor';
+import { problemSaveRequest } from './problem-save.logic';
 import MediaQuizEditor, {
   getMediaQuizDraftValidationError,
   getMediaQuizValidationError,
@@ -3492,19 +3493,16 @@ function ComponentEditForm({
         }
       }
       if (category === 'problem') {
-        // Content the problem editor cannot read is never replaced: the save is refused in plain words.
-        if (problemXmlUnreadable(problemXml)) {
+        // Content the problem editor cannot read is sent back exactly as stored (a rename keeps it byte for byte);
+        // any other content for it is refused in plain words, so the default question never replaces it.
+        const request = problemSaveRequest(
+          { displayName, metadata: effectiveMetadata, current: problemXml, original: initialState.problemXml },
+          { unreadable: problemXmlUnreadable, normalize: normalizeProblemXmlForStorage },
+        );
+        if (!request) {
           throw Object.assign(new Error('Problem content cannot be read'), { userMessage: i18n.t('courseUnit.problemUnreadableSave') });
         }
-        const payloadMetadata = { ...effectiveMetadata, display_name: displayName };
-        const mediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
-        if (mediaForSave) payloadMetadata.problem_media = mediaForSave;
-        else delete payloadMetadata.problem_media;
-
-        return updateXBlock(id, {
-          metadata: payloadMetadata,
-          data: normalizeProblemXmlForStorage(problemXml),
-        });
+        return updateXBlock(id, request);
       }
       if (category === 'la_media_quiz') {
         const payloadData = normalizeMediaQuizData(options?.mediaQuizData ?? mediaQuizData);

@@ -262,9 +262,7 @@ test('a problem the editor cannot read shows a plain error and is never saved ov
   assert.match(editor, /export function problemXmlUnreadable\(xmlStr: string\): boolean \{[\s\S]*?return parseProblemXml\(xmlStr\) === null;\n\}/);
   assert.match(editor, /\{unreadable \? <div role="alert"[\s\S]*?t\('courseEditorForms\.problemUnreadable'\)[\s\S]*?: <div className="flex flex-col lg:flex-row gap-8">/,
     'the form with the default question is not shown');
-  const unit = source('components/course-editor/UnitEditor.tsx');
-  assert.match(unit, /if \(category === 'problem'\) \{\s*\/\/[^\n]*\n\s*if \(problemXmlUnreadable\(problemXml\)\) \{\s*throw Object\.assign\(new Error\([^)]*\), \{ userMessage: i18n\.t\('courseUnit\.problemUnreadableSave'\) \}\);/);
-  assert.match(unit, /typeof err\?\.userMessage === 'string' \? err\.userMessage : getLocalizedApiError/);
+  // The save itself (a rename keeps the original byte for byte, other content is refused): problem-save.logic.test.mjs.
   for (const locale of ['vi', 'en']) {
     env.locale = locale;
     assert.match(t('courseUnit.saveFailed', { message: t('courseUnit.problemUnreadableSave') }), locale === 'vi'

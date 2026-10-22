@@ -333,7 +333,8 @@ export function parseProblemXml(xmlStr: string): ProblemState | null {
 }
 
 /** Stored problem content this editor cannot read (damaged data, or a type it does not edit). The form would show the
- * default question instead, so the editor shows a plain error and the save is blocked: the original is never replaced. */
+ * default question instead, so the editor shows a plain error and no form; a save sends the original byte for byte
+ * (a rename) or is refused (problem-save.logic.ts): the original is never replaced. */
 export function problemXmlUnreadable(xmlStr: string): boolean {
   if (typeof xmlStr !== 'string' || !xmlStr.trim()) return false;
   if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return false;
