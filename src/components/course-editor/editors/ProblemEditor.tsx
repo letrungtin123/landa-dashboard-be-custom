@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { HelpCircle, Check, Trash2, Plus, ImagePlus, Loader2, Video, X, Upload } from 'lucide-react';
+import { AlertTriangle, HelpCircle, Check, Trash2, Plus, ImagePlus, Loader2, Video, X, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field } from './VideoEditor';
 import RichTextEditor from '../RichTextEditor';
@@ -13,6 +13,8 @@ import CarouselImageOrder from '../CarouselImageOrder';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { getLocalizedApiError } from '@/utils/localized-error';
+import { withoutTagNamespaces, xmlSafeText } from '@/utils/quiz-text.logic';
+import { quizContentLocale } from '@/utils/quiz-authoring.logic';
 import { ProblemTextSection } from './ProblemTextSection';
 import {
   extractYoutubeId,
@@ -202,7 +204,8 @@ function escapeXmlAttribute(value: string): string {
 
 export function normalizeProblemXmlForStorage(xmlStr: string): string {
   if (!xmlStr || typeof xmlStr !== 'string') return '';
-  return normalizeXmlVoidTags(normalizeXmlEntities(xmlStr));
+  // Characters XML cannot hold (a PowerPoint paste) are cleaned first, so such a problem still opens and saves.
+  return normalizeXmlVoidTags(normalizeXmlEntities(xmlSafeText(xmlStr)));
 }
 
 export function parseProblemXml(xmlStr: string): ProblemState | null {
@@ -307,7 +310,7 @@ export function parseProblemXml(xmlStr: string): ProblemState | null {
   if (solutionNode) {
      const detailed = solutionNode.querySelector('.detailed-solution') || solutionNode;
      explanationHtml = Array.from(detailed.childNodes).map(n => new XMLSerializer().serializeToString(n)).join('');
-     explanationHtml = explanationHtml.replace(/ xmlns="[^"]+"/g, '');
+     explanationHtml = withoutTagNamespaces(explanationHtml);
   }
 
   const demandhintNode = root.querySelector('demandhint');
@@ -327,6 +330,14 @@ export function parseProblemXml(xmlStr: string): ProblemState | null {
     explanationHtml: explanationHtml.trim(),
     hints
   };
+}
+
+/** Stored problem content this editor cannot read (damaged data, or a type it does not edit). The form would show the
+ * default question instead, so the editor shows a plain error and the save is blocked: the original is never replaced. */
+export function problemXmlUnreadable(xmlStr: string): boolean {
+  if (typeof xmlStr !== 'string' || !xmlStr.trim()) return false;
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return false;
+  return parseProblemXml(xmlStr) === null;
 }
 
 function serializeProblemXml(state: ProblemState): string {
@@ -422,6 +433,9 @@ export default function ProblemEditor({
   });
   // The stem and explanation sections decide standard frame or rich editor when they open; a new type resets them.
   const [textSectionKey, setTextSectionKey] = useState(0);
+  const [unreadable] = useState(() => problemXmlUnreadable(problemXml));
+  // The explanation template is written in the quiz's language: from its own text, else the screen language.
+  const contentLocale = quizContentLocale([state.questionHtml, ...state.choices.map(choice => choice.html), state.explanationHtml]) ?? undefined;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -623,8 +637,7 @@ export default function ProblemEditor({
       const newState: ProblemState = {
         type: type.id as any,
         rootAttrs: '',
-        // A new problem opens in the standard frame, empty, so its placeholder shows a short example.
-        questionHtml: '<label></label>',
+        questionHtml: `<p>${t(type.id === 'numericalresponse' ? 'courseComponentDefaults.problem.numericalQuestion' : 'courseComponentDefaults.problem.question')}</p>`,
         explanationHtml: '',
         choices: isNumStr ? [
           { id: 'c1', html: type.id === 'numericalresponse' ? '100' : t('courseComponentDefaults.problem.correct'), correct: true }
@@ -848,7 +861,10 @@ export default function ProblemEditor({
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      {unreadable ? <div role="alert" className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <p>{t('courseEditorForms.problemUnreadable')}</p>
+      </div> : <div className="flex flex-col lg:flex-row gap-8">
           {/* Left Column */}
           <div className="flex-1 space-y-8">
             <div className="space-y-3">
@@ -866,7 +882,7 @@ export default function ProblemEditor({
               </div>
               <ProblemTextSection key={`explanation:${textSectionKey}`} kind="explanation" html={state.explanationHtml}
                 label={t('courseEditorForms.problemExplanation')}
-                choices={state.type === 'numericalresponse' || state.type === 'stringresponse' ? null : state.choices}
+                choices={state.type === 'numericalresponse' || state.type === 'stringresponse' ? null : state.choices} templateLocale={contentLocale}
                 onHtmlChange={html => updateState(s => ({ ...s, explanationHtml: html }))} />
             </div>
 
@@ -1023,7 +1039,7 @@ export default function ProblemEditor({
               </Button>
             </div>
           </div>
-        </div>
+        </div>}
     </div>
   );
 }

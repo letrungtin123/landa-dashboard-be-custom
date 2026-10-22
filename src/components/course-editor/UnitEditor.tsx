@@ -44,7 +44,7 @@ import {
 import { toast } from 'sonner';
 import VideoEditor from './editors/VideoEditor';
 import HtmlEditor from './editors/HtmlEditor';
-import ProblemEditor, { getProblemTypes, normalizeProblemXmlForStorage, parseProblemXml } from './editors/ProblemEditor';
+import ProblemEditor, { getProblemTypes, normalizeProblemXmlForStorage, parseProblemXml, problemXmlUnreadable } from './editors/ProblemEditor';
 import MediaQuizEditor, {
   getMediaQuizDraftValidationError,
   getMediaQuizValidationError,
@@ -3492,6 +3492,10 @@ function ComponentEditForm({
         }
       }
       if (category === 'problem') {
+        // Content the problem editor cannot read is never replaced: the save is refused in plain words.
+        if (problemXmlUnreadable(problemXml)) {
+          throw Object.assign(new Error('Problem content cannot be read'), { userMessage: i18n.t('courseUnit.problemUnreadableSave') });
+        }
         const payloadMetadata = { ...effectiveMetadata, display_name: displayName };
         const mediaForSave = problemMediaForSave(effectiveMetadata?.problem_media);
         if (mediaForSave) payloadMetadata.problem_media = mediaForSave;
@@ -3641,7 +3645,8 @@ function ComponentEditForm({
           .filter((path) => !savedPaths.has(path));
         void cleanupCourseHtmlImages(courseId, unsavedPaths).catch(() => undefined);
       }
-      if (!options?.silent) toast.error(i18n.t('courseUnit.saveFailed', { message: getLocalizedApiError(err, i18n.t('courseUnit.unknownError')) }));
+      const message = typeof err?.userMessage === 'string' ? err.userMessage : getLocalizedApiError(err, i18n.t('courseUnit.unknownError'));
+      if (!options?.silent) toast.error(i18n.t('courseUnit.saveFailed', { message }));
     },
   });
   const persistInlineHtmlImageDraft = useCallback((nextHtmlContent: string) => {

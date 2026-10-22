@@ -59,19 +59,36 @@ export function decodeQuizEntities(value: string): string {
 }
 
 export type ProblemPlainTag = 'label' | 'p' | 'div' | 'span';
-/** A stem or explanation stored as one element without markup (`<label>…</label>` from AI ID, `<p>…</p>`) or as bare
- * text: its text and wrapper. Null when it holds markup, such as rich text written in the editor. */
+/** A stem or explanation stored as one element without markup and without attributes (`<label>…</label>` from AI ID,
+ * `<p>…</p>`) or as bare text: its text and wrapper. Null when it holds markup or the element has attributes (a style,
+ * a class: rich text, which the standard frame would drop on the first keystroke). */
 export function problemPlainText(html: string): { tag: ProblemPlainTag | null; text: string } | null {
   const trimmed = html.trim();
-  const element = /^<(label|p|div|span)(?:\s[^<>]*)?>([^<]*)<\/\1\s*>$/i.exec(trimmed);
+  const element = /^<(label|p|div|span)>([^<]*)<\/\1\s*>$/i.exec(trimmed);
   if (element) return { tag: element[1].toLowerCase() as ProblemPlainTag, text: decodeQuizEntities(element[2]) };
   // An empty element read back from the problem XML is self-closing (`<label/>`).
-  const empty = /^<(label|p|div|span)(?:\s[^<>]*?)?\s*\/>$/i.exec(trimmed);
+  const empty = /^<(label|p|div|span)\s*\/>$/i.exec(trimmed);
   if (empty) return { tag: empty[1].toLowerCase() as ProblemPlainTag, text: '' };
   return trimmed.includes('<') ? null : { tag: null, text: decodeQuizEntities(trimmed) };
 }
 
-/** The plain text back in its element, escaped (the editor keeps every line feed). */
+/**
+ * Text that XML can hold. A paste from PowerPoint brings a vertical tab (U+000B) per line break, which breaks the
+ * problem XML: vertical tab and form feed become line feeds, CR LF and CR become LF, and the other control characters
+ * (and U+FFFE, U+FFFF, lone surrogates) are dropped. Tab and line feed stay.
+ */
+export function xmlSafeText(value: string): string {
+  // Kept: the characters XML allows (tab, line feed, U+0020 to U+D7FF, U+E000 to U+FFFD, U+10000 and up).
+  return value.replace(/\r\n?|[\v\f]/g, '\n').replace(/[^\t\n\x20-퟿-�\u{10000}-\u{10FFFF}]/gu, '');
+}
+
+/** The plain text back in its element, cleaned for XML and escaped (the editor keeps every line feed). */
 export function plainProblemHtml(tag: ProblemPlainTag, text: string): string {
-  return `<${tag}>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${tag}>`;
+  return `<${tag}>${xmlSafeText(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${tag}>`;
+}
+
+/** Markup read back from the problem XML carries ` xmlns="…"` on its tags: removed from the tags only, so the same
+ * words written in the text stay. */
+export function withoutTagNamespaces(html: string): string {
+  return html.replace(/<[^<>]*>/g, tag => tag.replace(/ xmlns="[^"]+"/g, ''));
 }

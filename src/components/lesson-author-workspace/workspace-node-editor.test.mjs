@@ -251,6 +251,11 @@ test('Problem hint fields use the same editable list contract and persist in the
 test('AI ID quiz fields use the course editor\'s standard frame: + Thêm ý, Chèn mẫu with its confirmation, checks and preview', () => {
   // Owner decision 22/10: one field component for hand-made and AI ID quizzes (button labels are i18n keys here).
   const f = harness(problem('multiple_choice'));
+  f.change('Question', 'Dòng 1\u000bDòng 2\u0007');
+  assert.equal(f.props.draft.data.question, 'Dòng 1\nDòng 2', 'a PowerPoint paste is cleaned before it is stored');
+  f.change('Explanation', 'A\u000cB');
+  assert.equal(f.props.draft.data.explanation, 'A\nB');
+  f.change('Explanation', 'Explanation');
   f.change('Question', 'Cửa hàng có hai việc:\nViệc nào trước?');
   f.click('quizText.addItem');
   assert.equal(f.props.draft.data.question, 'Cửa hàng có hai việc:\n- \nViệc nào trước?', 'the first item goes before the question');
