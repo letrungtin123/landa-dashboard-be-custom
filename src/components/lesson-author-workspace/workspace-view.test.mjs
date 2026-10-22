@@ -378,6 +378,17 @@ for (const locale of ['en', 'vi']) {
     assert.match(terminal, locale === 'vi' ? /Chương 2/ : /Chapter 2/);
     assert.match(terminal, locale === 'vi' ? /chưa được gửi đến AI/ : /not sent to the AI provider/);
   });
+  test(`${locale}: a deleted source document says so plainly, without the code`, () => {
+    // Backend QC 22/10: ORCHESTRATION_V2_SOURCE_DOCUMENT_MISSING as a run or task failure.
+    const terminal = renderDialog({ graph: null, status: { ...state.status, status: 'needs_action', node_count: 0,
+      unit_count: 0, ready_unit_count: 0, failure_code: 'ORCHESTRATION_V2_SOURCE_DOCUMENT_MISSING',
+      failure_stage: 'generate_unit', failure_chapter_key: 'chapter-1' }, detail: null, selectedNodeId: null }, locale);
+    assert.doesNotMatch(terminal, /ORCHESTRATION_V2_SOURCE_DOCUMENT_MISSING|_MISSING/);
+    assert.match(terminal, locale === 'vi' ? /Tài liệu nguồn đã bị xoá \(hoặc Kho tri thức của AI ID đã đổi\) nên phần này chưa soạn được\./
+      : /The source document was deleted \(or the AI ID Knowledge Base was changed\), so this part could not be written\./);
+    assert.match(terminal, locale === 'vi' ? /Các phần đã soạn xong vẫn được giữ\./ : /Everything already written is kept\./);
+    assert.doesNotMatch(terminal, locale === 'vi' ? /sau các lần thử an toàn/ : /after its safe attempts/, 'not the general failure sentence');
+  });
   test(`${locale}: final-check failure stays internal when committed lessons are available`, () => {
     const terminal = renderDialog({ status: { ...state.status, status: 'needs_action',
       failure_code: 'ORCHESTRATION_V2_FINALIZATION_INPUT_INVALID', failure_stage: 'finalize_course' } }, locale);

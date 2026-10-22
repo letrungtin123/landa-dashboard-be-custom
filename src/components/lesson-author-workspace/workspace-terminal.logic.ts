@@ -33,6 +33,12 @@ export function workspaceTerminalFailureText(status: WorkspaceStatus, locale: Wo
     stage, message: vi ? 'Cấu hình AI của doanh nghiệp đã thay đổi trong lúc tạo nội dung.' : 'The organization AI configuration changed while content was being created.',
     note: vi ? 'Yêu cầu của bước này chưa được gửi đến AI và không phát sinh lượt gọi cho lần thử đó.' : 'This step was not sent to the AI provider, so that attempt did not create a provider call.',
   };
+  if (status.failure_code === 'ORCHESTRATION_V2_SOURCE_DOCUMENT_MISSING') return {
+    stage, message: vi ? 'Tài liệu nguồn đã bị xoá (hoặc Kho tri thức của AI ID đã đổi) nên phần này chưa soạn được.'
+      : 'The source document was deleted (or the AI ID Knowledge Base was changed), so this part could not be written.',
+    note: vi ? 'Các phần đã soạn xong vẫn được giữ. Bạn có thể tự soạn phần còn thiếu hoặc tạo bản thiết kế mới.'
+      : 'Everything already written is kept. You can write the missing part yourself or start a new design.',
+  };
   if (status.failure_code === 'AI_PROVIDER_AUTH_REJECTED') return {
     stage, message: vi ? 'Nhà cung cấp AI từ chối thông tin xác thực. Hãy kiểm tra API key của doanh nghiệp.' : 'The AI provider rejected the credentials. Check the organization API key.', note: null,
   };
