@@ -279,8 +279,9 @@
 }
 
 @keyframes workspace-guide-pulse {
-  0% { opacity: 0.8; transform: scale(0.94); }
-  70%, 100% { opacity: 0; transform: scale(1.22); }
+  0% { opacity: 0; transform: scale(1); }
+  15% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(1.6); }
 }
 
 @keyframes scale-in {
@@ -1319,24 +1320,31 @@
     opacity: 0.4;
   }
 
-  /* Mindmap colour guide button: a soft amber ring grows and fades so authors
-   * notice it. Decorative; off when the device asks for reduced motion. */
+  /* Mindmap colour guide button: two thin amber rings ripple out from the edge
+   * one after the other, like a soft sound wave, so authors notice it.
+   * Decorative; off when the device asks for reduced motion. */
   .workspace-guide-pulse {
     position: relative;
   }
 
+  .workspace-guide-pulse::before,
   .workspace-guide-pulse::after {
     content: "";
     position: absolute;
-    inset: -3px;
+    inset: -1px;
     border-radius: inherit;
-    border: 2px solid rgb(245 158 11 / 0.55);
+    border: 1.5px solid rgb(245 158 11 / 0.6);
     opacity: 0;
     pointer-events: none;
-    animation: workspace-guide-pulse 2.4s ease-out infinite;
+    animation: workspace-guide-pulse 2s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+  }
+
+  .workspace-guide-pulse::after {
+    animation-delay: 1s;
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .workspace-guide-pulse::before,
     .workspace-guide-pulse::after {
       animation: none;
     }

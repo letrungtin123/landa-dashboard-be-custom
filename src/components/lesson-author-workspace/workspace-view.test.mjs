@@ -508,15 +508,18 @@ for (const locale of ['en', 'vi']) test(`${locale}: the window has no footer lin
   assert.doesNotMatch(readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8'), /<footer/);
 });
 
-test('the yellow colour guide button pulses gently and stops when the device asks for reduced motion', () => {
-  // QC 21/10 (C6). The ring is a pseudo-element, so the button keeps its own shadow and focus ring.
+test('the yellow colour guide button ripples gently and stops when the device asks for reduced motion', () => {
+  // QC 21/10 (C6), owner video 23/10: two thin rings ripple out one after the other like a soft sound wave.
+  // The rings are pseudo-elements, so the button keeps its own shadow and focus ring.
   const source = readFileSync(path.join(directory, 'workspace-dialog.tsx'), 'utf8');
   assert.match(source, /aria-label=\{c\.colorGuide\}\s+className="workspace-guide-pulse /);
   const styles = readFileSync(path.join(directory, '..', '..', 'globals.css'), 'utf8');
   assert.match(styles, /@keyframes workspace-guide-pulse \{/);
-  assert.match(styles, /\.workspace-guide-pulse::after \{[^}]*animation: workspace-guide-pulse 2\.4s ease-out infinite;[^}]*\}/);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.workspace-guide-pulse::after \{\s*animation: none;\s*\}\s*\}/);
-  assert.match(styles, /\.workspace-guide-pulse::after \{[^}]*pointer-events: none;/, 'the ring never takes the click');
+  const rings = styles.match(/\.workspace-guide-pulse::before,\s*\.workspace-guide-pulse::after \{[^}]*\}/)?.[0] ?? '';
+  assert.match(rings, /animation: workspace-guide-pulse 2s [^;]*infinite;/);
+  assert.match(rings, /pointer-events: none;/, 'the rings never take the click');
+  assert.match(styles, /\.workspace-guide-pulse::after \{\s*animation-delay: 1s;\s*\}/, 'the second ring follows half a cycle later');
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.workspace-guide-pulse::before,\s*\.workspace-guide-pulse::after \{\s*animation: none;\s*\}\s*\}/);
 });
 
 test('live build edge motion covers all unfinished child nodes, excludes terminal states and stays bounded', () => {
