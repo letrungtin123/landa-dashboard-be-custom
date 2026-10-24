@@ -33,7 +33,7 @@ export function WorkspaceOrgProfileHistory({ history, currentVersion, confirmedV
     });
   };
   return <details className="group rounded-xl border border-border/70 bg-background/60">
-    <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
+    <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium max-lg:min-h-11">
       <History className="h-4 w-4 text-muted-foreground" aria-hidden />{t('aiIdOrgContext.profile.history.title', { count: history.length })}
     </summary>
     {history.length === 0 ? <p className="px-3 pb-3 text-sm text-muted-foreground">{t('aiIdOrgContext.profile.history.empty')}</p>
@@ -50,7 +50,7 @@ export function WorkspaceOrgProfileHistory({ history, currentVersion, confirmedV
               ? t('aiIdOrgContext.profile.history.metaBy', { origin, who: entry.created_by_name, when, chars })
               : t('aiIdOrgContext.profile.history.meta', { origin, when, chars })}</p>
           </div>
-          <div className="flex shrink-0 gap-1.5">
+          <div className="flex shrink-0 gap-1.5 max-lg:[&_button]:h-10 max-lg:[&_button]:px-3.5">
             <Button type="button" variant="outline" size="sm" aria-label={t('aiIdOrgContext.profile.history.viewLabel', { version: entry.version })}
               onClick={() => setViewing(entry.version)}>{t('aiIdOrgContext.profile.history.view')}</Button>
             <Button type="button" variant="outline" size="sm" disabled={!canRestore(entry.version)}

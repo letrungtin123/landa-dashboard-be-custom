@@ -10,6 +10,7 @@ import {
   workspaceRecoveryCopy, workspaceRecoveryUnitAction,
 } from './workspace-recovery.logic';
 import { createWorkspaceRecoveryState, type WorkspaceRecoveryController, type WorkspaceRecoveryState } from './workspace-recovery-state';
+import { WORKSPACE_SMALL_DIALOG, WORKSPACE_TOUCH_BUTTON } from './workspace-responsive';
 
 export interface WorkspaceRecoveryScope { courseId: string; conversationId: string; workspaceId: string }
 export interface WorkspaceRecoveryInput {
@@ -68,7 +69,7 @@ export function useWorkspaceRecovery(input: WorkspaceRecoveryInput): WorkspaceRe
   const begin = controller?.begin;
 
   const banner = useMemo(() => workspaceRecoveryBanner(view, locale), [view, locale]);
-  const actions = banner && (banner.resume || banner.rewriteAll) && begin ? <div className="flex flex-wrap items-center gap-2">
+  const actions = banner && (banner.resume || banner.rewriteAll) && begin ? <div className="flex flex-wrap items-center gap-2 max-lg:[&_button]:h-10 max-lg:[&_button]:px-4">
     {banner.resume && <Button type="button" size="sm" disabled={busy} onClick={() => begin(banner.resume!)}>{c.resume}</Button>}
     {banner.rewriteAll && <Button type="button" size="sm" variant="outline" disabled={busy} className="gap-1.5"
       onClick={() => begin(banner.rewriteAll!)}><RefreshCw className="h-3.5 w-3.5" aria-hidden />{banner.rewriteAllLabel ?? c.rewrite}</Button>}
@@ -98,7 +99,7 @@ export function useWorkspaceRecovery(input: WorkspaceRecoveryInput): WorkspaceRe
     if (!action.intent) return <p className="mt-3 text-xs text-muted-foreground">{action.note}</p>;
     const intent = action.intent;
     return <div className="mt-3 flex justify-end">
-      <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => begin(intent)}>
+      <Button type="button" size="sm" variant="outline" className="gap-1.5 max-lg:h-10 max-lg:px-4" disabled={busy} onClick={() => begin(intent)}>
         <RefreshCw className="h-3.5 w-3.5" aria-hidden />{c.rewriteChapter}
       </Button>
     </div>;
@@ -124,17 +125,17 @@ export function useWorkspaceRecovery(input: WorkspaceRecoveryInput): WorkspaceRe
   const text = pending ? workspaceRecoveryConfirmText(pending.intent, pending.maxRewrites, locale) : null;
   const error = state?.error ?? null;
   const dialog = pending && text && controller ? <Dialog open onOpenChange={open => { if (!open) controller.close(); }}>
-    <DialogContent showCloseButton={false} overlayClassName="z-[10080]" className="z-[10090] max-w-md rounded-2xl p-0">
-      <div className="border-b px-6 py-5">
-        <DialogTitle>{text.title}</DialogTitle>
+    <DialogContent showCloseButton={false} overlayClassName="z-[10080]" className={`z-[10090] ${WORKSPACE_SMALL_DIALOG} max-w-md rounded-2xl p-0`}>
+      <div className="border-b px-5 py-5 sm:px-6">
+        <DialogTitle className="max-lg:leading-6">{text.title}</DialogTitle>
         <DialogDescription className="mt-2 leading-6">{text.body}</DialogDescription>
         {text.note && <p className="mt-2 text-xs text-muted-foreground">{text.note}</p>}
       </div>
-      {error && <p role="alert" className="mx-6 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+      {error && <p role="alert" className="mx-5 mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:mx-6">
         {workspaceRecoveryMessage(error, locale)}</p>}
-      <div className="flex justify-end gap-2 px-6 py-4">
-        <Button type="button" variant="outline" disabled={busy} onClick={() => controller.close()}>{pending.settled ? c.close : c.cancel}</Button>
-        {!pending.settled && <Button type="button" variant={pending.intent.kind === 'stop' ? 'destructive' : 'default'} disabled={busy}
+      <div className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+        <Button type="button" variant="outline" className={WORKSPACE_TOUCH_BUTTON} disabled={busy} onClick={() => controller.close()}>{pending.settled ? c.close : c.cancel}</Button>
+        {!pending.settled && <Button type="button" variant={pending.intent.kind === 'stop' ? 'destructive' : 'default'} className={WORKSPACE_TOUCH_BUTTON} disabled={busy}
           onClick={() => { void controller.confirm(); }}>
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}{busy ? c.working : error ? c.retry : text.confirm}
         </Button>}

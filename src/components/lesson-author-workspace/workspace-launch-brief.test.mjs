@@ -588,9 +588,10 @@ test('the confirmation names the one document, in plain words', () => {
   assert.ok(html.includes('<h2>Xoá tài liệu này khỏi Kho tri thức?</h2>'));
   assert.ok(html.includes('“Nguon.pdf”') && html.includes('>Xoá tài liệu</button>') && html.includes('>Huỷ</button>'));
   assert.doesNotMatch(html, /\d+ tài liệu|và \d+/, 'never a count of several documents');
-  html = confirm('A.pdf', 'en', { error: locales.en.aiIdSourceDelete.errors.in_use });
+  const long = 'Bao-cao-quy-3-ban-cuoi-cung-da-duyet-boi-phong-dao-tao-va-phong-nhan-su-2026.pdf';
+  html = confirm(long, 'en', { error: locales.en.aiIdSourceDelete.errors.in_use });
   assert.ok(html.includes('<h2>Delete this document from the Knowledge Base?</h2>') && html.includes('>Delete document</button>'));
-  assert.ok(html.includes('“A.pdf”'));
+  assert.match(html, new RegExp(`<p class="[^"]*wrap-anywhere[^"]*">“${long.replace(/\./g, '\\.')}”</p>`), 'the long name wraps instead of widening the window');
   assert.match(html, /role="alert"[^>]*>Not deleted: AI is using the document to write a course\./, 'a refusal stays inside the confirmation');
 });
 
@@ -609,5 +610,56 @@ test('delete copy: VI and EN have the same keys, every refusal has a plain messa
     for (const value of strings(locales[locale].aiIdSourceDelete)) {
       assert.doesNotMatch(value, /_|\bKB\b|\bAPI\b|\b(?:202|403|404|409|500)\b|workspace|bulk/i, value);
     }
+  }
+});
+
+// ── Phones and tablets (owner 24/10). SSR proves the classes and the structure; the browser layout itself was checked
+// with screenshots at 360, 375, 390, 768 and 1440 px. Everything is scoped below the desktop width (max-lg / lg). ──
+test('start screen on phones: Create stays in a bar at the bottom, the list does not shrink under the brief, long names wrap', async () => {
+  const { WorkspaceSourceCreateBar } = load(path.join(directory, 'workspace-source-panel.tsx'));
+  const long = 'Quy-trinh-ban-hang-va-cham-soc-khach-hang-tai-cua-hang-ban-le-dien-may-phien-ban-cap-nhat-thang-10-nam-2026-da-duyet.pdf';
+  const f = controllerFixture({ canDelete: true, documents: [{ document_id: id(7), kb_id: id(4), name: long, status: 'learned' }] });
+  await f.controller.refresh();
+  const panel = sourcePanel(f, 'vi');
+  assert.match(panel, /^<section class="flex flex-1 flex-col gap-4 lg:min-h-0"/, 'one column: the section keeps its height (no overlap with the brief)');
+  assert.match(panel, /<div class="contents max-lg:hidden"><div class="flex flex-col gap-2 rounded-2xl[^"]*"><button[^>]*>[^]*?Tạo nội dung bài học<\/button>/,
+    'desktop keeps Create under the list; below the desktop width this copy is hidden');
+  assert.match(panel, new RegExp(`<span class="block text-sm font-medium wrap-anywhere lg:truncate" title="${long.replace(/\./g, '\\.')}">`),
+    'the long name wraps below the desktop width and stays one line on desktop');
+  assert.match(panel, /aria-label="Xoá tài liệu [^"]+" class|class="[^"]*max-lg:size-10[^"]*"[^>]*aria-label="Xoá tài liệu/, 'the row delete is a 40px touch target');
+
+  f.controller.select(id(7));
+  f.fail(Object.assign(Error('429'), { response: { status: 429, data: { code: 'AI_CREDIT_INSUFFICIENT_FOR_RUN' } } }));
+  f.controller.setBrief({ learner_audience: 'A', course_purpose: 'B' });
+  await f.controller.create();
+  const footer = renderToStaticMarkup(h(WorkspaceSourceCreateBar, { controller: f.controller, locale: 'vi', placement: 'footer' }));
+  assert.match(footer, /^<div data-testid="workspace-create-footer" class="[^"]*shrink-0[^"]*lg:hidden"/, 'the bottom bar exists only below the desktop width');
+  assert.equal((footer.match(/Tạo nội dung bài học<\/button>/g) ?? []).length, 1);
+  assert.ok(footer.indexOf('role="alert"') < footer.indexOf('Tạo nội dung bài học'), 'messages sit above the button, which stays at the bottom edge');
+  assert.match(footer, /<button[^>]*class="h-11 w-full[^"]*"/, 'a full-width 44px button on phones');
+  const host = readFileSync(path.join(directory, 'workspace-course-host.tsx'), 'utf8');
+  assert.match(host, /<WorkspaceLaunchBriefPanel controller=\{sources\} \/><\/div>\s*\{\/\*[^]*?\*\/\}\s*<WorkspaceSourceCreateBar controller=\{sources\} locale=\{locale\} placement="footer" \/>/,
+    'the host renders the bar under the scrolling start screen');
+  f.controller.dispose();
+});
+
+test('phones and tablets: dialogs keep 16px from the screen edges, scroll inside and stack 40px buttons; desktop classes unchanged', () => {
+  const responsive = load(path.join(directory, 'workspace-responsive.ts'));
+  assert.equal(responsive.WORKSPACE_SMALL_DIALOG, 'max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto');
+  assert.equal(responsive.WORKSPACE_TOUCH_BUTTON, 'max-lg:h-10 max-lg:px-4');
+  for (const file of ['workspace-org-context-dialogs.tsx', 'workspace-session-browser.tsx', 'workspace-recovery-controls.tsx', 'workspace-apply-conflict-dialog.tsx']) {
+    const source = readFileSync(path.join(directory, file), 'utf8');
+    assert.match(source, /className=\{`z-\[10090\] \$\{WORKSPACE_SMALL_DIALOG\} max-w-(?:md|lg) rounded-2xl p-0`\}/, `${file}: small dialog`);
+    assert.match(source, /flex flex-col-reverse gap-2[^"]*sm:flex-row sm:justify-end/, `${file}: buttons stack on phones`);
+  }
+  const tabs = readFileSync(path.join(directory, 'workspace-launch-tabs.tsx'), 'utf8');
+  assert.match(tabs, /const TRIGGER = 'h-9 [^']*max-lg:h-auto max-lg:min-h-10 max-lg:whitespace-normal/, 'tabs: 40px and a long label wraps in its half');
+  for (const file of ['workspace-course-host.tsx', 'workspace-dialog.tsx']) {
+    assert.match(readFileSync(path.join(directory, file), 'utf8'), /<header className="[^"]*max-sm:flex-wrap/, `${file}: the header buttons move under the title on phones`);
+  }
+  // No change is allowed to reach the desktop width: every added size class is scoped.
+  for (const file of ['workspace-source-panel.tsx', 'workspace-source-delete.tsx', 'workspace-org-context-panel.tsx', 'workspace-session-card.tsx']) {
+    const source = readFileSync(path.join(directory, file), 'utf8');
+    assert.doesNotMatch(source, /(?<![\w:-])(?:min-)?h-10(?![\w])/, `${file}: 40px only below the desktop width`);
   }
 });

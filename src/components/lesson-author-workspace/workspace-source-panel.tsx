@@ -35,12 +35,13 @@ function sourceIcon(name: string) {
   return /\.mp4$/i.test(name) ? Video : FileText;
 }
 
+type SourceController = ReturnType<typeof createWorkspaceSourceState>;
+
 /** Presentation-only source chooser. The controller remains the only authority
  * for source readiness, upload, transcript and explicit workspace Create. */
-export function WorkspaceSourcePanel({ controller, locale }: { controller: ReturnType<typeof createWorkspaceSourceState>; locale: WorkspaceLocale }) {
+export function WorkspaceSourcePanel({ controller, locale }: { controller: SourceController; locale: WorkspaceLocale }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
   const inputRef = useRef<HTMLInputElement>(null);
-  const reasonId = useId();
   const { t } = useTranslation();
   const c = copy[locale];
   useEffect(() => {
@@ -48,18 +49,8 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
     void controller.refresh();
     return () => controller.setVisible(false);
   }, [controller]); // GET-only; never Create/ingest.
-  const source = state.documents.find(d => d.document_id === state.selectedId);
   const locked = state.busy || state.unknown;
   const loading = state.phase === 'reading' && state.busy;
-  // Document plus the launch brief (right column); the reason is shown only
-  // when nothing else (loading, upload, unknown outcome) explains the lock.
-  const block = workspaceCreateBlock({ draft: state.brief,
-    document: source?.status === 'learned' ? 'ready' : source?.status === 'learning' ? 'processing' : 'none' });
-  const blockCopy = block && !locked && state.ready ? workspaceCreateBlockCopy(block) : null;
-  const reason = blockCopy ? t(blockCopy.key, { max: blockCopy.max, items: blockCopy.itemKeys?.map(key => t(key)).join(', ') }) : null;
-  const status = state.phase === 'uploading'
-    ? state.progress === 100 ? c.accepting : `${c.uploading}${state.progress === null ? '' : ` ${state.progress}%`}`
-    : state.phase === 'creating' ? c.creating : state.phase === 'deleting' ? t('aiIdSourceDelete.deleting') : c.reading;
   // Delete (knowledge base delete permission only): one document per delete, its confirmation and its outcome.
   // The name is kept from when the confirmation opened: the list drops the document while it is deleted.
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
@@ -76,10 +67,12 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
     setDeleteNote(outcome.kept ? t('aiIdSourceDelete.kept', { name: deleting.name }) : null);
   };
 
-  return <section className="flex min-h-0 flex-1 flex-col gap-4" aria-label={c.title}>
+  // One column below the desktop width: the section keeps its full height (the start screen scrolls as a whole)
+  // instead of shrinking under the brief panel. Desktop: the list scrolls inside the left column as before.
+  return <section className="flex flex-1 flex-col gap-4 lg:min-h-0" aria-label={c.title}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0"><h3 className="text-base font-semibold tracking-tight">{c.title}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{c.sourceHint}</p></div>
-      {(state.issue === 'unavailable' || state.issue === 'connection' || state.issue === 'rejected' || state.sourceObservation === 'unavailable') && <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-full" disabled={state.busy} onClick={() => { void controller.refresh(); }}>
+      {(state.issue === 'unavailable' || state.issue === 'connection' || state.issue === 'rejected' || state.sourceObservation === 'unavailable') && <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-full max-lg:h-10 max-lg:px-4" disabled={state.busy} onClick={() => { void controller.refresh(); }}>
         {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}{c.refresh}
       </Button>}
     </div>
@@ -105,7 +98,8 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
             <button type="button" aria-pressed={selected} disabled={locked} onClick={() => controller.select(document.document_id)}
               className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left ${!ready ? 'opacity-65' : ''}`}>
               <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}><Icon className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{document.name}</span><span className={`mt-0.5 flex items-center gap-1 text-[11px] ${ready ? 'text-emerald-600 dark:text-emerald-400' : failed ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>{ready ? <Check className="h-3 w-3" /> : failed ? <AlertCircle className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}{ready ? c.ready : failed ? c.failedStatus : c.processing}</span>
+              {/* Long names wrap on phones and tablets; one line on desktop, the full name on hover. */}
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium wrap-anywhere lg:truncate" title={document.name}>{document.name}</span><span className={`mt-0.5 flex items-center gap-1 text-[11px] ${ready ? 'text-emerald-600 dark:text-emerald-400' : failed ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>{ready ? <Check className="h-3 w-3" /> : failed ? <AlertCircle className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}{ready ? c.ready : failed ? c.failedStatus : c.processing}</span>
                 {controls && document.in_use_by_ai_id === true && <WorkspaceSourceInUseNote />}</span>
               {selected && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>}
             </button>
@@ -113,25 +107,58 @@ export function WorkspaceSourcePanel({ controller, locale }: { controller: Retur
           </div>;
         })}
       </div>
-      {deleteNote && <p role="status" className="mt-2 px-1 text-xs text-amber-700 dark:text-amber-400">{deleteNote}</p>}
+      {deleteNote && <p role="status" className="mt-2 px-1 text-xs text-amber-700 dark:text-amber-400 wrap-anywhere">{deleteNote}</p>}
     </div>
     {deleting && <WorkspaceSourceDeleteConfirm busy={state.phase === 'deleting'} error={deleteError} name={deleting.name}
       onConfirm={() => { void confirmDelete(); }} onClose={() => setDeleting(null)} />}
 
-    <div className="flex flex-col gap-2 rounded-2xl border bg-muted/25 p-3 sm:items-end">
-      <Button type="button" size="lg" className="min-w-52 rounded-xl shadow-lg shadow-primary/20" disabled={locked || !state.ready || !!block}
-        aria-describedby={reason ? reasonId : undefined} onClick={() => { void controller.create(); }}>
-        {state.phase === 'creating' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{c.create}
-      </Button>
-      {reason && <p id={reasonId} className="text-xs leading-5 text-muted-foreground sm:text-right">{reason}</p>}
-    </div>
+    {/* From the desktop width Create sits here, under the list. Below it the start screen shows the same bar fixed to
+     * the bottom of the window (placement "footer", rendered by the host), so it stays in reach while the page scrolls. */}
+    <div className="contents max-lg:hidden"><WorkspaceSourceCreateBar controller={controller} locale={locale} /></div>
+    {state.transcript && <div className="rounded-xl border bg-card p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-medium">{c.transcript}</span><span className="text-xs text-muted-foreground">{c[state.transcript.status]}</span></div><p className="mt-1 truncate text-xs text-muted-foreground">{state.transcript.original_file_name}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" className="max-lg:h-10" disabled={state.busy} onClick={() => { void controller.refreshTranscript(); }}>{c.checkTranscript}</Button><Button type="button" size="sm" className="max-lg:h-10" disabled={locked || !state.transcript.can_add_to_kb || state.transcript.status !== 'succeeded'} onClick={() => { void controller.commitTranscript(); }}>{c.commit}</Button></div></div>}
+  </section>;
+}
 
+/** "Create learning content" with its one-line reason, then what the panel is doing and any refusal. `panel`: inside
+ * the source panel (desktop). `footer`: an action bar fixed under the start screen's scrolling area on phones and
+ * tablets, with the messages above the button so the button stays at the bottom edge. */
+export function WorkspaceSourceCreateBar({ controller, locale, placement = 'panel' }: {
+  controller: SourceController; locale: WorkspaceLocale; placement?: 'panel' | 'footer';
+}) {
+  const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
+  const reasonId = useId();
+  const { t } = useTranslation();
+  const c = copy[locale];
+  const source = state.documents.find(d => d.document_id === state.selectedId);
+  const locked = state.busy || state.unknown;
+  // Document plus the launch brief (right column); the reason is shown only
+  // when nothing else (loading, upload, unknown outcome) explains the lock.
+  const block = workspaceCreateBlock({ draft: state.brief,
+    document: source?.status === 'learned' ? 'ready' : source?.status === 'learning' ? 'processing' : 'none' });
+  const blockCopy = block && !locked && state.ready ? workspaceCreateBlockCopy(block) : null;
+  const reason = blockCopy ? t(blockCopy.key, { max: blockCopy.max, items: blockCopy.itemKeys?.map(key => t(key)).join(', ') }) : null;
+  const status = state.phase === 'uploading'
+    ? state.progress === 100 ? c.accepting : `${c.uploading}${state.progress === null ? '' : ` ${state.progress}%`}`
+    : state.phase === 'creating' ? c.creating : state.phase === 'deleting' ? t('aiIdSourceDelete.deleting') : c.reading;
+  const footer = placement === 'footer';
+
+  const action = <div className={footer ? 'flex flex-col gap-1.5' : 'flex flex-col gap-2 rounded-2xl border bg-muted/25 p-3 sm:items-end'}>
+    <Button type="button" size="lg" className={footer ? 'h-11 w-full rounded-xl shadow-lg shadow-primary/20' : 'min-w-52 rounded-xl shadow-lg shadow-primary/20'} disabled={locked || !state.ready || !!block}
+      aria-describedby={reason ? reasonId : undefined} onClick={() => { void controller.create(); }}>
+      {state.phase === 'creating' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{c.create}
+    </Button>
+    {reason && <p id={reasonId} className={`text-xs leading-5 text-muted-foreground ${footer ? 'text-center' : 'sm:text-right'}`}>{reason}</p>}
+  </div>;
+  const messages = <>
     {state.busy && <div className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-2 text-xs text-muted-foreground" role="status">{status}</div>}
     {!state.busy && state.sourceObservation !== 'idle' && state.sourceObservation !== 'failed' && <div className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-2 text-xs text-muted-foreground" role="status">
       {state.sourceObservation === 'unavailable' ? c.streamUnavailable : <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />{state.sourceObservation === 'connecting' ? c.connecting : c.watching}</>}
     </div>}
     {state.issue && <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
       {state.issue === 'brief_rejected' ? state.briefError ? t(workspaceLaunchBriefErrorKey(state.briefError)) : c.rejected : c[state.issue]}</p>}
-    {state.transcript && <div className="rounded-xl border bg-card p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-medium">{c.transcript}</span><span className="text-xs text-muted-foreground">{c[state.transcript.status]}</span></div><p className="mt-1 truncate text-xs text-muted-foreground">{state.transcript.original_file_name}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={state.busy} onClick={() => { void controller.refreshTranscript(); }}>{c.checkTranscript}</Button><Button type="button" size="sm" disabled={locked || !state.transcript.can_add_to_kb || state.transcript.status !== 'succeeded'} onClick={() => { void controller.commitTranscript(); }}>{c.commit}</Button></div></div>}
-  </section>;
+  </>;
+  if (!footer) return <>{action}{messages}</>;
+  return <div data-testid="workspace-create-footer" className="max-h-[45dvh] shrink-0 space-y-2 overflow-y-auto border-t bg-card px-4 py-3 shadow-[0_-12px_24px_-18px_rgba(0,0,0,0.55)] sm:px-5 lg:hidden">
+    {messages}{action}
+  </div>;
 }

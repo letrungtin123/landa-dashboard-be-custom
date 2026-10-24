@@ -128,18 +128,18 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm"><DetailIcon className="h-5 w-5" aria-hidden /></span>
           <div className="min-w-0"><div className="flex min-w-0 flex-wrap items-center gap-2">
             {editingTitle ? <><DialogTitle className="sr-only">{visibleTitle}</DialogTitle><Input autoFocus aria-label={c.editTitle}
-              className="h-9 min-w-[16rem] flex-1 bg-background/90 text-base font-bold sm:min-w-[24rem] sm:text-lg" value={editor.draft!.title}
+              className="h-9 min-w-[16rem] flex-1 bg-background/90 text-base font-bold max-sm:min-w-0 max-lg:h-10 sm:min-w-[24rem] sm:text-lg" value={editor.draft!.title}
               maxLength={500} lang={detail!.content_locale} onChange={event => {
                 const next = updateWorkspaceEditorField(detail!, editor.draft!, 0, event.target.value);
                 if (next) { setApplyState('idle'); act(() => { host.assertCanWrite(); editor.onChange(next); }); }
               }} /></> : <DialogTitle className="max-w-full truncate text-base font-bold tracking-tight sm:text-lg">{visibleTitle}</DialogTitle>}
             {hierarchyTitle && !appliedReadOnly && editor.draft && !editingTitle && <Button type="button" variant="ghost" size="icon"
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-primary" aria-label={c.editTitle}
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-primary max-lg:h-10 max-lg:w-10" aria-label={c.editTitle}
               onClick={() => setEditingTitleNodeId(node.node_id)}><Pencil className="h-3.5 w-3.5" aria-hidden /></Button>}
             <WorkspaceNodeTypePill node={node} locale={locale} />
           </div><DialogDescription className="mt-1.5 max-w-3xl text-xs leading-5 sm:text-sm">{appliedReadOnly ? c.appliedReview : readOnlyDetail ? c.readOnlyReview : c.review}{appliedReadOnly && appliedNote ? ` ${appliedNote}` : ''}</DialogDescription></div>
         </div>
-        <Button type="button" variant="ghost" size="icon" className="relative h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-background/70 shadow-sm backdrop-blur transition-transform hover:scale-105" aria-label={c.close}
+        <Button type="button" variant="ghost" size="icon" className="relative h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-background/70 shadow-sm backdrop-blur transition-transform hover:scale-105 max-lg:h-10 max-lg:w-10" aria-label={c.close}
           onClick={() => { setApplyState('idle'); setEditingTitleNodeId(null); act(() => session.selectNode(null)); }}><X className="h-4 w-4" /><span className="sr-only">{c.close}</span></Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -169,17 +169,17 @@ export function WorkspaceCourseNodeDialog({ node, host, session, workspace, stat
             ? <WorkspaceDetailContent detail={detail!} locale={locale} stats={stats} />
             : detail?.kind === 'component' ? <WorkspaceAuthorReviewCards detail={detail} locale={locale} /> : undefined} />}
         {editorCapable && !appliedReadOnly && editor.conflict && write?.phase !== 'unknown' && !workspace.writeBusy && !write?.readRequired && detail.current_revision !== null && <div className="mx-5 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-          <p>{c.compare}</p><Button type="button" variant="outline" onClick={() => act(() => session.rebaseDraft(node.node_id, detail.current_revision!))}>{c.rebase}</Button>
-          <Button type="button" variant="outline" onClick={() => act(() => session.discardDraft(node.node_id))}>{c.discard}</Button></div>}
+          <p>{c.compare}</p><Button type="button" variant="outline" className="max-lg:h-auto max-lg:min-h-10 max-lg:whitespace-normal" onClick={() => act(() => session.rebaseDraft(node.node_id, detail.current_revision!))}>{c.rebase}</Button>
+          <Button type="button" variant="outline" className="max-lg:h-10" onClick={() => act(() => session.discardDraft(node.node_id))}>{c.discard}</Button></div>}
         {editorCapable && !appliedReadOnly && write?.phase === 'unknown' && <div className="mx-5 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3"><p>{c.replayHint}</p>
-          <Button type="button" disabled={write.readRequired || workspace.writeBusy} onClick={() => act(() => session.replay(node.node_id))}>{c.replay}</Button></div>}
+          <Button type="button" className="max-lg:h-auto max-lg:min-h-10 max-lg:whitespace-normal" disabled={write.readRequired || workspace.writeBusy} onClick={() => act(() => session.replay(node.node_id))}>{c.replay}</Button></div>}
         {(write?.phase === 'committed' || applyState === 'done' || applyState === 'failed') && <div
           className={`pointer-events-none absolute right-5 top-[5.25rem] z-30 max-w-md rounded-xl border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur-xl ${applyState === 'failed' ? 'border-destructive/35 text-destructive' : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'}`}
           role={applyState === 'failed' ? 'alert' : 'status'}>
           {applyState === 'failed' ? (applyError ? workspaceApplyErrorMessage(applyError, locale) : c.error)
             : applyState === 'done' ? c.applied : c.saved}
         </div>}
-        {(message || actionError) && <div className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p role="alert">{message ?? c.error}</p><Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button></div>}
+        {(message || actionError) && <div className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p role="alert">{message ?? c.error}</p><Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button></div>}
       </div>
     </DialogContent>
     {applyConflict?.nodeId === node.node_id && <WorkspaceApplyConflictDialog code={applyConflict.code} conflict={applyConflict.conflict} locale={locale}

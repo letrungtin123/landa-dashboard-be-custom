@@ -36,7 +36,8 @@ export function WorkspaceOrgContextLaunchOption({ controller }: { controller: Re
       <label htmlFor={id} className="block text-sm font-medium">{t('aiIdOrgContext.launch.use', { date: formatOrgContextDate(launch.confirmedAt, launch.locale) })}</label>
       <p id={`${id}-hint`} className="mt-1 text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.launch.useHint')}</p>
     </div>
-    <Switch id={id} className="mt-0.5" checked={!!choice?.use} aria-describedby={`${id}-hint`}
+    {/* Below the desktop width the switch reacts to a 40px tall touch area (the label next to it also toggles it). */}
+    <Switch id={id} className="mt-0.5 max-lg:after:absolute max-lg:after:inset-x-0 max-lg:after:-inset-y-[9px]" checked={!!choice?.use} aria-describedby={`${id}-hint`}
       disabled={locked || choice?.confirmedVersion !== launch.confirmedVersion} onCheckedChange={value => controller.setUseOrganizationContext(value)} />
   </div>;
 }

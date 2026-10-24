@@ -11,7 +11,8 @@ import { WorkspaceOrgContextPanel } from './workspace-org-context-panel';
 import { WorkspaceOrgContextLaunchProvider } from './workspace-org-context-launch';
 
 type SourceController = ReturnType<typeof createWorkspaceSourceState>;
-const TRIGGER = 'h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm sm:text-sm';
+// Below the desktop width: at least 40px high, and a long label wraps inside its half instead of overflowing it.
+const TRIGGER = 'h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm sm:text-sm max-lg:h-auto max-lg:min-h-10 max-lg:whitespace-normal max-lg:px-2 max-lg:py-1.5';
 
 /** AI course design start screen. While the organization context feature is on for the tenant (server GET), two
  * tabs: "Ngữ cảnh doanh nghiệp" and "Tạo khoá học" (the children, today's start screen). Off, unknown or

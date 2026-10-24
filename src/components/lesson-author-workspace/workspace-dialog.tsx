@@ -259,14 +259,15 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
     : nodes.length === 0 && !mindmapLoading);
   return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <span className="sr-only" ref={node => { if (node && !returnFocus.current) { returnFocus.current = document.activeElement as HTMLElement; } }} />
-      <header className="flex shrink-0 items-start justify-between gap-3 border-b bg-card px-4 py-3 pr-4 sm:px-5 sm:py-3.5">
-        <div className="flex min-w-0 items-start gap-3">
+      {/* Phones: the actions move under the title instead of squeezing it; 40px buttons below the desktop width. */}
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b bg-card px-4 py-3 pr-4 max-sm:flex-wrap max-sm:gap-y-2.5 sm:px-5 sm:py-3.5">
+        <div className="flex min-w-0 items-start gap-3 max-sm:flex-1">
           <WorkspaceAiAvatar src={assistantAvatarSrc} compact />
-          <div className="min-w-0"><DialogTitle className="truncate text-base font-semibold">{draftTitle?.trim() || c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{c.review}</DialogDescription></div>
+          <div className="min-w-0"><DialogTitle className="truncate text-base font-semibold max-lg:leading-6 max-sm:line-clamp-2 max-sm:whitespace-normal">{draftTitle?.trim() || c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{c.review}</DialogDescription></div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 max-sm:w-full max-sm:justify-end">
           {headerActions}
-          <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
+          <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4">{c.close}</Button></DialogClose>
         </div>
       </header>
       {visibleReadError && <p role="alert" className="mx-4 mt-3 shrink-0 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-5">{workspaceReadMessage(visibleReadError.code, locale)}</p>}
@@ -278,8 +279,8 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 overflow-x-auto border-b bg-muted/10 px-3 py-2 sm:px-5">
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/35 p-1 dark:bg-muted/20">
-            <TabsTrigger value="overview" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm"><Target className="h-3.5 w-3.5" />{c.overview}</TabsTrigger>
-            <TabsTrigger value="mindmap" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm"><MapIcon className="h-3.5 w-3.5" />{c.mindmap}</TabsTrigger>
+            <TabsTrigger value="overview" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm max-lg:h-10"><Target className="h-3.5 w-3.5" />{c.overview}</TabsTrigger>
+            <TabsTrigger value="mindmap" className="h-9 w-full gap-1.5 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-sm max-lg:h-10"><MapIcon className="h-3.5 w-3.5" />{c.mindmap}</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -301,10 +302,10 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
             <Panel position="top-right" className="!m-3 flex items-start gap-2">
               <div className="group relative nodrag nopan">
                 <button type="button" aria-label={c.colorGuide}
-                  className="workspace-guide-pulse flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/60 bg-amber-50 text-amber-700 shadow-lg transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-500/50 dark:bg-amber-950/80 dark:text-amber-300 dark:hover:bg-amber-950">
+                  className="workspace-guide-pulse flex h-9 w-9 items-center justify-center rounded-lg border max-lg:h-10 max-lg:w-10 border-amber-400/60 bg-amber-50 text-amber-700 shadow-lg transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-500/50 dark:bg-amber-950/80 dark:text-amber-300 dark:hover:bg-amber-950">
                   <Info className="h-4 w-4" aria-hidden />
                 </button>
-                <div role="tooltip" className="pointer-events-none absolute right-0 top-11 z-20 w-72 translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-2xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                <div role="tooltip" className="pointer-events-none absolute right-0 top-11 z-20 w-72 max-w-[calc(100vw-2rem)] translate-y-1 rounded-xl border border-border bg-popover p-3 text-popover-foreground opacity-0 shadow-2xl transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
                   <p className="text-xs font-semibold">{c.colorGuide}</p>
                   <div className="mt-2.5 space-y-2 text-[11px] leading-4 text-muted-foreground">
                     <p className="flex gap-2"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-500" />{c.legendPending}</p>
@@ -314,7 +315,7 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
                   </div>
                 </div>
               </div>
-              <Button type="button" variant="outline" size="sm" className="nodrag nopan h-9 gap-2 bg-card shadow-lg" onClick={toggleAllNodes}>
+              <Button type="button" variant="outline" size="sm" className="nodrag nopan h-9 gap-2 bg-card shadow-lg max-lg:h-10" onClick={toggleAllNodes}>
                 <Rows3 className="h-4 w-4" aria-hidden />{allExpanded ? c.collapseAll : c.expandAll}
               </Button>
             </Panel>
@@ -325,8 +326,9 @@ export function WorkspaceDialogBody({ open, onOpenChange, state, locale, onSelec
                 <span className="tabular-nums text-muted-foreground">{state.status.ready_unit_count}/{state.status.unit_count}</span>
               </div>
             </Panel>}
-            <Controls showInteractive={false} className="!bottom-3 !left-3 !overflow-hidden !rounded-lg !border !border-border !bg-card !shadow-lg [&>button]:!flex [&>button]:!h-9 [&>button]:!w-9 [&>button]:!items-center [&>button]:!justify-center [&>button]:!border-b [&>button]:!border-border/70 [&>button]:!bg-card [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button:last-child]:!border-b-0 [&>button>svg]:!fill-current [&>button>svg]:!stroke-current [&>button>svg]:!text-foreground" />
-            <MiniMap pannable zoomable className="!border !border-border !bg-card !shadow-lg" nodeStrokeWidth={3}
+            <Controls showInteractive={false} className="!bottom-3 !left-3 !overflow-hidden !rounded-lg !border !border-border !bg-card !shadow-lg [&>button]:!flex [&>button]:!h-9 [&>button]:!w-9 max-lg:[&>button]:!h-10 max-lg:[&>button]:!w-10 [&>button]:!items-center [&>button]:!justify-center [&>button]:!border-b [&>button]:!border-border/70 [&>button]:!bg-card [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button:last-child]:!border-b-0 [&>button>svg]:!fill-current [&>button>svg]:!stroke-current [&>button>svg]:!text-foreground" />
+            {/* Phones: the small overview map would cover most of the canvas, so it is left out below 640px. */}
+            <MiniMap pannable zoomable className="!border !border-border !bg-card !shadow-lg max-sm:!hidden" nodeStrokeWidth={3}
               nodeColor={item => { const data = item.data as FlowData | undefined; return edgeColor[workspaceMindmapStatus(data?.node ?? { kind: 'course', applied: false, user_modified: false })]; }} />
             <Background gap={18} size={1} color="hsl(var(--muted-foreground) / 0.18)" />
           </ReactFlow></ReactFlowProvider></div> : mindmapLoading ? <WorkspacePendingSkeleton locale={locale} stage="mindmap" /> : terminal ? <WorkspaceTerminalPanel locale={locale} status={terminal} onRefresh={onRefresh} actions={recoveryActions} />

@@ -50,7 +50,8 @@ export function WorkspaceOrgProfileFields({ draft, review, changed, disabled, lo
   const id = useId();
   const issuesOf = (field: OrgProfileShownField) => review.issues.filter(issue => issue.kind !== 'total_too_long' && issue.field === field);
   const total = review.issues.find(issue => issue.kind === 'total_too_long');
-  return <div className="space-y-5">
+  // Below the desktop width: 40px fields and buttons for touch.
+  return <div className="space-y-5 max-lg:[&_button]:min-h-10 max-lg:[&_button]:min-w-10 max-lg:[&_input]:h-10">
     {ORG_PROFILE_SHOWN_FIELDS.map(field => {
       const common = { id: `${id}-${field}`, issues: issuesOf(field), changed: changed.includes(field), disabled, locale };
       const count = review.fields[field].count ?? 0;

@@ -52,7 +52,8 @@ function load(relative) {
     if (name.endsWith('/workspace-sources')) return { workspaceSourceApi: {} };
     if (name.endsWith('/custom-chat')) return { fetchLessonAuthorChatSettings: async () => ({ active_bot: null, active_kb: null, active_persona: null }) };
     if (name.endsWith('/storage-url')) return { storageUrl: value => value || '' };
-    if (name === './workspace-source-panel') return { WorkspaceSourcePanel: () => h('div', null, 'Sources') };
+    if (name === './workspace-source-panel') return { WorkspaceSourcePanel: () => h('div', null, 'Sources'),
+      WorkspaceSourceCreateBar: ({ placement }) => h('div', null, `Create bar ${placement}`) };
     if (name === './workspace-launch-brief-panel') return { WorkspaceLaunchBriefPanel: () => h('div', null, 'Launch brief'),
       WorkspaceLaunchBriefSummary: ({ brief }) => brief ? h('p', null, brief.design_mode) : null };
     if (name === './workspace-ai-avatar') return { WorkspaceAiAvatar: () => h('span', null, 'AI') };
@@ -529,7 +530,8 @@ async function startScreen() {
   assert.equal(f.host.getState().issue, 'no_workspace');
   return f;
 }
-const todayStartScreen = '<div class="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><div>Sources</div><div>Launch brief</div></div>';
+// The scrolling start screen, then (phones and tablets only, hidden from the desktop width) the bottom Create bar.
+const todayStartScreen = '<div class="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><div>Sources</div><div>Launch brief</div></div><div>Create bar footer</div>';
 
 test('start screen: with the organization context off, unknown or unreadable it is exactly today\'s screen', async () => {
   const f = await startScreen();

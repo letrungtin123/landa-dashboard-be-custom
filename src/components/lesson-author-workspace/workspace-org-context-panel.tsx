@@ -87,7 +87,7 @@ export function WorkspaceOrgContextPanel({ state, tenantId, locale, onReload }: 
       <div className="flex flex-col gap-1.5">
         <input ref={inputRef} className="sr-only" type="file" accept={ORG_CONTEXT_FILE_ACCEPT} disabled={!canUpload} tabIndex={-1} aria-hidden
           onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) choose(file); }} />
-        <Button type="button" className="self-start" disabled={!canUpload} onClick={() => inputRef.current?.click()}>
+        <Button type="button" className="self-start max-lg:h-10 max-lg:px-4" disabled={!canUpload} onClick={() => inputRef.current?.click()}>
           {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}{t('aiIdOrgContext.upload')}</Button>
         <p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.uploadTypes')}</p>
         {upload.isPending && <p role="status" className="text-xs text-muted-foreground">{progress === null ? t('aiIdOrgContext.uploadingWait')
@@ -105,14 +105,15 @@ export function WorkspaceOrgContextPanel({ state, tenantId, locale, onReload }: 
             return <li key={document.id} className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/60 px-3 py-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FileText className="h-4 w-4" aria-hidden /></span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium" title={document.name}>{document.name}</p>
+                {/* Long names wrap on phones and tablets; one line on desktop, the full name on hover. */}
+                <p className="text-sm font-medium wrap-anywhere lg:truncate" title={document.name}>{document.name}</p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{document.created_by_name
                   ? t('aiIdOrgContext.documentMetaBy', { size, who: document.created_by_name, when }) : t('aiIdOrgContext.documentMeta', { size, when })}</p>
                 <p className={`mt-0.5 flex items-center gap-1 text-[11px] font-medium ${style.className}`}>
                   <Icon className={`h-3 w-3 ${style.spin ? 'animate-spin' : ''}`} aria-hidden />{t(`aiIdOrgContext.status.${document.status}`)}</p>
                 {document.status === 'error' && <p className="mt-0.5 text-[11px] text-destructive">{t('aiIdOrgContext.documentFailed')}</p>}
               </div>
-              <Button type="button" variant="ghost" size="icon-sm" disabled={document.status === 'learning' || remove.isPending}
+              <Button type="button" variant="ghost" size="icon-sm" className="max-lg:size-10" disabled={document.status === 'learning' || remove.isPending}
                 aria-label={t('aiIdOrgContext.deleteLabel', { name: document.name })}
                 onClick={() => { setDeleteError(null); setDeleting(document); }}><Trash2 className="h-4 w-4" aria-hidden /></Button>
             </li>;

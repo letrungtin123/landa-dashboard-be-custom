@@ -25,7 +25,7 @@ export function WorkspaceTerminalPanel({ locale, status, onRefresh, compact = fa
         {failure.note && <p className="mt-1 text-xs leading-5 text-muted-foreground">{failure.note}</p>}
       </div></div>
     {(!assessmentReviewRequired && (onRefresh || isFailure)) && <div className="flex flex-wrap items-center gap-2">
-      {onRefresh && <Button type="button" variant="outline" size="sm" onClick={onRefresh}>{c.terminalReload}</Button>}
+      {onRefresh && <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" onClick={onRefresh}>{c.terminalReload}</Button>}
       {isFailure && !actions && <p className="text-xs text-muted-foreground">{locale === 'vi' ? 'Sau khi xử lý nguyên nhân, đóng cửa sổ và chọn Tạo nội dung bài học để tạo một bản thiết kế khoá học mới.' : 'After resolving the cause, close this window and choose Create lesson content to start a new draft.'}</p>}
       {isFailure && actions}
     </div>}

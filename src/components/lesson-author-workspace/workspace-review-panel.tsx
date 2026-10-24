@@ -50,7 +50,7 @@ export function WorkspaceReviewPanel({ scope, tenantId, locale, canResolve }: {
             </div>
           </div>}
         </div>
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={c.reload}
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 max-lg:h-10 max-lg:w-10" aria-label={c.reload}
           disabled={query.isFetching} onClick={() => { void query.refetch(); }}>
           <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} aria-hidden />
         </Button>
@@ -58,7 +58,7 @@ export function WorkspaceReviewPanel({ scope, tenantId, locale, canResolve }: {
       {query.isLoading && <p className="mt-3 text-sm text-muted-foreground" role="status">{c.loading}</p>}
       {query.isError && <div className="mt-3 flex flex-wrap items-center gap-2 text-sm" role="alert">
         <p>{workspaceReviewErrorMessage(query.error, locale, 'list')}</p>
-        <Button type="button" variant="outline" size="sm" onClick={() => { void query.refetch(); }}>{c.reload}</Button>
+        <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" onClick={() => { void query.refetch(); }}>{c.reload}</Button>
       </div>}
       {query.data && query.data.items.length === 0 && <p className="mt-3 text-sm text-muted-foreground">{c.empty}</p>}
       {query.data && query.data.items.length > 0 && <ol className="mt-4 space-y-3">
@@ -92,7 +92,8 @@ function ReviewItem({ item, locale, canResolve, busy, locked, error, onDecide }:
             {view.objectives.map((objective, index) => <li key={index} className="break-words">{objective}</li>)}
           </ul>
         </div>}
-        {open && canResolve && <div className="mt-3 flex flex-wrap items-center gap-2">
+        {/* Below the desktop width: 40px buttons; a long question title wraps inside its button. */}
+        {open && canResolve && <div className="mt-3 flex flex-wrap items-center gap-2 max-lg:[&_button]:h-auto max-lg:[&_button]:min-h-10 max-lg:[&_button]:max-w-full max-lg:[&_button]:whitespace-normal max-lg:[&_button]:px-4 max-lg:[&_button]:py-2">
           <Button type="button" size="sm" disabled={locked} onClick={() => onDecide(item.obligation_id, 'approved_replan')}>
             {busy ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />{c.saving}</> : c.markChecked}
           </Button>

@@ -12,7 +12,7 @@ import { workspaceSourceApi } from '../../api/workspace-sources';
 import { createLessonAuthorUploadAttemptId } from '../../api/lesson-author-video-upload.logic';
 import { secureRandomUuid } from '../../utils/random-uuid';
 import { createWorkspaceSourceState } from './workspace-source-state';
-import { WorkspaceSourcePanel } from './workspace-source-panel';
+import { WorkspaceSourceCreateBar, WorkspaceSourcePanel } from './workspace-source-panel';
 import { WorkspaceLaunchBriefPanel, WorkspaceLaunchBriefSummary } from './workspace-launch-brief-panel';
 import { WorkspaceLaunchTabs } from './workspace-launch-tabs';
 import { workspaceSessionLaunchBrief } from './workspace-launch-brief.logic';
@@ -312,15 +312,18 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
     }} /></WorkspaceModalShell>;
   if (!session || !workspace || state.loading || state.issue) return <WorkspaceModalShell host={host}>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16, ease: 'easeOut' }} className="flex min-h-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b bg-card px-4 py-3 sm:px-5 sm:py-3.5">
-          <div className="flex min-w-0 items-start gap-3"><WorkspaceAiAvatar src={assistantAvatarSrc} compact /><div className="min-w-0"><DialogTitle className="text-base font-semibold">{c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{state.issue === 'no_workspace' ? c.review : c[state.issue ?? 'launch_failed']}</DialogDescription></div></div>
-          <div className="flex shrink-0 gap-2">{view === 'source' && <Button type="button" variant="outline" size="sm" onClick={() => setView('sessions')}>{c.sessions}</Button>}<Button type="button" variant="outline" size="sm" onClick={() => host.close()}>{c.close}</Button></div>
+        {/* Phones: the buttons move under the title instead of squeezing it; 40px buttons below the desktop width. */}
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b bg-card px-4 py-3 max-sm:flex-wrap max-sm:gap-y-2.5 sm:px-5 sm:py-3.5">
+          <div className="flex min-w-0 items-start gap-3 max-sm:flex-1"><WorkspaceAiAvatar src={assistantAvatarSrc} compact /><div className="min-w-0"><DialogTitle className="text-base font-semibold max-lg:leading-6">{c.title}</DialogTitle><DialogDescription className="mt-1 line-clamp-2">{state.issue === 'no_workspace' ? c.review : c[state.issue ?? 'launch_failed']}</DialogDescription></div></div>
+          <div className="flex shrink-0 gap-2 max-sm:w-full">{view === 'source' && <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4 max-sm:min-w-0 max-sm:flex-1" onClick={() => setView('sessions')}>{c.sessions}</Button>}<Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4 max-sm:ml-auto" onClick={() => host.close()}>{c.close}</Button></div>
         </header>
         {state.loading && <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-hidden px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]" role="status"><div className="animate-pulse space-y-4 rounded-lg border border-border/70 bg-card p-5"><div className="h-5 w-2/5 rounded bg-muted" /><div className="h-16 rounded-lg bg-muted" /><div className="space-y-2"><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /><div className="h-12 rounded-lg bg-muted" /></div></div><div className="hidden animate-pulse rounded-lg border border-border/70 bg-muted/20 p-5 lg:block"><div className="h-4 w-1/2 rounded bg-muted" /><div className="mt-4 h-24 rounded-lg bg-muted" /></div></div>}
         {!state.loading && state.issue === 'no_workspace' && !state.launch && sources && <WorkspaceLaunchTabs sources={sources} tenantId={tenantId} locale={locale}>
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-5 sm:px-5 lg:grid-cols-[1.45fr_0.8fr]"><WorkspaceSourcePanel controller={sources} locale={locale} /><WorkspaceLaunchBriefPanel controller={sources} /></div>
+          {/* Phones and tablets: Create stays at the bottom edge while the start screen scrolls (desktop keeps it in the left column). */}
+          <WorkspaceSourceCreateBar controller={sources} locale={locale} placement="footer" />
         </WorkspaceLaunchTabs>}
-        {!state.loading && state.issue !== 'no_workspace' && <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 text-center"><p role="status" className="max-w-lg text-sm text-muted-foreground">{c[state.issue ?? 'launch_failed']}</p><Button type="button" disabled={sourceState?.busy} onClick={() => { void host.launch(); }}>{c.retry}</Button></div>}
+        {!state.loading && state.issue !== 'no_workspace' && <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 text-center"><p role="status" className="max-w-lg text-sm text-muted-foreground">{c[state.issue ?? 'launch_failed']}</p><Button type="button" className="max-lg:h-10 max-lg:px-4" disabled={sourceState?.busy} onClick={() => { void host.launch(); }}>{c.retry}</Button></div>}
       </motion.div>
   </WorkspaceModalShell>;
   const failure = workspace.error;
@@ -334,7 +337,7 @@ export function WorkspaceCourseHostOverlay({ host, courseId, state, locale, sour
   const otherOwner = !!state.launch && activeConversation?.id === state.launch.conversation_id && activeConversation.mine === false;
   const toolbar = (!state.launch?.can_edit || message || actionError || runNotice) ? <div className="space-y-2 text-sm">
     <WorkspaceActiveRunNotice text={runNotice} />
-    {(message || actionError) && <Button type="button" variant="outline" size="sm" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button>}
+    {(message || actionError) && <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" disabled={workspace.read.busy || workspace.writeBusy} onClick={() => act(refreshWorkspace)}>{c.refresh}</Button>}
     {!state.launch?.can_edit && <p role="status">{otherOwner ? workspaceReadOnlyNotice(activeConversation?.ownerName ?? null, locale) : c.readOnly}</p>}
     {message && <p role="alert">{message}</p>}{actionError && <p role="alert">{c.error}</p>}
   </div> : undefined;

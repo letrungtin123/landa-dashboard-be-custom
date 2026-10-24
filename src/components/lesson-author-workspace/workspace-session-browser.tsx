@@ -16,6 +16,7 @@ import type { WorkspaceLaunchContext } from '../../api/workspace-launch.contract
 import { WorkspaceAiAvatar } from './workspace-ai-avatar';
 import { WorkspaceSessionCard, WorkspaceSessionScopeFilter } from './workspace-session-card';
 import { workspaceSharingCopy } from './workspace-sharing';
+import { WORKSPACE_SMALL_DIALOG, WORKSPACE_TOUCH_BUTTON } from './workspace-responsive';
 
 const copy = {
   vi: {
@@ -110,7 +111,7 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
     <header className="flex shrink-0 items-start justify-between gap-4 border-b bg-card px-5 py-4 sm:px-7 sm:py-5">
       <div className="flex min-w-0 items-start gap-3.5"><WorkspaceAiAvatar src={assistantAvatarSrc} />
         <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{c.eyebrow}</p><h2 className="mt-1 text-lg font-bold">{c.title}</h2><p className="mt-1 text-sm text-muted-foreground">{c.description}</p></div></div>
-      <Button type="button" variant="outline" size="icon" className="shrink-0 rounded-xl" aria-label={c.close} onClick={onClose}><X className="h-4 w-4" /></Button>
+      <Button type="button" variant="outline" size="icon" className="shrink-0 rounded-xl max-lg:size-10" aria-label={c.close} onClick={onClose}><X className="h-4 w-4" /></Button>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-5 py-5 sm:px-7">
       <div className="mx-auto max-w-5xl space-y-4">
@@ -125,7 +126,7 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
         </div>
         {notice && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">{notice}</p>}
         {loading && <div className="space-y-3" role="status"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{c.loading}</p>{[0,1,2].map(value => <div key={value} className="h-24 animate-pulse rounded-2xl border bg-card" />)}</div>}
-        {!loading && error && <div className="rounded-2xl border bg-card p-6 text-center"><p className="text-sm text-muted-foreground">{c.error}</p><Button className="mt-4" variant="outline" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" />{c.retry}</Button></div>}
+        {!loading && error && <div className="rounded-2xl border bg-card p-6 text-center"><p className="text-sm text-muted-foreground">{c.error}</p><Button className="mt-4 max-lg:h-10 max-lg:px-4" variant="outline" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" />{c.retry}</Button></div>}
         {!loading && !error && items.length === 0 && <div className="rounded-2xl border border-dashed bg-card/60 p-10 text-center text-sm text-muted-foreground">{scope === 'mine' ? s.emptyMine : c.empty}</div>}
         {!loading && !error && items.map(item => <WorkspaceSessionCard key={item.conversation_id} item={item} locale={locale} labels={c}
           editing={editing === item.conversation_id} title={title} renaming={renaming} updatedLabel={format(item.updated_at)}
@@ -134,14 +135,14 @@ export function WorkspaceSessionBrowser({ courseId, locale, assistantAvatarSrc, 
       </div>
     </div>
     <Dialog open={!!deleting} onOpenChange={open => { if (!open && !deleteBusy) { setDeleting(null); setImpact(null); } }}>
-      <DialogContent showCloseButton={false} overlayClassName="z-[10080]" className="z-[10090] max-w-lg rounded-2xl p-0">
-        <div className="border-b px-6 py-5"><DialogTitle>{c.deleteTitle}</DialogTitle><DialogDescription className="mt-2">{deleting?.title}</DialogDescription></div>
-        <div className="space-y-4 px-6 py-5"><p className="text-sm">{c.deleteLead}</p><p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">{c.kept}</p>
+      <DialogContent showCloseButton={false} overlayClassName="z-[10080]" className={`z-[10090] ${WORKSPACE_SMALL_DIALOG} max-w-lg rounded-2xl p-0`}>
+        <div className="border-b px-5 py-5 sm:px-6"><DialogTitle className="max-lg:leading-6">{c.deleteTitle}</DialogTitle><DialogDescription className="mt-2 wrap-anywhere">{deleting?.title}</DialogDescription></div>
+        <div className="space-y-4 px-5 py-5 sm:px-6"><p className="text-sm">{c.deleteLead}</p><p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">{c.kept}</p>
           {!impact ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{c.loading}</p> : <div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.total_nodes}</strong><span className="text-xs text-muted-foreground">{c.total}</span></div><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.applied_nodes}</strong><span className="text-xs text-muted-foreground">{c.applied}</span></div><div className="rounded-xl bg-muted p-3"><strong className="block text-lg">{impact.unapplied_nodes}</strong><span className="text-xs text-muted-foreground">{c.unapplied}</span></div></div>}
           {impact?.active && <p className="text-sm text-amber-600 dark:text-amber-400">{c.active}</p>}
           {!!impact && impact.applied_nodes > 0 && <p className="text-sm text-amber-600 dark:text-amber-400">{c.hasApplied}</p>}
         </div>
-        <div className="flex justify-end gap-2 border-t px-6 py-4"><Button variant="outline" disabled={deleteBusy} onClick={() => { setDeleting(null); setImpact(null); }}>{c.cancel}</Button><Button variant="destructive" disabled={!impact || impact.active || impact.applied_nodes > 0 || deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{deleteBusy ? c.deleting : c.remove}</Button></div>
+        <div className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><Button variant="outline" className={WORKSPACE_TOUCH_BUTTON} disabled={deleteBusy} onClick={() => { setDeleting(null); setImpact(null); }}>{c.cancel}</Button><Button variant="destructive" className={WORKSPACE_TOUCH_BUTTON} disabled={!impact || impact.active || impact.applied_nodes > 0 || deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{deleteBusy ? c.deleting : c.remove}</Button></div>
       </DialogContent>
     </Dialog>
   </div>;

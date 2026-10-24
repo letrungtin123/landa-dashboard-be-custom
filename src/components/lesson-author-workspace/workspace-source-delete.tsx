@@ -8,10 +8,10 @@ import type { WorkspaceSourceDeleteOutcome } from './workspace-source.logic';
  * delete permission; the server checks the same permission. One document per delete (owner 24/10: no ticking
  * several documents to delete them together). Presentation only: the source controller deletes. */
 
-/** The row's delete button, after the document: it deletes only that document. */
+/** The row's delete button, after the document. 40px on phones and tablets (touch), as before on desktop. */
 export function WorkspaceSourceRowDelete({ name, disabled, onDelete }: { name: string; disabled: boolean; onDelete: () => void }) {
   const { t } = useTranslation();
-  return <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" disabled={disabled}
+  return <Button type="button" variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive max-lg:size-10" disabled={disabled}
     aria-label={t('aiIdSourceDelete.deleteLabel', { name })} onClick={onDelete}><Trash2 className="h-4 w-4" aria-hidden /></Button>;
 }
 

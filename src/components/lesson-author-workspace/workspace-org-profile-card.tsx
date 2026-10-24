@@ -78,7 +78,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
   const statusText = status.kind === 'none' ? t('aiIdOrgContext.profile.statusNone') : status.kind === 'draft' ? t('aiIdOrgContext.profile.statusDraft')
     : status.by ? t('aiIdOrgContext.profile.statusConfirmed', { date: formatOrgContextDate(status.at, locale), name: status.by })
       : t('aiIdOrgContext.profile.statusConfirmedNoName', { date: formatOrgContextDate(status.at, locale) });
-  const reloadButton = <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => dirty ? setPending('reload') : reload()}>
+  const reloadButton = <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" disabled={busy} onClick={() => dirty ? setPending('reload') : reload()}>
     {reloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}{t('aiIdOrgContext.reload')}</Button>;
 
   return <section aria-labelledby={`${id}-title`} className="flex min-w-0 flex-col gap-4 rounded-lg border border-border/70 bg-card p-4 sm:p-5">
@@ -94,13 +94,13 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
     </div>
 
     <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-muted/25 p-3">
-      <Button type="button" variant="outline" className="self-start" disabled={!actions.distill} onClick={() => dirty ? setPending('distill') : requestDistill()}>
+      <Button type="button" variant="outline" className="self-start max-lg:h-10 max-lg:px-4" disabled={!actions.distill} onClick={() => dirty ? setPending('distill') : requestDistill()}>
         {distill.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}{t('aiIdOrgContext.profile.distill')}</Button>
       {distillActive ? <div role="status" className="flex items-start gap-2 text-sm"><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
         <div><p className="font-medium">{t('aiIdOrgContext.profile.distilling')}</p><p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.profile.distillHint')}</p></div></div>
         : state.distill.status === 'failed' ? <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1">{t(orgContextDistillFailureKey(state.distill.error_code))}</span>
-          <Button type="button" variant="outline" size="sm" disabled={!actions.distill} onClick={() => dirty ? setPending('distill') : requestDistill()}>{t('aiIdOrgContext.retry')}</Button></div>
+          <Button type="button" variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4" disabled={!actions.distill} onClick={() => dirty ? setPending('distill') : requestDistill()}>{t('aiIdOrgContext.retry')}</Button></div>
           : learnedCount === 0 ? <p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.profile.distillNeedsDocument')}</p>
             : server.unread_document_count > 0 ? <p className="text-xs leading-5 text-muted-foreground">{t('aiIdOrgContext.profile.unread', { count: server.unread_document_count })}</p> : null}
     </div>
@@ -109,7 +109,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
       <p className="font-medium">{t('aiIdOrgContext.profile.startTitle')}</p>
       <ol className="list-decimal space-y-1 pl-5 leading-6 text-muted-foreground">
         <li>{t('aiIdOrgContext.profile.startStep1')}</li><li>{t('aiIdOrgContext.profile.startStep2')}</li></ol>
-      <Button type="button" variant="link" size="sm" className="h-auto px-0" disabled={!actions.editable} onClick={() => setManual(true)}>
+      <Button type="button" variant="link" size="sm" className="h-auto px-0 max-lg:min-h-10" disabled={!actions.editable} onClick={() => setManual(true)}>
         {t('aiIdOrgContext.profile.manualEntry')}</Button>
     </div>}
 
@@ -128,7 +128,7 @@ export function WorkspaceOrgProfileCard({ state, tenantId, locale, onReload }: {
         <span className="min-w-0 flex-1">{error.text}</span>{error.conflict && reloadButton}</div>}
       {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{notice}</p>}
       {empty && (dirty || !!server.current) && <p className="text-xs text-muted-foreground">{t('aiIdOrgContext.profile.emptyCannotConfirm')}</p>}
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end max-lg:[&_button]:h-10">
         <Button type="button" variant="outline" disabled={!actions.save} onClick={() => submit(false)}>
           {save.isPending && !save.variables?.confirm && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}{t('aiIdOrgContext.profile.save')}</Button>
         <Button type="button" disabled={!actions.confirm} onClick={() => submit(true)}>

@@ -511,9 +511,9 @@ export function WorkspaceNodeDetail({ node, detail, locale, stale = false, runEn
       onOpenAutoFocus={event => { event.preventDefault(); returnFocus.current = document.activeElement as HTMLElement; closeButton.current?.focus(); }}
       onCloseAutoFocus={event => { event.preventDefault(); if (returnFocus.current?.isConnected) returnFocus.current.focus(); }}>
       <div className="flex shrink-0 items-start justify-between gap-4">
-        <div className="min-w-0 space-y-2"><DialogTitle className="break-words">{current?.content?.title ?? node?.title ?? c.detail}</DialogTitle>
+        <div className="min-w-0 space-y-2"><DialogTitle className="break-words max-lg:leading-6">{current?.content?.title ?? node?.title ?? c.detail}</DialogTitle>
           <DialogDescription>{c.review}</DialogDescription></div>
-        <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm">{c.close}</Button></DialogClose>
+        <DialogClose asChild><Button ref={closeButton} variant="outline" size="sm" className="max-lg:h-10 max-lg:px-4">{c.close}</Button></DialogClose>
       </div>
       {node && <WorkspaceNodeStatus node={node} locale={locale} notGenerated={workspaceNodeNotGenerated(node, runEnded)} />}
       <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
