@@ -8,7 +8,7 @@ import { isWorkspaceLaunchBriefErrorCode, type WorkspaceHostScope, type Workspac
 import { DEFAULT_WORKSPACE_LAUNCH_BRIEF, isWorkspaceDesignMode, workspaceLaunchBriefFields, workspaceOrgContextOffer,
   workspaceOrgContextRequestField, type WorkspaceLaunchBriefDraft, type WorkspaceOrgContextChoice } from './workspace-launch-brief.logic';
 import { isTransientReadFailure, SOURCE_DELETE_SETTLE_DELAYS_MS, workspaceSourceDeleteIssue, workspaceSourceDeleteOutcome,
-  workspaceSourceDeletePlan, workspaceSourceInUseOutcome, type WorkspaceSourceDeleteOutcome } from './workspace-source.logic';
+  workspaceSourceDeletePlan, type WorkspaceSourceDeleteOutcome } from './workspace-source.logic';
 
 export interface WorkspaceSourceState {
   busy: boolean;
@@ -340,45 +340,37 @@ export function createWorkspaceSourceState(scope: WorkspaceHostScope, dependenci
           name: next.transcript_file_name, type: 'file', status: next.kb_document_status ?? 'learning' });
       } catch (error) { throw workspaceCreateFailure(error); }
     }, true),
-    /** Delete documents that may go now (allowed, processed, not used by AI ID) through the knowledge base's own
-     * delete routes (one or bulk, both queued), then re-read the list until they are gone. Every call that sends
-     * nothing says why. A deleted source is unselected; any other selection and the brief stay. Never Create. */
-    async deleteDocuments(documentIds: readonly string[]): Promise<WorkspaceSourceDeleteOutcome> {
+    /** Delete one document that may go now (allowed, processed, not used by AI ID) through the knowledge base's own
+     * single delete route (queued), then re-read the list until it is gone. There is no multi-document delete here
+     * (owner 24/10). Every call that sends nothing says why. A deleted source is unselected; any other selection and
+     * the brief stay. Never Create. */
+    async deleteDocument(documentId: string): Promise<WorkspaceSourceDeleteOutcome> {
       if (state.busy || state.unknown || disposed) return workspaceSourceDeleteOutcome('busy');
       if (!panelVisible || !dependencies.visible() || !allowed() || !settings?.active_kb) return workspaceSourceDeleteOutcome('forbidden');
-      const plan = workspaceSourceDeletePlan(state.documents, documentIds, canDelete());
-      if (!('ids' in plan)) return plan;
-      const ids = plan.ids, kbId = settings.active_kb.kb_id;
+      const plan = workspaceSourceDeletePlan(state.documents, documentId, canDelete());
+      if (!('id' in plan)) return plan;
+      const id = plan.id, kbId = settings.active_kb.kb_id;
       emit({ busy: true, phase: 'deleting' });
-      let outcome = workspaceSourceDeleteOutcome(null), accepted = ids.length;
+      let outcome = workspaceSourceDeleteOutcome(null), accepted = true;
       try {
-        try {
-          if (ids.length === 1) await dependencies.api.deleteDocument(kbId, ids[0]);
-          else {
-            const result = await dependencies.api.bulkDeleteDocuments(kbId, ids);
-            accepted = Math.min(ids.length, Math.max(0, Number(result?.deleted) || 0));
-          }
-        } catch (error) {
+        try { await dependencies.api.deleteDocument(kbId, id); }
+        catch (error) {
           // A refusal deletes nothing; after a lost answer the one list read below shows what happened.
           const issue = workspaceSourceDeleteIssue(error);
-          if (issue !== 'gone') {
-            outcome = issue === 'in_use' ? workspaceSourceInUseOutcome(error, state.documents) : workspaceSourceDeleteOutcome(issue);
-            accepted = 0;
-          }
+          if (issue !== 'gone') { outcome = workspaceSourceDeleteOutcome(issue); accepted = false; }
         }
-        if (accepted > 0 && state.selectedId && ids.includes(state.selectedId)) {
+        if (accepted && state.selectedId === id) {
           stopSourceObservation();
           emit({ selectedId: null, ...(state.issue === 'source_failed' || state.issue === 'source_not_ready' ? { issue: null } : {}) });
         }
-        // The list is the authority: re-read until the accepted deletes are gone, bounded.
-        const mayRemain = ids.length - accepted;
+        // The list is the authority: re-read until the accepted delete is gone, bounded.
         for (let attempt = 0; ; attempt++) {
           assertActive();
           const documents = normalizeDocuments(await read(() => dependencies.api.documents())); assertActive();
           emit({ documents });
-          const remaining = ids.filter(id => documents.some(d => d.document_id === id)).length;
-          if (remaining <= mayRemain || attempt >= SOURCE_DELETE_SETTLE_DELAYS_MS.length) {
-            if (!outcome.issue) outcome = workspaceSourceDeleteOutcome(null, { kept: remaining });
+          const listed = documents.some(d => d.document_id === id);
+          if (!accepted || !listed || attempt >= SOURCE_DELETE_SETTLE_DELAYS_MS.length) {
+            if (!outcome.issue) outcome = workspaceSourceDeleteOutcome(null, listed);
             break;
           }
           await wait(SOURCE_DELETE_SETTLE_DELAYS_MS[attempt]);

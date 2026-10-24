@@ -494,17 +494,53 @@ test('source list: delete controls only for authors with the knowledge base dele
   for (const locale of ['vi', 'en']) {
     const f = controllerFixture({ canDelete: true, documents: sourceDocs }); await f.controller.refresh();
     const allowed = sourcePanel(f, locale), vi = locale === 'vi';
-    assert.ok(allowed.includes(vi ? 'Chọn tất cả' : 'Select all'));
     const label = vi ? 'Xoá tài liệu' : 'Delete the document';
     const deletes = [...allowed.matchAll(new RegExp(`<button[^>]*aria-label="${label} ([^"]+)"[^>]*>`, 'g'))].map(m => [m[1], / disabled=""/.test(m[0])]);
     assert.deepEqual(deletes, [['Nguon.pdf', false], ['Dang-doc.pdf', true]], 'a document still being read cannot be deleted yet');
-    const checks = [...allowed.matchAll(/<button[^>]*role="checkbox"[^>]*>/g)].map(m => m[0]);
-    assert.equal(checks.length, 3, 'select all and one per document');
-    assert.ok(checks.some(tag => tag.includes(`aria-label="${vi ? 'Chọn tài liệu Nguon.pdf để xoá' : 'Select the document Nguon.pdf to delete'}"`)));
     assert.doesNotMatch(allowed, /KB_|\bKB\b|knowledge base id|document_id|00000000-/);
     f.controller.dispose();
   }
   plain.controller.dispose();
+});
+
+// Owner 24/10: no ticking several documents to delete them together; each row deletes only itself.
+test('source list: no multi-select delete; one row has one delete button for exactly that document', async () => {
+  const rows = [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned' },
+    { document_id: id(8), kb_id: id(4), name: 'Bao-cao-quy-3-ban-cuoi-cung-da-duyet-boi-phong-dao-tao-va-phong-nhan-su.pdf', status: 'learned' },
+    { document_id: id(9), kb_id: id(4), name: 'So-tay.docx', status: 'learned' }];
+  for (const locale of ['vi', 'en']) {
+    const f = controllerFixture({ canDelete: true, documents: rows }); await f.controller.refresh();
+    const html = sourcePanel(f, locale), vi = locale === 'vi';
+    assert.doesNotMatch(html, /role="checkbox"|type="checkbox"|indeterminate/, 'no tick boxes in the list');
+    assert.doesNotMatch(html, vi ? /Chọn tất cả|tài liệu đã chọn|Xoá \d+ tài liệu/ : /Select all|\d+ selected|Delete \d+ documents/, 'no select all and no bulk delete button');
+    const label = vi ? 'Xoá tài liệu' : 'Delete the document';
+    const deletes = [...html.matchAll(new RegExp(`<button[^>]*aria-label="${label} ([^"]+)"[^>]*>`, 'g'))].map(m => m[1]);
+    assert.deepEqual(deletes, rows.map(row => row.name), 'one delete button per row, named after its own document');
+    const choose = [...html.matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*>/g)];
+    assert.equal(choose.length, rows.length, 'every row keeps its own button that chooses the document');
+    f.controller.dispose();
+  }
+  const panel = readFileSync(path.join(directory, 'workspace-source-panel.tsx'), 'utf8');
+  assert.match(panel, /onDelete=\{\(\) => askDelete\(document\.document_id, document\.name\)\}/, 'the row button asks to delete only its own document');
+  assert.match(panel, /await controller\.deleteDocument\(deleting\.id\)/, 'the confirmation deletes exactly that one document');
+  assert.doesNotMatch(panel, /Checkbox|checked|selectAll|deleteDocuments/);
+  const controls = readFileSync(path.join(directory, 'workspace-source-delete.tsx'), 'utf8');
+  assert.doesNotMatch(controls, /Checkbox|selectAll|deleteChecked|titleMany|confirmMany/);
+});
+
+test('source list: choosing the document for AI ID still works next to the delete buttons', async () => {
+  const rows = [{ document_id: id(7), kb_id: id(4), name: 'Nguon.pdf', status: 'learned' },
+    { document_id: id(8), kb_id: id(4), name: 'So-tay.pdf', status: 'learned' }];
+  const f = controllerFixture({ canDelete: true, documents: rows }); await f.controller.refresh();
+  const pressed = () => [...sourcePanel(f, 'vi').matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*>(?:(?!<\/button>).)*?(Nguon\.pdf|So-tay\.pdf)/g)]
+    .map(m => [m[2], m[1]]);
+  assert.deepEqual(pressed(), [['Nguon.pdf', 'false'], ['So-tay.pdf', 'false']]);
+  f.controller.select(id(8));
+  assert.deepEqual(pressed(), [['Nguon.pdf', 'false'], ['So-tay.pdf', 'true']], 'the chosen document is marked');
+  f.controller.setBrief({ learner_audience: 'Nhân viên mới', course_purpose: 'Hiểu công ty' });
+  await f.controller.create();
+  assert.deepEqual(f.requests.at(-1).source_document_ids, [id(8)], 'Create uses the chosen document');
+  f.controller.dispose();
 });
 
 test('source list: a document AI ID is using says so and cannot be deleted; the row\'s can_delete wins over the permission', async () => {
@@ -519,8 +555,6 @@ test('source list: a document AI ID is using says so and cannot be deleted; the 
     const label = vi ? 'Xoá tài liệu' : 'Delete the document';
     const deletes = [...html.matchAll(new RegExp(`<button[^>]*aria-label="${label} ([^"]+)"[^>]*>`, 'g'))].map(m => [m[1], / disabled=""/.test(m[0])]);
     assert.deepEqual(deletes, [['Nguon.pdf', false], ['Dang-soan.pdf', true]], 'the server allows it even without the client permission');
-    const check = html.match(new RegExp(`<button[^>]*role="checkbox"[^>]*aria-label="${vi ? 'Chọn tài liệu Dang-soan.pdf để xoá' : 'Select the document Dang-soan.pdf to delete'}"[^>]*>|<button[^>]*aria-label="${vi ? 'Chọn tài liệu Dang-soan.pdf để xoá' : 'Select the document Dang-soan.pdf to delete'}"[^>]*role="checkbox"[^>]*>`))[0];
-    assert.match(check, / disabled=""/);
     f.controller.dispose();
   }
   const denied = controllerFixture({ canDelete: true, documents: rows.map(row => ({ ...row, can_delete: false })) }); await denied.controller.refresh();
@@ -528,49 +562,48 @@ test('source list: a document AI ID is using says so and cannot be deleted; the 
   denied.controller.dispose();
 });
 
-test('a refused or empty delete keeps the confirmation open with plain words, naming the documents in use', () => {
+test('a refused or empty delete keeps the confirmation open with plain words', () => {
   const { workspaceSourceDeleteText } = load(path.join(directory, 'workspace-source-delete.tsx'));
-  const outcome = (issue, extra = {}) => ({ issue, kept: 0, names: [], serverMessage: null, ...extra });
-  env.locale = 'vi';
-  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { names: ['A.pdf', 'B.pdf'] })),
-    'Chưa xoá được vì AI đang dùng các tài liệu này để soạn khoá học: “A.pdf”, “B.pdf”. Hãy đợi AI soạn xong rồi thử lại.');
-  assert.match(workspaceSourceDeleteText(t, outcome('in_use', { names: Array.from({ length: 7 }, (_, i) => `T${i}.pdf`) })),
-    /“T4\.pdf” và 2 tài liệu khác\. Hãy đợi/);
-  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { serverMessage: 'AI ID đang dùng “X.pdf”.' })), 'AI ID đang dùng “X.pdf”.');
-  assert.equal(workspaceSourceDeleteText(t, outcome('in_use')), locales.vi.aiIdSourceDelete.errors.in_use);
-  for (const issue of ['busy', 'not_listed', 'forbidden', 'learning', 'connection', 'failed']) {
-    assert.equal(workspaceSourceDeleteText(t, outcome(issue)), locales.vi.aiIdSourceDelete.errors[issue], issue);
+  const outcome = issue => ({ issue, kept: false });
+  for (const locale of ['vi', 'en']) {
+    env.locale = locale;
+    for (const issue of ['in_use', 'busy', 'not_listed', 'forbidden', 'learning', 'connection', 'failed']) {
+      assert.equal(workspaceSourceDeleteText(t, outcome(issue)), locales[locale].aiIdSourceDelete.errors[issue], `${locale} ${issue}`);
+    }
   }
-  env.locale = 'en';
-  assert.equal(workspaceSourceDeleteText(t, outcome('in_use', { names: ['A.pdf'] })),
-    'Not deleted: AI is using these documents to write a course: “A.pdf”. Wait until AI has finished, then try again.');
+  env.locale = 'vi';
+  assert.equal(workspaceSourceDeleteText(t, outcome('in_use')), 'Chưa xoá được vì AI đang dùng tài liệu để soạn khoá học. Hãy đợi AI soạn xong rồi thử lại.');
   const panel = readFileSync(path.join(directory, 'workspace-source-panel.tsx'), 'utf8');
   assert.match(panel, /if \(outcome\.issue\) \{ setDeleteError\(workspaceSourceDeleteText\(t, outcome\)\); return; \}/,
     'any outcome with an issue keeps the confirmation open; only a real delete closes it');
+  assert.match(panel, /setDeleteNote\(outcome\.kept \? t\('aiIdSourceDelete\.kept', \{ name: deleting\.name \}\) : null\)/,
+    'a document the server has not removed yet is named in the note');
 });
 
-test('one confirmation for one or several documents, in plain words, with the names', () => {
+test('the confirmation names the one document, in plain words', () => {
   const { WorkspaceSourceDeleteConfirm } = load(path.join(directory, 'workspace-source-delete.tsx'));
-  const confirm = (names, locale, extra = {}) => { env.locale = locale; return renderToStaticMarkup(h(WorkspaceSourceDeleteConfirm,
-    { names, busy: false, error: null, onConfirm() {}, onClose() {}, ...extra })); };
-  let html = confirm(['Nguon.pdf'], 'vi');
+  const confirm = (name, locale, extra = {}) => { env.locale = locale; return renderToStaticMarkup(h(WorkspaceSourceDeleteConfirm,
+    { name, busy: false, error: null, onConfirm() {}, onClose() {}, ...extra })); };
+  let html = confirm('Nguon.pdf', 'vi');
   assert.ok(html.includes('<h2>Xoá tài liệu này khỏi Kho tri thức?</h2>'));
   assert.ok(html.includes('“Nguon.pdf”') && html.includes('>Xoá tài liệu</button>') && html.includes('>Huỷ</button>'));
-  html = confirm(Array.from({ length: 7 }, (_, i) => `Tai-lieu-${i + 1}.pdf`), 'vi');
-  assert.ok(html.includes('<h2>Xoá 7 tài liệu khỏi Kho tri thức?</h2>'));
-  assert.ok(html.includes('“Tai-lieu-1.pdf”, “Tai-lieu-2.pdf”, “Tai-lieu-3.pdf”, “Tai-lieu-4.pdf”, “Tai-lieu-5.pdf” và 2 tài liệu khác'));
-  assert.ok(html.includes('>Xoá 7 tài liệu</button>'));
-  html = confirm(['A.pdf', 'B.pdf'], 'en', { error: locales.en.aiIdSourceDelete.errors.in_use });
-  assert.ok(html.includes('<h2>Delete 2 documents from the Knowledge Base?</h2>') && html.includes('>Delete 2 documents</button>'));
+  assert.doesNotMatch(html, /\d+ tài liệu|và \d+/, 'never a count of several documents');
+  html = confirm('A.pdf', 'en', { error: locales.en.aiIdSourceDelete.errors.in_use });
+  assert.ok(html.includes('<h2>Delete this document from the Knowledge Base?</h2>') && html.includes('>Delete document</button>'));
+  assert.ok(html.includes('“A.pdf”'));
   assert.match(html, /role="alert"[^>]*>Not deleted: AI is using the document to write a course\./, 'a refusal stays inside the confirmation');
 });
 
 test('delete copy: VI and EN have the same keys, every refusal has a plain message, no codes or abbreviations', () => {
   const shape = value => typeof value === 'string' ? 'string' : Object.fromEntries(Object.keys(value).sort().map(key => [key, shape(value[key])]));
   assert.deepEqual(shape(locales.en.aiIdSourceDelete), shape(locales.vi.aiIdSourceDelete));
-  for (const issue of ['in_use', 'inUseNamed', 'learning', 'forbidden', 'connection', 'failed', 'busy', 'not_listed']) {
+  for (const issue of ['in_use', 'learning', 'forbidden', 'connection', 'failed', 'busy', 'not_listed']) {
     for (const locale of ['vi', 'en']) assert.ok(locales[locale].aiIdSourceDelete.errors[issue].length > 30, `${locale} ${issue}`);
   }
+  for (const gone of ['selectAll', 'checkLabel', 'deleteChecked', 'titleOne', 'titleMany', 'namesMore', 'confirmOne', 'confirmMany']) {
+    for (const locale of ['vi', 'en']) assert.equal(locales[locale].aiIdSourceDelete[gone], undefined, `${locale} ${gone} (multi-select delete removed)`);
+  }
+  for (const locale of ['vi', 'en']) assert.equal(locales[locale].aiIdSourceDelete.errors.inUseNamed, undefined);
   const strings = value => typeof value === 'string' ? [value] : Object.values(value).flatMap(strings);
   for (const locale of ['vi', 'en']) {
     for (const value of strings(locales[locale].aiIdSourceDelete)) {

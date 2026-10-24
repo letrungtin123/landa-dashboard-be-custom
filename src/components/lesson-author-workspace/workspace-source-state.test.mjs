@@ -29,7 +29,9 @@ function fixture(){
     upload:async()=>{state.uploads++;return{results:[{success:true,data:{id:id(12),kb_id:id(4),name:'Uploaded.pdf',status:'learning',source_info:{extension:'pdf'}}}]};},
     video:async()=>{state.video++;return{job:{id:id(8),conversation_id:id(6),status:'queued',kb_document_id:null}};},
     transcript:async()=>{throw Error('unexpected');},commitTranscript:async()=>{throw Error('unexpected');},
-    deleteDocument:async(kbId,docId)=>{state.deletes.push(['one',kbId,docId]);},bulkDeleteDocuments:async(kbId,ids)=>{state.deletes.push(['bulk',kbId,ids]);return{deleted:ids.length};}};
+    deleteDocument:async(kbId,docId)=>{state.deletes.push(['one',kbId,docId]);},
+    // A trap: AI ID deletes one document at a time and never calls the knowledge base's bulk route.
+    bulkDeleteDocuments:async(kbId,ids)=>{state.deletes.push(['bulk',kbId,ids]);return{deleted:ids.length};}};
   const controller=createWorkspaceSourceState(scope,{api,authorized:()=>state.authorized,visible:()=>state.visible,canUpload:()=>true,canDelete:()=>state.canDelete,
     operationId:()=>id(9),locale:'vi',wait:async()=>{state.waits++;},onCreated:r=>results.push(r),stream:(scope,deps)=>{const item={scope,deps,started:0,closed:0};streams.push(item);return{start(){item.started++;},close(){item.closed++;}};},create:async(...args)=>{state.creates++;requests.push(args);
       if(state.unknown)throw new WorkspaceCreateError('unknown','UNCONFIRMED');
@@ -161,18 +163,27 @@ test('source panel copy has a plain Try again action and no technical words',()=
   assert.match(panel,/state\.issue === 'connection'/);
 });
 
-// ── Delete documents from the knowledge base (QC 21/10, C4 / contract K5) ──
+// ── Delete a document from the knowledge base (QC 21/10, C4 / contract K5; owner 24/10: one document per delete) ──
 const doc=(n,status='learned',extra={})=>({document_id:id(n),kb_id:id(4),name:`Doc-${n}.pdf`,status,...extra});
-const out=(issue,extra={})=>({issue,kept:0,names:[],serverMessage:null,...extra});
-const inUse=(documentIds,message='AI ID đang dùng các tài liệu này để soạn khoá học nên chưa xoá được.')=>Object.assign(Error('409'),
+const out=(issue,kept=false)=>({issue,kept});
+const inUse=(documentIds,message='AI ID đang dùng tài liệu này để soạn khoá học nên chưa xoá được.')=>Object.assign(Error('409'),
   {response:{status:409,data:{success:false,code:'KB_DOCUMENT_IN_USE_BY_AI_ID',message,...(documentIds?{document_ids:documentIds}:{})}}});
 const refusal=(status,code)=>Object.assign(Error(String(status)),{response:{status,data:code?{code,message:'Thông báo máy chủ'}:{}}});
 const removeFrom=(docs,ids)=>{for(const docId of ids){const at=docs.findIndex(d=>d.document_id===docId);if(at>=0)docs.splice(at,1);}};
 test('delete: without the knowledge base delete permission there are no controls and nothing is sent',async()=>{
   const f=fixture();await f.controller.refresh();
   assert.equal(f.controller.getState().canDelete,false);
-  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),out('forbidden'));
+  assert.deepEqual(await f.controller.deleteDocument(id(7)),out('forbidden'));
   assert.deepEqual(f.state.deletes,[]);
+});
+test('only one document per delete: the controller has no multi-document delete and the AI ID API has no bulk route',()=>{
+  const f=fixture();
+  assert.equal(typeof f.controller.deleteDocument,'function');
+  assert.equal(f.controller.deleteDocuments,undefined,'no delete of several documents at once');
+  const api=readFileSync(new URL('../../api/workspace-sources.ts',import.meta.url),'utf8');
+  assert.doesNotMatch(api,/bulkDeleteDocuments/);
+  const controller=readFileSync(new URL('./workspace-source-state.ts',import.meta.url),'utf8');
+  assert.doesNotMatch(controller,/bulkDeleteDocuments|documentIds/);
 });
 test('delete one: the knowledge base delete route, one list re-read, the deleted source unselected, never Create',async()=>{
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));
@@ -180,7 +191,7 @@ test('delete one: the knowledge base delete route, one list re-read, the deleted
   f.controller.select(id(7));
   f.api.deleteDocument=async(kbId,docId)=>{f.state.deletes.push(['one',kbId,docId]);removeFrom(f.docs,[docId]);};
   const reads=f.state.documentReads;
-  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),out(null));
+  assert.deepEqual(await f.controller.deleteDocument(id(7)),out(null));
   assert.deepEqual(f.state.deletes,[['one',id(4),id(7)]],'the active AI ID knowledge base, exact document');
   assert.equal(f.state.documentReads,reads+1,'the list had already settled');
   const s=f.controller.getState();
@@ -189,62 +200,54 @@ test('delete one: the knowledge base delete route, one list re-read, the deleted
   await f.controller.create();
   assert.equal(f.state.creates,0,'no source is chosen any more');assert.equal(f.controller.getState().issue,'source_not_ready');
 });
-test('delete several: one bulk request; another selected document and the brief stay; ids outside the list are left out',async()=>{
+test('deleting another document: exactly one request for exactly that document; the chosen source and the brief stay',async()=>{
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20),doc(21));
   await f.controller.refresh();f.controller.select(id(7));f.controller.setBrief({course_purpose:'Mục đích mới'});
-  f.api.bulkDeleteDocuments=async(kbId,ids)=>{f.state.deletes.push(['bulk',kbId,ids]);removeFrom(f.docs,ids);return{deleted:ids.length,queued:ids.length};};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(21),id(99),id(20)]),out(null));
-  assert.deepEqual(f.state.deletes,[['bulk',id(4),[id(20),id(21)]]]);
+  f.api.deleteDocument=async(kbId,docId)=>{f.state.deletes.push(['one',kbId,docId]);removeFrom(f.docs,[docId]);};
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out(null));
+  assert.deepEqual(f.state.deletes,[['one',id(4),id(20)]],'Doc-21 is untouched');
   const s=f.controller.getState();
   assert.equal(s.selectedId,id(7));assert.equal(s.brief.course_purpose,'Mục đích mới');
-  assert.deepEqual(s.documents.map(d=>d.document_id),[id(7)]);
+  assert.deepEqual(s.documents.map(d=>d.document_id),[id(7),id(21)]);
+  f.controller.select(id(21));assert.equal(f.controller.getState().selectedId,id(21),'choosing a source still works after a delete');
+  f.controller.select(id(7));
   await f.controller.create();assert.equal(f.state.creates,1,'Create still works with the kept selection');
+  assert.deepEqual(f.requests[0][1].source_document_ids,[id(7)]);
 });
 test('a queued delete is followed until the list no longer shows it, and the following is bounded',async()=>{
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));await f.controller.refresh();
   let pending=2;const documents=f.api.documents;
   f.api.documents=async()=>{const list=await documents();return pending-->0?list:list.filter(d=>d.document_id!==id(20));};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),out(null));
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out(null));
   assert.equal(f.state.waits,2,'re-read twice while the queue finishes');
   assert.deepEqual(f.controller.getState().documents.map(d=>d.document_id),[id(7)]);
   const stuck=fixture();stuck.state.canDelete=true;stuck.docs.push(doc(20));await stuck.controller.refresh();
-  assert.deepEqual(await stuck.controller.deleteDocuments([id(20)]),out(null,{kept:1}),'a document that stays is reported, not followed forever');
+  assert.deepEqual(await stuck.controller.deleteDocument(id(20)),out(null,true),'a document that stays is reported, not followed forever');
   assert.equal(stuck.state.waits,SOURCE_DELETE_SETTLE_DELAYS_MS.length);
   assert.equal(stuck.controller.getState().busy,false);
 });
-test('a bulk delete the server partly skipped reports how many documents stay, without waiting for them',async()=>{
-  const f=fixture();f.state.canDelete=true;f.docs.push(doc(20),doc(21));await f.controller.refresh();
-  f.api.bulkDeleteDocuments=async(_kbId,ids)=>{removeFrom(f.docs,[ids[0]]);return{deleted:1,queued:1};};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(21)]),out(null,{kept:1}));
-  assert.equal(f.state.waits,0);
-  assert.deepEqual(f.controller.getState().documents.map(d=>d.document_id),[id(7),id(21)]);
-});
-test('documents AI ID is using: named in the refusal (from document_ids or the server words), nothing deleted or followed',async()=>{
+test('a document AI ID is using: the refusal deletes nothing and is not followed; the panel stays usable',async()=>{
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20),doc(21));await f.controller.refresh();f.controller.select(id(20));
-  f.api.bulkDeleteDocuments=async()=>{throw inUse([id(21),id(20)]);};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20),id(21),id(7)]),out('in_use',{names:['Doc-21.pdf','Doc-20.pdf']}),
-    'a refused bulk request deletes nothing and names every refused document');
-  f.api.deleteDocument=async()=>{throw inUse([id(20),id(77)],'AI ID đang dùng “Doc-20.pdf”, “Khác.pdf”.');};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),out('in_use',{serverMessage:'AI ID đang dùng “Doc-20.pdf”, “Khác.pdf”.'}),
-    'a document the list cannot name: the server words name them all');
+  f.api.deleteDocument=async()=>{throw inUse([id(20)]);};
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out('in_use'));
   f.api.deleteDocument=async()=>{throw inUse(undefined,'');};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),out('in_use'),'nothing to name: the plain general sentence');
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out('in_use'),'the same plain sentence without the server details');
   const s=f.controller.getState();
   assert.deepEqual([s.selectedId,s.ready,s.issue,s.busy,f.state.waits],[id(20),true,null,false,0]);
   assert.deepEqual(s.documents.map(d=>d.document_id),[id(7),id(20),id(21)]);
   await f.controller.create();assert.equal(f.state.creates,1,'Create is not broken by a refused delete');
 });
-test('rows the server marks: in use by AI ID or not deletable are refused before any request, with the names',async()=>{
+test('rows the server marks: in use by AI ID or not deletable are refused before any request',async()=>{
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20,'learned',{in_use_by_ai_id:true,can_delete:true}),doc(21,'learned',{can_delete:true}),doc(22,'learning'));
   await f.controller.refresh();
   assert.equal(f.controller.getState().documents[1].in_use_by_ai_id,true,'the row keeps the server flag');
-  assert.deepEqual(await f.controller.deleteDocuments([id(21),id(20)]),out('in_use',{names:['Doc-20.pdf']}));
-  assert.deepEqual(await f.controller.deleteDocuments([id(22)]),out('learning'));
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out('in_use'));
+  assert.deepEqual(await f.controller.deleteDocument(id(22)),out('learning'));
   const denied=fixture();denied.state.canDelete=true;denied.docs.push(doc(20,'learned',{can_delete:false}));await denied.controller.refresh();
-  assert.deepEqual(await denied.controller.deleteDocuments([id(20)]),out('forbidden'),'the row\'s can_delete wins over the permission');
+  assert.deepEqual(await denied.controller.deleteDocument(id(20)),out('forbidden'),'the row\'s can_delete wins over the permission');
   const allowed=fixture();allowed.state.canDelete=false;allowed.docs.push(doc(20,'learned',{can_delete:true}));await allowed.controller.refresh();
   allowed.api.deleteDocument=async(kbId,docId)=>{allowed.state.deletes.push(['one',kbId,docId]);removeFrom(allowed.docs,[docId]);};
-  assert.deepEqual(await allowed.controller.deleteDocuments([id(20)]),out(null),'and when the row allows it');
+  assert.deepEqual(await allowed.controller.deleteDocument(id(20)),out(null),'and when the row allows it');
   assert.deepEqual([...f.state.deletes,...denied.state.deletes,...allowed.state.deletes],[['one',id(4),id(20)]]);
 });
 test('delete refusals map to plain categories; an already deleted document counts as deleted',async()=>{
@@ -255,27 +258,28 @@ test('delete refusals map to plain categories; an already deleted document count
   }
   const f=fixture();f.state.canDelete=true;f.docs.push(doc(20));await f.controller.refresh();
   f.api.deleteDocument=async()=>{removeFrom(f.docs,[id(20)]);throw refusal(404);};
-  assert.deepEqual(await f.controller.deleteDocuments([id(20)]),out(null));
+  assert.deepEqual(await f.controller.deleteDocument(id(20)),out(null));
   const lost=fixture();lost.state.canDelete=true;lost.docs.push(doc(20));await lost.controller.refresh();
   lost.api.deleteDocument=async()=>{throw Object.assign(Error('Network Error'),{code:'ERR_NETWORK',request:{}});};
   const reads=lost.state.documentReads;
-  assert.deepEqual(await lost.controller.deleteDocuments([id(20)]),out('connection'));
+  assert.deepEqual(await lost.controller.deleteDocument(id(20)),out('connection'));
   assert.equal(lost.state.documentReads,reads+1,'after a lost answer the list is read once to show the truth');
 });
 test('a delete that sends nothing always says why: hidden, not allowed, not listed, busy or closed',async()=>{
   const f=fixture();f.state.canDelete=true;await f.controller.refresh();
-  f.state.visible=false;assert.deepEqual(await f.controller.deleteDocuments([id(7)]),out('forbidden'));f.state.visible=true;
-  f.state.canDelete=false;assert.deepEqual(await f.controller.deleteDocuments([id(7)]),out('forbidden'));f.state.canDelete=true;
-  assert.deepEqual(await f.controller.deleteDocuments([id(99)]),out('not_listed'),'nothing chosen is in the list any more');
-  assert.deepEqual(await f.controller.deleteDocuments([]),out('not_listed'));
+  f.state.visible=false;assert.deepEqual(await f.controller.deleteDocument(id(7)),out('forbidden'));f.state.visible=true;
+  f.state.canDelete=false;assert.deepEqual(await f.controller.deleteDocument(id(7)),out('forbidden'));f.state.canDelete=true;
+  assert.deepEqual(await f.controller.deleteDocument(id(99)),out('not_listed'),'the chosen document is not in the list any more');
+  assert.deepEqual(await f.controller.deleteDocument(''),out('not_listed'));
   f.state.unknown=true;f.controller.select(id(7));await f.controller.create();
-  assert.deepEqual(await f.controller.deleteDocuments([id(7)]),out('busy'),'an unknown Create outcome locks the panel');
+  assert.deepEqual(await f.controller.deleteDocument(id(7)),out('busy'),'an unknown Create outcome locks the panel');
   const closed=fixture();closed.state.canDelete=true;await closed.controller.refresh();closed.controller.dispose();
-  assert.deepEqual(await closed.controller.deleteDocuments([id(7)]),out('busy'));
+  assert.deepEqual(await closed.controller.deleteDocument(id(7)),out('busy'));
   const running=fixture();running.state.canDelete=true;running.docs.push(doc(20));await running.controller.refresh();
   let release;running.api.deleteDocument=()=>new Promise(resolve=>{release=resolve;});
-  const first=running.controller.deleteDocuments([id(20)]);
-  assert.deepEqual(await running.controller.deleteDocuments([id(7)]),out('busy'),'one delete at a time');
+  const first=running.controller.deleteDocument(id(20));
+  assert.deepEqual(await running.controller.deleteDocument(id(7)),out('busy'),'one delete at a time');
   release();await first;
   assert.deepEqual([...f.state.deletes,...closed.state.deletes],[]);
+  assert.ok(![...f.state.deletes,...closed.state.deletes,...running.state.deletes].some(entry=>entry[0]==='bulk'));
 });
